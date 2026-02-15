@@ -25,6 +25,12 @@ NO “live edits” outside the repo (e.g. /etc, /var/www) unless:
   
 - The change is mirrored back into the repo in the same session (when applicable)
   
+SESSION START RULE (MANDATORY)
+
+- At the start of every new Codex session on Server3, read `SERVER3_PROGRESS.md` before planning or editing.
+- Treat `SERVER3_PROGRESS.md` as the running context log for what is already done and what is pending.
+
+  
 
 ---
 
