@@ -137,12 +137,11 @@ Repo settings (placeholders — decide later)
 
 Working rules (use now)
 
-- Use a feature branch:  
-  codex/<yyyymmdd>-<short-task>
+- Work directly on `main` by default
   
-- Codex pushes branches to GitHub
+- Codex commits and pushes directly to `origin/main`
   
-- Codex does NOT merge to the default branch unless the user explicitly instructs it
+- Feature branches are optional and only used when the user explicitly asks for branch/PR workflow
   
 
 Required command sequence:
@@ -157,7 +156,7 @@ git status
 git diff  
 git add -A  
 git commit -m "..."  
-git push -u origin HEAD
+git push origin main
 
 After commit, Codex must always show:
 
