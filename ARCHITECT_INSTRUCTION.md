@@ -38,11 +38,15 @@ TRACEABILITY RULE (MANDATORY, ALL SERVER CHANGES)
     
 - If a change happens outside the repo, Codex must:
   
-  1. Mirror the intended/final state into tracked files under this repo (for example `infra/`, `ops/`, `docs/`, `logs/`)
+  1. Mirror the intended/final state into tracked files under `infra/` (MANDATORY mirror root for live server paths)
     
   2. Commit and push that mirror/update to GitHub in the same session
     
-  3. Record what was applied and where (path + timestamp) in a repo-tracked note/log
+  3. Use `ops/` for apply/rollback scripts used to deploy repo state to live paths
+    
+  4. Use `docs/` for human-readable procedures/runbooks
+    
+  5. Record what was applied and where (path + timestamp) in `logs/` (repo-tracked execution records)
     
 - No “server-only” state is allowed to remain undocumented or unpushed after the session ends.
   
