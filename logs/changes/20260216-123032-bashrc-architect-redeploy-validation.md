@@ -18,7 +18,7 @@
 ## Verification
 - Command: `bash -ic 'source ~/.bashrc; type architect'`
 - Result: `architect is a function`
-- Function body: `command codex -s danger-full-access -a never ""`
+- Function body: `command codex -s danger-full-access -a never "$@"`
 
 ## Notes
 - Deploy script now uses PID-suffixed backup names to avoid same-second collision.

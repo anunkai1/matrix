@@ -141,7 +141,7 @@ Repo settings (placeholders — decide later)
   
 - Default branch: `main`
   
-- Merge policy: TBD (PR-only recommended)
+- Merge policy: direct-to-main by default (feature branch/PR only when user requests)
   
 
 Working rules (use now)

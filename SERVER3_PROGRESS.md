@@ -10,6 +10,7 @@
 - Applied live `.bashrc` change on Server3 with backup and logged execution record in `logs/changes/`.
 - Reconciled policy/doc consistency (direct `main` wording), corrected audit log function body to literal `$@`, and hardened deploy script target handling for `/home/architect/.bashrc`.
 - Validated live redeploy path (rollback/apply), confirmed `architect` function loads correctly, and improved backup naming in deploy script to avoid same-second collisions.
+- Finalized excellence cleanup: corrected remaining log function-body mismatch, aligned merge-policy wording with direct-to-main workflow, added `README.md`, and added a minimal `.gitignore`.
 
 ### Git State
 - Current branch: `main`
@@ -35,4 +36,3 @@
 
 ### Notes
 - Pull request creation and `main` branch/default-branch setup are intentionally deferred.
-- Next likely step: create `main`, then open a PR from current branch.
