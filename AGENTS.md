@@ -1,8 +1,8 @@
 # Codex Agent Instructions — Server3 (matrix)
 
 AUTHORITATIVE RULES:
-- ./AGENT_ARCHITECT.md
+- ./ARCHITECT_INSTRUCTION.md
 
 INSTRUCTIONS:
-1) Read `AGENT_ARCHITECT.md` first and follow it exactly.
-2) If anything conflicts, `AGENT_ARCHITECT.md` wins.
+1) Read `ARCHITECT_INSTRUCTION.md` first and follow it exactly.
+2) If anything conflicts, `ARCHITECT_INSTRUCTION.md` wins.

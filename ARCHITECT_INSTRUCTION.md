@@ -1,4 +1,4 @@
-🤖 AGENT_ARCHITECT.md — Server3 Codex Workflow (AUTHORITATIVE)
+🤖 ARCHITECT_INSTRUCTION.md — Server3 Codex Workflow (AUTHORITATIVE)
 
 Project: matrix (Server3)  
 Status: brand new repo (only AGENTS.md + this file exist)
@@ -218,4 +218,4 @@ If the user says: “start the project”, Codex should propose:
   
 4. First commit + push to GitHub branch
   
-5. Update this file (AGENT_ARCHITECT.md) when workflow rules change
+5. Update this file (ARCHITECT_INSTRUCTION.md) when workflow rules change
