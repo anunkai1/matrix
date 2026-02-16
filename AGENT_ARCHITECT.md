@@ -1,6 +1,6 @@
-🤖 AI_P_server3_codex.md — Server3 Codex Workflow (AUTHORITATIVE)
+🤖 AGENT_ARCHITECT.md — Server3 Codex Workflow (AUTHORITATIVE)
 
-Project: octopuslive (Server3)  
+Project: matrix (Server3)  
 Status: brand new repo (only AGENTS.md + this file exist)
 
 Codex runs ON Server3 (you SSH from Windows / PuTTY and run: codex "..." on the server).
@@ -124,7 +124,7 @@ Working rules (use now)
 
 Required command sequence:
 
-cd ~/octopuslive  
+cd ~/matrix  
 git pull --ff-only || true  
 git status
 
@@ -218,4 +218,4 @@ If the user says: “start the project”, Codex should propose:
   
 4. First commit + push to GitHub branch
   
-5. Update this file (AI_P_server3_codex.md) when workflow rules change
+5. Update this file (AGENT_ARCHITECT.md) when workflow rules change
