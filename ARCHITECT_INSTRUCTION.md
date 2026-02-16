@@ -72,12 +72,14 @@ Codex MUST:
 1. Inspect, understand existing files first (read before write)
   
 2. Produce an “AI Prompt for Action” (section 1)
+
+3. Ask for explicit user confirmation to proceed after the plan (for example: “Proceed with these changes?”) and WAIT for approval before implementing
   
-3. Implement the minimum necessary change
+4. Implement the minimum necessary change
   
-4. Commit + push to GitHub (usually a branch)
+5. Commit + push to GitHub (usually a branch)
   
-5. Show proof after commit:
+6. Show proof after commit:
   
   - git status
     
