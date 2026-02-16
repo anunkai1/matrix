@@ -10,6 +10,7 @@ Codex runs ON Server3 (you SSH from Windows / PuTTY and run: codex "..." on the 
 🔐 GOLDEN RULE — CHANGE CONTROL (AUTHORITATIVE)
 
 - This Git repo is the SINGLE SOURCE OF TRUTH.
+- The canonical repo is: `https://github.com/anunkai1/matrix` (public).
   
 - All changes MUST follow:  
   edit in repo → git status → git add → git commit → git push
@@ -24,6 +25,26 @@ NO “live edits” outside the repo (e.g. /etc, /var/www) unless:
 - It is documented (commit message + note)
   
 - The change is mirrored back into the repo in the same session (when applicable)
+
+- The mirroring commit is pushed to GitHub in the same session (MANDATORY)
+
+TRACEABILITY RULE (MANDATORY, ALL SERVER CHANGES)
+
+- This applies to ALL server changes, including:
+  
+  - inside `/home/architect/matrix`
+    
+  - outside `/home/architect/matrix` (for example `~/.bashrc`, `/etc/nginx`, `/var/www`)
+    
+- If a change happens outside the repo, Codex must:
+  
+  1. Mirror the intended/final state into tracked files under this repo (for example `infra/`, `ops/`, `docs/`, `logs/`)
+    
+  2. Commit and push that mirror/update to GitHub in the same session
+    
+  3. Record what was applied and where (path + timestamp) in a repo-tracked note/log
+    
+- No “server-only” state is allowed to remain undocumented or unpushed after the session ends.
   
 SESSION START RULE (MANDATORY)
 
@@ -105,9 +126,9 @@ If anything is unknown → Codex must STOP and ask the user.
 
 Repo settings (placeholders — decide later)
 
-- GitHub repo: TBD (will be public)
+- GitHub repo: `https://github.com/anunkai1/matrix`
   
-- Default branch: TBD (main recommended)
+- Default branch: `main`
   
 - Merge policy: TBD (PR-only recommended)
   
