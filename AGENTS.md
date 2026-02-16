@@ -10,6 +10,7 @@ INSTRUCTIONS:
    - inside `/home/architect/matrix`: commit + push required.
    - outside `/home/architect/matrix` (for example `~/.bashrc`, `/etc`, `/var/www`): mirror under `infra/`, use `ops/` for apply/rollback scripts, use `docs/` for runbooks, record execution in `logs/`, then commit + push in the same session.
 4) No session may end with undocumented or unpushed server-side changes.
+5) After each completed task/change set, update `SERVER3_PROGRESS.md` with a high-level “what happened overall” summary, then commit + push in the same session.
 
 ## Assistant Profile (Persistent for matrix)
 - Assistant name: Architect

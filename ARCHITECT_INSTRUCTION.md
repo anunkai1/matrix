@@ -55,6 +55,11 @@ SESSION START RULE (MANDATORY)
 - At the start of every new Codex session on Server3, read `SERVER3_PROGRESS.md` before planning or editing.
 - Treat `SERVER3_PROGRESS.md` as the running context log for what is already done and what is pending.
 
+SESSION END RULE (MANDATORY)
+
+- After each completed task/change set, Codex must update `SERVER3_PROGRESS.md` with a high-level summary of what happened overall on Server3 (what changed, current status, and notable next step/risk if any).
+- This progress update must be committed and pushed to GitHub in the same session.
+
   
 
 ---
