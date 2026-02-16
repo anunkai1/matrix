@@ -8,6 +8,8 @@
 - Standardized mirror structure: `infra/` (state), `ops/` (deploy/rollback), `docs/` (runbooks), `logs/` (execution records).
 - Added managed architect launcher for Codex full-access mode via repo-tracked bash snippet and deploy script.
 - Applied live `.bashrc` change on Server3 with backup and logged execution record in `logs/changes/`.
+- Reconciled policy/doc consistency (direct `main` wording), corrected audit log function body to literal `$@`, and hardened deploy script target handling for `/home/architect/.bashrc`.
+- Validated live redeploy path (rollback/apply), confirmed `architect` function loads correctly, and improved backup naming in deploy script to avoid same-second collisions.
 
 ### Git State
 - Current branch: `main`

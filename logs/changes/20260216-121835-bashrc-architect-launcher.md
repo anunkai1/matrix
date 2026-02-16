@@ -17,7 +17,7 @@
 ## Verification
 - Command: `bash -ic 'type architect'`
 - Result: `architect is a function`
-- Function body: `command codex -s danger-full-access -a never ""`
+- Function body: `command codex -s danger-full-access -a never "$@"`
 
 ## Notes
 - Managed block markers in target file:

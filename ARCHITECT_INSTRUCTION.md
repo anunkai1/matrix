@@ -1,7 +1,7 @@
 🤖 ARCHITECT_INSTRUCTION.md — Server3 Codex Workflow (AUTHORITATIVE)
 
 Project: matrix (Server3)  
-Status: brand new repo (only AGENTS.md + this file exist)
+Status: active repo (policies + infra/ops/docs/logs workflow enabled)
 
 Codex runs ON Server3 (you SSH from Windows / PuTTY and run: codex "..." on the server).
 
@@ -86,7 +86,7 @@ Codex MUST:
   
 4. Implement the minimum necessary change
   
-5. Commit + push to GitHub (usually a branch)
+5. Commit + push to GitHub (`origin/main` by default)
   
 6. Show proof after commit:
   
@@ -211,7 +211,7 @@ HARD SAFETY LIMITS (EVEN WITH SUDO)
 
 4. “FROM SCRATCH” BUILD RULES (MANDATORY)
 
-Because the project is new:
+For project setup tasks:
 
 - Start with a clean foundation:
   
@@ -247,6 +247,6 @@ If the user says: “start the project”, Codex should propose:
   
 3. Create placeholder structure (docs/, src/) ONLY if requested
   
-4. First commit + push to GitHub branch
+4. First commit + push to `origin/main` (unless user explicitly requests branch/PR workflow)
   
 5. Update this file (ARCHITECT_INSTRUCTION.md) when workflow rules change

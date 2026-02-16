@@ -4,7 +4,7 @@ set -euo pipefail
 MODE="${1:-apply}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SNIPPET="${REPO_ROOT}/infra/bash/home/architect/.bashrc"
-TARGET="${HOME}/.bashrc"
+TARGET="${TARGET_BASHRC:-/home/architect/.bashrc}"
 START="# >>> matrix-managed architect launcher >>>"
 END="# <<< matrix-managed architect launcher <<<"
 
@@ -17,7 +17,7 @@ if [[ ! -f "${TARGET}" ]]; then
   touch "${TARGET}"
 fi
 
-backup="${TARGET}.bak.$(date +%Y%m%d%H%M%S)"
+backup="${TARGET}.bak.$(date +%Y%m%d%H%M%S).$$"
 cp "${TARGET}" "${backup}"
 echo "Backup created: ${backup}"
 
@@ -44,6 +44,7 @@ case "${MODE}" in
     ;;
   *)
     echo "Usage: $0 [apply|rollback]" >&2
+    echo "Optional override: TARGET_BASHRC=/custom/path/.bashrc" >&2
     rm -f "${tmp}"
     exit 1
     ;;
