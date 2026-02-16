@@ -1,5 +1,22 @@
 # Server3 Progress Log
 
+## 2026-02-16
+
+### Summary
+- Updated policy files to enforce GitHub traceability for all server changes.
+- Switched workflow to direct commits/pushes on `main`.
+- Standardized mirror structure: `infra/` (state), `ops/` (deploy/rollback), `docs/` (runbooks), `logs/` (execution records).
+- Added managed architect launcher for Codex full-access mode via repo-tracked bash snippet and deploy script.
+- Applied live `.bashrc` change on Server3 with backup and logged execution record in `logs/changes/`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- `architect` now launches: `codex -s danger-full-access -a never`.
+- Live apply/rollback commands are documented in `docs/server-setup.md`.
+
 ## 2026-02-15
 
 ### Summary
