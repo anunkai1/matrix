@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Executor Fix)
+
+### Summary
+- Resolved Telegram normal-message failure caused by interactive Codex invocation under systemd (`stdin is not a terminal`).
+- Updated bridge executor to use non-interactive `codex exec` and return only the last assistant message.
+- Restarted `telegram-architect-bridge.service` live on Server3 and verified active state after rollout.
+- Recorded live execution details in `logs/changes/20260217-013506-telegram-bridge-executor-nontty-fix.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Local non-TTY executor validation passed as `architect`.
+- User should now validate by sending a normal prompt to `@Architect_server3_bot`.
+
 ## 2026-02-17 (Live Rollout)
 
 ### Summary
