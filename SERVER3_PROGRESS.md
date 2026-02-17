@@ -1,5 +1,22 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Voice Transcription Live Enablement Verified)
+
+### Summary
+- Completed end-to-end voice-transcription rollout path on Server3 using repo-managed scripts in `ops/telegram-voice/`.
+- Re-applied live env settings in `/etc/default/telegram-architect-bridge` for `TELEGRAM_VOICE_TRANSCRIBE_CMD`, timeout, and Whisper runtime variables.
+- Re-ran runtime installer verification (`ffmpeg`, venv, `faster-whisper`) and restarted `telegram-architect-bridge.service`.
+- Verified active runtime start timestamp `2026-02-17 06:38:24 UTC` and confirmed voice env vars are loaded inside the running service process.
+- Executed a functional transcription test through the production wrapper `ops/telegram-voice/transcribe_voice.sh` using generated sample speech audio; transcript output returned successfully.
+- Added repo-tracked live-change execution record: `logs/changes/20260217-063854-telegram-voice-live-enable.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Voice pipeline is now configured and active; remaining user-path confirmation is to send a real Telegram voice note and verify the bridge responds with transcribed content instead of the configuration warning.
+
 ## 2026-02-17 (Telegram Bridge Restart on Request)
 
 ### Summary

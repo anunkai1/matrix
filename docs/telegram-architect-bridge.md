@@ -12,11 +12,15 @@ This bridge lets Telegram users chat with local Architect/Codex on Server3 witho
 
 - Bridge runtime: `src/telegram_bridge/main.py`
 - Safe executor wrapper: `src/telegram_bridge/executor.sh`
+- Voice transcription runner: `src/telegram_bridge/voice_transcribe.py`
 - Local smoke test: `src/telegram_bridge/smoke_test.sh`
 - Systemd source-of-truth unit: `infra/systemd/telegram-architect-bridge.service`
 - Install/rollback unit: `ops/telegram-bridge/install_systemd.sh`
 - Restart helper: `ops/telegram-bridge/restart_service.sh`
 - Status helper: `ops/telegram-bridge/status_service.sh`
+- Voice runtime installer: `ops/telegram-voice/install_faster_whisper.sh`
+- Voice env updater: `ops/telegram-voice/configure_env.sh`
+- Voice command wrapper: `ops/telegram-voice/transcribe_voice.sh`
 
 ## Bot Setup
 
@@ -42,9 +46,14 @@ TELEGRAM_MAX_IMAGE_BYTES=10485760
 TELEGRAM_MAX_VOICE_BYTES=20971520
 TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # Required for voice messages (must print transcript to stdout):
-# TELEGRAM_VOICE_TRANSCRIBE_CMD=/usr/local/bin/transcribe_voice.sh {file}
+# TELEGRAM_VOICE_TRANSCRIBE_CMD=/home/architect/matrix/ops/telegram-voice/transcribe_voice.sh {file}
 # Optional voice transcription timeout:
-# TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS=120
+# TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS=180
+# TELEGRAM_VOICE_WHISPER_VENV=/home/architect/.local/share/telegram-voice/venv
+# TELEGRAM_VOICE_WHISPER_MODEL=base
+# TELEGRAM_VOICE_WHISPER_DEVICE=cpu
+# TELEGRAM_VOICE_WHISPER_COMPUTE_TYPE=int8
+# TELEGRAM_VOICE_WHISPER_LANGUAGE=
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # Optional override:
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
@@ -57,6 +66,21 @@ EOF
 bash ops/telegram-bridge/install_systemd.sh apply
 bash ops/telegram-bridge/restart_service.sh
 bash ops/telegram-bridge/status_service.sh
+```
+
+## Voice Runtime Setup (Required for Voice Notes)
+
+```bash
+bash ops/telegram-voice/install_faster_whisper.sh
+bash ops/telegram-voice/configure_env.sh
+bash ops/telegram-bridge/restart_service.sh
+```
+
+Verification:
+
+```bash
+bash ops/telegram-voice/transcribe_voice.sh /path/to/sample.ogg
+sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 ```
 
 ## Bridge Commands

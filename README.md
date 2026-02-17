@@ -50,6 +50,14 @@ bash ops/telegram-bridge/restart_service.sh
 bash ops/telegram-bridge/status_service.sh
 ```
 
+Enable voice transcription runtime:
+
+```bash
+bash ops/telegram-voice/install_faster_whisper.sh
+bash ops/telegram-voice/configure_env.sh
+bash ops/telegram-bridge/restart_service.sh
+```
+
 ## Operations
 
 - Restart bridge: `bash ops/telegram-bridge/restart_service.sh`
