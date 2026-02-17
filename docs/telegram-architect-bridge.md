@@ -58,7 +58,7 @@ bash ops/telegram-bridge/status_service.sh
 - `/help` command list
 - `/status` bridge health and uptime
 
-Any non-command text is forwarded to the local executor.
+Any non-command text is forwarded to the local executor (non-interactive `codex exec`).
 
 ## Safety Controls
 
@@ -78,7 +78,7 @@ bash ops/telegram-bridge/status_service.sh
 sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 ```
 
-Config mistakes (missing env vars) cause startup failure. Correct `/etc/default/telegram-architect-bridge` and restart service.
+Config mistakes (missing env vars) cause startup failure. The executor also requires a valid `codex login` for the `architect` user. Correct `/etc/default/telegram-architect-bridge` and restart service.
 
 ## Rollback
 
