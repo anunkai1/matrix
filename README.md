@@ -6,6 +6,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 
 - Active component: `telegram-architect-bridge.service`
 - Runtime mode: Telegram long polling + local `codex exec` executor
+- Input modes: text prompts and photo prompts (image + optional caption)
 - Context behavior: per-chat context persistence (`chat_id -> thread_id`) with `/reset`
 
 ## Repository Structure

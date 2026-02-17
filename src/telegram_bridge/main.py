@@ -7,13 +7,14 @@ import logging
 import os
 import shlex
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 TELEGRAM_LIMIT = 4096
@@ -30,6 +31,7 @@ class Config:
     exec_timeout_seconds: int
     max_input_chars: int
     max_output_chars: int
+    max_image_bytes: int
     rate_limit_per_minute: int
     executor_cmd: List[str]
     state_dir: str
@@ -37,6 +39,7 @@ class Config:
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
     generic_error_message: str = "Execution failed. Please try again later."
+    image_download_error_message: str = "Image download failed. Please send another image."
     empty_output_message: str = "(No output from Architect)"
     thinking_message: str = "💭🤔💭.....thinking.....💭🤔💭"
 
@@ -118,6 +121,7 @@ def load_config() -> Config:
         exec_timeout_seconds=parse_int_env("TELEGRAM_EXEC_TIMEOUT_SECONDS", 300),
         max_input_chars=parse_int_env("TELEGRAM_MAX_INPUT_CHARS", 4000),
         max_output_chars=parse_int_env("TELEGRAM_MAX_OUTPUT_CHARS", 20000),
+        max_image_bytes=parse_int_env("TELEGRAM_MAX_IMAGE_BYTES", 10 * 1024 * 1024, minimum=1024),
         rate_limit_per_minute=parse_int_env("TELEGRAM_RATE_LIMIT_PER_MINUTE", 12),
         executor_cmd=parse_executor_cmd(),
         state_dir=state_dir,
@@ -167,6 +171,37 @@ class TelegramClient:
             if reply_to_message_id is not None:
                 payload["reply_to_message_id"] = str(reply_to_message_id)
             self._request("sendMessage", payload)
+
+    def get_file(self, file_id: str) -> Dict[str, object]:
+        response = self._request("getFile", {"file_id": file_id})
+        result = response.get("result")
+        if not isinstance(result, dict):
+            raise RuntimeError("Invalid getFile response: result is not an object")
+        return result
+
+    def download_file_to_path(self, file_path: str, target_path: str, max_bytes: int) -> None:
+        cleaned = file_path.lstrip("/")
+        if not cleaned:
+            raise RuntimeError("Invalid Telegram file_path")
+        encoded = quote(cleaned, safe="/")
+        endpoint = f"{self.config.api_base}/file/bot{self.config.token}/{encoded}"
+        request = Request(endpoint, method="GET")
+
+        total = 0
+        with (
+            urlopen(request, timeout=self.config.poll_timeout_seconds + 10) as response,
+            open(target_path, "wb") as handle,
+        ):
+            while True:
+                chunk = response.read(64 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValueError(
+                        f"Image too large (> {max_bytes} bytes)."
+                    )
+                handle.write(chunk)
 
 
 def normalize_command(text: str) -> Optional[str]:
@@ -222,12 +257,15 @@ def run_executor(
     config: Config,
     prompt: str,
     thread_id: Optional[str],
+    image_path: Optional[str] = None,
 ) -> subprocess.CompletedProcess[str]:
     cmd = list(config.executor_cmd)
     if thread_id:
         cmd.extend(["resume", thread_id])
     else:
         cmd.append("new")
+    if image_path:
+        cmd.extend(["--image", image_path])
     logging.info("Running executor command: %s", cmd)
     return subprocess.run(
         cmd,
@@ -346,6 +384,72 @@ def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
     return thread_id, output
 
 
+def pick_largest_photo_file_id(photo_items: List[object]) -> Optional[str]:
+    best_file_id: Optional[str] = None
+    best_size = -1
+    for item in photo_items:
+        if not isinstance(item, dict):
+            continue
+        file_id = item.get("file_id")
+        if not isinstance(file_id, str) or not file_id.strip():
+            continue
+        file_size = item.get("file_size")
+        size_score = file_size if isinstance(file_size, int) else 0
+        if size_score >= best_size:
+            best_size = size_score
+            best_file_id = file_id.strip()
+    return best_file_id
+
+
+def extract_prompt_and_photo(message: Dict[str, object]) -> tuple[Optional[str], Optional[str]]:
+    text = message.get("text")
+    if isinstance(text, str):
+        return text, None
+
+    photo_items = message.get("photo")
+    if not isinstance(photo_items, list) or not photo_items:
+        return None, None
+
+    file_id = pick_largest_photo_file_id(photo_items)
+    if not file_id:
+        return None, None
+
+    caption = message.get("caption")
+    if isinstance(caption, str) and caption.strip():
+        return caption, file_id
+    return "Please analyze this image.", file_id
+
+
+def download_photo_to_temp(
+    client: TelegramClient,
+    config: Config,
+    photo_file_id: str,
+) -> str:
+    file_meta = client.get_file(photo_file_id)
+    file_path = file_meta.get("file_path")
+    if not isinstance(file_path, str) or not file_path.strip():
+        raise RuntimeError("Telegram getFile response missing file_path")
+
+    file_size = file_meta.get("file_size")
+    if isinstance(file_size, int) and file_size > config.max_image_bytes:
+        raise ValueError(
+            f"Image too large ({file_size} bytes). Max is {config.max_image_bytes} bytes."
+        )
+
+    suffix = Path(file_path).suffix or ".jpg"
+    fd, tmp_path = tempfile.mkstemp(prefix="telegram-bridge-photo-", suffix=suffix)
+    os.close(fd)
+    try:
+        client.download_file_to_path(file_path, tmp_path, config.max_image_bytes)
+    except Exception:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+    return tmp_path
+
+
 def build_help_text() -> str:
     return (
         "Commands:\n"
@@ -353,7 +457,7 @@ def build_help_text() -> str:
         "/help - show commands\n"
         "/status - show bridge health\n"
         "/reset - clear chat context\n\n"
-        "Any other message is sent to Architect."
+        "Any other text or photo message is sent to Architect."
     )
 
 
@@ -375,11 +479,29 @@ def process_prompt(
     chat_id: int,
     message_id: Optional[int],
     prompt: str,
+    photo_file_id: Optional[str],
 ) -> None:
     previous_thread_id = get_thread_id(state, chat_id)
+    image_path: Optional[str] = None
     try:
+        if photo_file_id:
+            try:
+                image_path = download_photo_to_temp(client, config, photo_file_id)
+            except ValueError as exc:
+                logging.warning("Photo rejected for chat_id=%s: %s", chat_id, exc)
+                client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+                return
+            except Exception:
+                logging.exception("Photo download failed for chat_id=%s", chat_id)
+                client.send_message(
+                    chat_id,
+                    config.image_download_error_message,
+                    reply_to_message_id=message_id,
+                )
+                return
+
         try:
-            result = run_executor(config, prompt, previous_thread_id)
+            result = run_executor(config, prompt, previous_thread_id, image_path=image_path)
         except subprocess.TimeoutExpired:
             logging.warning("Executor timeout for chat_id=%s", chat_id)
             client.send_message(chat_id, config.timeout_message, reply_to_message_id=message_id)
@@ -409,7 +531,7 @@ def process_prompt(
                 )
                 clear_thread_id(state, chat_id)
                 try:
-                    retry = run_executor(config, prompt, None)
+                    retry = run_executor(config, prompt, None, image_path=image_path)
                 except subprocess.TimeoutExpired:
                     logging.warning("Executor retry timeout for chat_id=%s", chat_id)
                     client.send_message(
@@ -462,6 +584,11 @@ def process_prompt(
         output = trim_output(output, config.max_output_chars)
         client.send_message(chat_id, output, reply_to_message_id=message_id)
     finally:
+        if image_path:
+            try:
+                os.remove(image_path)
+            except OSError:
+                logging.warning("Failed to remove temp image file: %s", image_path)
         clear_busy(state, chat_id)
 
 
@@ -507,16 +634,16 @@ def handle_update(
     if not isinstance(message_id, int):
         message_id = None
 
-    text = message.get("text")
-    if not isinstance(text, str):
-        return
-
     if chat_id not in config.allowed_chat_ids:
         logging.warning("Denied non-allowlisted chat_id=%s", chat_id)
         client.send_message(chat_id, config.denied_message, reply_to_message_id=message_id)
         return
 
-    command = normalize_command(text)
+    prompt_input, photo_file_id = extract_prompt_and_photo(message)
+    if prompt_input is None:
+        return
+
+    command = normalize_command(prompt_input)
     if command == "/start":
         client.send_message(
             chat_id,
@@ -534,7 +661,7 @@ def handle_update(
         handle_reset_command(state, client, chat_id, message_id)
         return
 
-    prompt = text.strip()
+    prompt = prompt_input.strip()
     if not prompt:
         return
 
@@ -575,7 +702,7 @@ def handle_update(
 
     worker = threading.Thread(
         target=process_prompt,
-        args=(state, config, client, chat_id, message_id, prompt),
+        args=(state, config, client, chat_id, message_id, prompt, photo_file_id),
         daemon=True,
     )
     worker.start()

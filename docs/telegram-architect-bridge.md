@@ -38,6 +38,7 @@ TELEGRAM_ALLOWED_CHAT_IDS=123456789
 TELEGRAM_EXEC_TIMEOUT_SECONDS=300
 TELEGRAM_MAX_INPUT_CHARS=4000
 TELEGRAM_MAX_OUTPUT_CHARS=20000
+TELEGRAM_MAX_IMAGE_BYTES=10485760
 TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # Optional override:
@@ -61,6 +62,11 @@ bash ops/telegram-bridge/status_service.sh
 - `/reset` clear this chat's saved context/thread
 
 Any non-command text is forwarded to the local executor (non-interactive `codex exec`).
+Photo messages are also supported:
+- If a photo has a caption, the caption is used as the prompt.
+- If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`
+- The photo is attached to Codex using `codex exec --image`.
+
 Before executor completion, the bridge sends an immediate placeholder reply:
 `💭🤔💭.....thinking.....💭🤔💭`
 
@@ -76,6 +82,7 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Per-chat single in-flight request (`busy` response on overlap)
 - Request timeout guard (`TELEGRAM_EXEC_TIMEOUT_SECONDS`)
 - Input and output size limits
+- Image size limit (`TELEGRAM_MAX_IMAGE_BYTES`, default `10485760`)
 - Per-chat rate limit per minute
 - Generic user-facing error responses, detailed errors in journal logs
 

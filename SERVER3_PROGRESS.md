@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Photo Input Support)
+
+### Summary
+- Added Telegram photo-message support to the bridge runtime so photo updates are no longer ignored.
+- Implemented photo file resolution/download via Telegram `getFile` + `/file/bot...` endpoint and temporary local file handling with cleanup.
+- Extended executor integration to pass image attachments to Codex (`codex exec --image`) for both new and resumed chats.
+- Added configurable image-size limit support (`TELEGRAM_MAX_IMAGE_BYTES`, default `10485760`) and documented behavior in README/runbook/env example.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Photo without caption uses default prompt: `Please analyze this image.`
+- This change set updates repo code/docs only; live service restart is required on Server3 for runtime activation.
+
 ## 2026-02-17 (Telegram Bridge Service Recovery)
 
 ### Summary

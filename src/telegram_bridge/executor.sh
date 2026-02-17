@@ -2,15 +2,48 @@
 set -euo pipefail
 
 mode="${1:-new}"
-thread_id="${2:-}"
 if [[ "${mode}" != "new" && "${mode}" != "resume" ]]; then
-  echo "Usage: $0 [new|resume] [thread_id]" >&2
+  echo "Usage: $0 [new|resume] [thread_id] [--image FILE]..." >&2
   exit 2
 fi
-if [[ "${mode}" == "resume" && -z "${thread_id}" ]]; then
-  echo "thread_id is required in resume mode" >&2
-  exit 2
+if (($# > 0)); then
+  shift
 fi
+
+if [[ "${mode}" == "resume" ]]; then
+  thread_id="${1:-}"
+  if [[ -z "${thread_id}" ]]; then
+    echo "thread_id is required in resume mode" >&2
+    exit 2
+  fi
+  shift
+else
+  thread_id=""
+fi
+
+IMAGE_ARGS=()
+while (($#)); do
+  case "$1" in
+    --image)
+      if (($# < 2)); then
+        echo "--image requires a file path" >&2
+        exit 2
+      fi
+      image_path="$2"
+      if [[ ! -f "${image_path}" ]]; then
+        echo "image file not found: ${image_path}" >&2
+        exit 2
+      fi
+      IMAGE_ARGS+=(-i "${image_path}")
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      echo "Usage: $0 [new|resume] [thread_id] [--image FILE]..." >&2
+      exit 2
+      ;;
+  esac
+done
 
 prompt="$(cat)"
 if [[ -z "${prompt}" ]]; then
@@ -38,9 +71,9 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "${mode}" == "resume" ]]; then
-  CMD=("${CODEX_BIN}" exec resume --dangerously-bypass-approvals-and-sandbox --json "${thread_id}" -)
+  CMD=("${CODEX_BIN}" exec resume --dangerously-bypass-approvals-and-sandbox --json "${IMAGE_ARGS[@]}" "${thread_id}" -)
 else
-  CMD=("${CODEX_BIN}" exec "${EXEC_ARGS[@]}" --json -)
+  CMD=("${CODEX_BIN}" exec "${EXEC_ARGS[@]}" --json "${IMAGE_ARGS[@]}" -)
 fi
 
 if ! printf '%s\n' "${prompt}" | "${CMD[@]}" >"${log_file}" 2>&1; then
