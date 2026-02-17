@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Context Preserve on Resume Failure + Live Restart)
+
+### Summary
+- Updated Telegram bridge resume-failure handling so saved thread context is preserved for transient executor errors.
+- Limited automatic context reset/retry-as-new to failures that clearly indicate invalid/missing thread state.
+- Restarted `telegram-architect-bridge.service` to activate latest bridge code and verified startup backlog-drop log entry.
+- Added repo-tracked live-change execution record: `logs/changes/20260217-055323-telegram-bridge-context-preserve-restart.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This closes a context-loss path where resume failures could silently force a new conversation.
+- Existing `/reset` behavior and multi-chat concurrency model remain unchanged.
+
 ## 2026-02-17 (Telegram Startup Backlog Drop + New Session Approval Bypass)
 
 ### Summary

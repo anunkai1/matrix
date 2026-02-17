@@ -76,6 +76,8 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Chat context is stored per Telegram chat as `chat_id -> thread_id`.
 - Default state file path: `/home/architect/.local/state/telegram-architect-bridge/chat_threads.json`
 - Override with env var: `TELEGRAM_BRIDGE_STATE_DIR`.
+- On resume failures, the bridge now preserves saved thread context by default.
+- It only auto-resets thread context when executor error output clearly indicates an invalid/missing thread.
 
 ## Safety Controls
 

@@ -389,6 +389,24 @@ def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
     return thread_id, output
 
 
+def should_reset_thread_after_resume_failure(
+    stderr: str,
+    stdout: str,
+) -> bool:
+    combined = f"{stderr}\n{stdout}".lower()
+    reset_markers = (
+        "thread not found",
+        "unknown thread",
+        "invalid thread",
+        "thread id not found",
+        "conversation not found",
+        "session not found",
+        "no such thread",
+        "could not find thread",
+    )
+    return any(marker in combined for marker in reset_markers)
+
+
 def pick_largest_photo_file_id(photo_items: List[object]) -> Optional[str]:
     best_file_id: Optional[str] = None
     best_size = -1
@@ -530,35 +548,56 @@ def process_prompt(
 
         if result.returncode != 0:
             if previous_thread_id:
-                logging.warning(
-                    "Executor failed for chat_id=%s on resume; clearing thread and retrying",
-                    chat_id,
-                )
-                clear_thread_id(state, chat_id)
-                try:
-                    retry = run_executor(config, prompt, None, image_path=image_path)
-                except subprocess.TimeoutExpired:
-                    logging.warning("Executor retry timeout for chat_id=%s", chat_id)
-                    client.send_message(
+                if should_reset_thread_after_resume_failure(
+                    result.stderr or "",
+                    result.stdout or "",
+                ):
+                    logging.warning(
+                        "Executor failed for chat_id=%s on resume due to invalid thread; "
+                        "clearing thread and retrying as new. stderr=%r",
                         chat_id,
-                        config.timeout_message,
-                        reply_to_message_id=message_id,
+                        (result.stderr or "")[-1000:],
                     )
-                    return
-                except Exception:
-                    logging.exception("Executor retry error for chat_id=%s", chat_id)
-                    client.send_message(
-                        chat_id,
-                        config.generic_error_message,
-                        reply_to_message_id=message_id,
-                    )
-                    return
-                if retry.returncode != 0:
+                    clear_thread_id(state, chat_id)
+                    try:
+                        retry = run_executor(config, prompt, None, image_path=image_path)
+                    except subprocess.TimeoutExpired:
+                        logging.warning("Executor retry timeout for chat_id=%s", chat_id)
+                        client.send_message(
+                            chat_id,
+                            config.timeout_message,
+                            reply_to_message_id=message_id,
+                        )
+                        return
+                    except Exception:
+                        logging.exception("Executor retry error for chat_id=%s", chat_id)
+                        client.send_message(
+                            chat_id,
+                            config.generic_error_message,
+                            reply_to_message_id=message_id,
+                        )
+                        return
+                    if retry.returncode != 0:
+                        logging.error(
+                            "Executor retry failed for chat_id=%s returncode=%s stderr=%r",
+                            chat_id,
+                            retry.returncode,
+                            retry.stderr[-1000:],
+                        )
+                        client.send_message(
+                            chat_id,
+                            config.generic_error_message,
+                            reply_to_message_id=message_id,
+                        )
+                        return
+                    result = retry
+                else:
                     logging.error(
-                        "Executor retry failed for chat_id=%s returncode=%s stderr=%r",
+                        "Executor failed for chat_id=%s on resume; preserving saved thread_id. "
+                        "returncode=%s stderr=%r",
                         chat_id,
-                        retry.returncode,
-                        retry.stderr[-1000:],
+                        result.returncode,
+                        (result.stderr or "")[-1000:],
                     )
                     client.send_message(
                         chat_id,
@@ -566,7 +605,6 @@ def process_prompt(
                         reply_to_message_id=message_id,
                     )
                     return
-                result = retry
             else:
                 logging.error(
                     "Executor failed for chat_id=%s returncode=%s stderr=%r",
