@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Photo Support Restart Retry Blocked)
+
+### Summary
+- Retried live restart commands for `telegram-architect-bridge.service` to activate the latest Telegram photo-support code.
+- `ops/telegram-bridge/restart_service.sh` failed again because `sudo` is blocked by `no new privileges` in this Codex runtime.
+- Direct `systemctl restart telegram-architect-bridge.service` failed again with `Interactive authentication required`.
+- Added repo-tracked execution record: `logs/changes/20260217-042630-telegram-photo-support-restart-retry-blocked.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Service remains `active`, but start timestamp is still `2026-02-17 03:46:13 UTC` (no restart applied).
+- Manual restart from a shell with sudo/polkit access is still required.
+
 ## 2026-02-17 (Photo Support Live Rollout Attempt Blocked)
 
 ### Summary
