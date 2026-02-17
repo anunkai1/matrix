@@ -1,0 +1,21 @@
+[Unit]
+Description=Telegram Architect Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=architect
+Group=architect
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+Environment=TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
+EnvironmentFile=-/etc/default/telegram-architect-bridge
+ExecStart=/usr/bin/python3 /home/architect/matrix/src/telegram_bridge/main.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
