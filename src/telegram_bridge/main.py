@@ -144,10 +144,15 @@ class TelegramClient:
             raise RuntimeError(f"Telegram API {method} failed: {description}")
         return decoded
 
-    def get_updates(self, offset: int) -> List[Dict[str, object]]:
+    def get_updates(
+        self,
+        offset: int,
+        timeout_seconds: Optional[int] = None,
+    ) -> List[Dict[str, object]]:
+        timeout = self.config.poll_timeout_seconds if timeout_seconds is None else timeout_seconds
         payload: Dict[str, object] = {
             "offset": offset,
-            "timeout": self.config.poll_timeout_seconds,
+            "timeout": timeout,
             "allowed_updates": json.dumps(["message"]),
         }
         response = self._request("getUpdates", payload)
@@ -717,13 +722,48 @@ def run_self_test() -> int:
     return 0
 
 
+def drop_pending_updates(client: TelegramClient) -> int:
+    offset = 0
+    dropped = 0
+
+    while True:
+        updates = client.get_updates(offset, timeout_seconds=0)
+        if not updates:
+            break
+
+        dropped += len(updates)
+        next_offset = offset
+        for update in updates:
+            update_id = update.get("update_id")
+            if isinstance(update_id, int):
+                next_offset = max(next_offset, update_id + 1)
+
+        if next_offset == offset:
+            logging.warning(
+                "Startup backlog discard could not advance offset; stopping discard loop."
+            )
+            break
+
+        offset = next_offset
+
+    if dropped:
+        logging.info("Dropped %s queued Telegram update(s) at startup.", dropped)
+    else:
+        logging.info("No queued Telegram updates found at startup.")
+    return offset
+
+
 def run_bridge(config: Config) -> int:
     ensure_state_dir(config.state_dir)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
     loaded_threads = load_chat_threads(chat_thread_path)
     state = State(chat_threads=loaded_threads, chat_thread_path=chat_thread_path)
     client = TelegramClient(config)
-    offset = 0
+    try:
+        offset = drop_pending_updates(client)
+    except Exception:
+        logging.exception("Failed to discard queued startup updates; defaulting to offset=0")
+        offset = 0
 
     logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
     logging.info("Executor command=%s", config.executor_cmd)

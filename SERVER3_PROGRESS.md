@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Startup Backlog Drop + New Session Approval Bypass)
+
+### Summary
+- Updated bridge startup behavior to discard queued Telegram updates before entering the main polling loop, preventing stale backlog replay after restarts.
+- Updated executor behavior so new sessions now also run with `--dangerously-bypass-approvals-and-sandbox`, matching resumed-session approval mode.
+- Updated Telegram bridge runbook documentation to reflect both behaviors.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Multi-chat concurrency model was intentionally left unchanged.
+- No live paths outside the repo were modified in this change set.
+
 ## 2026-02-17 (Telegram Privileged Ops Enabled)
 
 ### Summary

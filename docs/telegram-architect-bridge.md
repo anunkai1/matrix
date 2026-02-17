@@ -66,6 +66,7 @@ Photo messages are also supported:
 - If a photo has a caption, the caption is used as the prompt.
 - If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`
 - The photo is attached to Codex using `codex exec --image`.
+- On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
 
 Before executor completion, the bridge sends an immediate placeholder reply:
 `💭🤔💭.....thinking.....💭🤔💭`
@@ -90,6 +91,7 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 
 - The source-of-truth unit (`infra/systemd/telegram-architect-bridge.service`) sets `NoNewPrivileges=false`.
 - This is required if you want Telegram-triggered Architect sessions to run scripts that use `sudo` (for example `ops/telegram-bridge/restart_service.sh`).
+- Both new and resumed Codex sessions are launched with `--dangerously-bypass-approvals-and-sandbox`.
 - Keep `TELEGRAM_ALLOWED_CHAT_IDS` strict. Any allowed chat can request operations with `architect` user privileges, including sudo-capable commands.
 
 ## Troubleshooting
