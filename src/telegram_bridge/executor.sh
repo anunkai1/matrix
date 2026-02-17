@@ -38,7 +38,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "${mode}" == "resume" ]]; then
-  CMD=("${CODEX_BIN}" exec resume --json "${thread_id}" -)
+  CMD=("${CODEX_BIN}" exec resume --dangerously-bypass-approvals-and-sandbox --json "${thread_id}" -)
 else
   CMD=("${CODEX_BIN}" exec "${EXEC_ARGS[@]}" --json -)
 fi
