@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Bridge Service Recovery)
+
+### Summary
+- Investigated Telegram non-response window and confirmed the bridge process had stopped cleanly (`inactive/dead`) at `2026-02-17 03:38:35 UTC`.
+- Restarted `telegram-architect-bridge.service` using repo helper `ops/telegram-bridge/restart_service.sh`.
+- Verified recovery: service is `active (running)` from `2026-02-17 03:46:13 UTC`, with startup logs showing expected executor and thread-state load.
+- Added repo-tracked live-action record: `logs/changes/20260217-034636-telegram-bridge-service-restart-recovery.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Unit policy remains `Restart=on-failure`; clean stops do not auto-restart, so an explicit restart is required after a manual/clean termination.
+
 ## 2026-02-17 (Telegram Thinking Ack)
 
 ### Summary
