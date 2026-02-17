@@ -17,3 +17,8 @@ Thumbs.db
 # Python cache
 __pycache__/
 *.pyc
+
+# Private local workspace (not published)
+private/*
+!private/.gitkeep
+!private/README.md

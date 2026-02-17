@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Private Local Workspace Path Added)
+
+### Summary
+- Added a repo-safe private workspace pattern for local-only personal files.
+- Updated `.gitignore` to ignore everything under `private/` while allowlisting `private/README.md` and `private/.gitkeep`.
+- Added tracked placeholder files under `private/` to document usage without storing personal content.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- New files like `private/profile.md` now remain local and untracked by default.
+- If any private file was committed before this change, it is still present in Git history unless explicitly removed.
+
 ## 2026-02-17 (Telegram Voice Production User-Path Validation Success)
 
 ### Summary
