@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Thinking Ack)
+
+### Summary
+- Updated Telegram bridge prompt flow to send an immediate placeholder reply for accepted non-command messages: `💭🤔💭.....thinking.....💭🤔💭`.
+- Added busy-lock safety handling so a failed placeholder send clears the chat busy state instead of leaving it stuck.
+- Updated `docs/telegram-architect-bridge.md` to document the new immediate acknowledgment behavior.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Final Architect output still arrives as a separate follow-up reply after executor completion.
+- Live service restart from this session environment is blocked by `sudo` `no new privileges`; apply via `bash ops/telegram-bridge/restart_service.sh` on Server3 shell with sudo capability.
+
 ## 2026-02-17 (README Matrix Emoji Refresh)
 
 ### Summary

@@ -38,6 +38,7 @@ class Config:
     timeout_message: str = "Request timed out. Please try a shorter prompt."
     generic_error_message: str = "Execution failed. Please try again later."
     empty_output_message: str = "(No output from Architect)"
+    thinking_message: str = "💭🤔💭.....thinking.....💭🤔💭"
 
 
 @dataclass
@@ -559,6 +560,17 @@ def handle_update(
             config.busy_message,
             reply_to_message_id=message_id,
         )
+        return
+
+    try:
+        client.send_message(
+            chat_id,
+            config.thinking_message,
+            reply_to_message_id=message_id,
+        )
+    except Exception:
+        logging.exception("Failed to send thinking ack for chat_id=%s", chat_id)
+        clear_busy(state, chat_id)
         return
 
     worker = threading.Thread(

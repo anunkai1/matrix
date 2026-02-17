@@ -61,6 +61,8 @@ bash ops/telegram-bridge/status_service.sh
 - `/reset` clear this chat's saved context/thread
 
 Any non-command text is forwarded to the local executor (non-interactive `codex exec`).
+Before executor completion, the bridge sends an immediate placeholder reply:
+`💭🤔💭.....thinking.....💭🤔💭`
 
 ## Context Persistence
 
