@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-17
+
+### Summary
+- Implemented Telegram-to-Architect bridge v1 using Telegram long polling and local Codex execution (no OpenAI API integration in bridge code).
+- Added secure runtime controls: allowlisted chat IDs, per-chat busy lock, timeout guard, rate limiting, max input/output bounds, output chunking for Telegram limits, and generic user-facing failure responses.
+- Added operational assets: repo-tracked systemd unit source (`infra/systemd`), env example (`infra/env`), install/restart/status helper scripts (`ops/telegram-bridge`), and runbook documentation (`docs/telegram-architect-bridge.md`).
+- Added local smoke test and syntax/compile validation path for the bridge.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Live service install/start and end-to-end Telegram validation are pending bot token and allowlist values in `/etc/default/telegram-architect-bridge`.
+- No live system paths outside the repo were modified in this change set.
+
 ## 2026-02-16
 
 ### Summary
