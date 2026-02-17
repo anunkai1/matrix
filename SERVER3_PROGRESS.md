@@ -1,5 +1,19 @@
 # Server3 Progress Log
 
+## 2026-02-17 (README Expansion)
+
+### Summary
+- Replaced placeholder `README.md` with an operational project guide covering purpose, current status, repository structure, prerequisites, quick start, operations, change control, progress tracking, security notes, troubleshooting, and related runbooks.
+- Aligned README instructions with existing repo-tracked scripts and documentation for the Telegram Architect bridge.
+- No live paths outside the repo were modified in this change set.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Network/DNS reachability to GitHub may block `git pull`/`git push` from this environment until connectivity is restored.
+
 ## 2026-02-17 (Context Persistence)
 
 ### Summary
