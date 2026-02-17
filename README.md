@@ -8,6 +8,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Runtime mode: Telegram long polling + local `codex exec` executor
 - Input modes: text, photo (image + optional caption), and voice snippets (transcribed to text)
 - Context behavior: per-chat context persistence (`chat_id -> thread_id`) with `/reset`
+- Optional HA executor mode: Telegram confirm-first (`APPROVE <code>`) for Home Assistant actions
 
 ## Repository Structure
 
@@ -58,6 +59,13 @@ bash ops/telegram-voice/configure_env.sh
 bash ops/telegram-bridge/restart_service.sh
 ```
 
+Enable Home Assistant executor mode (optional):
+
+1. Create HA dedicated user + long-lived token.
+2. Copy `infra/home_assistant/packages/architect_executor.yaml` into HA `/config/packages/`.
+3. Set `TELEGRAM_HA_*` values in `/etc/default/telegram-architect-bridge`.
+4. Restart bridge service.
+
 ## Operations
 
 - Restart bridge: `bash ops/telegram-bridge/restart_service.sh`
@@ -86,6 +94,7 @@ Use `SERVER3_PROGRESS.md` as the session-to-session status log. Add one high-lev
 
 - Service fails at startup: validate required env vars in `/etc/default/telegram-architect-bridge`.
 - Voice messages fail: validate `TELEGRAM_VOICE_TRANSCRIBE_CMD` and ensure the command prints transcript text to stdout.
+- HA actions unavailable: validate `TELEGRAM_HA_BASE_URL`, `TELEGRAM_HA_TOKEN`, and HA package deployment.
 - Bridge replies with execution failure: verify `codex` is installed and authenticated for `architect`.
 - No Telegram responses: confirm bot token/chat allowlist and check service journal logs.
 

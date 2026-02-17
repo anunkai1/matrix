@@ -1,5 +1,26 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Confirm-First Home Assistant Executor Added)
+
+### Summary
+- Added Home Assistant control integration to Telegram bridge with explicit in-chat approval flow (`APPROVE <code>` / `CANCEL <code>`).
+- Added persistent pending-approval state storage (`pending_actions.json`) so approval windows survive bridge restarts.
+- Implemented HA intent parsing + execution path for:
+  - climate set with optional delayed follow-up schedule
+  - generic entity on/off
+  - conditional water-heater/off style action based on solar-export threshold
+- Added HA package template `infra/home_assistant/packages/architect_executor.yaml` for restart-safe delayed climate follow-up execution and post-run cleanup reset.
+- Added HA package validator helper `ops/home-assistant/validate_architect_package.sh`.
+- Updated env template, README, bridge runbook docs, and smoke test to cover HA executor setup and validation.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc/default/telegram-architect-bridge` or Home Assistant runtime changes were applied in this change set.
+- Next step is user-side HA deployment: install package under HA `/config/packages`, set live `TELEGRAM_HA_*` env vars, restart bridge service, then run Telegram approval-path tests.
+
 ## 2026-02-17 (Private Local Workspace Path Added)
 
 ### Summary
