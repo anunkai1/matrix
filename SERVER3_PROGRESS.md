@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Photo Support Live Rollout Attempt Blocked)
+
+### Summary
+- Attempted to roll out latest Telegram photo-support commit to live runtime by restarting `telegram-architect-bridge.service`.
+- Restart via repo helper `ops/telegram-bridge/restart_service.sh` failed in this Codex execution context because `sudo` is blocked by `no new privileges`.
+- Direct non-sudo `systemctl restart` also failed with `Interactive authentication required`.
+- Added repo-tracked execution record: `logs/changes/20260217-042340-telegram-photo-support-rollout-blocked-no-new-privileges.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Service remained active but was not restarted; start timestamp stayed `2026-02-17 03:46:13 UTC`.
+- Manual apply is required from a shell with functional sudo/polkit: `bash /home/architect/matrix/ops/telegram-bridge/restart_service.sh`.
+
 ## 2026-02-17 (Telegram Photo Input Support)
 
 ### Summary
