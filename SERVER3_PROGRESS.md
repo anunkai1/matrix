@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Input Limit Default Raised to 4096)
+
+### Summary
+- Increased Telegram bridge default input-character limit from `4000` to `4096` in runtime config loading (`src/telegram_bridge/main.py`).
+- Updated env mirror default in `infra/env/telegram-architect-bridge.env.example` to `TELEGRAM_MAX_INPUT_CHARS=4096`.
+- Updated bridge runbook example in `docs/telegram-architect-bridge.md` to match the new default.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This is a repo/code default update; live service picks it up after restart if no lower override exists in `/etc/default/telegram-architect-bridge`.
+- Hard Telegram text-message ceiling is still `4096` characters.
+
 ## 2026-02-17 (Telegram Confirm-First Home Assistant Executor Added)
 
 ### Summary
