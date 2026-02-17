@@ -1,6 +1,6 @@
 # Server Setup Operations
 
-## Architect Launcher (`architect`)
+## Codex Launcher (`codex`, `architect`)
 
 Source of truth:
 - `infra/bash/home/architect/.bashrc`
@@ -13,7 +13,17 @@ source ~/.bashrc
 
 Verify:
 ```bash
+type codex
 type architect
+```
+
+Default behavior:
+- `codex ...` runs as `codex -s danger-full-access -a never ...`
+- `architect ...` calls the same default launcher
+
+Bypass wrapper (use raw binary flags manually):
+```bash
+command codex --help
 ```
 
 Rollback:

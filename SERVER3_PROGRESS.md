@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Codex Default Launcher)
+
+### Summary
+- Updated the managed shell snippet to make `codex` default to full-access launch flags (`-s danger-full-access -a never`).
+- Kept `architect` as a convenience wrapper that routes to the same default launcher behavior.
+- Updated `docs/server-setup.md` to document verification, default behavior, and how to bypass wrappers with `command codex`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Live shell profile apply is still performed via `bash ops/bash/deploy-bashrc.sh apply`.
+- Current environment may fail GitHub operations due DNS reachability (`github.com` unresolved).
+
 ## 2026-02-17 (README Expansion)
 
 ### Summary
