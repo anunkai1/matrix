@@ -6,7 +6,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 
 - Active component: `telegram-architect-bridge.service`
 - Runtime mode: Telegram long polling + local `codex exec` executor
-- Input modes: text prompts and photo prompts (image + optional caption)
+- Input modes: text, photo (image + optional caption), and voice snippets (transcribed to text)
 - Context behavior: per-chat context persistence (`chat_id -> thread_id`) with `/reset`
 
 ## Repository Structure
@@ -77,6 +77,7 @@ Use `SERVER3_PROGRESS.md` as the session-to-session status log. Add one high-lev
 ## Troubleshooting
 
 - Service fails at startup: validate required env vars in `/etc/default/telegram-architect-bridge`.
+- Voice messages fail: validate `TELEGRAM_VOICE_TRANSCRIBE_CMD` and ensure the command prints transcript text to stdout.
 - Bridge replies with execution failure: verify `codex` is installed and authenticated for `architect`.
 - No Telegram responses: confirm bot token/chat allowlist and check service journal logs.
 

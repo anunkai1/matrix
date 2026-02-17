@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Voice Snippet Support via Configurable Transcription Command)
+
+### Summary
+- Added Telegram voice-message support to the bridge runtime using the same media lifecycle pattern as photo support (detect, download with size guard, process, cleanup).
+- Added configurable voice transcription command support (`TELEGRAM_VOICE_TRANSCRIBE_CMD`) with optional `{file}` placeholder replacement and timeout guard (`TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS`).
+- Updated bridge docs, README status/troubleshooting notes, and env template with new voice-related configuration and limits (`TELEGRAM_MAX_VOICE_BYTES`).
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Voice transcription backend is intentionally externalized; the command must output transcript text to stdout.
+- This change set updates repo code/docs only; live service restart is required on Server3 for runtime activation.
+
 ## 2026-02-17 (Telegram Context Preserve on Resume Failure + Live Restart)
 
 ### Summary

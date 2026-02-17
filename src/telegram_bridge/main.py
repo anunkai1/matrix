@@ -32,14 +32,25 @@ class Config:
     max_input_chars: int
     max_output_chars: int
     max_image_bytes: int
+    max_voice_bytes: int
     rate_limit_per_minute: int
     executor_cmd: List[str]
+    voice_transcribe_cmd: List[str]
+    voice_transcribe_timeout_seconds: int
     state_dir: str
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
     generic_error_message: str = "Execution failed. Please try again later."
     image_download_error_message: str = "Image download failed. Please send another image."
+    voice_download_error_message: str = "Voice download failed. Please send another voice message."
+    voice_not_configured_message: str = (
+        "Voice transcription is not configured. Please ask admin to set TELEGRAM_VOICE_TRANSCRIBE_CMD."
+    )
+    voice_transcribe_error_message: str = "Voice transcription failed. Please send clearer audio."
+    voice_transcribe_empty_message: str = (
+        "Voice transcription was empty. Please send clearer audio."
+    )
     empty_output_message: str = "(No output from Architect)"
     thinking_message: str = "💭🤔💭.....thinking.....💭🤔💭"
 
@@ -97,6 +108,16 @@ def parse_executor_cmd() -> List[str]:
     return [build_default_executor()]
 
 
+def parse_optional_cmd_env(name: str) -> List[str]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    cmd = shlex.split(raw)
+    if not cmd:
+        raise ValueError(f"{name} cannot be blank")
+    return cmd
+
+
 def load_config() -> Config:
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
@@ -122,8 +143,14 @@ def load_config() -> Config:
         max_input_chars=parse_int_env("TELEGRAM_MAX_INPUT_CHARS", 4000),
         max_output_chars=parse_int_env("TELEGRAM_MAX_OUTPUT_CHARS", 20000),
         max_image_bytes=parse_int_env("TELEGRAM_MAX_IMAGE_BYTES", 10 * 1024 * 1024, minimum=1024),
+        max_voice_bytes=parse_int_env("TELEGRAM_MAX_VOICE_BYTES", 20 * 1024 * 1024, minimum=1024),
         rate_limit_per_minute=parse_int_env("TELEGRAM_RATE_LIMIT_PER_MINUTE", 12),
         executor_cmd=parse_executor_cmd(),
+        voice_transcribe_cmd=parse_optional_cmd_env("TELEGRAM_VOICE_TRANSCRIBE_CMD"),
+        voice_transcribe_timeout_seconds=parse_int_env(
+            "TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS",
+            120,
+        ),
         state_dir=state_dir,
     )
 
@@ -184,7 +211,13 @@ class TelegramClient:
             raise RuntimeError("Invalid getFile response: result is not an object")
         return result
 
-    def download_file_to_path(self, file_path: str, target_path: str, max_bytes: int) -> None:
+    def download_file_to_path(
+        self,
+        file_path: str,
+        target_path: str,
+        max_bytes: int,
+        size_label: str = "File",
+    ) -> None:
         cleaned = file_path.lstrip("/")
         if not cleaned:
             raise RuntimeError("Invalid Telegram file_path")
@@ -204,7 +237,7 @@ class TelegramClient:
                 total += len(chunk)
                 if total > max_bytes:
                     raise ValueError(
-                        f"Image too large (> {max_bytes} bytes)."
+                        f"{size_label} too large (> {max_bytes} bytes)."
                     )
                 handle.write(chunk)
 
@@ -424,23 +457,35 @@ def pick_largest_photo_file_id(photo_items: List[object]) -> Optional[str]:
     return best_file_id
 
 
-def extract_prompt_and_photo(message: Dict[str, object]) -> tuple[Optional[str], Optional[str]]:
+def extract_prompt_and_media(
+    message: Dict[str, object]
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
     text = message.get("text")
     if isinstance(text, str):
-        return text, None
+        return text, None, None
 
     photo_items = message.get("photo")
-    if not isinstance(photo_items, list) or not photo_items:
-        return None, None
+    if isinstance(photo_items, list) and photo_items:
+        file_id = pick_largest_photo_file_id(photo_items)
+        if not file_id:
+            return None, None, None
 
-    file_id = pick_largest_photo_file_id(photo_items)
-    if not file_id:
-        return None, None
+        caption = message.get("caption")
+        if isinstance(caption, str) and caption.strip():
+            return caption, file_id, None
+        return "Please analyze this image.", file_id, None
 
-    caption = message.get("caption")
-    if isinstance(caption, str) and caption.strip():
-        return caption, file_id
-    return "Please analyze this image.", file_id
+    voice = message.get("voice")
+    if isinstance(voice, dict):
+        voice_file_id = voice.get("file_id")
+        if not isinstance(voice_file_id, str) or not voice_file_id.strip():
+            return None, None, None
+        caption = message.get("caption")
+        if isinstance(caption, str):
+            return caption, None, voice_file_id.strip()
+        return "", None, voice_file_id.strip()
+
+    return None, None, None
 
 
 def download_photo_to_temp(
@@ -463,7 +508,12 @@ def download_photo_to_temp(
     fd, tmp_path = tempfile.mkstemp(prefix="telegram-bridge-photo-", suffix=suffix)
     os.close(fd)
     try:
-        client.download_file_to_path(file_path, tmp_path, config.max_image_bytes)
+        client.download_file_to_path(
+            file_path,
+            tmp_path,
+            config.max_image_bytes,
+            size_label="Image",
+        )
     except Exception:
         try:
             os.remove(tmp_path)
@@ -473,6 +523,82 @@ def download_photo_to_temp(
     return tmp_path
 
 
+def download_voice_to_temp(
+    client: TelegramClient,
+    config: Config,
+    voice_file_id: str,
+) -> str:
+    file_meta = client.get_file(voice_file_id)
+    file_path = file_meta.get("file_path")
+    if not isinstance(file_path, str) or not file_path.strip():
+        raise RuntimeError("Telegram getFile response missing file_path")
+
+    file_size = file_meta.get("file_size")
+    if isinstance(file_size, int) and file_size > config.max_voice_bytes:
+        raise ValueError(
+            f"Voice file too large ({file_size} bytes). Max is {config.max_voice_bytes} bytes."
+        )
+
+    suffix = Path(file_path).suffix or ".ogg"
+    fd, tmp_path = tempfile.mkstemp(prefix="telegram-bridge-voice-", suffix=suffix)
+    os.close(fd)
+    try:
+        client.download_file_to_path(
+            file_path,
+            tmp_path,
+            config.max_voice_bytes,
+            size_label="Voice file",
+        )
+    except Exception:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+    return tmp_path
+
+
+def build_voice_transcribe_command(cmd_template: List[str], voice_path: str) -> List[str]:
+    cmd: List[str] = []
+    used_placeholder = False
+    for arg in cmd_template:
+        if "{file}" in arg:
+            cmd.append(arg.replace("{file}", voice_path))
+            used_placeholder = True
+        else:
+            cmd.append(arg)
+    if not used_placeholder:
+        cmd.append(voice_path)
+    return cmd
+
+
+def transcribe_voice(config: Config, voice_path: str) -> str:
+    if not config.voice_transcribe_cmd:
+        raise RuntimeError("Voice transcription is not configured")
+
+    cmd = build_voice_transcribe_command(config.voice_transcribe_cmd, voice_path)
+    logging.info("Running voice transcription command: %s", cmd)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=config.voice_transcribe_timeout_seconds,
+        check=False,
+    )
+    if result.returncode != 0:
+        logging.error(
+            "Voice transcription failed returncode=%s stderr=%r",
+            result.returncode,
+            (result.stderr or "")[-1000:],
+        )
+        raise RuntimeError("Voice transcription failed")
+
+    transcript = (result.stdout or "").strip()
+    if not transcript:
+        raise ValueError("Voice transcription output was empty")
+    return transcript
+
+
 def build_help_text() -> str:
     return (
         "Commands:\n"
@@ -480,7 +606,7 @@ def build_help_text() -> str:
         "/help - show commands\n"
         "/status - show bridge health\n"
         "/reset - clear chat context\n\n"
-        "Any other text or photo message is sent to Architect."
+        "Any other text, photo, or voice message is sent to Architect."
     )
 
 
@@ -503,9 +629,12 @@ def process_prompt(
     message_id: Optional[int],
     prompt: str,
     photo_file_id: Optional[str],
+    voice_file_id: Optional[str],
 ) -> None:
     previous_thread_id = get_thread_id(state, chat_id)
+    prompt_text = prompt.strip()
     image_path: Optional[str] = None
+    voice_path: Optional[str] = None
     try:
         if photo_file_id:
             try:
@@ -523,8 +652,81 @@ def process_prompt(
                 )
                 return
 
+        if voice_file_id:
+            if not config.voice_transcribe_cmd:
+                client.send_message(
+                    chat_id,
+                    config.voice_not_configured_message,
+                    reply_to_message_id=message_id,
+                )
+                return
+            try:
+                voice_path = download_voice_to_temp(client, config, voice_file_id)
+            except ValueError as exc:
+                logging.warning("Voice rejected for chat_id=%s: %s", chat_id, exc)
+                client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+                return
+            except Exception:
+                logging.exception("Voice download failed for chat_id=%s", chat_id)
+                client.send_message(
+                    chat_id,
+                    config.voice_download_error_message,
+                    reply_to_message_id=message_id,
+                )
+                return
+
+            try:
+                transcript = transcribe_voice(config, voice_path)
+            except subprocess.TimeoutExpired:
+                logging.warning("Voice transcription timeout for chat_id=%s", chat_id)
+                client.send_message(
+                    chat_id,
+                    config.timeout_message,
+                    reply_to_message_id=message_id,
+                )
+                return
+            except ValueError:
+                logging.warning("Voice transcription was empty for chat_id=%s", chat_id)
+                client.send_message(
+                    chat_id,
+                    config.voice_transcribe_empty_message,
+                    reply_to_message_id=message_id,
+                )
+                return
+            except RuntimeError:
+                client.send_message(
+                    chat_id,
+                    config.voice_transcribe_error_message,
+                    reply_to_message_id=message_id,
+                )
+                return
+            except Exception:
+                logging.exception("Unexpected voice transcription error for chat_id=%s", chat_id)
+                client.send_message(
+                    chat_id,
+                    config.voice_transcribe_error_message,
+                    reply_to_message_id=message_id,
+                )
+                return
+
+            if prompt_text:
+                prompt_text = f"{prompt_text}\n\nVoice transcript:\n{transcript}"
+            else:
+                prompt_text = transcript
+
+        if not prompt_text:
+            return
+
+        if len(prompt_text) > config.max_input_chars:
+            client.send_message(
+                chat_id,
+                f"Input too long ({len(prompt_text)} chars). Max is {config.max_input_chars}.",
+                reply_to_message_id=message_id,
+            )
+            return
+
         try:
-            result = run_executor(config, prompt, previous_thread_id, image_path=image_path)
+            result = run_executor(config, prompt_text, previous_thread_id, image_path=image_path)
         except subprocess.TimeoutExpired:
             logging.warning("Executor timeout for chat_id=%s", chat_id)
             client.send_message(chat_id, config.timeout_message, reply_to_message_id=message_id)
@@ -560,7 +762,7 @@ def process_prompt(
                     )
                     clear_thread_id(state, chat_id)
                     try:
-                        retry = run_executor(config, prompt, None, image_path=image_path)
+                        retry = run_executor(config, prompt_text, None, image_path=image_path)
                     except subprocess.TimeoutExpired:
                         logging.warning("Executor retry timeout for chat_id=%s", chat_id)
                         client.send_message(
@@ -632,6 +834,11 @@ def process_prompt(
                 os.remove(image_path)
             except OSError:
                 logging.warning("Failed to remove temp image file: %s", image_path)
+        if voice_path:
+            try:
+                os.remove(voice_path)
+            except OSError:
+                logging.warning("Failed to remove temp voice file: %s", voice_path)
         clear_busy(state, chat_id)
 
 
@@ -682,11 +889,11 @@ def handle_update(
         client.send_message(chat_id, config.denied_message, reply_to_message_id=message_id)
         return
 
-    prompt_input, photo_file_id = extract_prompt_and_photo(message)
-    if prompt_input is None:
+    prompt_input, photo_file_id, voice_file_id = extract_prompt_and_media(message)
+    if prompt_input is None and voice_file_id is None:
         return
 
-    command = normalize_command(prompt_input)
+    command = normalize_command(prompt_input or "")
     if command == "/start":
         client.send_message(
             chat_id,
@@ -704,11 +911,11 @@ def handle_update(
         handle_reset_command(state, client, chat_id, message_id)
         return
 
-    prompt = prompt_input.strip()
-    if not prompt:
+    prompt = (prompt_input or "").strip()
+    if not prompt and not voice_file_id:
         return
 
-    if len(prompt) > config.max_input_chars:
+    if prompt and len(prompt) > config.max_input_chars:
         client.send_message(
             chat_id,
             f"Input too long ({len(prompt)} chars). Max is {config.max_input_chars}.",
@@ -745,7 +952,7 @@ def handle_update(
 
     worker = threading.Thread(
         target=process_prompt,
-        args=(state, config, client, chat_id, message_id, prompt, photo_file_id),
+        args=(state, config, client, chat_id, message_id, prompt, photo_file_id, voice_file_id),
         daemon=True,
     )
     worker.start()

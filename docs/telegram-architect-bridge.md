@@ -39,7 +39,12 @@ TELEGRAM_EXEC_TIMEOUT_SECONDS=300
 TELEGRAM_MAX_INPUT_CHARS=4000
 TELEGRAM_MAX_OUTPUT_CHARS=20000
 TELEGRAM_MAX_IMAGE_BYTES=10485760
+TELEGRAM_MAX_VOICE_BYTES=20971520
 TELEGRAM_RATE_LIMIT_PER_MINUTE=12
+# Required for voice messages (must print transcript to stdout):
+# TELEGRAM_VOICE_TRANSCRIBE_CMD=/usr/local/bin/transcribe_voice.sh {file}
+# Optional voice transcription timeout:
+# TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS=120
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # Optional override:
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
@@ -66,6 +71,12 @@ Photo messages are also supported:
 - If a photo has a caption, the caption is used as the prompt.
 - If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`
 - The photo is attached to Codex using `codex exec --image`.
+Voice messages are also supported:
+- The bridge downloads the Telegram voice file and runs `TELEGRAM_VOICE_TRANSCRIBE_CMD`.
+- If command args contain `{file}`, it is replaced with the downloaded voice file path.
+- If `{file}` is not present, the voice file path is appended as the final command argument.
+- The transcription command must write plain transcript text to stdout.
+- If the voice message has a caption, the bridge prefixes that caption and appends `Voice transcript:` plus transcript text.
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
 
 Before executor completion, the bridge sends an immediate placeholder reply:
@@ -86,6 +97,7 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Request timeout guard (`TELEGRAM_EXEC_TIMEOUT_SECONDS`)
 - Input and output size limits
 - Image size limit (`TELEGRAM_MAX_IMAGE_BYTES`, default `10485760`)
+- Voice file size limit (`TELEGRAM_MAX_VOICE_BYTES`, default `20971520`)
 - Per-chat rate limit per minute
 - Generic user-facing error responses, detailed errors in journal logs
 
