@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Live Rollout)
+
+### Summary
+- Activated Telegram Architect bridge service on Server3 for bot `@Architect_server3_bot`.
+- Applied live runtime env at `/etc/default/telegram-architect-bridge` with allowlisted chat `211761499` and production guardrails (timeout, limits, rate control).
+- Installed repo-tracked systemd unit to `/etc/systemd/system/telegram-architect-bridge.service`, enabled service, and restarted successfully.
+- Recorded live-change execution trace in `logs/changes/20260217-012725-telegram-bridge-live-rollout.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Service health checks passed (`enabled`, `active`) and journal shows bridge startup with expected allowlist/executor.
+- Final user-path validation is to send `/status` or a normal prompt to `@Architect_server3_bot` from the allowlisted chat.
+
 ## 2026-02-17
 
 ### Summary
