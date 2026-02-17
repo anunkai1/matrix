@@ -1,5 +1,19 @@
 # Server3 Progress Log
 
+## 2026-02-17 (README Welcome Banner)
+
+### Summary
+- Updated the first `README.md` heading to a styled Markdown welcome banner: `Welcome to the Matrix` with emoji.
+- Kept the rest of the README content unchanged.
+- No live paths outside the repo were modified in this change set.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- GitHub network/DNS resolution may still block `git push` from this environment.
+
 ## 2026-02-17 (Live Bashrc Launcher Apply Verification)
 
 ### Summary

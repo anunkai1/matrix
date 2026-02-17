@@ -1,4 +1,4 @@
-# Matrix (Server3)
+# 🚀 Welcome to the Matrix 🕶️
 
 Source-of-truth repository for Server3 automation and operations. The current primary workload is the Telegram Architect bridge that forwards Telegram prompts to local Codex execution on Server3.
 
