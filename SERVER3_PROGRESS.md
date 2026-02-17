@@ -1,5 +1,22 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Bridge Timeout Increased to 10 Hours)
+
+### Summary
+- Increased live `telegram-architect-bridge.service` executor timeout from `300` seconds to `36000` seconds (10 hours) in `/etc/default/telegram-architect-bridge`.
+- Restarted service and verified it is `active (running)` with updated runtime start timestamp `2026-02-17 06:41:59 UTC`.
+- Confirmed running process environment includes `TELEGRAM_EXEC_TIMEOUT_SECONDS=36000`.
+- Added repo-tracked live-change execution record: `logs/changes/20260217-064151-telegram-bridge-timeout-10h.md`.
+- Updated infra env mirror default timeout in `infra/env/telegram-architect-bridge.env.example`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change reduces timeout-triggered Telegram failures for long operations.
+- Risk/tradeoff: long-running requests can keep a chat busy for significantly longer before timeout.
+
 ## 2026-02-17 (Telegram Voice Transcription Live Enablement Verified)
 
 ### Summary
