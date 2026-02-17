@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Resume Full Access)
+
+### Summary
+- Updated Telegram bridge executor so resumed chats run with full access (`--dangerously-bypass-approvals-and-sandbox`) instead of workspace-write sandbox.
+- Validated resume path can resolve GitHub DNS (previously failing in sandboxed resume mode).
+- Restarted `telegram-architect-bridge.service` live and confirmed active state after the change.
+- Recorded live rollout in `logs/changes/20260217-031656-telegram-resume-full-access-rollout.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This aligns permission behavior between new and resumed Telegram conversations.
+- Security impact: resumed Telegram prompts now execute with full-access authority under `architect` user context.
+
 ## 2026-02-17 (README Welcome Banner)
 
 ### Summary
