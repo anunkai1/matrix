@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Photo Support Live Rollout Success)
+
+### Summary
+- Verified manual restart was successfully applied for `telegram-architect-bridge.service`.
+- Confirmed service is `active` with updated runtime start timestamp `2026-02-17 04:28:39 UTC`.
+- Added repo-tracked live-change record: `logs/changes/20260217-043009-telegram-photo-support-live-rollout-success.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This closes the prior blocked-restart attempts from this Codex runtime environment.
+- Latest Telegram photo-support code is now live on Server3 runtime.
+
 ## 2026-02-17 (Photo Support Restart Retry Blocked)
 
 ### Summary
