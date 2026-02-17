@@ -1,5 +1,22 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Context Persistence)
+
+### Summary
+- Implemented persistent per-chat Telegram context using saved `chat_id -> thread_id` mappings.
+- Added `/reset` command to clear saved context for the current chat.
+- Updated executor flow for explicit `new` and `resume` modes and robust JSON event parsing for thread and response extraction.
+- Restarted `telegram-architect-bridge.service` live and verified active state with context mapping load path.
+- Recorded live rollout trace in `logs/changes/20260217-021212-telegram-context-persistence-rollout.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Default mapping path: `/home/architect/.local/state/telegram-architect-bridge/chat_threads.json`.
+- User should validate in Telegram with two related prompts, then `/reset`, then another prompt to confirm reset behavior.
+
 ## 2026-02-17 (Executor Fix)
 
 ### Summary
