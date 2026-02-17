@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Telegram Privileged Ops Enabled)
+
+### Summary
+- Removed the bridge unit privilege-escalation block by setting `NoNewPrivileges=false` in `infra/systemd/telegram-architect-bridge.service`.
+- Updated service helper scripts `ops/telegram-bridge/restart_service.sh` and `ops/telegram-bridge/status_service.sh` to use non-interactive privileged execution (`sudo -n`) for Telegram-safe command paths.
+- Applied updated unit to live `/etc/systemd/system/telegram-architect-bridge.service`, restarted the service, and verified runtime now has `NoNewPrivs: 0`.
+- Added repo-tracked live-change execution record: `logs/changes/20260217-043641-telegram-bridge-privilege-escalation-enabled.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Telegram-triggered Architect sessions can now execute sudo-capable scripts if requested.
+- Security tradeoff: keep `TELEGRAM_ALLOWED_CHAT_IDS` strict because allowed chats now have a path to privileged operations.
+
 ## 2026-02-17 (Photo Support Live Rollout Success)
 
 ### Summary

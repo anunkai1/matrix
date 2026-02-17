@@ -86,6 +86,12 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Per-chat rate limit per minute
 - Generic user-facing error responses, detailed errors in journal logs
 
+## Privileged Operations
+
+- The source-of-truth unit (`infra/systemd/telegram-architect-bridge.service`) sets `NoNewPrivileges=false`.
+- This is required if you want Telegram-triggered Architect sessions to run scripts that use `sudo` (for example `ops/telegram-bridge/restart_service.sh`).
+- Keep `TELEGRAM_ALLOWED_CHAT_IDS` strict. Any allowed chat can request operations with `architect` user privileges, including sudo-capable commands.
+
 ## Troubleshooting
 
 Service status and logs:
