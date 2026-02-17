@@ -1,5 +1,19 @@
 # Server3 Progress Log
 
+## 2026-02-17 (Live Bashrc Launcher Apply Verification)
+
+### Summary
+- Confirmed managed launcher block is present in live `/home/architect/.bashrc` with matrix markers.
+- Verified shell launcher resolution in interactive bash: both `codex` and `architect` are functions using the full-access default wrapper.
+- Added repo-tracked live change record: `logs/changes/20260217-024631-bashrc-codex-default-launcher-apply.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Live apply command remains `bash ops/bash/deploy-bashrc.sh apply` followed by `source ~/.bashrc`.
+
 ## 2026-02-17 (Codex Default Launcher)
 
 ### Summary
