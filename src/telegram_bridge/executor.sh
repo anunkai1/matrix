@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+mode="${1:-new}"
+thread_id="${2:-}"
+if [[ "${mode}" != "new" && "${mode}" != "resume" ]]; then
+  echo "Usage: $0 [new|resume] [thread_id]" >&2
+  exit 2
+fi
+if [[ "${mode}" == "resume" && -z "${thread_id}" ]]; then
+  echo "thread_id is required in resume mode" >&2
+  exit 2
+fi
+
 prompt="$(cat)"
 if [[ -z "${prompt}" ]]; then
   echo "Prompt is empty" >&2
@@ -14,28 +25,72 @@ if ! command -v "${CODEX_BIN}" >/dev/null 2>&1; then
 fi
 
 if [[ -n "${ARCHITECT_EXEC_ARGS:-}" ]]; then
-  # Optional override for operators, e.g. "-s danger-full-access --color never"
+  # Optional override for operators, applied to new sessions only.
   read -r -a EXEC_ARGS <<<"${ARCHITECT_EXEC_ARGS}"
 else
   EXEC_ARGS=(-s danger-full-access --color never)
 fi
 
-out_file="$(mktemp)"
 log_file="$(mktemp)"
 cleanup() {
-  rm -f "${out_file}" "${log_file}"
+  rm -f "${log_file}"
 }
 trap cleanup EXIT
 
-if ! printf '%s\n' "${prompt}" | "${CODEX_BIN}" exec "${EXEC_ARGS[@]}" --output-last-message "${out_file}" - >"${log_file}" 2>&1; then
+if [[ "${mode}" == "resume" ]]; then
+  CMD=("${CODEX_BIN}" exec resume --json "${thread_id}" -)
+else
+  CMD=("${CODEX_BIN}" exec "${EXEC_ARGS[@]}" --json -)
+fi
+
+if ! printf '%s\n' "${prompt}" | "${CMD[@]}" >"${log_file}" 2>&1; then
   tail -n 80 "${log_file}" >&2 || true
   exit 1
 fi
 
-if [[ ! -s "${out_file}" ]]; then
-  echo "No output returned by codex exec" >&2
-  tail -n 80 "${log_file}" >&2 || true
-  exit 1
-fi
+python3 - "${mode}" "${log_file}" <<'PY'
+import json
+import sys
 
-cat "${out_file}"
+mode = sys.argv[1]
+path = sys.argv[2]
+thread_id = None
+message = None
+
+with open(path, "r", encoding="utf-8", errors="replace") as f:
+    for raw in f:
+        line = raw.strip()
+        if not line or line[0] != "{":
+            continue
+        try:
+            obj = json.loads(line)
+        except Exception:
+            continue
+
+        if not isinstance(obj, dict):
+            continue
+
+        if obj.get("type") == "thread.started" and isinstance(obj.get("thread_id"), str):
+            thread_id = obj["thread_id"]
+            continue
+
+        if obj.get("type") != "item.completed":
+            continue
+
+        item = obj.get("item")
+        if not isinstance(item, dict):
+            continue
+
+        if item.get("type") == "agent_message" and isinstance(item.get("text"), str):
+            message = item["text"]
+
+if mode == "new":
+    if not thread_id:
+        print("Failed to parse thread_id from codex json output", file=sys.stderr)
+        raise SystemExit(1)
+    print(f"THREAD_ID={thread_id}")
+
+print("OUTPUT_BEGIN")
+if message:
+    print(message, end="")
+PY

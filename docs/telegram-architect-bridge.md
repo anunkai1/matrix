@@ -39,6 +39,7 @@ TELEGRAM_EXEC_TIMEOUT_SECONDS=300
 TELEGRAM_MAX_INPUT_CHARS=4000
 TELEGRAM_MAX_OUTPUT_CHARS=20000
 TELEGRAM_RATE_LIMIT_PER_MINUTE=12
+# TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # Optional override:
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
 EOF
@@ -57,8 +58,15 @@ bash ops/telegram-bridge/status_service.sh
 - `/start` basic intro
 - `/help` command list
 - `/status` bridge health and uptime
+- `/reset` clear this chat's saved context/thread
 
 Any non-command text is forwarded to the local executor (non-interactive `codex exec`).
+
+## Context Persistence
+
+- Chat context is stored per Telegram chat as `chat_id -> thread_id`.
+- Default state file path: `/home/architect/.local/state/telegram-architect-bridge/chat_threads.json`
+- Override with env var: `TELEGRAM_BRIDGE_STATE_DIR`.
 
 ## Safety Controls
 
