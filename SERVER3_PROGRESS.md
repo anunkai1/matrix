@@ -1,5 +1,19 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Instruction Docs De-duplication + Consistency Fix)
+
+### Summary
+- Removed duplicated traceability clauses from `AGENTS.md` (instructions 3-5) so policy authority remains centralized in `ARCHITECT_INSTRUCTION.md`.
+- Updated `ARCHITECT_INSTRUCTION.md` role section to explicitly defer commit/push completion requirements to the `HA QUICK-OPS EXCEPTION` for routine HA operations.
+- Kept non-exempt change-control and proof requirements unchanged.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates policy/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Policy Update: HA Quick-Ops Exemption Added)
 
 ### Summary

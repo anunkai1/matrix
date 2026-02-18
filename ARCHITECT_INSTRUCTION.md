@@ -107,7 +107,8 @@ Codex MUST:
   
 4. Implement the minimum necessary change
   
-5. Commit + push to GitHub (`origin/main` by default)
+5. Commit + push to GitHub (`origin/main` by default) for all non-exempt changes.
+   For routine HA quick-ops, follow the `HA QUICK-OPS EXCEPTION` section.
   
 6. Show proof after commit:
   
@@ -120,11 +121,11 @@ Codex MUST:
 
 Codex MUST NOT claim completion unless:
 
-- files were changed
+- files were changed (if no files were changed, provide operational result only)
   
-- a commit exists
+- for non-exempt changes: a commit exists
   
-- git push succeeded (or the full push error is shown and Codex stops)
+- for non-exempt changes: git push succeeded (or the full push error is shown and Codex stops)
   
 
 ---
