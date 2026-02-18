@@ -242,6 +242,7 @@ def _canonical_token(token: str) -> str:
         "conditioner": "aircon",
         "cooling": "cool",
         "heating": "heat",
+        "hit": "heat",
         "dryer": "dry",
         "automatic": "auto",
         "rm": "room",
@@ -874,6 +875,10 @@ def run_ha_parser_self_test() -> None:
         (
             "Set masters I see to 23 degrees cooling and turn it on",
             {"kind": "climate_set", "target": "masters aircon", "mode": "cool", "temp_now": 23.0},
+        ),
+        (
+            "Turn on Master's AC to hit mode 23",
+            {"kind": "climate_set", "target": "masters aircon", "mode": "heat", "temp_now": 23.0},
         ),
     ]
 

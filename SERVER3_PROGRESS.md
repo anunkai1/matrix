@@ -1,5 +1,19 @@
 # Server3 Progress Log
 
+## 2026-02-18 (HA Mode Typo Normalization: `hit` -> `heat`)
+
+### Summary
+- Updated HA interpreter token normalization in `src/telegram_bridge/ha_control.py` to map `hit` to `heat` for voice/typo resilience.
+- Added regression self-test coverage for `Turn on Master's AC to hit mode 23`.
+- Verified compile, bridge self-test, and smoke-test all pass.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` edits were applied.
+
 ## 2026-02-18 (HA Speech Variant Parsing Improvement)
 
 ### Summary
