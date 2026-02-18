@@ -78,8 +78,9 @@ SESSION START RULE (MANDATORY)
 
 SESSION END RULE (MANDATORY)
 
-- After each completed task/change set, Codex must update `SERVER3_PROGRESS.md` with a high-level summary of what happened overall on Server3 (what changed, current status, and notable next step/risk if any).
-- This progress update must be committed and pushed to GitHub in the same session.
+- After each completed non-exempt task/change set, Codex must update `SERVER3_PROGRESS.md` with a high-level summary of what happened overall on Server3 (what changed, current status, and notable next step/risk if any).
+- This progress update must be committed and pushed to GitHub in the same session for non-exempt changes.
+- Routine HA quick-ops follow the `HA QUICK-OPS EXCEPTION` section.
 
   
 
@@ -175,7 +176,7 @@ Working rules (use now)
 - Feature branches are optional and only used when the user explicitly asks for branch/PR workflow
   
 
-Required command sequence:
+Required command sequence (non-exempt changes):
 
 cd ~/matrix  
 git pull --ff-only || true  
@@ -188,6 +189,8 @@ git diff
 git add -A  
 git commit -m "..."  
 git push origin main
+
+Routine HA quick-ops do not require repo file updates, commit, or push.
 
 After commit, Codex must always show:
 

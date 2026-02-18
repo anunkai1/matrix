@@ -1,5 +1,19 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Policy Consistency Cleanup for HA Quick-Ops Exemption)
+
+### Summary
+- Aligned remaining conflicting language in `ARCHITECT_INSTRUCTION.md` so session-end and required git sequence rules explicitly apply to non-exempt changes only.
+- Added explicit note that routine HA quick-ops do not require repo file updates/commit/push.
+- Updated README change-control and progress-tracking wording to match the same non-exempt vs quick-ops boundary.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates policy/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Instruction Docs De-duplication + Consistency Fix)
 
 ### Summary
