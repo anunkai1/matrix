@@ -80,6 +80,8 @@ class State:
     chat_thread_path: str = ""
     pending_actions: Dict[int, Dict[str, object]] = field(default_factory=dict)
     pending_action_path: str = ""
+    in_flight_requests: Dict[int, Dict[str, object]] = field(default_factory=dict)
+    in_flight_path: str = ""
     restart_requested: bool = False
     restart_in_progress: bool = False
     restart_chat_id: Optional[int] = None
@@ -539,6 +541,82 @@ def prune_expired_pending_actions(state: State) -> None:
         persist_pending_actions(state)
 
 
+def load_in_flight_requests(path: str) -> Dict[int, Dict[str, object]]:
+    data_path = Path(path)
+    if not data_path.exists():
+        return {}
+    try:
+        raw = json.loads(data_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to parse in-flight state {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid in-flight state {path}: root is not object")
+
+    out: Dict[int, Dict[str, object]] = {}
+    for key, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        try:
+            chat_id = int(key)
+        except ValueError:
+            continue
+        payload: Dict[str, object] = {}
+        started_at = value.get("started_at")
+        if isinstance(started_at, (int, float)):
+            payload["started_at"] = float(started_at)
+        message_id = value.get("message_id")
+        if isinstance(message_id, int):
+            payload["message_id"] = message_id
+        out[chat_id] = payload
+    return out
+
+
+def persist_in_flight_requests(state: State) -> None:
+    if not state.in_flight_path:
+        return
+    path = Path(state.in_flight_path)
+    tmp_path = path.with_suffix(".tmp")
+    with state.lock:
+        serialized = {
+            str(chat_id): payload
+            for chat_id, payload in state.in_flight_requests.items()
+        }
+    tmp_path.write_text(
+        json.dumps(serialized, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    tmp_path.replace(path)
+
+
+def mark_in_flight_request(state: State, chat_id: int, message_id: Optional[int]) -> None:
+    payload: Dict[str, object] = {"started_at": time.time()}
+    if isinstance(message_id, int):
+        payload["message_id"] = message_id
+    with state.lock:
+        state.in_flight_requests[chat_id] = payload
+    persist_in_flight_requests(state)
+
+
+def clear_in_flight_request(state: State, chat_id: int) -> None:
+    removed = False
+    with state.lock:
+        if chat_id in state.in_flight_requests:
+            del state.in_flight_requests[chat_id]
+            removed = True
+    if removed:
+        persist_in_flight_requests(state)
+
+
+def pop_interrupted_requests(state: State) -> Dict[int, Dict[str, object]]:
+    with state.lock:
+        if not state.in_flight_requests:
+            return {}
+        interrupted = dict(state.in_flight_requests)
+        state.in_flight_requests = {}
+    persist_in_flight_requests(state)
+    return interrupted
+
+
 def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
     lines = (stdout or "").splitlines()
     thread_id: Optional[str] = None
@@ -887,6 +965,7 @@ def finalize_chat_work(
     client: TelegramClient,
     chat_id: int,
 ) -> None:
+    clear_in_flight_request(state, chat_id)
     clear_busy(state, chat_id)
     ready_restart = pop_ready_restart_request(state)
     if not ready_restart:
@@ -1453,6 +1532,7 @@ def handle_update(
             reply_to_message_id=message_id,
         )
         return
+    mark_in_flight_request(state, chat_id, message_id)
 
     worker = threading.Thread(
         target=process_message_worker,
@@ -1539,6 +1619,7 @@ def run_bridge(config: Config) -> int:
     ensure_state_dir(config.state_dir)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
     pending_action_path = os.path.join(config.state_dir, "pending_actions.json")
+    in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
     try:
         loaded_threads = load_chat_threads(chat_thread_path)
     except Exception:
@@ -1563,13 +1644,49 @@ def run_bridge(config: Config) -> int:
             logging.error("Quarantined corrupt pending action state file to %s", moved)
         loaded_pending = {}
 
+    try:
+        loaded_in_flight = load_in_flight_requests(in_flight_path)
+    except Exception:
+        logging.exception(
+            "Failed to load in-flight request state from %s; starting with empty in-flight state.",
+            in_flight_path,
+        )
+        moved = quarantine_corrupt_state_file(in_flight_path)
+        if moved:
+            logging.error("Quarantined corrupt in-flight state file to %s", moved)
+        loaded_in_flight = {}
+
     state = State(
         chat_threads=loaded_threads,
         chat_thread_path=chat_thread_path,
         pending_actions=loaded_pending,
         pending_action_path=pending_action_path,
+        in_flight_requests=loaded_in_flight,
+        in_flight_path=in_flight_path,
     )
     client = TelegramClient(config)
+
+    interrupted = pop_interrupted_requests(state)
+    if interrupted:
+        for chat_id in sorted(interrupted):
+            if chat_id not in config.allowed_chat_ids:
+                continue
+            try:
+                client.send_message(
+                    chat_id,
+                    "Your previous request was interrupted because the bridge restarted. "
+                    "Please resend it.",
+                )
+            except Exception:
+                logging.exception(
+                    "Failed to send restart-interruption notice for chat_id=%s",
+                    chat_id,
+                )
+        logging.warning(
+            "Detected %s interrupted in-flight request(s) from previous runtime.",
+            len(interrupted),
+        )
+
     try:
         offset = drop_pending_updates(client)
     except Exception:
@@ -1580,6 +1697,7 @@ def run_bridge(config: Config) -> int:
     logging.info("Executor command=%s", config.executor_cmd)
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
     logging.info("Loaded %s pending HA action(s) from %s", len(loaded_pending), pending_action_path)
+    logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
     if config.ha_config:
         logging.info("Home Assistant control integration is enabled.")
     else:

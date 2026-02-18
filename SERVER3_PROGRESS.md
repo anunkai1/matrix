@@ -1,5 +1,39 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Telegram Voice GPU Runtime Enablement + CUDA Fallback)
+
+### Summary
+- Installed NVIDIA driver/runtime stack on Server3 (`nvidia-driver-590-open`) and completed reboot activation.
+- Installed required CUDA BLAS runtime libs for faster-whisper (`libcublas12`, `libcublaslt12`).
+- Updated live `/etc/default/telegram-architect-bridge` voice runtime to `TELEGRAM_VOICE_WHISPER_DEVICE=cuda` and `TELEGRAM_VOICE_WHISPER_COMPUTE_TYPE=float16`, with explicit CPU fallback keys.
+- Added voice transcriber CUDA fallback logic in `src/telegram_bridge/voice_transcribe.py`: if CUDA init/transcription fails, retry on configured fallback device/compute type.
+- Updated docs/env examples for fallback keys and mirrored live non-secret voice env keys to `infra/env/telegram-architect-bridge.server3.redacted.env`.
+- Recorded live execution details in `logs/changes/20260218-134120-telegram-voice-gpu-runtime-enable.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Post-reboot runtime verification shows `nvidia-smi` active with GTX 1650 and driver `590.48.01`.
+- Local benchmark on a 20s silence sample measured CPU `0:01.51` vs CUDA `0:01.62` (silence sample is not representative of real speech complexity).
+
+## 2026-02-18 (Telegram Restart Interruption Detection Added)
+
+### Summary
+- Added persisted in-flight request tracking in `src/telegram_bridge/main.py` using state file `in_flight_requests.json` under `TELEGRAM_BRIDGE_STATE_DIR`.
+- Bridge now records in-flight chat work when a request starts and clears it on normal finalize paths.
+- On startup, any leftover in-flight markers are treated as interrupted work from prior runtime; affected allowlisted chats get a one-time notice to resend.
+- Existing safe `/restart` queue semantics, chat-thread persistence, and HA pending-action persistence were kept unchanged.
+- Updated README and runbook docs to document restart interruption notices and in-flight state path.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Voice Transcript Echo in Telegram Chat)
 
 ### Summary

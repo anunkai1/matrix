@@ -9,6 +9,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Input modes: text, photo (image + optional caption), and voice snippets (transcribed to text and echoed back)
 - Context behavior: per-chat context persistence (`chat_id -> thread_id`) with `/reset`
 - Built-in safe `/restart` command (queues restart until active work completes)
+- Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup
 - Help alias: `/h` (same as `/help`), also shown in thinking reply hint
 - Optional HA executor mode: Telegram confirm-first (`APPROVE`) for Home Assistant actions
 
@@ -99,6 +100,7 @@ Use `SERVER3_PROGRESS.md` as the session-to-session status log. Add one high-lev
 
 - Service fails at startup: validate required env vars in `/etc/default/telegram-architect-bridge`.
 - Voice messages fail: validate `TELEGRAM_VOICE_TRANSCRIBE_CMD` and ensure the command prints transcript text to stdout.
+- For GPU transcription, set `TELEGRAM_VOICE_WHISPER_DEVICE=cuda`; if CUDA is unavailable at runtime, transcription now retries on CPU fallback.
 - HA actions unavailable: validate `TELEGRAM_HA_BASE_URL`, `TELEGRAM_HA_TOKEN`, and HA package deployment.
 - Bridge replies with execution failure: verify `codex` is installed and authenticated for `architect`.
 - No Telegram responses: confirm bot token/chat allowlist and check service journal logs.

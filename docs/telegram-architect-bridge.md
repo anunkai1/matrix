@@ -57,6 +57,8 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_VOICE_WHISPER_MODEL=base
 # TELEGRAM_VOICE_WHISPER_DEVICE=cpu
 # TELEGRAM_VOICE_WHISPER_COMPUTE_TYPE=int8
+# TELEGRAM_VOICE_WHISPER_FALLBACK_DEVICE=cpu
+# TELEGRAM_VOICE_WHISPER_FALLBACK_COMPUTE_TYPE=int8
 # TELEGRAM_VOICE_WHISPER_LANGUAGE=
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # TELEGRAM_HA_ENABLED=true
@@ -165,6 +167,7 @@ Voice messages are also supported:
 - If command args contain `{file}`, it is replaced with the downloaded voice file path.
 - If `{file}` is not present, the voice file path is appended as the final command argument.
 - The transcription command must write plain transcript text to stdout.
+- If `TELEGRAM_VOICE_WHISPER_DEVICE=cuda` is set but CUDA is not available, the transcriber retries on CPU fallback (`TELEGRAM_VOICE_WHISPER_FALLBACK_*`).
 - After successful transcription, the bridge echoes `Voice transcript:` back to chat.
 - If the voice message has a caption, the bridge prefixes that caption and appends `Voice transcript:` plus transcript text.
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
@@ -178,6 +181,8 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Default state file path: `/home/architect/.local/state/telegram-architect-bridge/chat_threads.json`
 - Override with env var: `TELEGRAM_BRIDGE_STATE_DIR`.
 - Pending HA approvals are persisted at `/home/architect/.local/state/telegram-architect-bridge/pending_actions.json`.
+- In-flight request markers are persisted at `/home/architect/.local/state/telegram-architect-bridge/in_flight_requests.json`.
+- If the bridge restarts while a request is in progress, the chat receives a one-time startup notice to resend the interrupted request.
 - On resume failures, the bridge now preserves saved thread context by default.
 - It only auto-resets thread context when executor error output clearly indicates an invalid/missing thread.
 
