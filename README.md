@@ -11,7 +11,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Built-in safe `/restart` command (queues restart until active work completes)
 - Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup
 - Help alias: `/h` (same as `/help`), also shown in thinking reply hint
-- Optional HA executor mode: Telegram confirm-first (`APPROVE`) for Home Assistant actions
+- HA requests are handled through the same Codex execution path as other prompts (no runtime `APPROVE` parser flow)
 
 ## Repository Structure
 
@@ -62,14 +62,8 @@ bash ops/telegram-voice/configure_env.sh
 bash ops/telegram-bridge/restart_and_verify.sh
 ```
 
-Enable Home Assistant executor mode (optional):
-
-1. Create HA dedicated user + long-lived token.
-2. Copy `infra/home_assistant/packages/architect_executor.yaml` into HA `/config/packages/`.
-3. Set `TELEGRAM_HA_*` values in `/etc/default/telegram-architect-bridge`.
-4. Restart bridge service.
-
-HA interpretation is asset-aware (not exact regex commands): it maps natural phrasing to live HA entities using alias + fuzzy matching, then asks for `APPROVE`/`CANCEL`.
+Home Assistant requests can be sent as normal prompts and are handled by Codex execution flow.
+Legacy parser/approval assets remain in-repo for reference, but bridge runtime no longer routes messages through `APPROVE`/`CANCEL` parser handling.
 
 ## Operations
 

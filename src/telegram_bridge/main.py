@@ -25,7 +25,6 @@ from ha_control import (
     execute_action,
     is_ha_network_error,
     load_ha_config,
-    looks_like_ha_control_text,
     now_ts,
     parse_approval_command,
     plan_action_from_text,
@@ -826,9 +825,6 @@ def build_help_text() -> str:
         "/status - show bridge health\n"
         "/restart - safe restart (queued until current work completes)\n"
         "/reset - clear chat context\n\n"
-        "Home Assistant confirmations:\n"
-        "APPROVE - execute pending HA action\n"
-        "CANCEL - cancel pending HA action\n\n"
         "Any other text, photo, or voice message is sent to Architect."
     )
 
@@ -1228,15 +1224,6 @@ def process_message_worker(
 ) -> None:
     delegated_to_prompt = False
     try:
-        if (
-            prompt
-            and photo_file_id is None
-            and voice_file_id is None
-            and looks_like_ha_control_text(prompt)
-            and handle_ha_control_text(state, config, client, chat_id, message_id, prompt)
-        ):
-            return
-
         try:
             client.send_message(
                 chat_id,

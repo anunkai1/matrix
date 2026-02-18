@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Bridge Runtime Routed Fully Through Codex Executor)
+
+### Summary
+- Updated Telegram bridge runtime to bypass in-bridge HA parser routing for incoming messages.
+- Removed runtime message-worker branch that invoked `looks_like_ha_control_text(...)` and `handle_ha_control_text(...)`; text/voice/photo prompts now all follow the same Codex executor path.
+- Updated `/help` output in runtime to remove `APPROVE` / `CANCEL` confirmation guidance.
+- Updated README and Telegram bridge runbook text to reflect that runtime no longer uses the in-bridge `APPROVE` parser flow.
+- Kept legacy HA parser assets/functions in repo for reference, but they are not on the active runtime message path.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Telegram Voice GPU Runtime Enablement + CUDA Fallback)
 
 ### Summary

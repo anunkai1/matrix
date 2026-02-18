@@ -103,7 +103,10 @@ bash ops/telegram-voice/transcribe_voice.sh /path/to/sample.ogg
 sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 ```
 
-## Home Assistant Setup (Telegram Confirm-First)
+## Home Assistant Setup (Legacy Confirm-First Parser Path)
+
+This section documents the legacy in-bridge HA parser/approval path for reference.
+Current runtime routes prompts through Codex executor instead of `APPROVE`/`CANCEL` parser handling.
 
 1. Create a dedicated HA user and long-lived token.
 2. Copy package file into HA packages folder:
@@ -146,18 +149,9 @@ bash ops/home-assistant/validate_architect_package.sh
 - `/status` bridge health and uptime
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
-- `APPROVE` execute pending HA action
-- `CANCEL` cancel pending HA action
 
 Any non-command text is forwarded to the local executor (non-interactive `codex exec`).
-For HA control, the bridge now uses an asset-aware interpreter:
-- Parses intent/slots from natural phrasing (target, action, mode, temp, optional follow-up).
-- Resolves target against live HA assets with alias + fuzzy matching.
-- Rejects low-confidence or ambiguous matches with a clarification prompt.
-- Runs HA planning/execution in worker threads so slow HA API calls do not block Telegram polling for other chats.
-After a plan is built, it sends a short summary and waits for explicit `APPROVE` before execution.
-Natural-language variants are supported for common phrases (for example `turn on masters AC to cool 24` and `please switch on mid kids room aircon to 23`).
-The parser also tolerates filler lead-ins and implied climate phrasing (for example `to your normal masters i see on cool mode 23`).
+HA requests are treated as normal prompts and handled in the same Codex execution path as other text.
 Photo messages are also supported:
 - If a photo has a caption, the caption is used as the prompt.
 - If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`
@@ -196,9 +190,6 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Image size limit (`TELEGRAM_MAX_IMAGE_BYTES`, default `10485760`)
 - Voice file size limit (`TELEGRAM_MAX_VOICE_BYTES`, default `20971520`)
 - Per-chat rate limit per minute
-- HA action confirmation with expiry (`TELEGRAM_HA_APPROVAL_TTL_SECONDS`)
-- HA domain/entity allowlists (`TELEGRAM_HA_ALLOWED_DOMAINS`, `TELEGRAM_HA_ALLOWED_ENTITIES`)
-- HA fuzzy-match tuning (`TELEGRAM_HA_MATCH_MIN_SCORE`, `TELEGRAM_HA_MATCH_AMBIGUITY_GAP`)
 - Generic user-facing error responses, detailed errors in journal logs
 
 ## Privileged Operations
