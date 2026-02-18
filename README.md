@@ -68,6 +68,8 @@ Enable Home Assistant executor mode (optional):
 3. Set `TELEGRAM_HA_*` values in `/etc/default/telegram-architect-bridge`.
 4. Restart bridge service.
 
+HA interpretation is asset-aware (not exact regex commands): it maps natural phrasing to live HA entities using alias + fuzzy matching, then asks for `APPROVE`/`CANCEL`.
+
 ## Operations
 
 - Restart bridge (verified): `bash ops/telegram-bridge/restart_and_verify.sh`

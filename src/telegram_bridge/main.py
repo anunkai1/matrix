@@ -28,6 +28,7 @@ from ha_control import (
     now_ts,
     parse_approval_command,
     plan_action_from_text,
+    run_ha_parser_self_test,
 )
 
 TELEGRAM_LIMIT = 4096
@@ -1404,6 +1405,7 @@ def run_self_test() -> int:
     parsed = parse_approval_command("CANCEL please")
     if parsed != ("cancel", None):
         raise RuntimeError("Approval parser self-test failed")
+    run_ha_parser_self_test()
 
     restart_state = State()
     status, _ = request_safe_restart(restart_state, chat_id=1, reply_to_message_id=None)

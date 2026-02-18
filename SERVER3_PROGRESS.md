@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-18 (HA Regex Parser Removed, Asset-Aware Interpreter Added)
+
+### Summary
+- Replaced HA regex intent parsing in `src/telegram_bridge/ha_control.py` with a new asset-aware natural-language interpreter.
+- Added fuzzy entity resolution against live HA assets (states + friendly labels) with confidence and ambiguity gates.
+- Kept confirm-first flow unchanged (`APPROVE` / `CANCEL`) and preserved existing execution/service-call path after approval.
+- Added optional HA match tuning env vars: `TELEGRAM_HA_MATCH_MIN_SCORE` and `TELEGRAM_HA_MATCH_AMBIGUITY_GAP`.
+- Added parser self-test coverage in bridge self-test path and updated README/runbook/env docs for the new logic.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` edits were applied.
+
 ## 2026-02-18 (Telegram Bridge Restart via Verified Helper on Request)
 
 ### Summary

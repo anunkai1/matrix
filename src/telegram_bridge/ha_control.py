@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 from urllib.error import HTTPError, URLError
@@ -31,6 +31,8 @@ class HAConfig:
     followup_script_entity: str
     solar_sensor_entity: str
     solar_excess_threshold_watts: float
+    match_min_score: float
+    match_ambiguity_gap: float
 
 
 class HomeAssistantClient:
@@ -105,10 +107,6 @@ def _parse_csv_set(raw: str) -> Set[str]:
     return values
 
 
-def _normalize_alias(value: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", value.lower())
-
-
 def _parse_float(raw: str, label: str) -> float:
     try:
         return float(raw)
@@ -170,6 +168,20 @@ def load_ha_config(state_dir: str) -> Optional[HAConfig]:
         "TELEGRAM_HA_SOLAR_EXCESS_THRESHOLD_W",
     )
 
+    match_min_score = _parse_float(
+        os.getenv("TELEGRAM_HA_MATCH_MIN_SCORE", "0.46"),
+        "TELEGRAM_HA_MATCH_MIN_SCORE",
+    )
+    if match_min_score <= 0 or match_min_score > 1:
+        raise ValueError("TELEGRAM_HA_MATCH_MIN_SCORE must be in (0, 1]")
+
+    match_ambiguity_gap = _parse_float(
+        os.getenv("TELEGRAM_HA_MATCH_AMBIGUITY_GAP", "0.05"),
+        "TELEGRAM_HA_MATCH_AMBIGUITY_GAP",
+    )
+    if match_ambiguity_gap < 0 or match_ambiguity_gap > 1:
+        raise ValueError("TELEGRAM_HA_MATCH_AMBIGUITY_GAP must be in [0, 1]")
+
     return HAConfig(
         base_url=base_url,
         token=token,
@@ -182,6 +194,8 @@ def load_ha_config(state_dir: str) -> Optional[HAConfig]:
         followup_script_entity=followup_script_entity,
         solar_sensor_entity=solar_sensor_entity,
         solar_excess_threshold_watts=solar_excess_threshold_watts,
+        match_min_score=match_min_score,
+        match_ambiguity_gap=match_ambiguity_gap,
     )
 
 
@@ -211,124 +225,226 @@ def load_alias_map(path: str) -> Dict[str, str]:
 
 
 def parse_approval_command(text: str) -> Optional[Tuple[str, Optional[str]]]:
-    match = re.match(r"^\s*(approve|cancel)\b(?:\s+.*)?$", text, flags=re.IGNORECASE)
-    if not match:
+    parts = text.strip().split()
+    if not parts:
         return None
-    action = match.group(1).lower()
-    return action, None
+    head = parts[0].lower()
+    if head not in {"approve", "cancel"}:
+        return None
+    return head, None
+
+
+def _canonical_token(token: str) -> str:
+    mapping = {
+        "ac": "aircon",
+        "airconditioner": "aircon",
+        "conditioner": "aircon",
+        "rm": "room",
+        "hrs": "hours",
+        "hr": "hour",
+        "degrees": "degree",
+        "deg": "degree",
+        "celcius": "celsius",
+        "dont": "dont",
+    }
+    return mapping.get(token, token)
+
+
+def _tokenize_text(text: str) -> List[str]:
+    lowered = text.lower()
+    for source, replacement in (
+        ("a/c", "ac"),
+        ("air conditioner", "aircon"),
+        ("air con", "aircon"),
+    ):
+        lowered = lowered.replace(source, replacement)
+    lowered = lowered.replace("'", "")
+
+    cleaned_chars: List[str] = []
+    for ch in lowered:
+        if ch.isalnum() or ch in {" ", ".", "_"}:
+            cleaned_chars.append(ch)
+        else:
+            cleaned_chars.append(" ")
+
+    raw_tokens = [part for part in "".join(cleaned_chars).split() if part]
+
+    tokens: List[str] = []
+    i = 0
+    while i < len(raw_tokens):
+        token = _canonical_token(raw_tokens[i])
+        nxt = _canonical_token(raw_tokens[i + 1]) if i + 1 < len(raw_tokens) else ""
+        if token in {"switch", "power"} and nxt in {"on", "off"}:
+            tokens.extend(["turn", nxt])
+            i += 2
+            continue
+        tokens.append(token)
+        i += 1
+
+    return tokens
+
+
+def _normalize_alias(value: str) -> str:
+    tokens = _tokenize_text(value)
+    chars: List[str] = []
+    for token in tokens:
+        for ch in token:
+            if ch.isalnum():
+                chars.append(ch)
+    return "".join(chars)
+
+
+def _parse_number_token(token: str) -> Optional[float]:
+    try:
+        return float(token)
+    except ValueError:
+        return None
 
 
 def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
-    cleaned = " ".join(text.strip().split()).rstrip(".!?")
-    if not cleaned:
+    tokens = _tokenize_text(text)
+    if not tokens:
         return None
 
-    # Normalize common conversational phrasing.
-    cleaned = re.sub(r"^(?:please|pls|kindly)\s+", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"^(?:can|could|would)\s+you\s+", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bswitch\s+on\b", "turn on", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bswitch\s+off\b", "turn off", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bpower\s+on\b", "turn on", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bpower\s+off\b", "turn off", cleaned, flags=re.IGNORECASE)
-    cleaned = " ".join(cleaned.split())
+    polite_prefixes = {"please", "pls", "kindly"}
+    while tokens and tokens[0] in polite_prefixes:
+        tokens = tokens[1:]
 
-    # set X to 24 [degrees] [and in 3 hours change to 26]
-    set_to_temp = re.match(
-        r"^set (?:the )?(?P<target>.+?) to (?P<temp_now>\d+(?:\.\d+)?)"
-        r"(?:\s*(?:degrees?|c|celsius))?"
-        r"(?P<tail>.*)$",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-    if set_to_temp:
-        tail = set_to_temp.group("tail").strip()
-        cleaned = (
-            f"turn on {set_to_temp.group('target').strip()} to "
-            f"{set_to_temp.group('temp_now')} degrees"
-        )
-        if tail:
-            cleaned = f"{cleaned} {tail}"
+    if len(tokens) >= 2 and tokens[0] in {"can", "could", "would"} and tokens[1] == "you":
+        tokens = tokens[2:]
 
-    # set X on cool mode to 24 [degrees]
-    set_mode_to_temp = re.match(
-        r"^set (?:the )?(?P<target>.+?) (?:on|in) (?P<mode>cool|heat|dry|fan|auto) mode"
-        r"(?: to)? (?P<temp_now>\d+(?:\.\d+)?)"
-        r"(?:\s*(?:degrees?|c|celsius))?"
-        r"(?P<tail>.*)$",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-    if set_mode_to_temp:
-        tail = set_mode_to_temp.group("tail").strip()
-        cleaned = (
-            f"turn on {set_mode_to_temp.group('target').strip()} on "
-            f"{set_mode_to_temp.group('mode').lower()} mode "
-            f"{set_mode_to_temp.group('temp_now')} degrees"
-        )
-        if tail:
-            cleaned = f"{cleaned} {tail}"
+    if not tokens:
+        return None
 
-    # turn off X if we don't have excess solar power
-    conditional = re.match(
-        r"^turn off (?P<target>.+?) if (?:we )?(?:do not|don't|dont) have excess solar power$",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-    if conditional:
-        return {
-            "kind": "conditional_turn_off_no_excess_solar",
-            "target": conditional.group("target").strip(),
-        }
+    turn_idx = -1
+    turn_state = ""
+    for i in range(len(tokens) - 1):
+        if tokens[i] == "turn" and tokens[i + 1] in {"on", "off"}:
+            turn_idx = i
+            turn_state = tokens[i + 1]
+            break
 
-    # turn on X on cool mode 23 [degrees] for next 5 hrs and then change it to 25 [degrees]
-    climate_mode_first = re.match(
-        r"^turn on (?:the )?(?P<target>.+?) (?:on|in) (?P<mode>cool|heat|dry|fan|auto) mode"
-        r"(?: to)? (?P<temp_now>\d+(?:\.\d+)?)(?:\s*(?:degrees?|c|celsius))?"
-        r"(?: for (?:next )?(?P<hours>\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr))?"
-        r"(?: and then (?:change|set)(?: it)? to (?P<temp_later>\d+(?:\.\d+)?)"
-        r"(?:\s*(?:degrees?|c|celsius))?)?$",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-    if climate_mode_first:
+    set_idx = -1
+    for i, token in enumerate(tokens):
+        if token in {"set", "change"}:
+            set_idx = i
+            break
+
+    def extract_target(start_idx: int, climate_hint: bool, stop_at_if: bool = False) -> str:
+        idx = start_idx
+        while idx < len(tokens) and tokens[idx] in {"the", "my", "our"}:
+            idx += 1
+
+        stop_words = {"and", "then", "for"}
+        if stop_at_if:
+            stop_words.add("if")
+        if climate_hint:
+            stop_words.update({"to", "on", "in", "mode"})
+
+        out: List[str] = []
+        while idx < len(tokens):
+            token = tokens[idx]
+            if token in stop_words:
+                break
+            out.append(token)
+            idx += 1
+        return " ".join(out).strip()
+
+    mode = None
+    hvac_modes = {"cool", "heat", "dry", "fan", "auto"}
+    for token in tokens:
+        if token in hvac_modes:
+            mode = token
+            break
+
+    hour_units = {"hour", "hours"}
+
+    followup_hours: Optional[float] = None
+    for i in range(len(tokens) - 2):
+        if tokens[i] == "in":
+            val = _parse_number_token(tokens[i + 1])
+            if val is not None and tokens[i + 2] in hour_units:
+                followup_hours = val
+                break
+    if followup_hours is None:
+        for i in range(len(tokens) - 2):
+            if tokens[i] == "for":
+                j = i + 1
+                if j < len(tokens) and tokens[j] == "next":
+                    j += 1
+                if j + 1 < len(tokens):
+                    val = _parse_number_token(tokens[j])
+                    if val is not None and tokens[j + 1] in hour_units:
+                        followup_hours = val
+                        break
+
+    temps: List[Tuple[int, float]] = []
+    for i, token in enumerate(tokens):
+        value = _parse_number_token(token)
+        if value is None:
+            continue
+        if i + 1 < len(tokens) and tokens[i + 1] in hour_units:
+            continue
+        if not (8 <= value <= 40):
+            continue
+        temps.append((i, value))
+
+    main_temp = temps[0][1] if temps else None
+    followup_temp: Optional[float] = None
+    if len(temps) >= 2:
+        followup_temp = temps[1][1]
+
+    if turn_state == "off":
+        has_excess = all(word in tokens for word in ("excess", "solar", "power"))
+        has_negative = "dont" in tokens or ("do" in tokens and "not" in tokens)
+        if has_excess and has_negative and "if" in tokens:
+            target = extract_target(turn_idx + 2, climate_hint=False, stop_at_if=True)
+            if not target:
+                return None
+            return {
+                "kind": "conditional_turn_off_no_excess_solar",
+                "target": target,
+            }
+
+    climate_candidate = False
+    if turn_state == "on" and (main_temp is not None or mode is not None):
+        climate_candidate = True
+    if set_idx >= 0 and (main_temp is not None or mode is not None):
+        climate_candidate = True
+
+    if climate_candidate:
+        if main_temp is None:
+            return None
+
+        if turn_state == "on":
+            target = extract_target(turn_idx + 2, climate_hint=True)
+        elif set_idx >= 0:
+            target = extract_target(set_idx + 1, climate_hint=True)
+        else:
+            target = ""
+
+        if not target:
+            return None
+
+        if followup_hours is None:
+            followup_temp = None
+
         return {
             "kind": "climate_set",
-            "target": climate_mode_first.group("target").strip(),
-            "mode": climate_mode_first.group("mode").lower(),
-            "temp_now": float(climate_mode_first.group("temp_now")),
-            "hours": float(climate_mode_first.group("hours")) if climate_mode_first.group("hours") else None,
-            "temp_later": float(climate_mode_first.group("temp_later")) if climate_mode_first.group("temp_later") else None,
+            "target": target,
+            "mode": mode,
+            "temp_now": float(main_temp),
+            "hours": float(followup_hours) if followup_hours is not None else None,
+            "temp_later": float(followup_temp) if followup_temp is not None else None,
         }
 
-    # turn on X to 25 [degrees] and in 3 hours change it to 27 [degrees]
-    climate_to_temp = re.match(
-        r"^turn on (?:the )?(?P<target>.+?)(?: (?:on|in) (?P<mode>cool|heat|dry|fan|auto) mode)? to "
-        r"(?P<temp_now>\d+(?:\.\d+)?)(?:\s*(?:degrees?|c|celsius))?"
-        r"(?: and in (?P<hours>\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr) "
-        r"(?:change|set)(?: it)? to (?P<temp_later>\d+(?:\.\d+)?)"
-        r"(?:\s*(?:degrees?|c|celsius))?)?$",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-    if climate_to_temp:
+    if turn_state in {"on", "off"}:
+        target = extract_target(turn_idx + 2, climate_hint=False, stop_at_if=True)
+        if not target:
+            return None
         return {
-            "kind": "climate_set",
-            "target": climate_to_temp.group("target").strip(),
-            "mode": climate_to_temp.group("mode").lower() if climate_to_temp.group("mode") else None,
-            "temp_now": float(climate_to_temp.group("temp_now")),
-            "hours": float(climate_to_temp.group("hours")) if climate_to_temp.group("hours") else None,
-            "temp_later": float(climate_to_temp.group("temp_later")) if climate_to_temp.group("temp_later") else None,
-        }
-
-    simple = re.match(
-        r"^turn (?P<verb>on|off) (?:the )?(?P<target>.+)$",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-    if simple:
-        return {
-            "kind": "entity_turn_on" if simple.group("verb").lower() == "on" else "entity_turn_off",
-            "target": simple.group("target").strip(),
+            "kind": "entity_turn_on" if turn_state == "on" else "entity_turn_off",
+            "target": target,
         }
 
     return None
@@ -346,43 +462,73 @@ def _entity_name(entity: Dict[str, object]) -> str:
     return "unknown"
 
 
-def _build_entity_index(states: Sequence[Dict[str, object]]) -> Tuple[Dict[str, Dict[str, object]], Dict[str, Set[str]]]:
+def _entity_candidate_labels(entity: Dict[str, object]) -> Set[str]:
+    entity_id = str(entity.get("entity_id", "")).strip().lower()
+    out: Set[str] = set()
+    if entity_id:
+        out.add(entity_id)
+        out.add(entity_id.replace("_", " "))
+        if "." in entity_id:
+            obj = entity_id.split(".", 1)[1]
+            out.add(obj)
+            out.add(obj.replace("_", " "))
+
+    attrs = entity.get("attributes")
+    if isinstance(attrs, dict):
+        for key in ("friendly_name", "name", "area", "area_name", "room"):
+            value = attrs.get(key)
+            if isinstance(value, str) and value.strip():
+                out.add(value.strip().lower())
+
+    return {label for label in out if label}
+
+
+def _build_entity_index(states: Sequence[Dict[str, object]]) -> Tuple[Dict[str, Dict[str, object]], Dict[str, List[str]]]:
     by_id: Dict[str, Dict[str, object]] = {}
-    candidate_map: Dict[str, Set[str]] = {}
+    labels_by_id: Dict[str, List[str]] = {}
 
     for entity in states:
         entity_id = entity.get("entity_id")
         if not isinstance(entity_id, str) or "." not in entity_id:
             continue
+
         eid = entity_id.strip().lower()
         by_id[eid] = entity
+        labels = sorted(_entity_candidate_labels(entity))
+        labels_by_id[eid] = labels
 
-        candidates = {eid, eid.replace("_", " ")}
-        obj = eid.split(".", 1)[1]
-        candidates.add(obj)
-        candidates.add(obj.replace("_", " "))
+    return by_id, labels_by_id
 
-        attrs = entity.get("attributes")
-        if isinstance(attrs, dict):
-            friendly = attrs.get("friendly_name")
-            if isinstance(friendly, str) and friendly.strip():
-                candidates.add(friendly.strip().lower())
 
-        for candidate in candidates:
-            normalized = _normalize_alias(candidate)
-            if not normalized:
-                continue
-            candidate_map.setdefault(normalized, set()).add(eid)
+def _score_label_match(target: str, label: str) -> float:
+    target_tokens = _tokenize_text(target)
+    label_tokens = _tokenize_text(label)
 
-    return by_id, candidate_map
+    if not target_tokens or not label_tokens:
+        return 0.0
+
+    target_norm = " ".join(target_tokens)
+    label_norm = " ".join(label_tokens)
+
+    seq_ratio = SequenceMatcher(None, target_norm, label_norm).ratio()
+
+    target_set = set(target_tokens)
+    label_set = set(label_tokens)
+    overlap = len(target_set.intersection(label_set)) / float(max(len(target_set), len(label_set)))
+
+    containment = 1.0 if target_norm in label_norm or label_norm in target_norm else 0.0
+
+    return 0.55 * seq_ratio + 0.35 * overlap + 0.10 * containment
 
 
 def _resolve_entity_id(
     target: str,
     states: Sequence[Dict[str, object]],
     alias_map: Dict[str, str],
+    config: HAConfig,
+    preferred_domain: Optional[str] = None,
 ) -> Tuple[str, Dict[str, object]]:
-    by_id, candidate_map = _build_entity_index(states)
+    by_id, labels_by_id = _build_entity_index(states)
     target_clean = target.strip().lower()
     if not target_clean:
         raise HAControlError("Missing target entity name.")
@@ -390,40 +536,67 @@ def _resolve_entity_id(
     if "." in target_clean and target_clean in by_id:
         return target_clean, by_id[target_clean]
 
-    if target_clean in alias_map:
-        alias_entity = alias_map[target_clean].lower()
+    alias_raw = {k.strip().lower(): v.strip().lower() for k, v in alias_map.items() if k.strip() and v.strip()}
+    alias_norm = {_normalize_alias(k): v for k, v in alias_raw.items()}
+
+    if target_clean in alias_raw:
+        alias_entity = alias_raw[target_clean]
         if alias_entity in by_id:
             return alias_entity, by_id[alias_entity]
         raise HAControlError(f"Alias '{target}' maps to unknown entity '{alias_entity}'.")
 
-    normalized = _normalize_alias(target_clean)
-    if normalized in alias_map:
-        alias_entity = alias_map[normalized].lower()
+    norm_target = _normalize_alias(target_clean)
+    if norm_target in alias_norm:
+        alias_entity = alias_norm[norm_target]
         if alias_entity in by_id:
             return alias_entity, by_id[alias_entity]
+        raise HAControlError(f"Alias '{target}' maps to unknown entity '{alias_entity}'.")
 
-    direct = candidate_map.get(normalized, set())
-    if len(direct) == 1:
-        entity_id = sorted(direct)[0]
-        return entity_id, by_id[entity_id]
+    scores: List[Tuple[float, str]] = []
+    hint_tokens = set(_tokenize_text(target_clean))
 
-    partial_matches: Set[str] = set()
-    for key, values in candidate_map.items():
-        if normalized in key or key in normalized:
-            partial_matches.update(values)
+    for entity_id, labels in labels_by_id.items():
+        best_score = 0.0
+        for label in labels:
+            score = _score_label_match(target_clean, label)
+            if score > best_score:
+                best_score = score
 
-    if len(partial_matches) == 1:
-        entity_id = sorted(partial_matches)[0]
-        return entity_id, by_id[entity_id]
+        domain = entity_id.split(".", 1)[0]
+        if preferred_domain and domain == preferred_domain:
+            best_score += 0.08
+        if "aircon" in hint_tokens and domain == "climate":
+            best_score += 0.05
 
-    if not partial_matches and not direct:
+        scores.append((best_score, entity_id))
+
+    if not scores:
         raise HAControlError(f"Could not find a Home Assistant entity matching '{target}'.")
 
-    candidates = sorted(partial_matches or direct)
-    preview = ", ".join(candidates[:5])
-    raise HAControlError(
-        f"Target '{target}' is ambiguous. Matches: {preview}. Please use a more specific name or entity_id."
-    )
+    scores.sort(key=lambda item: item[0], reverse=True)
+    top_score, top_entity_id = scores[0]
+
+    if top_score < config.match_min_score:
+        suggestions = []
+        for _, candidate_id in scores[:5]:
+            suggestions.append(f"{_entity_name(by_id[candidate_id])} ({candidate_id})")
+        preview = ", ".join(suggestions)
+        raise HAControlError(
+            f"Could not confidently match '{target}'. Closest entities: {preview}."
+        )
+
+    if len(scores) > 1:
+        second_score, second_entity_id = scores[1]
+        if top_score - second_score < config.match_ambiguity_gap:
+            options = [top_entity_id, second_entity_id]
+            preview = ", ".join(
+                f"{_entity_name(by_id[cid])} ({cid})" for cid in options
+            )
+            raise HAControlError(
+                f"Target '{target}' is ambiguous. Closest matches: {preview}. Please be more specific."
+            )
+
+    return top_entity_id, by_id[top_entity_id]
 
 
 def _ensure_allowed(entity_id: str, config: HAConfig) -> None:
@@ -467,7 +640,11 @@ def plan_action_from_text(
     if not isinstance(target, str):
         raise HAControlError("Invalid target in parsed intent.")
 
-    entity_id, entity_state = _resolve_entity_id(target, states, alias_map)
+    preferred_domain = None
+    if intent.get("kind") == "climate_set":
+        preferred_domain = "climate"
+
+    entity_id, entity_state = _resolve_entity_id(target, states, alias_map, config, preferred_domain=preferred_domain)
     _ensure_allowed(entity_id, config)
 
     kind = intent["kind"]
@@ -666,3 +843,30 @@ def is_ha_network_error(exc: Exception) -> bool:
 
 def now_ts() -> float:
     return time.time()
+
+
+def run_ha_parser_self_test() -> None:
+    cases = [
+        (
+            "turn on masters AC to cool 24",
+            {"kind": "climate_set", "target": "masters aircon", "mode": "cool", "temp_now": 24.0},
+        ),
+        (
+            "please switch on living room aircon to 23",
+            {"kind": "climate_set", "target": "living room aircon", "temp_now": 23.0},
+        ),
+        (
+            "turn off water heater",
+            {"kind": "entity_turn_off", "target": "water heater"},
+        ),
+    ]
+
+    for text, expected in cases:
+        parsed = _parse_control_intent(text)
+        if not parsed:
+            raise RuntimeError(f"HA parser self-test failed: no parse for {text!r}")
+        for key, value in expected.items():
+            if parsed.get(key) != value:
+                raise RuntimeError(
+                    f"HA parser self-test failed for {text!r}: expected {key}={value!r}, got {parsed.get(key)!r}"
+                )

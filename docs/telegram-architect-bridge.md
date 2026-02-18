@@ -71,6 +71,8 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_HA_CLIMATE_FOLLOWUP_SCRIPT=script.architect_schedule_climate_followup
 # TELEGRAM_HA_SOLAR_SENSOR_ENTITY=sensor.grid_export_power
 # TELEGRAM_HA_SOLAR_EXCESS_THRESHOLD_W=500
+# TELEGRAM_HA_MATCH_MIN_SCORE=0.46
+# TELEGRAM_HA_MATCH_AMBIGUITY_GAP=0.05
 # Optional override:
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
 EOF
@@ -146,8 +148,12 @@ bash ops/home-assistant/validate_architect_package.sh
 - `CANCEL` cancel pending HA action
 
 Any non-command text is forwarded to the local executor (non-interactive `codex exec`).
-When a text matches a supported HA control intent, the bridge sends a short summary and waits for explicit `APPROVE` in Telegram before execution.
-Natural-language variants are supported for common phrases (for example `please switch on mid kids room aircon to 23`).
+For HA control, the bridge now uses an asset-aware interpreter:
+- Parses intent/slots from natural phrasing (target, action, mode, temp, optional follow-up).
+- Resolves target against live HA assets with alias + fuzzy matching.
+- Rejects low-confidence or ambiguous matches with a clarification prompt.
+After a plan is built, it sends a short summary and waits for explicit `APPROVE` before execution.
+Natural-language variants are supported for common phrases (for example `turn on masters AC to cool 24` and `please switch on mid kids room aircon to 23`).
 Photo messages are also supported:
 - If a photo has a caption, the caption is used as the prompt.
 - If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`
@@ -184,6 +190,7 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Per-chat rate limit per minute
 - HA action confirmation with expiry (`TELEGRAM_HA_APPROVAL_TTL_SECONDS`)
 - HA domain/entity allowlists (`TELEGRAM_HA_ALLOWED_DOMAINS`, `TELEGRAM_HA_ALLOWED_ENTITIES`)
+- HA fuzzy-match tuning (`TELEGRAM_HA_MATCH_MIN_SCORE`, `TELEGRAM_HA_MATCH_AMBIGUITY_GAP`)
 - Generic user-facing error responses, detailed errors in journal logs
 
 ## Privileged Operations
