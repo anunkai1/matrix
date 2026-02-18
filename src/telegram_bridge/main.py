@@ -17,6 +17,19 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from ha_control import (
+    HAConfig,
+    HAControlError,
+    HASchedulePlan,
+    HomeAssistantClient,
+    build_pending_message,
+    execute_action,
+    is_ha_network_error,
+    load_ha_config,
+    parse_approval_command,
+    parse_schedule_plan_from_text,
+)
+
 TELEGRAM_LIMIT = 4096
 OUTPUT_BEGIN_MARKER = "OUTPUT_BEGIN"
 
@@ -35,6 +48,10 @@ class Config:
     max_voice_bytes: int
     max_document_bytes: int
     rate_limit_per_minute: int
+    ha_schedule_policy: str
+    ha_timezone: str
+    ha_require_confirm_complex: bool
+    ha_scheduler_interval_seconds: int
     executor_cmd: List[str]
     voice_transcribe_cmd: List[str]
     voice_transcribe_timeout_seconds: int
@@ -66,6 +83,10 @@ class State:
     chat_thread_path: str = ""
     in_flight_requests: Dict[int, Dict[str, object]] = field(default_factory=dict)
     in_flight_path: str = ""
+    ha_schedules: List[Dict[str, object]] = field(default_factory=list)
+    ha_schedule_path: str = ""
+    pending_ha_plans: Dict[int, Dict[str, object]] = field(default_factory=dict)
+    pending_ha_path: str = ""
     restart_requested: bool = False
     restart_in_progress: bool = False
     restart_chat_id: Optional[int] = None
@@ -80,6 +101,12 @@ class DocumentPayload:
     mime_type: str
 
 
+@dataclass
+class HARuntime:
+    config: Optional[HAConfig]
+    client: Optional[HomeAssistantClient]
+
+
 def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
     value = os.getenv(name)
     if value is None:
@@ -91,6 +118,16 @@ def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
     if parsed < minimum:
         raise ValueError(f"{name} must be >= {minimum}")
     return parsed
+
+
+def parse_bool_env(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
 
 
 def parse_allowed_chat_ids(raw: str) -> Set[int]:
@@ -153,6 +190,10 @@ def load_config() -> Config:
     if not state_dir:
         raise ValueError("TELEGRAM_BRIDGE_STATE_DIR cannot be empty")
 
+    ha_schedule_policy = os.getenv("TELEGRAM_HA_SCHEDULE_POLICY", "replace").strip().lower()
+    if ha_schedule_policy not in {"replace", "queue", "parallel"}:
+        raise ValueError("TELEGRAM_HA_SCHEDULE_POLICY must be one of: replace, queue, parallel")
+
     return Config(
         token=token,
         allowed_chat_ids=parse_allowed_chat_ids(raw_chat_ids),
@@ -166,6 +207,10 @@ def load_config() -> Config:
         max_voice_bytes=parse_int_env("TELEGRAM_MAX_VOICE_BYTES", 20 * 1024 * 1024, minimum=1024),
         max_document_bytes=parse_int_env("TELEGRAM_MAX_DOCUMENT_BYTES", 50 * 1024 * 1024, minimum=1024),
         rate_limit_per_minute=parse_int_env("TELEGRAM_RATE_LIMIT_PER_MINUTE", 12),
+        ha_schedule_policy=ha_schedule_policy,
+        ha_timezone=os.getenv("TELEGRAM_HA_TIMEZONE", "Australia/Brisbane").strip() or "Australia/Brisbane",
+        ha_require_confirm_complex=parse_bool_env("TELEGRAM_HA_REQUIRE_CONFIRM_COMPLEX", True),
+        ha_scheduler_interval_seconds=parse_int_env("TELEGRAM_HA_SCHEDULER_INTERVAL_SECONDS", 20, minimum=5),
         executor_cmd=parse_executor_cmd(),
         voice_transcribe_cmd=parse_optional_cmd_env("TELEGRAM_VOICE_TRANSCRIBE_CMD"),
         voice_transcribe_timeout_seconds=parse_int_env(
@@ -506,6 +551,132 @@ def pop_interrupted_requests(state: State) -> Dict[int, Dict[str, object]]:
     return interrupted
 
 
+def load_ha_schedules(path: str) -> List[Dict[str, object]]:
+    data_path = Path(path)
+    if not data_path.exists():
+        return []
+    try:
+        raw = json.loads(data_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to parse HA schedule state {path}: {exc}") from exc
+    if not isinstance(raw, list):
+        raise ValueError(f"Invalid HA schedule state {path}: root is not list")
+
+    out: List[Dict[str, object]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        action = item.get("action")
+        if not isinstance(action, dict):
+            continue
+        run_at = item.get("run_at")
+        if not isinstance(run_at, (int, float)):
+            continue
+        schedule_id = item.get("id")
+        if not isinstance(schedule_id, str) or not schedule_id.strip():
+            continue
+        chat_id = item.get("chat_id")
+        if not isinstance(chat_id, int):
+            continue
+        summary = item.get("summary")
+        if not isinstance(summary, str):
+            summary = "Scheduled HA action"
+        entity_id = item.get("entity_id")
+        if not isinstance(entity_id, str):
+            entity_id = str(action.get("entity_id", ""))
+        attempts = item.get("attempts")
+        if not isinstance(attempts, int):
+            attempts = 0
+        out.append(
+            {
+                "id": schedule_id.strip(),
+                "chat_id": chat_id,
+                "run_at": float(run_at),
+                "summary": summary,
+                "entity_id": entity_id,
+                "action": action,
+                "attempts": attempts,
+            }
+        )
+    return out
+
+
+def persist_ha_schedules(state: State) -> None:
+    if not state.ha_schedule_path:
+        return
+    path = Path(state.ha_schedule_path)
+    tmp_path = path.with_suffix(".tmp")
+    with state.lock:
+        serialized = list(state.ha_schedules)
+    tmp_path.write_text(json.dumps(serialized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def load_pending_ha_plans(path: str) -> Dict[int, Dict[str, object]]:
+    data_path = Path(path)
+    if not data_path.exists():
+        return {}
+    try:
+        raw = json.loads(data_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to parse pending HA plan state {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid pending HA plan state {path}: root is not object")
+
+    out: Dict[int, Dict[str, object]] = {}
+    for key, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        try:
+            chat_id = int(key)
+        except ValueError:
+            continue
+        expires_at = value.get("expires_at")
+        plan = value.get("plan")
+        if not isinstance(expires_at, (int, float)) or not isinstance(plan, dict):
+            continue
+        out[chat_id] = {"expires_at": float(expires_at), "plan": plan}
+    return out
+
+
+def persist_pending_ha_plans(state: State) -> None:
+    if not state.pending_ha_path:
+        return
+    path = Path(state.pending_ha_path)
+    tmp_path = path.with_suffix(".tmp")
+    with state.lock:
+        serialized = {str(chat_id): payload for chat_id, payload in state.pending_ha_plans.items()}
+    tmp_path.write_text(json.dumps(serialized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def set_pending_ha_plan(
+    state: State,
+    chat_id: int,
+    plan_payload: Dict[str, object],
+    expires_at: float,
+) -> None:
+    with state.lock:
+        state.pending_ha_plans[chat_id] = {"expires_at": expires_at, "plan": plan_payload}
+    persist_pending_ha_plans(state)
+
+
+def pop_pending_ha_plan(state: State, chat_id: int) -> Optional[Dict[str, object]]:
+    with state.lock:
+        payload = state.pending_ha_plans.pop(chat_id, None)
+    if payload is not None:
+        persist_pending_ha_plans(state)
+    return payload
+
+
+def get_pending_ha_plan(state: State, chat_id: int) -> Optional[Dict[str, object]]:
+    with state.lock:
+        payload = state.pending_ha_plans.get(chat_id)
+        if payload is None:
+            return None
+        return dict(payload)
+
+
 def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
     lines = (stdout or "").splitlines()
     thread_id: Optional[str] = None
@@ -784,6 +955,9 @@ def build_help_text() -> str:
         "/status - show bridge health\n"
         "/restart - safe restart (queued until current work completes)\n"
         "/reset - clear chat context\n\n"
+        "HA schedule notes:\n"
+        "- Complex HA plans require APPROVE / CANCEL.\n"
+        "- Relative and absolute timing use timezone configured by TELEGRAM_HA_TIMEZONE.\n\n"
         "Any other text, photo, voice, or file message is sent to Architect."
     )
 
@@ -794,10 +968,14 @@ def build_status_text(state: State) -> str:
         busy_count = len(state.busy_chats)
         restart_queued = state.restart_requested
         restart_running = state.restart_in_progress
+        pending_ha_steps = len(state.ha_schedules)
+        pending_ha_confirm = len(state.pending_ha_plans)
     return (
         "Bridge status: healthy\n"
         f"Uptime: {uptime}s\n"
         f"Busy chats: {busy_count}\n"
+        f"Pending HA steps: {pending_ha_steps}\n"
+        f"Pending HA confirmations: {pending_ha_confirm}\n"
         f"Restart queued: {'yes' if restart_queued else 'no'}\n"
         f"Restart in progress: {'yes' if restart_running else 'no'}"
     )
@@ -937,6 +1115,375 @@ def finalize_chat_work(
             restart_chat_id,
         )
     trigger_restart_async(state, client, restart_chat_id, restart_reply_to)
+
+
+def build_ha_runtime(config: Config) -> HARuntime:
+    try:
+        ha_config = load_ha_config(config.state_dir)
+    except Exception:
+        logging.exception("Failed to load HA runtime config; HA schedule handling disabled.")
+        return HARuntime(config=None, client=None)
+
+    if ha_config is None:
+        return HARuntime(config=None, client=None)
+
+    return HARuntime(config=ha_config, client=HomeAssistantClient(ha_config))
+
+
+def serialize_schedule_plan(plan: HASchedulePlan) -> Dict[str, object]:
+    return {
+        "summary": plan.summary,
+        "is_complex": bool(plan.is_complex),
+        "entity_ids": sorted(plan.entity_ids),
+        "steps": [
+            {
+                "id": step.step_id,
+                "run_at": step.run_at_ts,
+                "summary": step.summary,
+                "action": step.action,
+            }
+            for step in plan.steps
+        ],
+    }
+
+
+def apply_serialized_ha_plan(
+    state: State,
+    config: Config,
+    runtime: HARuntime,
+    chat_id: int,
+    plan_payload: Dict[str, object],
+) -> str:
+    if runtime.client is None or runtime.config is None:
+        raise HAControlError("HA integration is not configured.")
+
+    steps_raw = plan_payload.get("steps")
+    if not isinstance(steps_raw, list) or not steps_raw:
+        raise HAControlError("No schedulable HA steps found in plan.")
+
+    steps: List[Dict[str, object]] = []
+    now_value = time.time()
+    for item in steps_raw:
+        if not isinstance(item, dict):
+            continue
+        action = item.get("action")
+        run_at = item.get("run_at")
+        summary = item.get("summary")
+        step_id = item.get("id")
+        if not isinstance(action, dict) or not isinstance(run_at, (int, float)):
+            continue
+        if not isinstance(summary, str):
+            summary = "Scheduled HA action"
+        if not isinstance(step_id, str) or not step_id.strip():
+            step_id = f"ha-step-{int(now_value)}"
+        entity_id = action.get("entity_id")
+        if not isinstance(entity_id, str):
+            entity_id = ""
+        steps.append(
+            {
+                "id": step_id.strip(),
+                "run_at": float(run_at),
+                "summary": summary,
+                "action": action,
+                "entity_id": entity_id,
+            }
+        )
+
+    if not steps:
+        raise HAControlError("No valid HA steps found in plan payload.")
+
+    entity_ids = set()
+    entities_raw = plan_payload.get("entity_ids")
+    if isinstance(entities_raw, list):
+        for value in entities_raw:
+            if isinstance(value, str) and value.strip():
+                entity_ids.add(value.strip())
+    if not entity_ids:
+        for item in steps:
+            entity_id = item.get("entity_id")
+            if isinstance(entity_id, str) and entity_id:
+                entity_ids.add(entity_id)
+
+    immediate_steps = [item for item in steps if float(item["run_at"]) <= now_value + 1.0]
+    delayed_steps = [item for item in steps if float(item["run_at"]) > now_value + 1.0]
+
+    replaced = 0
+    if config.ha_schedule_policy == "replace" and entity_ids:
+        with state.lock:
+            before = len(state.ha_schedules)
+            state.ha_schedules = [
+                item
+                for item in state.ha_schedules
+                if not (
+                    isinstance(item, dict)
+                    and isinstance(item.get("entity_id"), str)
+                    and item.get("entity_id") in entity_ids
+                )
+            ]
+            replaced = before - len(state.ha_schedules)
+        if replaced:
+            persist_ha_schedules(state)
+
+    immediate_results: List[str] = []
+    for item in sorted(immediate_steps, key=lambda it: float(it["run_at"])):
+        action = item["action"]
+        result = execute_action(action, runtime.client, runtime.config)
+        immediate_results.append(result)
+
+    if delayed_steps:
+        queue_items = []
+        for item in delayed_steps:
+            queue_items.append(
+                {
+                    "id": item["id"],
+                    "chat_id": chat_id,
+                    "run_at": float(item["run_at"]),
+                    "summary": str(item["summary"]),
+                    "entity_id": str(item.get("entity_id", "")),
+                    "action": item["action"],
+                    "attempts": 0,
+                }
+            )
+        with state.lock:
+            state.ha_schedules.extend(queue_items)
+            state.ha_schedules.sort(key=lambda entry: float(entry.get("run_at", 0)))
+        persist_ha_schedules(state)
+
+    parts: List[str] = []
+    if immediate_results:
+        parts.extend(immediate_results)
+    if delayed_steps:
+        parts.append(f"Scheduled {len(delayed_steps)} HA step(s) in timezone {config.ha_timezone}.")
+    if replaced > 0:
+        parts.append(f"Replaced {replaced} pending step(s) due to policy={config.ha_schedule_policy}.")
+    if not parts:
+        parts.append("No HA actions were applied.")
+    return "\n".join(parts)
+
+
+def handle_ha_request_text(
+    state: State,
+    config: Config,
+    runtime: HARuntime,
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+    prompt: str,
+) -> bool:
+    cleaned = (prompt or "").strip()
+    if not cleaned:
+        return False
+
+    approval = parse_approval_command(cleaned)
+    if approval is not None:
+        verb, _ = approval
+        payload = get_pending_ha_plan(state, chat_id)
+        if payload is None:
+            client.send_message(
+                chat_id,
+                "No pending complex HA plan for this chat.",
+                reply_to_message_id=message_id,
+            )
+            return True
+
+        expires_at = payload.get("expires_at")
+        plan_data = payload.get("plan")
+        now_value = time.time()
+        if not isinstance(expires_at, (int, float)) or not isinstance(plan_data, dict):
+            pop_pending_ha_plan(state, chat_id)
+            client.send_message(
+                chat_id,
+                "Pending HA plan was invalid and has been cleared.",
+                reply_to_message_id=message_id,
+            )
+            return True
+
+        if float(expires_at) < now_value:
+            pop_pending_ha_plan(state, chat_id)
+            client.send_message(
+                chat_id,
+                "Pending HA plan expired. Please send the request again.",
+                reply_to_message_id=message_id,
+            )
+            return True
+
+        if verb == "cancel":
+            pop_pending_ha_plan(state, chat_id)
+            client.send_message(
+                chat_id,
+                "Pending HA plan cancelled.",
+                reply_to_message_id=message_id,
+            )
+            return True
+
+        pop_pending_ha_plan(state, chat_id)
+        try:
+            result_text = apply_serialized_ha_plan(state, config, runtime, chat_id, plan_data)
+        except HAControlError as exc:
+            client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+            return True
+        except Exception as exc:
+            if is_ha_network_error(exc):
+                client.send_message(
+                    chat_id,
+                    "Home Assistant is unavailable right now. Please try again.",
+                    reply_to_message_id=message_id,
+                )
+                return True
+            logging.exception("Unexpected error while approving HA plan for chat_id=%s", chat_id)
+            client.send_message(chat_id, config.generic_error_message, reply_to_message_id=message_id)
+            return True
+
+        client.send_message(chat_id, result_text, reply_to_message_id=message_id)
+        return True
+
+    if runtime.client is None or runtime.config is None:
+        return False
+
+    try:
+        plan = parse_schedule_plan_from_text(
+            cleaned,
+            runtime.client,
+            runtime.config,
+            timezone_name=config.ha_timezone,
+        )
+    except HAControlError as exc:
+        client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+        return True
+    except Exception as exc:
+        if is_ha_network_error(exc):
+            client.send_message(
+                chat_id,
+                "Home Assistant is unavailable right now. Please try again.",
+                reply_to_message_id=message_id,
+            )
+            return True
+        logging.exception("Unexpected HA parse error for chat_id=%s", chat_id)
+        client.send_message(chat_id, config.generic_error_message, reply_to_message_id=message_id)
+        return True
+
+    if plan is None:
+        return False
+
+    serialized_plan = serialize_schedule_plan(plan)
+    if config.ha_require_confirm_complex and plan.is_complex:
+        ttl_seconds = int(runtime.config.approval_ttl_seconds)
+        expires_at = time.time() + ttl_seconds
+        set_pending_ha_plan(state, chat_id, serialized_plan, expires_at)
+        client.send_message(
+            chat_id,
+            build_pending_message(plan.summary, ttl_seconds),
+            reply_to_message_id=message_id,
+        )
+        return True
+
+    try:
+        result_text = apply_serialized_ha_plan(state, config, runtime, chat_id, serialized_plan)
+    except HAControlError as exc:
+        client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+        return True
+    except Exception as exc:
+        if is_ha_network_error(exc):
+            client.send_message(
+                chat_id,
+                "Home Assistant is unavailable right now. Please try again.",
+                reply_to_message_id=message_id,
+            )
+            return True
+        logging.exception("Unexpected HA execute error for chat_id=%s", chat_id)
+        client.send_message(chat_id, config.generic_error_message, reply_to_message_id=message_id)
+        return True
+
+    client.send_message(chat_id, result_text, reply_to_message_id=message_id)
+    return True
+
+
+def process_due_ha_schedules(
+    state: State,
+    config: Config,
+    runtime: HARuntime,
+    client: TelegramClient,
+) -> None:
+    if runtime.client is None or runtime.config is None:
+        return
+
+    now_value = time.time()
+    expired_pending: List[int] = []
+    with state.lock:
+        for chat_id, payload in list(state.pending_ha_plans.items()):
+            expires_at = payload.get("expires_at")
+            if isinstance(expires_at, (int, float)) and float(expires_at) < now_value:
+                expired_pending.append(chat_id)
+                del state.pending_ha_plans[chat_id]
+    if expired_pending:
+        persist_pending_ha_plans(state)
+
+    due: List[Dict[str, object]] = []
+    with state.lock:
+        remaining: List[Dict[str, object]] = []
+        for item in state.ha_schedules:
+            run_at = item.get("run_at")
+            if isinstance(run_at, (int, float)) and float(run_at) <= now_value:
+                due.append(dict(item))
+            else:
+                remaining.append(item)
+        if len(remaining) != len(state.ha_schedules):
+            state.ha_schedules = remaining
+    if due:
+        persist_ha_schedules(state)
+
+    retries: List[Dict[str, object]] = []
+    for item in sorted(due, key=lambda entry: float(entry.get("run_at", 0))):
+        chat_id = item.get("chat_id")
+        action = item.get("action")
+        summary = item.get("summary")
+        if not isinstance(chat_id, int) or not isinstance(action, dict):
+            continue
+        if not isinstance(summary, str):
+            summary = "Scheduled HA action"
+        attempts = item.get("attempts")
+        if not isinstance(attempts, int):
+            attempts = 0
+
+        try:
+            result = execute_action(action, runtime.client, runtime.config)
+            client.send_message(chat_id, f"Scheduled HA step executed.\n{result}")
+        except Exception as exc:
+            if is_ha_network_error(exc) and attempts < 3:
+                retry_item = dict(item)
+                retry_item["attempts"] = attempts + 1
+                retry_item["run_at"] = now_value + 60
+                retries.append(retry_item)
+                continue
+            logging.exception("Scheduled HA action failed for chat_id=%s summary=%r", chat_id, summary)
+            client.send_message(
+                chat_id,
+                f"Scheduled HA step failed: {summary}",
+            )
+
+    if retries:
+        with state.lock:
+            state.ha_schedules.extend(retries)
+            state.ha_schedules.sort(key=lambda entry: float(entry.get("run_at", 0)))
+        persist_ha_schedules(state)
+
+
+def start_ha_scheduler_worker(
+    state: State,
+    config: Config,
+    runtime: HARuntime,
+    client: TelegramClient,
+) -> None:
+    def _run() -> None:
+        while True:
+            try:
+                process_due_ha_schedules(state, config, runtime, client)
+            except Exception:
+                logging.exception("Unexpected HA scheduler loop error")
+            time.sleep(config.ha_scheduler_interval_seconds)
+
+    worker = threading.Thread(target=_run, daemon=True)
+    worker.start()
 
 
 def process_prompt(
@@ -1309,6 +1856,7 @@ def handle_update(
     state: State,
     config: Config,
     client: TelegramClient,
+    ha_runtime: HARuntime,
     update: Dict[str, object],
 ) -> None:
     message = update.get("message")
@@ -1367,6 +1915,23 @@ def handle_update(
             f"Input too long ({len(prompt)} chars). Max is {config.max_input_chars}.",
             reply_to_message_id=message_id,
         )
+        return
+
+    if (
+        prompt
+        and photo_file_id is None
+        and voice_file_id is None
+        and document is None
+        and handle_ha_request_text(
+            state=state,
+            config=config,
+            runtime=ha_runtime,
+            client=client,
+            chat_id=chat_id,
+            message_id=message_id,
+            prompt=prompt,
+        )
+    ):
         return
 
     if is_rate_limited(state, config, chat_id):
@@ -1471,6 +2036,8 @@ def run_bridge(config: Config) -> int:
     ensure_state_dir(config.state_dir)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
     in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
+    ha_schedule_path = os.path.join(config.state_dir, "ha_schedules.json")
+    pending_ha_path = os.path.join(config.state_dir, "pending_ha_plans.json")
     try:
         loaded_threads = load_chat_threads(chat_thread_path)
     except Exception:
@@ -1495,13 +2062,43 @@ def run_bridge(config: Config) -> int:
             logging.error("Quarantined corrupt in-flight state file to %s", moved)
         loaded_in_flight = {}
 
+    try:
+        loaded_ha_schedules = load_ha_schedules(ha_schedule_path)
+    except Exception:
+        logging.exception(
+            "Failed to load HA schedules from %s; starting with empty schedule queue.",
+            ha_schedule_path,
+        )
+        moved = quarantine_corrupt_state_file(ha_schedule_path)
+        if moved:
+            logging.error("Quarantined corrupt HA schedule state file to %s", moved)
+        loaded_ha_schedules = []
+
+    try:
+        loaded_pending_ha = load_pending_ha_plans(pending_ha_path)
+    except Exception:
+        logging.exception(
+            "Failed to load pending HA plans from %s; starting with empty pending set.",
+            pending_ha_path,
+        )
+        moved = quarantine_corrupt_state_file(pending_ha_path)
+        if moved:
+            logging.error("Quarantined corrupt pending HA plan state file to %s", moved)
+        loaded_pending_ha = {}
+
     state = State(
         chat_threads=loaded_threads,
         chat_thread_path=chat_thread_path,
         in_flight_requests=loaded_in_flight,
         in_flight_path=in_flight_path,
+        ha_schedules=loaded_ha_schedules,
+        ha_schedule_path=ha_schedule_path,
+        pending_ha_plans=loaded_pending_ha,
+        pending_ha_path=pending_ha_path,
     )
     client = TelegramClient(config)
+    ha_runtime = build_ha_runtime(config)
+    start_ha_scheduler_worker(state, config, ha_runtime, client)
 
     interrupted = pop_interrupted_requests(state)
     if interrupted:
@@ -1532,8 +2129,11 @@ def run_bridge(config: Config) -> int:
 
     logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
     logging.info("Executor command=%s", config.executor_cmd)
+    logging.info("HA schedule policy=%s timezone=%s", config.ha_schedule_policy, config.ha_timezone)
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
     logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
+    logging.info("Loaded %s HA scheduled step(s) from %s", len(loaded_ha_schedules), ha_schedule_path)
+    logging.info("Loaded %s pending HA plan(s) from %s", len(loaded_pending_ha), pending_ha_path)
 
     while True:
         try:
@@ -1542,7 +2142,7 @@ def run_bridge(config: Config) -> int:
                 update_id = update.get("update_id")
                 if isinstance(update_id, int):
                     offset = max(offset, update_id + 1)
-                handle_update(state, config, client, update)
+                handle_update(state, config, client, ha_runtime, update)
         except (HTTPError, URLError, TimeoutError):
             logging.exception("Network/API error while polling Telegram")
             time.sleep(config.retry_sleep_seconds)

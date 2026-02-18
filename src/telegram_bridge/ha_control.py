@@ -5,13 +5,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
+import uuid
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 
 class HAControlError(RuntimeError):
@@ -33,6 +37,32 @@ class HAConfig:
     solar_excess_threshold_watts: float
     match_min_score: float
     match_ambiguity_gap: float
+
+
+@dataclass
+class HAScheduleStep:
+    step_id: str
+    run_at_ts: float
+    action: Dict[str, object]
+    summary: str
+
+
+@dataclass
+class HASchedulePlan:
+    summary: str
+    steps: List[HAScheduleStep]
+    entity_ids: Set[str]
+    is_complex: bool
+
+
+DELAY_RE = re.compile(
+    r"\b(in|after)\s+(\d+(?:\.\d+)?)\s*(hours?|hrs?|minutes?|mins?|minute|hour)\b"
+)
+DURATION_RE = re.compile(
+    r"\bfor\s+(\d+(?:\.\d+)?)\s*(hours?|hrs?|minutes?|mins?|minute|hour)\b"
+)
+AT_TIME_RE = re.compile(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b")
+SEGMENT_SPLIT_RE = re.compile(r"\b(?:and\s+then|then)\b")
 
 
 class HomeAssistantClient:
@@ -226,7 +256,7 @@ def load_alias_map(path: str) -> Dict[str, str]:
 
 def parse_approval_command(text: str) -> Optional[Tuple[str, Optional[str]]]:
     parts = text.strip().split()
-    if not parts:
+    if len(parts) != 1:
         return None
     head = parts[0].lower()
     if head not in {"approve", "cancel"}:
@@ -655,18 +685,12 @@ def _parse_numeric_sensor_state(raw: str) -> Optional[float]:
         return None
 
 
-def plan_action_from_text(
-    text: str,
-    client: HomeAssistantClient,
+def _build_action_from_intent(
+    intent: Dict[str, object],
+    states: Sequence[Dict[str, object]],
+    alias_map: Dict[str, str],
     config: HAConfig,
-) -> Optional[Dict[str, object]]:
-    intent = _parse_control_intent(text)
-    if intent is None:
-        return None
-
-    alias_map = load_alias_map(config.aliases_path)
-    states = client.get_states()
-
+) -> Dict[str, object]:
     target = intent.get("target")
     if not isinstance(target, str):
         raise HAControlError("Invalid target in parsed intent.")
@@ -675,7 +699,13 @@ def plan_action_from_text(
     if intent.get("kind") == "climate_set":
         preferred_domain = "climate"
 
-    entity_id, entity_state = _resolve_entity_id(target, states, alias_map, config, preferred_domain=preferred_domain)
+    entity_id, entity_state = _resolve_entity_id(
+        target,
+        states,
+        alias_map,
+        config,
+        preferred_domain=preferred_domain,
+    )
     _ensure_allowed(entity_id, config)
 
     kind = intent["kind"]
@@ -749,7 +779,21 @@ def plan_action_from_text(
             "summary": summary + ".",
         }
 
-    return None
+    raise HAControlError(f"Unsupported intent kind: {kind}")
+
+
+def plan_action_from_text(
+    text: str,
+    client: HomeAssistantClient,
+    config: HAConfig,
+) -> Optional[Dict[str, object]]:
+    intent = _parse_control_intent(text)
+    if intent is None:
+        return None
+
+    alias_map = load_alias_map(config.aliases_path)
+    states = client.get_states()
+    return _build_action_from_intent(intent, states, alias_map, config)
 
 
 def execute_action(
@@ -856,6 +900,232 @@ def execute_action(
         )
 
     raise HAControlError(f"Unsupported action kind: {kind}")
+
+
+def _duration_seconds(value_raw: str, unit_raw: str) -> float:
+    value = float(value_raw)
+    if value <= 0:
+        raise HAControlError("Duration must be greater than zero.")
+    unit = unit_raw.strip().lower()
+    if unit.startswith("hour") or unit.startswith("hr"):
+        return value * 3600.0
+    return value * 60.0
+
+
+def _next_absolute_ts(
+    now_ts_value: float,
+    timezone_name: str,
+    hour_raw: str,
+    minute_raw: Optional[str],
+    ampm_raw: Optional[str],
+) -> float:
+    try:
+        tz = ZoneInfo(timezone_name)
+    except Exception as exc:
+        raise HAControlError(f"Invalid timezone: {timezone_name}") from exc
+
+    now_local = datetime.fromtimestamp(now_ts_value, tz=tz)
+
+    hour = int(hour_raw)
+    minute = int(minute_raw) if minute_raw else 0
+    ampm = (ampm_raw or "").strip().lower()
+
+    if ampm:
+        if hour < 1 or hour > 12:
+            raise HAControlError("12-hour clock times must use hour in 1-12.")
+        if ampm == "pm" and hour != 12:
+            hour += 12
+        if ampm == "am" and hour == 12:
+            hour = 0
+    elif hour > 23 or minute > 59:
+        raise HAControlError("Invalid 24-hour time value.")
+
+    scheduled = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if scheduled <= now_local:
+        scheduled = scheduled + timedelta(days=1)
+    return scheduled.astimezone(timezone.utc).timestamp()
+
+
+def _format_run_at(run_at_ts: float, timezone_name: str) -> str:
+    try:
+        tz = ZoneInfo(timezone_name)
+    except Exception:
+        tz = timezone.utc
+    dt_local = datetime.fromtimestamp(run_at_ts, tz=tz)
+    return dt_local.strftime("%Y-%m-%d %H:%M")
+
+
+def _looks_like_ha_schedule_text(text: str) -> bool:
+    lowered = (text or "").strip().lower()
+    if not lowered:
+        return False
+    return bool(
+        re.search(
+            r"\b(turn|set|change|switch|aircon|heater|light|fan)\b",
+            lowered,
+        )
+    )
+
+
+def _normalize_turn_order(text: str) -> str:
+    lowered = text.strip()
+    if not lowered:
+        return lowered
+    if re.search(r"\bturn\s+(on|off)\b", lowered):
+        return lowered
+    match = re.search(r"\bturn\s+(.+?)\s+(on|off)\b", lowered)
+    if not match:
+        return lowered
+    target = match.group(1).strip()
+    state = match.group(2).strip()
+    prefix = lowered[: match.start()]
+    suffix = lowered[match.end() :]
+    return f"{prefix}turn {state} {target}{suffix}".strip()
+
+
+def _sanitize_segment(
+    segment: str,
+    last_target_hint: Optional[str],
+) -> str:
+    cleaned = " ".join(segment.strip().split())
+    if not cleaned:
+        return ""
+    cleaned = re.sub(r"^\b(?:and|then|after that)\b\s*", "", cleaned, flags=re.IGNORECASE).strip()
+
+    if last_target_hint:
+        cleaned = re.sub(
+            r"\b(it|that|this)\b",
+            last_target_hint,
+            cleaned,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        lowered = cleaned.lower()
+        if lowered.startswith("change temperature to "):
+            cleaned = f"set {last_target_hint} to {cleaned[len('change temperature to '):].strip()}"
+        elif lowered.startswith("change to "):
+            cleaned = f"set {last_target_hint} to {cleaned[len('change to '):].strip()}"
+
+    return _normalize_turn_order(cleaned)
+
+
+def parse_schedule_plan_from_text(
+    text: str,
+    client: HomeAssistantClient,
+    config: HAConfig,
+    timezone_name: str,
+    now_ts_value: Optional[float] = None,
+) -> Optional[HASchedulePlan]:
+    source = (text or "").strip()
+    if not _looks_like_ha_schedule_text(source):
+        return None
+
+    now_value = now_ts() if now_ts_value is None else float(now_ts_value)
+    segments = [part.strip() for part in SEGMENT_SPLIT_RE.split(source) if part.strip()]
+    if not segments:
+        return None
+
+    alias_map = load_alias_map(config.aliases_path)
+    states: Optional[List[Dict[str, object]]] = None
+    cursor_ts = now_value
+    last_target_hint: Optional[str] = None
+
+    steps: List[HAScheduleStep] = []
+    entity_ids: Set[str] = set()
+
+    for index, raw_segment in enumerate(segments, start=1):
+        segment = raw_segment
+        run_at_ts = cursor_ts if index > 1 else now_value
+
+        delay_match = DELAY_RE.search(segment)
+        if delay_match:
+            seconds = _duration_seconds(delay_match.group(2), delay_match.group(3))
+            anchor = delay_match.group(1).lower()
+            if anchor == "after":
+                run_at_ts = cursor_ts + seconds
+            else:
+                run_at_ts = now_value + seconds
+            segment = (segment[: delay_match.start()] + " " + segment[delay_match.end() :]).strip()
+
+        at_match = AT_TIME_RE.search(segment)
+        if at_match:
+            run_at_ts = _next_absolute_ts(
+                now_value,
+                timezone_name,
+                at_match.group(1),
+                at_match.group(2),
+                at_match.group(3),
+            )
+            segment = (segment[: at_match.start()] + " " + segment[at_match.end() :]).strip()
+
+        duration_seconds = 0.0
+        duration_match = DURATION_RE.search(segment)
+        if duration_match:
+            duration_seconds = _duration_seconds(duration_match.group(1), duration_match.group(2))
+            segment = (segment[: duration_match.start()] + " " + segment[duration_match.end() :]).strip()
+
+        normalized = _sanitize_segment(segment, last_target_hint)
+        intent = _parse_control_intent(normalized)
+        if intent is None:
+            if index == 1:
+                return None
+            raise HAControlError(f"Could not parse HA segment: {raw_segment!r}")
+
+        if states is None:
+            states = client.get_states()
+        action = _build_action_from_intent(intent, states, alias_map, config)
+        entity_id = action.get("entity_id")
+        if not isinstance(entity_id, str) or not entity_id:
+            raise HAControlError("Resolved HA action missing entity_id.")
+
+        last_target_hint = entity_id
+        entity_ids.add(entity_id)
+        summary = action.get("summary", f"Execute {action.get('kind')} on {entity_id}.")
+        if not isinstance(summary, str):
+            summary = f"Execute {action.get('kind')} on {entity_id}."
+
+        steps.append(
+            HAScheduleStep(
+                step_id=str(uuid.uuid4()),
+                run_at_ts=run_at_ts,
+                action=action,
+                summary=summary,
+            )
+        )
+
+        if duration_seconds > 0 and action.get("kind") in {"entity_turn_on", "climate_set"}:
+            off_action: Dict[str, object] = {
+                "kind": "entity_turn_off",
+                "entity_id": entity_id,
+                "summary": f"Turn OFF {entity_id}.",
+            }
+            off_run_ts = run_at_ts + duration_seconds
+            steps.append(
+                HAScheduleStep(
+                    step_id=str(uuid.uuid4()),
+                    run_at_ts=off_run_ts,
+                    action=off_action,
+                    summary=f"Turn OFF {entity_id}.",
+                )
+            )
+
+        cursor_ts = run_at_ts
+
+    if not steps:
+        return None
+
+    steps.sort(key=lambda item: item.run_at_ts)
+    summary_lines: List[str] = []
+    for idx, step in enumerate(steps, start=1):
+        label = "now" if step.run_at_ts <= now_value + 2 else _format_run_at(step.run_at_ts, timezone_name)
+        summary_lines.append(f"{idx}. [{label}] {step.summary}")
+    is_complex = len(steps) > 1 or any(step.run_at_ts > now_value + 5 for step in steps)
+    return HASchedulePlan(
+        summary="HA schedule plan:\n" + "\n".join(summary_lines),
+        steps=steps,
+        entity_ids=entity_ids,
+        is_complex=is_complex,
+    )
 
 
 def build_pending_message(summary: str, ttl_seconds: int) -> str:

@@ -65,6 +65,10 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_HA_ENABLED=true
 # TELEGRAM_HA_BASE_URL=http://homeassistant.local:8123
 # TELEGRAM_HA_TOKEN=replace_with_long_lived_token
+# TELEGRAM_HA_TIMEZONE=Australia/Brisbane
+# TELEGRAM_HA_SCHEDULE_POLICY=replace
+# TELEGRAM_HA_REQUIRE_CONFIRM_COMPLEX=true
+# TELEGRAM_HA_SCHEDULER_INTERVAL_SECONDS=20
 # TELEGRAM_HA_APPROVAL_TTL_SECONDS=300
 # TELEGRAM_HA_TEMP_MIN_C=16
 # TELEGRAM_HA_TEMP_MAX_C=30
@@ -104,10 +108,7 @@ bash ops/telegram-voice/transcribe_voice.sh /path/to/sample.ogg
 sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 ```
 
-## Home Assistant Setup (Legacy Confirm-First Parser Path)
-
-This section documents the legacy in-bridge HA parser/approval path for reference.
-Current runtime routes prompts through Codex executor instead of `APPROVE`/`CANCEL` parser handling.
+## Home Assistant Setup
 
 1. Create a dedicated HA user and long-lived token.
 2. Copy package file into HA packages folder:
@@ -150,9 +151,13 @@ bash ops/home-assistant/validate_architect_package.sh
 - `/status` bridge health and uptime
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
+- `APPROVE` approve a pending complex HA plan
+- `CANCEL` cancel a pending complex HA plan
 
 Any non-command text is forwarded to the local executor (non-interactive `codex exec`).
-HA requests are treated as normal prompts and handled in the same Codex execution path as other text.
+HA schedule requests are parsed on the bridge runtime and executed directly against Home Assistant API.
+For non-HA text, normal Codex executor routing remains unchanged.
+Complex HA plans require explicit `APPROVE` or `CANCEL` in the same chat before execution.
 Photo messages are also supported:
 - If a photo has a caption, the caption is used as the prompt.
 - If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`
@@ -170,6 +175,8 @@ Voice messages are also supported:
 - If a file has no caption, the bridge sends a default prompt: `Please analyze this file.`
 - The bridge downloads the file, injects local file context (path, name, MIME, size) into the prompt, and Codex analyzes it directly from disk.
 - File size is guarded by `TELEGRAM_MAX_DOCUMENT_BYTES` (default `52428800`).
+- HA timing supports relative (`in 2 hours`, `after 30 mins`) and absolute (`at 7:30 pm`) scheduling.
+- Overlap behavior is controlled by `TELEGRAM_HA_SCHEDULE_POLICY` (`replace`, `queue`, `parallel`).
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
 
 Before executor completion, the bridge sends an immediate placeholder reply:
@@ -181,6 +188,8 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Default state file path: `/home/architect/.local/state/telegram-architect-bridge/chat_threads.json`
 - Override with env var: `TELEGRAM_BRIDGE_STATE_DIR`.
 - In-flight request markers are persisted at `/home/architect/.local/state/telegram-architect-bridge/in_flight_requests.json`.
+- HA scheduled steps are persisted at `/home/architect/.local/state/telegram-architect-bridge/ha_schedules.json`.
+- Pending complex-plan approvals are persisted at `/home/architect/.local/state/telegram-architect-bridge/pending_ha_plans.json`.
 - If the bridge restarts while a request is in progress, the chat receives a one-time startup notice to resend the interrupted request.
 - On resume failures, the bridge now preserves saved thread context by default.
 - It only auto-resets thread context when executor error output clearly indicates an invalid/missing thread.
@@ -195,6 +204,8 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Image size limit (`TELEGRAM_MAX_IMAGE_BYTES`, default `10485760`)
 - Voice file size limit (`TELEGRAM_MAX_VOICE_BYTES`, default `20971520`)
 - Document/file size limit (`TELEGRAM_MAX_DOCUMENT_BYTES`, default `52428800`)
+- HA scheduler interval guard (`TELEGRAM_HA_SCHEDULER_INTERVAL_SECONDS`)
+- HA timezone and overlap policy controls (`TELEGRAM_HA_TIMEZONE`, `TELEGRAM_HA_SCHEDULE_POLICY`)
 - Per-chat rate limit per minute
 - Generic user-facing error responses, detailed errors in journal logs
 

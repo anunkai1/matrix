@@ -11,7 +11,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Built-in safe `/restart` command (queues restart until active work completes)
 - Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup
 - Help alias: `/h` (same as `/help`), also shown in thinking reply hint
-- HA requests are handled through the same Codex execution path as other prompts (no runtime `APPROVE` parser flow)
+- HA scheduling supports relative/absolute timing with persistent queue and complex-plan `APPROVE` / `CANCEL`
 
 ## Repository Structure
 
@@ -62,8 +62,8 @@ bash ops/telegram-voice/configure_env.sh
 bash ops/telegram-bridge/restart_and_verify.sh
 ```
 
-Home Assistant requests can be sent as normal prompts and are handled by Codex execution flow.
-Legacy parser/approval assets remain in-repo for reference, but bridge runtime no longer routes messages through `APPROVE`/`CANCEL` parser handling.
+Home Assistant scheduling requests can be sent in plain text (for example `turn living aircon off in 1 hour`).
+Complex multi-step plans require `APPROVE` in chat before execution.
 
 ## Operations
 

@@ -1,5 +1,22 @@
 # Server3 Progress Log
 
+## 2026-02-18 (HA General Scheduling Runtime: Replace Policy + Brisbane TZ + Complex Confirm)
+
+### Summary
+- Added generalized HA scheduling support in bridge runtime (`src/telegram_bridge/ha_control.py`, `src/telegram_bridge/main.py`) for relative and absolute timing, chained steps, and optional timed on-duration auto-off behavior.
+- Added persistent HA scheduler state files under bridge state dir: `ha_schedules.json` (queued steps) and `pending_ha_plans.json` (awaiting `APPROVE`/`CANCEL`).
+- Added runtime env controls for user-requested defaults: `TELEGRAM_HA_SCHEDULE_POLICY=replace`, `TELEGRAM_HA_TIMEZONE=Australia/Brisbane`, and `TELEGRAM_HA_REQUIRE_CONFIRM_COMPLEX=true` (plus scheduler interval knob).
+- Updated help/status behavior to surface HA queue and pending complex confirmations; updated README/runbook/env example docs accordingly.
+- Hardened HA trigger path to avoid unnecessary HA network calls for non-HA prompts by requiring a parseable HA intent before fetching HA states.
+- Verified with `python3 -m py_compile src/telegram_bridge/ha_control.py src/telegram_bridge/main.py` and `bash src/telegram_bridge/smoke_test.sh`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` runtime config edits were applied in this step.
+
 ## 2026-02-18 (Live Env: Telegram Max Document Size Raised to 500MB)
 
 ### Summary
