@@ -18,6 +18,7 @@ This bridge lets Telegram users chat with local Architect/Codex on Server3 witho
 - HA package template: `infra/home_assistant/packages/architect_executor.yaml`
 - Systemd source-of-truth unit: `infra/systemd/telegram-architect-bridge.service`
 - Install/rollback unit: `ops/telegram-bridge/install_systemd.sh`
+- Restart + verification helper: `ops/telegram-bridge/restart_and_verify.sh`
 - Restart helper: `ops/telegram-bridge/restart_service.sh`
 - Status helper: `ops/telegram-bridge/status_service.sh`
 - HA package validator: `ops/home-assistant/validate_architect_package.sh`
@@ -79,7 +80,7 @@ EOF
 
 ```bash
 bash ops/telegram-bridge/install_systemd.sh apply
-bash ops/telegram-bridge/restart_service.sh
+bash ops/telegram-bridge/restart_and_verify.sh
 bash ops/telegram-bridge/status_service.sh
 ```
 
@@ -88,7 +89,7 @@ bash ops/telegram-bridge/status_service.sh
 ```bash
 bash ops/telegram-voice/install_faster_whisper.sh
 bash ops/telegram-voice/configure_env.sh
-bash ops/telegram-bridge/restart_service.sh
+bash ops/telegram-bridge/restart_and_verify.sh
 ```
 
 Verification:
@@ -188,7 +189,7 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 ## Privileged Operations
 
 - The source-of-truth unit (`infra/systemd/telegram-architect-bridge.service`) sets `NoNewPrivileges=false`.
-- This is required if you want Telegram-triggered Architect sessions to run scripts that use `sudo` (for example `ops/telegram-bridge/restart_service.sh`).
+- This is required if you want Telegram-triggered Architect sessions to run scripts that use `sudo` (for example `ops/telegram-bridge/restart_and_verify.sh`).
 - Both new and resumed Codex sessions are launched with `--dangerously-bypass-approvals-and-sandbox`.
 - Keep `TELEGRAM_ALLOWED_CHAT_IDS` strict. Any allowed chat can request operations with `architect` user privileges, including sudo-capable commands.
 
@@ -201,7 +202,7 @@ bash ops/telegram-bridge/status_service.sh
 sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 ```
 
-Config mistakes (missing env vars) cause startup failure. The executor also requires a valid `codex login` for the `architect` user. Correct `/etc/default/telegram-architect-bridge` and restart service.
+Config mistakes (missing env vars) cause startup failure. The executor also requires a valid `codex login` for the `architect` user. Correct `/etc/default/telegram-architect-bridge` and run `bash ops/telegram-bridge/restart_and_verify.sh`.
 
 ## Rollback
 

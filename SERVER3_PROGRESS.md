@@ -1,5 +1,19 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Verified Restart Helper Added)
+
+### Summary
+- Added `ops/telegram-bridge/restart_and_verify.sh` to enforce restart verification using pre/post `systemd` markers (`MainPID`, start timestamp monotonic) plus active running-state checks.
+- Updated Telegram bridge runbook and README restart examples to use the verified helper as the primary restart path.
+- Kept existing `ops/telegram-bridge/restart_service.sh` for simple restart usage; new helper is the recommended deterministic option.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` edits were applied.
+
 ## 2026-02-18 (Telegram Bridge Restart on Request)
 
 ### Summary

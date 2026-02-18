@@ -49,7 +49,7 @@ Install and start service:
 
 ```bash
 bash ops/telegram-bridge/install_systemd.sh apply
-bash ops/telegram-bridge/restart_service.sh
+bash ops/telegram-bridge/restart_and_verify.sh
 bash ops/telegram-bridge/status_service.sh
 ```
 
@@ -58,7 +58,7 @@ Enable voice transcription runtime:
 ```bash
 bash ops/telegram-voice/install_faster_whisper.sh
 bash ops/telegram-voice/configure_env.sh
-bash ops/telegram-bridge/restart_service.sh
+bash ops/telegram-bridge/restart_and_verify.sh
 ```
 
 Enable Home Assistant executor mode (optional):
@@ -70,7 +70,7 @@ Enable Home Assistant executor mode (optional):
 
 ## Operations
 
-- Restart bridge: `bash ops/telegram-bridge/restart_service.sh`
+- Restart bridge (verified): `bash ops/telegram-bridge/restart_and_verify.sh`
 - Check status: `bash ops/telegram-bridge/status_service.sh`
 - Check logs: `sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager`
 - Roll back systemd install: `bash ops/telegram-bridge/install_systemd.sh rollback`
