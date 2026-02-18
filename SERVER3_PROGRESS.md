@@ -1,5 +1,23 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Bridge Hardening: 10h Default + Async HA + Restart Verification Path)
+
+### Summary
+- Updated bridge runtime default executor timeout to 10 hours (`TELEGRAM_EXEC_TIMEOUT_SECONDS=36000`) in code and aligned runbook manual env example to the same value.
+- Switched in-bridge `/restart` execution path and failure guidance to the verified helper `ops/telegram-bridge/restart_and_verify.sh`.
+- Added async message-worker flow so HA planning/execution runs off the main Telegram polling loop; slow HA API calls no longer block polling for other chats.
+- Added startup resilience for state files: if `chat_threads.json` or `pending_actions.json` is malformed, the bridge now quarantines the corrupt file and continues with empty in-memory state.
+- Improved HA fuzzy entity matching to score only allowed candidates (`TELEGRAM_HA_ALLOWED_DOMAINS` / `TELEGRAM_HA_ALLOWED_ENTITIES`) before selecting the top match.
+- Updated bridge docs to explicitly document worker-thread HA processing behavior.
+- Verified compile and smoke/self-test pass after changes.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Final Live-Edit Scope Clarification for HA Quick-Ops)
 
 ### Summary

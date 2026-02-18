@@ -43,7 +43,7 @@ Equivalent manual content:
 sudo tee /etc/default/telegram-architect-bridge >/dev/null <<'EOF'
 TELEGRAM_BOT_TOKEN=123456:replace_me
 TELEGRAM_ALLOWED_CHAT_IDS=123456789
-TELEGRAM_EXEC_TIMEOUT_SECONDS=300
+TELEGRAM_EXEC_TIMEOUT_SECONDS=36000
 TELEGRAM_MAX_INPUT_CHARS=4096
 TELEGRAM_MAX_OUTPUT_CHARS=20000
 TELEGRAM_MAX_IMAGE_BYTES=10485760
@@ -152,6 +152,7 @@ For HA control, the bridge now uses an asset-aware interpreter:
 - Parses intent/slots from natural phrasing (target, action, mode, temp, optional follow-up).
 - Resolves target against live HA assets with alias + fuzzy matching.
 - Rejects low-confidence or ambiguous matches with a clarification prompt.
+- Runs HA planning/execution in worker threads so slow HA API calls do not block Telegram polling for other chats.
 After a plan is built, it sends a short summary and waits for explicit `APPROVE` before execution.
 Natural-language variants are supported for common phrases (for example `turn on masters AC to cool 24` and `please switch on mid kids room aircon to 23`).
 The parser also tolerates filler lead-ins and implied climate phrasing (for example `to your normal masters i see on cool mode 23`).

@@ -579,13 +579,18 @@ def _resolve_entity_id(
     hint_tokens = set(_tokenize_text(target_clean))
 
     for entity_id, labels in labels_by_id.items():
+        domain = entity_id.split(".", 1)[0]
+        if domain not in config.allowed_domains:
+            continue
+        if config.allowed_entities and entity_id not in config.allowed_entities:
+            continue
+
         best_score = 0.0
         for label in labels:
             score = _score_label_match(target_clean, label)
             if score > best_score:
                 best_score = score
 
-        domain = entity_id.split(".", 1)[0]
         if preferred_domain and domain == preferred_domain:
             best_score += 0.08
         if "aircon" in hint_tokens and domain == "climate":
@@ -594,7 +599,10 @@ def _resolve_entity_id(
         scores.append((best_score, entity_id))
 
     if not scores:
-        raise HAControlError(f"Could not find a Home Assistant entity matching '{target}'.")
+        raise HAControlError(
+            f"No allowed Home Assistant entity matched '{target}'. "
+            "Check TELEGRAM_HA_ALLOWED_DOMAINS/TELEGRAM_HA_ALLOWED_ENTITIES."
+        )
 
     scores.sort(key=lambda item: item[0], reverse=True)
     top_score, top_entity_id = scores[0]
@@ -866,6 +874,15 @@ def is_ha_network_error(exc: Exception) -> bool:
 
 def now_ts() -> float:
     return time.time()
+
+
+def looks_like_ha_control_text(text: str) -> bool:
+    cleaned = text.strip()
+    if not cleaned:
+        return False
+    if parse_approval_command(cleaned):
+        return True
+    return _parse_control_intent(cleaned) is not None
 
 
 def run_ha_parser_self_test() -> None:

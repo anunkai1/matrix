@@ -25,6 +25,7 @@ from ha_control import (
     execute_action,
     is_ha_network_error,
     load_ha_config,
+    looks_like_ha_control_text,
     now_ts,
     parse_approval_command,
     plan_action_from_text,
@@ -121,7 +122,7 @@ def build_default_executor() -> str:
 
 def build_restart_script_path() -> str:
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    return os.path.join(repo_root, "ops", "telegram-bridge", "restart_service.sh")
+    return os.path.join(repo_root, "ops", "telegram-bridge", "restart_and_verify.sh")
 
 
 def parse_executor_cmd() -> List[str]:
@@ -166,7 +167,7 @@ def load_config() -> Config:
         api_base=os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/"),
         poll_timeout_seconds=parse_int_env("TELEGRAM_POLL_TIMEOUT_SECONDS", 30),
         retry_sleep_seconds=float(os.getenv("TELEGRAM_RETRY_SLEEP_SECONDS", "3")),
-        exec_timeout_seconds=parse_int_env("TELEGRAM_EXEC_TIMEOUT_SECONDS", 300),
+        exec_timeout_seconds=parse_int_env("TELEGRAM_EXEC_TIMEOUT_SECONDS", 36000),
         max_input_chars=parse_int_env("TELEGRAM_MAX_INPUT_CHARS", TELEGRAM_LIMIT),
         max_output_chars=parse_int_env("TELEGRAM_MAX_OUTPUT_CHARS", 20000),
         max_image_bytes=parse_int_env("TELEGRAM_MAX_IMAGE_BYTES", 10 * 1024 * 1024, minimum=1024),
@@ -370,6 +371,16 @@ def clear_busy(state: State, chat_id: int) -> None:
 
 def ensure_state_dir(path: str) -> None:
     Path(path).mkdir(parents=True, exist_ok=True)
+
+
+def quarantine_corrupt_state_file(path: str) -> Optional[str]:
+    data_path = Path(path)
+    if not data_path.exists():
+        return None
+    timestamp = time.strftime("%Y%m%d%H%M%S", time.gmtime())
+    quarantined = data_path.with_name(f"{data_path.name}.corrupt.{timestamp}")
+    data_path.replace(quarantined)
+    return str(quarantined)
 
 
 def load_chat_threads(path: str) -> Dict[int, str]:
@@ -846,7 +857,7 @@ def run_restart_script(
         )
         client.send_message(
             chat_id,
-            "Restart failed. Please run `bash ops/telegram-bridge/restart_service.sh`.",
+            "Restart failed. Please run `bash ops/telegram-bridge/restart_and_verify.sh`.",
             reply_to_message_id=reply_to_message_id,
         )
         finish_restart_attempt(state)
@@ -869,6 +880,31 @@ def trigger_restart_async(
         daemon=True,
     )
     worker.start()
+
+
+def finalize_chat_work(
+    state: State,
+    client: TelegramClient,
+    chat_id: int,
+) -> None:
+    clear_busy(state, chat_id)
+    ready_restart = pop_ready_restart_request(state)
+    if not ready_restart:
+        return
+
+    restart_chat_id, restart_reply_to = ready_restart
+    try:
+        client.send_message(
+            restart_chat_id,
+            "Current request completed. Restarting bridge now.",
+            reply_to_message_id=restart_reply_to,
+        )
+    except Exception:
+        logging.exception(
+            "Failed to send queued restart acknowledgement for chat_id=%s",
+            restart_chat_id,
+        )
+    trigger_restart_async(state, client, restart_chat_id, restart_reply_to)
 
 
 def process_prompt(
@@ -1089,22 +1125,64 @@ def process_prompt(
                 os.remove(voice_path)
             except OSError:
                 logging.warning("Failed to remove temp voice file: %s", voice_path)
-        clear_busy(state, chat_id)
-        ready_restart = pop_ready_restart_request(state)
-        if ready_restart:
-            restart_chat_id, restart_reply_to = ready_restart
-            try:
-                client.send_message(
-                    restart_chat_id,
-                    "Current request completed. Restarting bridge now.",
-                    reply_to_message_id=restart_reply_to,
-                )
-            except Exception:
-                logging.exception(
-                    "Failed to send queued restart acknowledgement for chat_id=%s",
-                    restart_chat_id,
-                )
-            trigger_restart_async(state, client, restart_chat_id, restart_reply_to)
+        finalize_chat_work(state, client, chat_id)
+
+
+def process_message_worker(
+    state: State,
+    config: Config,
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+    prompt: str,
+    photo_file_id: Optional[str],
+    voice_file_id: Optional[str],
+) -> None:
+    delegated_to_prompt = False
+    try:
+        if (
+            prompt
+            and photo_file_id is None
+            and voice_file_id is None
+            and looks_like_ha_control_text(prompt)
+            and handle_ha_control_text(state, config, client, chat_id, message_id, prompt)
+        ):
+            return
+
+        try:
+            client.send_message(
+                chat_id,
+                config.thinking_message,
+                reply_to_message_id=message_id,
+            )
+        except Exception:
+            logging.exception("Failed to send thinking ack for chat_id=%s", chat_id)
+            return
+
+        delegated_to_prompt = True
+        process_prompt(
+            state,
+            config,
+            client,
+            chat_id,
+            message_id,
+            prompt,
+            photo_file_id,
+            voice_file_id,
+        )
+    except Exception:
+        logging.exception("Unexpected message worker error for chat_id=%s", chat_id)
+        try:
+            client.send_message(
+                chat_id,
+                config.generic_error_message,
+                reply_to_message_id=message_id,
+            )
+        except Exception:
+            logging.exception("Failed to send worker error response for chat_id=%s", chat_id)
+    finally:
+        if not delegated_to_prompt:
+            finalize_chat_work(state, client, chat_id)
 
 
 def handle_reset_command(
@@ -1359,14 +1437,6 @@ def handle_update(
         )
         return
 
-    if (
-        prompt
-        and photo_file_id is None
-        and voice_file_id is None
-        and handle_ha_control_text(state, config, client, chat_id, message_id, prompt)
-    ):
-        return
-
     if not mark_busy(state, chat_id):
         client.send_message(
             chat_id,
@@ -1375,20 +1445,18 @@ def handle_update(
         )
         return
 
-    try:
-        client.send_message(
-            chat_id,
-            config.thinking_message,
-            reply_to_message_id=message_id,
-        )
-    except Exception:
-        logging.exception("Failed to send thinking ack for chat_id=%s", chat_id)
-        clear_busy(state, chat_id)
-        return
-
     worker = threading.Thread(
-        target=process_prompt,
-        args=(state, config, client, chat_id, message_id, prompt, photo_file_id, voice_file_id),
+        target=process_message_worker,
+        args=(
+            state,
+            config,
+            client,
+            chat_id,
+            message_id,
+            prompt,
+            photo_file_id,
+            voice_file_id,
+        ),
         daemon=True,
     )
     worker.start()
@@ -1462,8 +1530,30 @@ def run_bridge(config: Config) -> int:
     ensure_state_dir(config.state_dir)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
     pending_action_path = os.path.join(config.state_dir, "pending_actions.json")
-    loaded_threads = load_chat_threads(chat_thread_path)
-    loaded_pending = load_pending_actions(pending_action_path)
+    try:
+        loaded_threads = load_chat_threads(chat_thread_path)
+    except Exception:
+        logging.exception(
+            "Failed to load chat thread mappings from %s; starting with empty mappings.",
+            chat_thread_path,
+        )
+        moved = quarantine_corrupt_state_file(chat_thread_path)
+        if moved:
+            logging.error("Quarantined corrupt chat thread state file to %s", moved)
+        loaded_threads = {}
+
+    try:
+        loaded_pending = load_pending_actions(pending_action_path)
+    except Exception:
+        logging.exception(
+            "Failed to load pending HA actions from %s; starting with empty pending actions.",
+            pending_action_path,
+        )
+        moved = quarantine_corrupt_state_file(pending_action_path)
+        if moved:
+            logging.error("Quarantined corrupt pending action state file to %s", moved)
+        loaded_pending = {}
+
     state = State(
         chat_threads=loaded_threads,
         chat_thread_path=chat_thread_path,
