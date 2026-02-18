@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Live Env: Telegram Max Document Size Raised to 500MB)
+
+### Summary
+- Updated live bridge env `/etc/default/telegram-architect-bridge` to set `TELEGRAM_MAX_DOCUMENT_BYTES=524288000` (500MB).
+- Confirmed bridge restart occurred with `ExecMainStartTimestamp=Wed 2026-02-18 22:00:02 UTC` and service remained healthy (`active/running`).
+- Mirrored live non-secret env key to `infra/env/telegram-architect-bridge.server3.redacted.env`.
+- Added execution/change record at `logs/changes/20260218-220706-telegram-max-document-bytes-500mb.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set includes live `/etc` state traceability (mirror + log) and repo updates in the same session.
+
 ## 2026-02-18 (Telegram Generic File Analysis Support Added)
 
 ### Summary
