@@ -1,5 +1,19 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Telegram Bridge Restart via Verified Helper on Request)
+
+### Summary
+- Executed live bridge restart using the new verified helper `ops/telegram-bridge/restart_and_verify.sh`.
+- Confirmed restart occurred at `2026-02-18 06:08:20 UTC` via `systemctl` start timestamp and journal startup entries.
+- Added repo-tracked execution record `logs/changes/20260218-060820-telegram-bridge-restart-and-verify-on-request.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set is an operational restart only; no live env/config values were modified.
+
 ## 2026-02-18 (Verified Restart Helper Added)
 
 ### Summary
