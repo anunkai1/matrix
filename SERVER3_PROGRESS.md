@@ -1,5 +1,18 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Final Live-Edit Scope Clarification for HA Quick-Ops)
+
+### Summary
+- Updated one remaining ambiguous line in `ARCHITECT_INSTRUCTION.md` from `NO live edits outside the repo ...` to `NO non-exempt live edits outside the repo ...`.
+- This makes the live-edit restriction explicitly consistent with the HA quick-ops exemption model.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates policy/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Traceability Heading Clarified for HA Quick-Ops Exemption)
 
 ### Summary

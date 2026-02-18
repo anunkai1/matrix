@@ -18,7 +18,7 @@ Codex runs ON Server3 (you SSH from Windows / PuTTY and run: codex "..." on the 
 - Goal: Open-source on GitHub (public). Everyone can read; only you can merge/ship.
   
 
-NO “live edits” outside the repo (e.g. /etc, /var/www) unless:
+NO non-exempt “live edits” outside the repo (e.g. /etc, /var/www) unless:
 
 - You explicitly say: “Yes, do a live edit now”
   
