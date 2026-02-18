@@ -66,7 +66,7 @@ class Config:
         "Voice transcription was empty. Please send clearer audio."
     )
     empty_output_message: str = "(No output from Architect)"
-    thinking_message: str = "💭🤔💭.....thinking.....💭🤔💭\nType /h for commands."
+    thinking_message: str = "💭🤔💭.....thinking.....💭🤔💭 (/h)"
 
 
 @dataclass

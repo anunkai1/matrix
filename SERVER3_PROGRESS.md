@@ -1,5 +1,19 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Thinking Prompt Single-Line Format)
+
+### Summary
+- Updated Telegram bridge default thinking placeholder to a single-line prompt with inline help hint.
+- Changed `thinking_message` from two lines to: `💭🤔💭.....thinking.....💭🤔💭 (/h)`.
+- Updated bridge runbook documentation to match the new prompt format.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` edits were applied.
+
 ## 2026-02-18 (Live HA Approval TTL Reduced to 7 Minutes)
 
 ### Summary

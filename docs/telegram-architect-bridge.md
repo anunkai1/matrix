@@ -160,8 +160,7 @@ Voice messages are also supported:
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
 
 Before executor completion, the bridge sends an immediate placeholder reply:
-`💭🤔💭.....thinking.....💭🤔💭`
-`Type /h for commands.`
+`💭🤔💭.....thinking.....💭🤔💭 (/h)`
 
 ## Context Persistence
 
