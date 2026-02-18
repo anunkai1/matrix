@@ -1,5 +1,23 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Live HA Env Config Applied, Restart Deferred)
+
+### Summary
+- Applied live Home Assistant integration environment values in `/etc/default/telegram-architect-bridge` for Telegram confirm-first control.
+- Configured HA base URL, token (live only), 1-hour approval TTL, temperature limits, broad allowed domains, solar sensor, and 2000W excess threshold.
+- Intentionally left `TELEGRAM_HA_ALLOWED_ENTITIES` blank per owner request (domain-wide allow).
+- Created repo-tracked redacted mirror of live HA env keys at `infra/env/telegram-architect-bridge.server3.redacted.env`.
+- Added live-change execution record `logs/changes/20260218-001104-telegram-ha-live-env-config-no-restart.md`.
+- Per owner request, did **not** restart `telegram-architect-bridge.service` in this change set.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Integration values are in place but inactive until service restart.
+- Next operator step is explicit restart + runtime validation from Telegram.
+
 ## 2026-02-17 (Telegram Input Limit Default Raised to 4096)
 
 ### Summary
