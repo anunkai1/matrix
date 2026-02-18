@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Policy Update: HA Quick-Ops Exemption Added)
+
+### Summary
+- Updated `ARCHITECT_INSTRUCTION.md` with a new `HA QUICK-OPS EXCEPTION` policy.
+- Defined that routine HA entity state operations (for example turn on/off, climate mode/temperature set) are exempt from per-action repo logging/commit/push requirements.
+- Added strict boundary that all persistent changes (repo code/docs/policy, `/etc`, HA packages/automations, infra/ops/docs/logs updates) still require full traceability and same-session commit/push.
+- Added a concise README change-control note pointing to `ARCHITECT_INSTRUCTION.md` for the exemption boundary.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates policy/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Live HA Action Executed: Master AC 23C)
 
 ### Summary

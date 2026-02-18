@@ -83,6 +83,7 @@ HA interpretation is asset-aware (not exact regex commands): it maps natural phr
 - Every change set must be GitHub-traceable through commit + push.
 - For live edits outside repo paths, mirror intended/final state under `infra/`, use `ops/` for apply/rollback, document in `docs/`, and record applied changes under `logs/` in the same session.
 - No task is complete without updating `SERVER3_PROGRESS.md` and pushing.
+- Exception: routine HA quick-ops (device state control only, no persistent config/code changes) may use journal-only runtime logging without per-action repo commit/push; see `ARCHITECT_INSTRUCTION.md` for exact boundary.
 
 ## Progress Tracking
 

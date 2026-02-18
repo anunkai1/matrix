@@ -49,6 +49,27 @@ TRACEABILITY RULE (MANDATORY, ALL SERVER CHANGES)
   5. Record what was applied and where (path + timestamp) in `logs/` (repo-tracked execution records)
     
 - No “server-only” state is allowed to remain undocumented or unpushed after the session ends.
+
+HA QUICK-OPS EXCEPTION (ROUTINE DEVICE CONTROL ONLY)
+
+- Routine Home Assistant entity operations are EXEMPT from per-action repo trace logging and commit/push requirements.
+- This exemption applies only to direct device state operations through HA APIs/services, for example:
+  - `turn_on` / `turn_off`
+  - climate mode/temperature set
+  - other non-persistent state changes on existing entities
+- For these routine HA operations:
+  - keep short runtime logs in system journal only (no required `logs/changes` file per action)
+  - no mandatory `SERVER3_PROGRESS.md` update per action
+  - no mandatory commit/push per action
+
+EXEMPTION BOUNDARY (MANDATORY)
+
+- The HA quick-ops exemption does NOT apply when any persistent system/project state changes, including:
+  - repo code/docs/policy/script changes
+  - `/etc` or systemd/env/runtime configuration edits
+  - Home Assistant package/automation/script/template changes
+  - any infra/ops/docs/logs artifact updates in this repo
+- If any non-routine or persistent change occurs, full traceability rules above remain mandatory (document + commit + push in same session).
   
 SESSION START RULE (MANDATORY)
 
