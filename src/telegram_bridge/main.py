@@ -17,20 +17,6 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-from ha_control import (
-    HAConfig,
-    HAControlError,
-    HomeAssistantClient,
-    build_pending_message,
-    execute_action,
-    is_ha_network_error,
-    load_ha_config,
-    now_ts,
-    parse_approval_command,
-    plan_action_from_text,
-    run_ha_parser_self_test,
-)
-
 TELEGRAM_LIMIT = 4096
 OUTPUT_BEGIN_MARKER = "OUTPUT_BEGIN"
 
@@ -52,7 +38,6 @@ class Config:
     voice_transcribe_cmd: List[str]
     voice_transcribe_timeout_seconds: int
     state_dir: str
-    ha_config: Optional[HAConfig]
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -77,8 +62,6 @@ class State:
     recent_requests: Dict[int, List[float]] = field(default_factory=dict)
     chat_threads: Dict[int, str] = field(default_factory=dict)
     chat_thread_path: str = ""
-    pending_actions: Dict[int, Dict[str, object]] = field(default_factory=dict)
-    pending_action_path: str = ""
     in_flight_requests: Dict[int, Dict[str, object]] = field(default_factory=dict)
     in_flight_path: str = ""
     restart_requested: bool = False
@@ -160,7 +143,6 @@ def load_config() -> Config:
     ).strip()
     if not state_dir:
         raise ValueError("TELEGRAM_BRIDGE_STATE_DIR cannot be empty")
-    ha_config = load_ha_config(state_dir)
 
     return Config(
         token=token,
@@ -181,7 +163,6 @@ def load_config() -> Config:
             120,
         ),
         state_dir=state_dir,
-        ha_config=ha_config,
     )
 
 
@@ -437,107 +418,6 @@ def clear_thread_id(state: State, chat_id: int) -> bool:
     if removed:
         persist_chat_threads(state)
     return removed
-
-
-def load_pending_actions(path: str) -> Dict[int, Dict[str, object]]:
-    data_path = Path(path)
-    if not data_path.exists():
-        return {}
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"Failed to parse pending action state {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid pending action state {path}: root is not object")
-
-    out: Dict[int, Dict[str, object]] = {}
-    now = now_ts()
-    for key, value in raw.items():
-        if not isinstance(value, dict):
-            continue
-        try:
-            chat_id = int(key)
-        except ValueError:
-            continue
-        summary = value.get("summary")
-        action = value.get("action")
-        expires_at = value.get("expires_at")
-        if not isinstance(summary, str) or not summary:
-            continue
-        if not isinstance(action, dict):
-            continue
-        if not isinstance(expires_at, (int, float)) or float(expires_at) <= now:
-            continue
-        payload = {
-            "summary": summary,
-            "action": action,
-            "created_at": float(value.get("created_at", now)),
-            "expires_at": float(expires_at),
-        }
-        code = value.get("code")
-        if isinstance(code, str) and code.strip():
-            payload["code"] = code.strip().upper()
-        out[chat_id] = payload
-    return out
-
-
-def persist_pending_actions(state: State) -> None:
-    if not state.pending_action_path:
-        return
-    path = Path(state.pending_action_path)
-    tmp_path = path.with_suffix(".tmp")
-    with state.lock:
-        serialized = {
-            str(chat_id): payload
-            for chat_id, payload in state.pending_actions.items()
-        }
-    tmp_path.write_text(
-        json.dumps(serialized, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    tmp_path.replace(path)
-
-
-def get_pending_action(state: State, chat_id: int) -> Optional[Dict[str, object]]:
-    with state.lock:
-        payload = state.pending_actions.get(chat_id)
-        if not payload:
-            return None
-        return dict(payload)
-
-
-def set_pending_action(state: State, chat_id: int, payload: Dict[str, object]) -> None:
-    with state.lock:
-        state.pending_actions[chat_id] = dict(payload)
-    persist_pending_actions(state)
-
-
-def clear_pending_action(state: State, chat_id: int) -> bool:
-    removed = False
-    with state.lock:
-        if chat_id in state.pending_actions:
-            del state.pending_actions[chat_id]
-            removed = True
-    if removed:
-        persist_pending_actions(state)
-    return removed
-
-
-def prune_expired_pending_actions(state: State) -> None:
-    now = now_ts()
-    changed = False
-    with state.lock:
-        expired = [
-            chat_id
-            for chat_id, payload in state.pending_actions.items()
-            if not isinstance(payload.get("expires_at"), (int, float))
-            or float(payload.get("expires_at")) <= now
-        ]
-        for chat_id in expired:
-            del state.pending_actions[chat_id]
-            changed = True
-    if changed:
-        persist_pending_actions(state)
 
 
 def load_in_flight_requests(path: str) -> Dict[int, Dict[str, object]]:
@@ -833,14 +713,12 @@ def build_status_text(state: State) -> str:
     uptime = int(time.time() - state.started_at)
     with state.lock:
         busy_count = len(state.busy_chats)
-        pending_count = len(state.pending_actions)
         restart_queued = state.restart_requested
         restart_running = state.restart_in_progress
     return (
         "Bridge status: healthy\n"
         f"Uptime: {uptime}s\n"
         f"Busy chats: {busy_count}\n"
-        f"Pending HA approvals: {pending_count}\n"
         f"Restart queued: {'yes' if restart_queued else 'no'}\n"
         f"Restart in progress: {'yes' if restart_running else 'no'}"
     )
@@ -1317,128 +1195,6 @@ def handle_restart_command(
     trigger_restart_async(state, client, chat_id, message_id)
 
 
-def handle_ha_control_text(
-    state: State,
-    config: Config,
-    client: TelegramClient,
-    chat_id: int,
-    message_id: Optional[int],
-    text: str,
-) -> bool:
-    if not config.ha_config:
-        return False
-
-    cleaned = text.strip()
-    if not cleaned:
-        return False
-
-    prune_expired_pending_actions(state)
-
-    approval_cmd = parse_approval_command(cleaned)
-    if approval_cmd:
-        action, _ = approval_cmd
-        pending = get_pending_action(state, chat_id)
-        if not pending:
-            client.send_message(
-                chat_id,
-                "No pending HA action for this chat.",
-                reply_to_message_id=message_id,
-            )
-            return True
-
-        expires_at = pending.get("expires_at")
-        if not isinstance(expires_at, (int, float)) or float(expires_at) <= now_ts():
-            clear_pending_action(state, chat_id)
-            client.send_message(
-                chat_id,
-                "That pending HA action expired. Send the command again.",
-                reply_to_message_id=message_id,
-            )
-            return True
-
-        if action == "cancel":
-            clear_pending_action(state, chat_id)
-            client.send_message(
-                chat_id,
-                "Cancelled pending HA action.",
-                reply_to_message_id=message_id,
-            )
-            return True
-
-        action_payload = pending.get("action")
-        if not isinstance(action_payload, dict):
-            clear_pending_action(state, chat_id)
-            client.send_message(
-                chat_id,
-                "Pending HA action payload was invalid and has been cleared.",
-                reply_to_message_id=message_id,
-            )
-            return True
-
-        ha_client = HomeAssistantClient(config.ha_config, timeout_seconds=config.poll_timeout_seconds + 10)
-        try:
-            result = execute_action(action_payload, ha_client, config.ha_config)
-        except HAControlError as exc:
-            clear_pending_action(state, chat_id)
-            client.send_message(
-                chat_id,
-                f"HA action failed: {exc}",
-                reply_to_message_id=message_id,
-            )
-            return True
-        except Exception as exc:
-            logging.exception("Unexpected HA execution error for chat_id=%s", chat_id)
-            clear_pending_action(state, chat_id)
-            if is_ha_network_error(exc):
-                msg = "HA action failed due to network/API error. Please retry."
-            else:
-                msg = "HA action failed due to unexpected error. Please retry."
-            client.send_message(chat_id, msg, reply_to_message_id=message_id)
-            return True
-
-        clear_pending_action(state, chat_id)
-        client.send_message(chat_id, result, reply_to_message_id=message_id)
-        return True
-
-    ha_client = HomeAssistantClient(config.ha_config, timeout_seconds=config.poll_timeout_seconds + 10)
-    try:
-        planned = plan_action_from_text(cleaned, ha_client, config.ha_config)
-    except HAControlError as exc:
-        client.send_message(chat_id, f"HA request rejected: {exc}", reply_to_message_id=message_id)
-        return True
-    except Exception as exc:
-        logging.exception("Unexpected HA planning error for chat_id=%s", chat_id)
-        if is_ha_network_error(exc):
-            msg = "Unable to reach Home Assistant right now. Please retry."
-        else:
-            msg = "Failed to parse/plan Home Assistant action. Please retry."
-        client.send_message(chat_id, msg, reply_to_message_id=message_id)
-        return True
-
-    if planned is None:
-        return False
-
-    now = now_ts()
-    payload = {
-        "summary": str(planned.get("summary", "HA action")),
-        "action": planned,
-        "created_at": now,
-        "expires_at": now + config.ha_config.approval_ttl_seconds,
-    }
-    previous = get_pending_action(state, chat_id)
-    set_pending_action(state, chat_id, payload)
-
-    prefix = ""
-    if previous:
-        prefix = "Replaced previous pending HA action.\n\n"
-    client.send_message(
-        chat_id,
-        prefix + build_pending_message(payload["summary"], config.ha_config.approval_ttl_seconds),
-        reply_to_message_id=message_id,
-    )
-    return True
-
-
 def handle_update(
     state: State,
     config: Config,
@@ -1482,7 +1238,6 @@ def handle_update(
         client.send_message(chat_id, build_help_text(), reply_to_message_id=message_id)
         return
     if command == "/status":
-        prune_expired_pending_actions(state)
         client.send_message(chat_id, build_status_text(state), reply_to_message_id=message_id)
         return
     if command == "/restart":
@@ -1543,13 +1298,6 @@ def run_self_test() -> int:
     chunks = to_telegram_chunks(sample)
     if len(chunks) < 2:
         raise RuntimeError("Chunking self-test failed")
-    parsed = parse_approval_command("APPROVE")
-    if parsed != ("approve", None):
-        raise RuntimeError("Approval parser self-test failed")
-    parsed = parse_approval_command("CANCEL please")
-    if parsed != ("cancel", None):
-        raise RuntimeError("Approval parser self-test failed")
-    run_ha_parser_self_test()
 
     restart_state = State()
     status, _ = request_safe_restart(restart_state, chat_id=1, reply_to_message_id=None)
@@ -1605,7 +1353,6 @@ def drop_pending_updates(client: TelegramClient) -> int:
 def run_bridge(config: Config) -> int:
     ensure_state_dir(config.state_dir)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
-    pending_action_path = os.path.join(config.state_dir, "pending_actions.json")
     in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
     try:
         loaded_threads = load_chat_threads(chat_thread_path)
@@ -1618,18 +1365,6 @@ def run_bridge(config: Config) -> int:
         if moved:
             logging.error("Quarantined corrupt chat thread state file to %s", moved)
         loaded_threads = {}
-
-    try:
-        loaded_pending = load_pending_actions(pending_action_path)
-    except Exception:
-        logging.exception(
-            "Failed to load pending HA actions from %s; starting with empty pending actions.",
-            pending_action_path,
-        )
-        moved = quarantine_corrupt_state_file(pending_action_path)
-        if moved:
-            logging.error("Quarantined corrupt pending action state file to %s", moved)
-        loaded_pending = {}
 
     try:
         loaded_in_flight = load_in_flight_requests(in_flight_path)
@@ -1646,8 +1381,6 @@ def run_bridge(config: Config) -> int:
     state = State(
         chat_threads=loaded_threads,
         chat_thread_path=chat_thread_path,
-        pending_actions=loaded_pending,
-        pending_action_path=pending_action_path,
         in_flight_requests=loaded_in_flight,
         in_flight_path=in_flight_path,
     )
@@ -1683,12 +1416,7 @@ def run_bridge(config: Config) -> int:
     logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
     logging.info("Executor command=%s", config.executor_cmd)
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
-    logging.info("Loaded %s pending HA action(s) from %s", len(loaded_pending), pending_action_path)
     logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
-    if config.ha_config:
-        logging.info("Home Assistant control integration is enabled.")
-    else:
-        logging.info("Home Assistant control integration is disabled.")
 
     while True:
         try:

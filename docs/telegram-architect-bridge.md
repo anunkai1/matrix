@@ -174,7 +174,6 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Chat context is stored per Telegram chat as `chat_id -> thread_id`.
 - Default state file path: `/home/architect/.local/state/telegram-architect-bridge/chat_threads.json`
 - Override with env var: `TELEGRAM_BRIDGE_STATE_DIR`.
-- Pending HA approvals are persisted at `/home/architect/.local/state/telegram-architect-bridge/pending_actions.json`.
 - In-flight request markers are persisted at `/home/architect/.local/state/telegram-architect-bridge/in_flight_requests.json`.
 - If the bridge restarts while a request is in progress, the chat receives a one-time startup notice to resend the interrupted request.
 - On resume failures, the bridge now preserves saved thread context by default.

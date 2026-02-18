@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Bridge Dead HA Parser Runtime Paths Removed)
+
+### Summary
+- Removed unused in-bridge HA parser runtime paths from `src/telegram_bridge/main.py` after Codex-only routing rollout.
+- Deleted dead `handle_ha_control_text(...)` handler and removed pending-approval state model/loading code (`pending_actions.json`) from bridge runtime state.
+- Simplified status output by removing non-functional `Pending HA approvals` metric.
+- Removed parser-specific self-test checks from bridge self-test path so `--self-test` now validates active runtime behavior only.
+- Updated runbook context-persistence section to drop stale pending-approval state file reference.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Bridge Runtime Routed Fully Through Codex Executor)
 
 ### Summary
