@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Telegram HA E2E Validation Success)
+
+### Summary
+- Verified end-to-end Telegram confirm-first Home Assistant control path is working on live runtime.
+- Confirmed bridge service is active after HA env activation and startup logs show HA integration enabled.
+- Owner-confirmed successful execution flow: `turn off climate.living_rm_aircon` with approval reply `APPROVE <code>`.
+- Added repo-tracked validation record: `logs/changes/20260218-004111-telegram-ha-e2e-validation-success.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Known behavior: climate commands without explicit HVAC mode may only set temperature; explicit mode phrasing (for example `on cool mode`) remains recommended until fallback-mode enhancement is added.
+
 ## 2026-02-18 (Live HA Env Config Applied, Restart Deferred)
 
 ### Summary
