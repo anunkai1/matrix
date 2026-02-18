@@ -28,9 +28,9 @@ NO “live edits” outside the repo (e.g. /etc, /var/www) unless:
 
 - The mirroring commit is pushed to GitHub in the same session (MANDATORY)
 
-TRACEABILITY RULE (MANDATORY, ALL SERVER CHANGES)
+TRACEABILITY RULE (MANDATORY, ALL NON-EXEMPT SERVER CHANGES)
 
-- This applies to ALL server changes, including:
+- This applies to all server changes except routine HA quick-ops covered below, including:
   
   - inside `/home/architect/matrix`
     

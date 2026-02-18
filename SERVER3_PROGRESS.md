@@ -1,5 +1,18 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Traceability Heading Clarified for HA Quick-Ops Exemption)
+
+### Summary
+- Updated `ARCHITECT_INSTRUCTION.md` traceability section heading/scope wording to explicitly state it applies to non-exempt server changes.
+- Added explicit wording that routine HA quick-ops are excluded from that traceability block and governed by the exemption section.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates policy/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Final Policy Wording Alignment for HA Quick-Ops)
 
 ### Summary
