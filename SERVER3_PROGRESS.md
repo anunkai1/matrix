@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Live HA Approval TTL Reduced to 7 Minutes)
+
+### Summary
+- Applied live edit in `/etc/default/telegram-architect-bridge` to reduce HA approval expiry from 1 hour to 7 minutes.
+- Updated `TELEGRAM_HA_APPROVAL_TTL_SECONDS` from `3600` to `420`.
+- Verified the running `telegram-architect-bridge.service` process environment is using `TELEGRAM_HA_APPROVAL_TTL_SECONDS=420`.
+- Updated repo-tracked redacted mirror and added execution log `logs/changes/20260218-044404-telegram-ha-approval-ttl-7m.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This was a live `/etc` change and has been mirrored/documented in-repo in the same session.
+
 ## 2026-02-18 (Telegram /h Help Alias + Thinking Hint)
 
 ### Summary
