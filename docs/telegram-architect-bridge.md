@@ -165,6 +165,7 @@ Voice messages are also supported:
 - If command args contain `{file}`, it is replaced with the downloaded voice file path.
 - If `{file}` is not present, the voice file path is appended as the final command argument.
 - The transcription command must write plain transcript text to stdout.
+- After successful transcription, the bridge echoes `Voice transcript:` back to chat.
 - If the voice message has a caption, the bridge prefixes that caption and appends `Voice transcript:` plus transcript text.
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
 

@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Voice Transcript Echo in Telegram Chat)
+
+### Summary
+- Updated Telegram bridge voice flow to echo the recognized transcript back to chat after successful transcription.
+- Transcript echo is non-blocking: if the echo send fails, normal prompt execution still continues.
+- Kept existing processing unchanged: same transcript text is still used as the Architect prompt input (with caption-prefix behavior unchanged).
+- Updated bridge/README docs to reflect transcript echo behavior.
+- Verified compile and bridge self-test pass.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Telegram Group Allowlist Added + Runtime Verified)
 
 ### Summary

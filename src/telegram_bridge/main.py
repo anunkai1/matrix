@@ -995,6 +995,15 @@ def process_prompt(
                 )
                 return
 
+            try:
+                client.send_message(
+                    chat_id,
+                    f"Voice transcript:\n{transcript}",
+                    reply_to_message_id=message_id,
+                )
+            except Exception:
+                logging.exception("Failed to send voice transcript echo for chat_id=%s", chat_id)
+
             if prompt_text:
                 prompt_text = f"{prompt_text}\n\nVoice transcript:\n{transcript}"
             else:
