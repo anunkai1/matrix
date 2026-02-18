@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Telegram HA Natural Language + Code-Free Approval)
+
+### Summary
+- Relaxed Telegram HA command parsing to accept more natural phrasing while preserving existing strict command compatibility.
+- Added support for common conversational variants (for example polite prefixes, `switch on/off`, `set ... to <temp>`, optional `degrees` unit, and `in/on <mode> mode`).
+- Removed code-based HA confirmation requirement; pending actions are now confirmed with plain `APPROVE` and cancelled with plain `CANCEL`.
+- Updated bridge help text and docs to reflect code-free approval and natural-language intent support.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Pending HA actions remain per-chat and still expire based on `TELEGRAM_HA_APPROVAL_TTL_SECONDS`.
+- This change set updates repo code/docs only; no live `/etc` changes were applied.
+
 ## 2026-02-18 (Telegram HA E2E Validation Success)
 
 ### Summary

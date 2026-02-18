@@ -5,7 +5,6 @@ import argparse
 import json
 import logging
 import os
-import secrets
 import shlex
 import subprocess
 import tempfile
@@ -438,25 +437,25 @@ def load_pending_actions(path: str) -> Dict[int, Dict[str, object]]:
             chat_id = int(key)
         except ValueError:
             continue
-        code = value.get("code")
         summary = value.get("summary")
         action = value.get("action")
         expires_at = value.get("expires_at")
-        if not isinstance(code, str) or not code:
-            continue
         if not isinstance(summary, str) or not summary:
             continue
         if not isinstance(action, dict):
             continue
         if not isinstance(expires_at, (int, float)) or float(expires_at) <= now:
             continue
-        out[chat_id] = {
-            "code": code.upper(),
+        payload = {
             "summary": summary,
             "action": action,
             "created_at": float(value.get("created_at", now)),
             "expires_at": float(expires_at),
         }
+        code = value.get("code")
+        if isinstance(code, str) and code.strip():
+            payload["code"] = code.strip().upper()
+        out[chat_id] = payload
     return out
 
 
@@ -517,11 +516,6 @@ def prune_expired_pending_actions(state: State) -> None:
             changed = True
     if changed:
         persist_pending_actions(state)
-
-
-def generate_approval_code(length: int = 6) -> str:
-    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
@@ -732,8 +726,8 @@ def build_help_text() -> str:
         "/status - show bridge health\n"
         "/reset - clear chat context\n\n"
         "Home Assistant confirmations:\n"
-        "APPROVE <code> - execute pending HA action\n"
-        "CANCEL <code> - cancel pending HA action\n\n"
+        "APPROVE - execute pending HA action\n"
+        "CANCEL - cancel pending HA action\n\n"
         "Any other text, photo, or voice message is sent to Architect."
     )
 
@@ -1011,7 +1005,7 @@ def handle_ha_control_text(
 
     approval_cmd = parse_approval_command(cleaned)
     if approval_cmd:
-        action, code = approval_cmd
+        action, _ = approval_cmd
         pending = get_pending_action(state, chat_id)
         if not pending:
             client.send_message(
@@ -1021,28 +1015,12 @@ def handle_ha_control_text(
             )
             return True
 
-        pending_code = str(pending.get("code", "")).upper()
-        if not code:
-            client.send_message(
-                chat_id,
-                f"Please include the approval code. Example: APPROVE {pending_code}",
-                reply_to_message_id=message_id,
-            )
-            return True
-        if code.upper() != pending_code:
-            client.send_message(
-                chat_id,
-                "Approval code mismatch. Please use the latest code shown in summary.",
-                reply_to_message_id=message_id,
-            )
-            return True
-
         expires_at = pending.get("expires_at")
         if not isinstance(expires_at, (int, float)) or float(expires_at) <= now_ts():
             clear_pending_action(state, chat_id)
             client.send_message(
                 chat_id,
-                "That pending HA action expired. Send the command again to generate a new approval code.",
+                "That pending HA action expired. Send the command again.",
                 reply_to_message_id=message_id,
             )
             return True
@@ -1051,7 +1029,7 @@ def handle_ha_control_text(
             clear_pending_action(state, chat_id)
             client.send_message(
                 chat_id,
-                f"Cancelled pending HA action ({pending_code}).",
+                "Cancelled pending HA action.",
                 reply_to_message_id=message_id,
             )
             return True
@@ -1109,10 +1087,8 @@ def handle_ha_control_text(
     if planned is None:
         return False
 
-    code = generate_approval_code()
     now = now_ts()
     payload = {
-        "code": code,
         "summary": str(planned.get("summary", "HA action")),
         "action": planned,
         "created_at": now,
@@ -1126,7 +1102,7 @@ def handle_ha_control_text(
         prefix = "Replaced previous pending HA action.\n\n"
     client.send_message(
         chat_id,
-        prefix + build_pending_message(payload["summary"], code, config.ha_config.approval_ttl_seconds),
+        prefix + build_pending_message(payload["summary"], config.ha_config.approval_ttl_seconds),
         reply_to_message_id=message_id,
     )
     return True
@@ -1242,11 +1218,12 @@ def run_self_test() -> int:
     chunks = to_telegram_chunks(sample)
     if len(chunks) < 2:
         raise RuntimeError("Chunking self-test failed")
-    parsed = parse_approval_command("APPROVE A1B2C3")
-    if parsed != ("approve", "A1B2C3"):
+    parsed = parse_approval_command("APPROVE")
+    if parsed != ("approve", None):
         raise RuntimeError("Approval parser self-test failed")
-    if len(generate_approval_code()) != 6:
-        raise RuntimeError("Approval code self-test failed")
+    parsed = parse_approval_command("CANCEL please")
+    if parsed != ("cancel", None):
+        raise RuntimeError("Approval parser self-test failed")
     print("self-test: ok")
     return 0
 

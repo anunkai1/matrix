@@ -211,18 +211,62 @@ def load_alias_map(path: str) -> Dict[str, str]:
 
 
 def parse_approval_command(text: str) -> Optional[Tuple[str, Optional[str]]]:
-    match = re.match(r"^\s*(approve|cancel)\b(?:\s+([a-z0-9]+))?\s*$", text, flags=re.IGNORECASE)
+    match = re.match(r"^\s*(approve|cancel)\b(?:\s+.*)?$", text, flags=re.IGNORECASE)
     if not match:
         return None
     action = match.group(1).lower()
-    code = match.group(2).upper() if match.group(2) else None
-    return action, code
+    return action, None
 
 
 def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
     cleaned = " ".join(text.strip().split()).rstrip(".!?")
     if not cleaned:
         return None
+
+    # Normalize common conversational phrasing.
+    cleaned = re.sub(r"^(?:please|pls|kindly)\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(?:can|could|would)\s+you\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bswitch\s+on\b", "turn on", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bswitch\s+off\b", "turn off", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bpower\s+on\b", "turn on", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bpower\s+off\b", "turn off", cleaned, flags=re.IGNORECASE)
+    cleaned = " ".join(cleaned.split())
+
+    # set X to 24 [degrees] [and in 3 hours change to 26]
+    set_to_temp = re.match(
+        r"^set (?:the )?(?P<target>.+?) to (?P<temp_now>\d+(?:\.\d+)?)"
+        r"(?:\s*(?:degrees?|c|celsius))?"
+        r"(?P<tail>.*)$",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if set_to_temp:
+        tail = set_to_temp.group("tail").strip()
+        cleaned = (
+            f"turn on {set_to_temp.group('target').strip()} to "
+            f"{set_to_temp.group('temp_now')} degrees"
+        )
+        if tail:
+            cleaned = f"{cleaned} {tail}"
+
+    # set X on cool mode to 24 [degrees]
+    set_mode_to_temp = re.match(
+        r"^set (?:the )?(?P<target>.+?) (?:on|in) (?P<mode>cool|heat|dry|fan|auto) mode"
+        r"(?: to)? (?P<temp_now>\d+(?:\.\d+)?)"
+        r"(?:\s*(?:degrees?|c|celsius))?"
+        r"(?P<tail>.*)$",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if set_mode_to_temp:
+        tail = set_mode_to_temp.group("tail").strip()
+        cleaned = (
+            f"turn on {set_mode_to_temp.group('target').strip()} on "
+            f"{set_mode_to_temp.group('mode').lower()} mode "
+            f"{set_mode_to_temp.group('temp_now')} degrees"
+        )
+        if tail:
+            cleaned = f"{cleaned} {tail}"
 
     # turn off X if we don't have excess solar power
     conditional = re.match(
@@ -236,12 +280,13 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
             "target": conditional.group("target").strip(),
         }
 
-    # turn on X on cool mode 23 degrees for next 5 hrs and then change it to 25 degrees
+    # turn on X on cool mode 23 [degrees] for next 5 hrs and then change it to 25 [degrees]
     climate_mode_first = re.match(
-        r"^turn on (?P<target>.+?) on (?P<mode>cool|heat|dry|fan|auto) mode "
-        r"(?P<temp_now>\d+(?:\.\d+)?)\s*degrees?"
+        r"^turn on (?:the )?(?P<target>.+?) (?:on|in) (?P<mode>cool|heat|dry|fan|auto) mode"
+        r"(?: to)? (?P<temp_now>\d+(?:\.\d+)?)(?:\s*(?:degrees?|c|celsius))?"
         r"(?: for (?:next )?(?P<hours>\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr))?"
-        r"(?: and then (?:change|set)(?: it)? to (?P<temp_later>\d+(?:\.\d+)?)\s*degrees?)?$",
+        r"(?: and then (?:change|set)(?: it)? to (?P<temp_later>\d+(?:\.\d+)?)"
+        r"(?:\s*(?:degrees?|c|celsius))?)?$",
         cleaned,
         flags=re.IGNORECASE,
     )
@@ -255,12 +300,13 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
             "temp_later": float(climate_mode_first.group("temp_later")) if climate_mode_first.group("temp_later") else None,
         }
 
-    # turn on X to 25 degrees and in 3 hours change it to 27 degrees
+    # turn on X to 25 [degrees] and in 3 hours change it to 27 [degrees]
     climate_to_temp = re.match(
-        r"^turn on (?P<target>.+?)(?: on (?P<mode>cool|heat|dry|fan|auto) mode)? to "
-        r"(?P<temp_now>\d+(?:\.\d+)?)\s*degrees?"
+        r"^turn on (?:the )?(?P<target>.+?)(?: (?:on|in) (?P<mode>cool|heat|dry|fan|auto) mode)? to "
+        r"(?P<temp_now>\d+(?:\.\d+)?)(?:\s*(?:degrees?|c|celsius))?"
         r"(?: and in (?P<hours>\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr) "
-        r"(?:change|set)(?: it)? to (?P<temp_later>\d+(?:\.\d+)?)\s*degrees?)?$",
+        r"(?:change|set)(?: it)? to (?P<temp_later>\d+(?:\.\d+)?)"
+        r"(?:\s*(?:degrees?|c|celsius))?)?$",
         cleaned,
         flags=re.IGNORECASE,
     )
@@ -274,7 +320,11 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
             "temp_later": float(climate_to_temp.group("temp_later")) if climate_to_temp.group("temp_later") else None,
         }
 
-    simple = re.match(r"^turn (?P<verb>on|off) (?P<target>.+)$", cleaned, flags=re.IGNORECASE)
+    simple = re.match(
+        r"^turn (?P<verb>on|off) (?:the )?(?P<target>.+)$",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     if simple:
         return {
             "kind": "entity_turn_on" if simple.group("verb").lower() == "on" else "entity_turn_off",
@@ -600,12 +650,12 @@ def execute_action(
     raise HAControlError(f"Unsupported action kind: {kind}")
 
 
-def build_pending_message(summary: str, code: str, ttl_seconds: int) -> str:
+def build_pending_message(summary: str, ttl_seconds: int) -> str:
     minutes = max(1, int(round(ttl_seconds / 60.0)))
     return (
         "HA action ready.\n"
         f"{summary}\n\n"
-        f"Reply APPROVE {code} to execute, or CANCEL {code} to abort. "
+        "Reply APPROVE to execute, or CANCEL to abort. "
         f"(expires in ~{minutes} min)"
     )
 

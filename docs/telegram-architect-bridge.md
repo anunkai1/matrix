@@ -139,11 +139,12 @@ bash ops/home-assistant/validate_architect_package.sh
 - `/help` command list
 - `/status` bridge health and uptime
 - `/reset` clear this chat's saved context/thread
-- `APPROVE <code>` execute pending HA action
-- `CANCEL <code>` cancel pending HA action
+- `APPROVE` execute pending HA action
+- `CANCEL` cancel pending HA action
 
 Any non-command text is forwarded to the local executor (non-interactive `codex exec`).
-When a text matches a supported HA control intent, the bridge sends a short summary and waits for explicit `APPROVE <code>` in Telegram before execution.
+When a text matches a supported HA control intent, the bridge sends a short summary and waits for explicit `APPROVE` in Telegram before execution.
+Natural-language variants are supported for common phrases (for example `please switch on mid kids room aircon to 23`).
 Photo messages are also supported:
 - If a photo has a caption, the caption is used as the prompt.
 - If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`
@@ -177,7 +178,7 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Image size limit (`TELEGRAM_MAX_IMAGE_BYTES`, default `10485760`)
 - Voice file size limit (`TELEGRAM_MAX_VOICE_BYTES`, default `20971520`)
 - Per-chat rate limit per minute
-- HA action confirmation code with expiry (`TELEGRAM_HA_APPROVAL_TTL_SECONDS`)
+- HA action confirmation with expiry (`TELEGRAM_HA_APPROVAL_TTL_SECONDS`)
 - HA domain/entity allowlists (`TELEGRAM_HA_ALLOWED_DOMAINS`, `TELEGRAM_HA_ALLOWED_ENTITIES`)
 - Generic user-facing error responses, detailed errors in journal logs
 
