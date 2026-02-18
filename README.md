@@ -6,7 +6,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 
 - Active component: `telegram-architect-bridge.service`
 - Runtime mode: Telegram long polling + local `codex exec` executor
-- Input modes: text, photo (image + optional caption), and voice snippets (transcribed to text and echoed back)
+- Input modes: text, photo (image + optional caption), voice snippets (transcribed to text and echoed back), and generic files/documents for analysis
 - Context behavior: per-chat context persistence (`chat_id -> thread_id`) with `/reset`
 - Built-in safe `/restart` command (queues restart until active work completes)
 - Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup

@@ -48,6 +48,7 @@ TELEGRAM_MAX_INPUT_CHARS=4096
 TELEGRAM_MAX_OUTPUT_CHARS=20000
 TELEGRAM_MAX_IMAGE_BYTES=10485760
 TELEGRAM_MAX_VOICE_BYTES=20971520
+TELEGRAM_MAX_DOCUMENT_BYTES=52428800
 TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # Required for voice messages (must print transcript to stdout):
 # TELEGRAM_VOICE_TRANSCRIBE_CMD=/home/architect/matrix/ops/telegram-voice/transcribe_voice.sh {file}
@@ -164,6 +165,11 @@ Voice messages are also supported:
 - If `TELEGRAM_VOICE_WHISPER_DEVICE=cuda` is set but CUDA is not available, the transcriber retries on CPU fallback (`TELEGRAM_VOICE_WHISPER_FALLBACK_*`).
 - After successful transcription, the bridge echoes `Voice transcript:` back to chat.
 - If the voice message has a caption, the bridge prefixes that caption and appends `Voice transcript:` plus transcript text.
+- Telegram document/file messages are also supported:
+- If a file has a caption, the caption is used as the prompt.
+- If a file has no caption, the bridge sends a default prompt: `Please analyze this file.`
+- The bridge downloads the file, injects local file context (path, name, MIME, size) into the prompt, and Codex analyzes it directly from disk.
+- File size is guarded by `TELEGRAM_MAX_DOCUMENT_BYTES` (default `52428800`).
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
 
 Before executor completion, the bridge sends an immediate placeholder reply:
@@ -188,6 +194,7 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Input and output size limits
 - Image size limit (`TELEGRAM_MAX_IMAGE_BYTES`, default `10485760`)
 - Voice file size limit (`TELEGRAM_MAX_VOICE_BYTES`, default `20971520`)
+- Document/file size limit (`TELEGRAM_MAX_DOCUMENT_BYTES`, default `52428800`)
 - Per-chat rate limit per minute
 - Generic user-facing error responses, detailed errors in journal logs
 

@@ -33,6 +33,7 @@ class Config:
     max_output_chars: int
     max_image_bytes: int
     max_voice_bytes: int
+    max_document_bytes: int
     rate_limit_per_minute: int
     executor_cmd: List[str]
     voice_transcribe_cmd: List[str]
@@ -44,6 +45,7 @@ class Config:
     generic_error_message: str = "Execution failed. Please try again later."
     image_download_error_message: str = "Image download failed. Please send another image."
     voice_download_error_message: str = "Voice download failed. Please send another voice message."
+    document_download_error_message: str = "File download failed. Please send another file."
     voice_not_configured_message: str = (
         "Voice transcription is not configured. Please ask admin to set TELEGRAM_VOICE_TRANSCRIBE_CMD."
     )
@@ -69,6 +71,13 @@ class State:
     restart_chat_id: Optional[int] = None
     restart_reply_to_message_id: Optional[int] = None
     lock: threading.Lock = field(default_factory=threading.Lock)
+
+
+@dataclass
+class DocumentPayload:
+    file_id: str
+    file_name: str
+    mime_type: str
 
 
 def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
@@ -155,6 +164,7 @@ def load_config() -> Config:
         max_output_chars=parse_int_env("TELEGRAM_MAX_OUTPUT_CHARS", 20000),
         max_image_bytes=parse_int_env("TELEGRAM_MAX_IMAGE_BYTES", 10 * 1024 * 1024, minimum=1024),
         max_voice_bytes=parse_int_env("TELEGRAM_MAX_VOICE_BYTES", 20 * 1024 * 1024, minimum=1024),
+        max_document_bytes=parse_int_env("TELEGRAM_MAX_DOCUMENT_BYTES", 50 * 1024 * 1024, minimum=1024),
         rate_limit_per_minute=parse_int_env("TELEGRAM_RATE_LIMIT_PER_MINUTE", 12),
         executor_cmd=parse_executor_cmd(),
         voice_transcribe_cmd=parse_optional_cmd_env("TELEGRAM_VOICE_TRANSCRIBE_CMD"),
@@ -556,33 +566,50 @@ def pick_largest_photo_file_id(photo_items: List[object]) -> Optional[str]:
 
 def extract_prompt_and_media(
     message: Dict[str, object]
-) -> tuple[Optional[str], Optional[str], Optional[str]]:
+) -> tuple[Optional[str], Optional[str], Optional[str], Optional[DocumentPayload]]:
     text = message.get("text")
     if isinstance(text, str):
-        return text, None, None
+        return text, None, None, None
 
     photo_items = message.get("photo")
     if isinstance(photo_items, list) and photo_items:
         file_id = pick_largest_photo_file_id(photo_items)
         if not file_id:
-            return None, None, None
+            return None, None, None, None
 
         caption = message.get("caption")
         if isinstance(caption, str) and caption.strip():
-            return caption, file_id, None
-        return "Please analyze this image.", file_id, None
+            return caption, file_id, None, None
+        return "Please analyze this image.", file_id, None, None
 
     voice = message.get("voice")
     if isinstance(voice, dict):
         voice_file_id = voice.get("file_id")
         if not isinstance(voice_file_id, str) or not voice_file_id.strip():
-            return None, None, None
+            return None, None, None, None
         caption = message.get("caption")
         if isinstance(caption, str):
-            return caption, None, voice_file_id.strip()
-        return "", None, voice_file_id.strip()
+            return caption, None, voice_file_id.strip(), None
+        return "", None, voice_file_id.strip(), None
 
-    return None, None, None
+    document = message.get("document")
+    if isinstance(document, dict):
+        file_id = document.get("file_id")
+        if not isinstance(file_id, str) or not file_id.strip():
+            return None, None, None, None
+        file_name = document.get("file_name")
+        mime_type = document.get("mime_type")
+        payload = DocumentPayload(
+            file_id=file_id.strip(),
+            file_name=file_name.strip() if isinstance(file_name, str) and file_name.strip() else "unnamed",
+            mime_type=mime_type.strip() if isinstance(mime_type, str) and mime_type.strip() else "unknown",
+        )
+        caption = message.get("caption")
+        if isinstance(caption, str) and caption.strip():
+            return caption, None, None, payload
+        return "Please analyze this file.", None, None, payload
+
+    return None, None, None, None
 
 
 def download_photo_to_temp(
@@ -655,6 +682,58 @@ def download_voice_to_temp(
     return tmp_path
 
 
+def download_document_to_temp(
+    client: TelegramClient,
+    config: Config,
+    document: DocumentPayload,
+) -> tuple[str, int]:
+    file_meta = client.get_file(document.file_id)
+    file_path = file_meta.get("file_path")
+    if not isinstance(file_path, str) or not file_path.strip():
+        raise RuntimeError("Telegram getFile response missing file_path")
+
+    file_size = file_meta.get("file_size")
+    if isinstance(file_size, int) and file_size > config.max_document_bytes:
+        raise ValueError(
+            f"File too large ({file_size} bytes). Max is {config.max_document_bytes} bytes."
+        )
+
+    suffix = Path(document.file_name).suffix or Path(file_path).suffix or ".bin"
+    fd, tmp_path = tempfile.mkstemp(prefix="telegram-bridge-file-", suffix=suffix)
+    os.close(fd)
+    try:
+        client.download_file_to_path(
+            file_path,
+            tmp_path,
+            config.max_document_bytes,
+            size_label="File",
+        )
+    except Exception:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+
+    final_size = file_size if isinstance(file_size, int) else os.path.getsize(tmp_path)
+    return tmp_path, final_size
+
+
+def build_document_analysis_context(
+    document_path: str,
+    document: DocumentPayload,
+    size_bytes: int,
+) -> str:
+    return (
+        "Attached file context:\n"
+        f"- Local path: {document_path}\n"
+        f"- Original filename: {document.file_name}\n"
+        f"- MIME type: {document.mime_type}\n"
+        f"- Size bytes: {size_bytes}\n\n"
+        "Read and analyze the file from the local path."
+    )
+
+
 def build_voice_transcribe_command(cmd_template: List[str], voice_path: str) -> List[str]:
     cmd: List[str] = []
     used_placeholder = False
@@ -705,7 +784,7 @@ def build_help_text() -> str:
         "/status - show bridge health\n"
         "/restart - safe restart (queued until current work completes)\n"
         "/reset - clear chat context\n\n"
-        "Any other text, photo, or voice message is sent to Architect."
+        "Any other text, photo, voice, or file message is sent to Architect."
     )
 
 
@@ -869,11 +948,13 @@ def process_prompt(
     prompt: str,
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
+    document: Optional[DocumentPayload],
 ) -> None:
     previous_thread_id = get_thread_id(state, chat_id)
     prompt_text = prompt.strip()
     image_path: Optional[str] = None
     voice_path: Optional[str] = None
+    document_path: Optional[str] = None
     try:
         if photo_file_id:
             try:
@@ -961,6 +1042,28 @@ def process_prompt(
                 prompt_text = f"{prompt_text}\n\nVoice transcript:\n{transcript}"
             else:
                 prompt_text = transcript
+
+        if document:
+            try:
+                document_path, file_size = download_document_to_temp(client, config, document)
+            except ValueError as exc:
+                logging.warning("Document rejected for chat_id=%s: %s", chat_id, exc)
+                client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+                return
+            except Exception:
+                logging.exception("Document download failed for chat_id=%s", chat_id)
+                client.send_message(
+                    chat_id,
+                    config.document_download_error_message,
+                    reply_to_message_id=message_id,
+                )
+                return
+
+            context = build_document_analysis_context(document_path, document, file_size)
+            if prompt_text:
+                prompt_text = f"{prompt_text}\n\n{context}"
+            else:
+                prompt_text = context
 
         if not prompt_text:
             return
@@ -1087,6 +1190,11 @@ def process_prompt(
                 os.remove(voice_path)
             except OSError:
                 logging.warning("Failed to remove temp voice file: %s", voice_path)
+        if document_path:
+            try:
+                os.remove(document_path)
+            except OSError:
+                logging.warning("Failed to remove temp file: %s", document_path)
         finalize_chat_work(state, client, chat_id)
 
 
@@ -1099,6 +1207,7 @@ def process_message_worker(
     prompt: str,
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
+    document: Optional[DocumentPayload],
 ) -> None:
     delegated_to_prompt = False
     try:
@@ -1122,6 +1231,7 @@ def process_message_worker(
             prompt,
             photo_file_id,
             voice_file_id,
+            document,
         )
     except Exception:
         logging.exception("Unexpected message worker error for chat_id=%s", chat_id)
@@ -1222,8 +1332,8 @@ def handle_update(
         client.send_message(chat_id, config.denied_message, reply_to_message_id=message_id)
         return
 
-    prompt_input, photo_file_id, voice_file_id = extract_prompt_and_media(message)
-    if prompt_input is None and voice_file_id is None:
+    prompt_input, photo_file_id, voice_file_id, document = extract_prompt_and_media(message)
+    if prompt_input is None and voice_file_id is None and document is None:
         return
 
     command = normalize_command(prompt_input or "")
@@ -1248,7 +1358,7 @@ def handle_update(
         return
 
     prompt = (prompt_input or "").strip()
-    if not prompt and not voice_file_id:
+    if not prompt and not voice_file_id and document is None:
         return
 
     if prompt and len(prompt) > config.max_input_chars:
@@ -1287,6 +1397,7 @@ def handle_update(
             prompt,
             photo_file_id,
             voice_file_id,
+            document,
         ),
         daemon=True,
     )
@@ -1298,6 +1409,12 @@ def run_self_test() -> int:
     chunks = to_telegram_chunks(sample)
     if len(chunks) < 2:
         raise RuntimeError("Chunking self-test failed")
+
+    prompt, _, _, document = extract_prompt_and_media(
+        {"document": {"file_id": "f1", "file_name": "sample.txt", "mime_type": "text/plain"}}
+    )
+    if prompt != "Please analyze this file." or not document or document.file_id != "f1":
+        raise RuntimeError("Document parsing self-test failed")
 
     restart_state = State()
     status, _ = request_safe_restart(restart_state, chat_id=1, reply_to_message_id=None)

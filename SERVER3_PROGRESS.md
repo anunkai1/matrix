@@ -1,5 +1,22 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Telegram Generic File Analysis Support Added)
+
+### Summary
+- Added Telegram `document` message handling to `src/telegram_bridge/main.py` so generic files can be sent for analysis.
+- Added bounded file download path with temp-file lifecycle and cleanup; file size is enforced via new env key `TELEGRAM_MAX_DOCUMENT_BYTES` (default `52428800`).
+- Added prompt context injection for file analysis (`local path`, `filename`, `mime`, `size`) so Codex can analyze attached files directly from disk.
+- Updated bridge help text and self-test to include/validate document parsing behavior.
+- Updated runtime docs and env example (`README.md`, `docs/telegram-architect-bridge.md`, `infra/env/telegram-architect-bridge.env.example`) for the new file-analysis mode.
+- Verified `python3 -m py_compile src/telegram_bridge/main.py` and `bash src/telegram_bridge/smoke_test.sh` both pass.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Bridge Dead HA Parser Runtime Paths Removed)
 
 ### Summary
