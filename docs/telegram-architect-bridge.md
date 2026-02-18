@@ -138,6 +138,7 @@ bash ops/home-assistant/validate_architect_package.sh
 - `/start` basic intro
 - `/help` command list
 - `/status` bridge health and uptime
+- `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
 - `APPROVE` execute pending HA action
 - `CANCEL` cancel pending HA action
@@ -173,6 +174,7 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 
 - Chat ID allowlist (`TELEGRAM_ALLOWED_CHAT_IDS`)
 - Per-chat single in-flight request (`busy` response on overlap)
+- Built-in safe `/restart` command that bypasses busy rejection by queuing restart until active work completes
 - Request timeout guard (`TELEGRAM_EXEC_TIMEOUT_SECONDS`)
 - Input and output size limits
 - Image size limit (`TELEGRAM_MAX_IMAGE_BYTES`, default `10485760`)

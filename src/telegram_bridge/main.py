@@ -78,6 +78,10 @@ class State:
     chat_thread_path: str = ""
     pending_actions: Dict[int, Dict[str, object]] = field(default_factory=dict)
     pending_action_path: str = ""
+    restart_requested: bool = False
+    restart_in_progress: bool = False
+    restart_chat_id: Optional[int] = None
+    restart_reply_to_message_id: Optional[int] = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -112,6 +116,11 @@ def parse_allowed_chat_ids(raw: str) -> Set[int]:
 def build_default_executor() -> str:
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     return os.path.join(repo_root, "src", "telegram_bridge", "executor.sh")
+
+
+def build_restart_script_path() -> str:
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return os.path.join(repo_root, "ops", "telegram-bridge", "restart_service.sh")
 
 
 def parse_executor_cmd() -> List[str]:
@@ -724,6 +733,7 @@ def build_help_text() -> str:
         "/start - bridge intro\n"
         "/help - show commands\n"
         "/status - show bridge health\n"
+        "/restart - safe restart (queued until current work completes)\n"
         "/reset - clear chat context\n\n"
         "Home Assistant confirmations:\n"
         "APPROVE - execute pending HA action\n"
@@ -737,12 +747,126 @@ def build_status_text(state: State) -> str:
     with state.lock:
         busy_count = len(state.busy_chats)
         pending_count = len(state.pending_actions)
+        restart_queued = state.restart_requested
+        restart_running = state.restart_in_progress
     return (
         "Bridge status: healthy\n"
         f"Uptime: {uptime}s\n"
         f"Busy chats: {busy_count}\n"
-        f"Pending HA approvals: {pending_count}"
+        f"Pending HA approvals: {pending_count}\n"
+        f"Restart queued: {'yes' if restart_queued else 'no'}\n"
+        f"Restart in progress: {'yes' if restart_running else 'no'}"
     )
+
+
+def request_safe_restart(
+    state: State,
+    chat_id: int,
+    reply_to_message_id: Optional[int],
+) -> tuple[str, int]:
+    with state.lock:
+        busy_count = len(state.busy_chats)
+        if state.restart_in_progress:
+            return "in_progress", busy_count
+        if state.restart_requested:
+            return "already_queued", busy_count
+
+        state.restart_chat_id = chat_id
+        state.restart_reply_to_message_id = reply_to_message_id
+        if busy_count > 0:
+            state.restart_requested = True
+            return "queued", busy_count
+
+        state.restart_in_progress = True
+        return "run_now", busy_count
+
+
+def pop_ready_restart_request(state: State) -> Optional[tuple[int, Optional[int]]]:
+    with state.lock:
+        if state.restart_in_progress:
+            return None
+        if not state.restart_requested:
+            return None
+        if state.busy_chats:
+            return None
+        if state.restart_chat_id is None:
+            return None
+
+        state.restart_requested = False
+        state.restart_in_progress = True
+        return state.restart_chat_id, state.restart_reply_to_message_id
+
+
+def finish_restart_attempt(state: State) -> None:
+    with state.lock:
+        state.restart_in_progress = False
+
+
+def run_restart_script(
+    state: State,
+    client: TelegramClient,
+    chat_id: int,
+    reply_to_message_id: Optional[int],
+) -> None:
+    script_path = build_restart_script_path()
+    try:
+        result = subprocess.run(
+            ["bash", script_path],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        logging.error("Bridge restart command timed out.")
+        client.send_message(
+            chat_id,
+            "Restart command timed out. Please run restart manually.",
+            reply_to_message_id=reply_to_message_id,
+        )
+        finish_restart_attempt(state)
+        return
+    except Exception:
+        logging.exception("Bridge restart command failed to execute.")
+        client.send_message(
+            chat_id,
+            "Restart command failed to execute. Please run restart manually.",
+            reply_to_message_id=reply_to_message_id,
+        )
+        finish_restart_attempt(state)
+        return
+
+    if result.returncode != 0:
+        logging.error(
+            "Bridge restart command failed returncode=%s stderr=%r",
+            result.returncode,
+            (result.stderr or "")[-1000:],
+        )
+        client.send_message(
+            chat_id,
+            "Restart failed. Please run `bash ops/telegram-bridge/restart_service.sh`.",
+            reply_to_message_id=reply_to_message_id,
+        )
+        finish_restart_attempt(state)
+        return
+
+    # If this process survives a successful restart command invocation,
+    # clear restart state so future restart requests are not blocked.
+    finish_restart_attempt(state)
+
+
+def trigger_restart_async(
+    state: State,
+    client: TelegramClient,
+    chat_id: int,
+    reply_to_message_id: Optional[int],
+) -> None:
+    worker = threading.Thread(
+        target=run_restart_script,
+        args=(state, client, chat_id, reply_to_message_id),
+        daemon=True,
+    )
+    worker.start()
 
 
 def process_prompt(
@@ -964,6 +1088,21 @@ def process_prompt(
             except OSError:
                 logging.warning("Failed to remove temp voice file: %s", voice_path)
         clear_busy(state, chat_id)
+        ready_restart = pop_ready_restart_request(state)
+        if ready_restart:
+            restart_chat_id, restart_reply_to = ready_restart
+            try:
+                client.send_message(
+                    restart_chat_id,
+                    "Current request completed. Restarting bridge now.",
+                    reply_to_message_id=restart_reply_to,
+                )
+            except Exception:
+                logging.exception(
+                    "Failed to send queued restart acknowledgement for chat_id=%s",
+                    restart_chat_id,
+                )
+            trigger_restart_async(state, client, restart_chat_id, restart_reply_to)
 
 
 def handle_reset_command(
@@ -984,6 +1123,43 @@ def handle_reset_command(
         "No saved context was found for this chat.",
         reply_to_message_id=message_id,
     )
+
+
+def handle_restart_command(
+    state: State,
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+) -> None:
+    status, busy_count = request_safe_restart(state, chat_id, message_id)
+    if status == "in_progress":
+        client.send_message(
+            chat_id,
+            "Restart is already in progress.",
+            reply_to_message_id=message_id,
+        )
+        return
+    if status == "already_queued":
+        client.send_message(
+            chat_id,
+            "Restart is already queued and will run after current work completes.",
+            reply_to_message_id=message_id,
+        )
+        return
+    if status == "queued":
+        client.send_message(
+            chat_id,
+            f"Safe restart queued. Waiting for {busy_count} active request(s) to finish.",
+            reply_to_message_id=message_id,
+        )
+        return
+
+    client.send_message(
+        chat_id,
+        "No active request. Restarting bridge now.",
+        reply_to_message_id=message_id,
+    )
+    trigger_restart_async(state, client, chat_id, message_id)
 
 
 def handle_ha_control_text(
@@ -1154,6 +1330,9 @@ def handle_update(
         prune_expired_pending_actions(state)
         client.send_message(chat_id, build_status_text(state), reply_to_message_id=message_id)
         return
+    if command == "/restart":
+        handle_restart_command(state, client, chat_id, message_id)
+        return
     if command == "/reset":
         handle_reset_command(state, client, chat_id, message_id)
         return
@@ -1224,6 +1403,23 @@ def run_self_test() -> int:
     parsed = parse_approval_command("CANCEL please")
     if parsed != ("cancel", None):
         raise RuntimeError("Approval parser self-test failed")
+
+    restart_state = State()
+    status, _ = request_safe_restart(restart_state, chat_id=1, reply_to_message_id=None)
+    if status != "run_now":
+        raise RuntimeError("Restart self-test failed (run_now)")
+    finish_restart_attempt(restart_state)
+    with restart_state.lock:
+        restart_state.busy_chats.add(1)
+    status, _ = request_safe_restart(restart_state, chat_id=1, reply_to_message_id=None)
+    if status != "queued":
+        raise RuntimeError("Restart self-test failed (queued)")
+    clear_busy(restart_state, 1)
+    ready = pop_ready_restart_request(restart_state)
+    if not ready or ready[0] != 1:
+        raise RuntimeError("Restart self-test failed (pop_ready)")
+    finish_restart_attempt(restart_state)
+
     print("self-test: ok")
     return 0
 

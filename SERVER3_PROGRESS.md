@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Telegram Safe Queued Restart Command)
+
+### Summary
+- Added a built-in Telegram `/restart` command to the bridge command set.
+- Implemented safe restart behavior: restart requests are accepted even when chat work is busy, queued in-memory, and automatically executed after active work completes.
+- Added restart-state visibility in `/status` output (`Restart queued`, `Restart in progress`).
+- Added self-test coverage for restart state transitions and updated docs/README command references.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` edits were applied in this task.
+- In-flight work is preserved by deferring restart until current active request(s) complete.
+
 ## 2026-02-18 (Telegram HA Natural Language + Code-Free Approval)
 
 ### Summary
