@@ -237,8 +237,13 @@ def parse_approval_command(text: str) -> Optional[Tuple[str, Optional[str]]]:
 def _canonical_token(token: str) -> str:
     mapping = {
         "ac": "aircon",
+        "a.c": "aircon",
         "airconditioner": "aircon",
         "conditioner": "aircon",
+        "cooling": "cool",
+        "heating": "heat",
+        "dryer": "dry",
+        "automatic": "auto",
         "rm": "room",
         "hrs": "hours",
         "hr": "hour",
@@ -274,6 +279,13 @@ def _tokenize_text(text: str) -> List[str]:
     while i < len(raw_tokens):
         token = _canonical_token(raw_tokens[i])
         nxt = _canonical_token(raw_tokens[i + 1]) if i + 1 < len(raw_tokens) else ""
+
+        # Common voice-transcription variant for "AC".
+        if token == "i" and nxt == "see":
+            tokens.append("aircon")
+            i += 2
+            continue
+
         if token in {"switch", "power"} and nxt in {"on", "off"}:
             tokens.extend(["turn", nxt])
             i += 2
@@ -858,6 +870,10 @@ def run_ha_parser_self_test() -> None:
         (
             "turn off water heater",
             {"kind": "entity_turn_off", "target": "water heater"},
+        ),
+        (
+            "Set masters I see to 23 degrees cooling and turn it on",
+            {"kind": "climate_set", "target": "masters aircon", "mode": "cool", "temp_now": 23.0},
         ),
     ]
 

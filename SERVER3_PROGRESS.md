@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-18 (HA Speech Variant Parsing Improvement)
+
+### Summary
+- Improved HA natural-language parser normalization for speech-transcription variants in `src/telegram_bridge/ha_control.py`.
+- Added support mapping `i see` to `aircon` and `cooling`/`heating` wording to HVAC modes (`cool`/`heat`).
+- Added parser self-test coverage for the phrase `Set masters I see to 23 degrees cooling and turn it on`.
+- Verified parser and bridge checks pass (`--self-test` and smoke test).
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` edits were applied.
+
 ## 2026-02-18 (Telegram Bridge Restart on Request, Post-HA Interpreter Rollout)
 
 ### Summary
