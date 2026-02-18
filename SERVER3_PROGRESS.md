@@ -1,5 +1,21 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Telegram Group Allowlist Added + Runtime Verified)
+
+### Summary
+- Added new Telegram group chat ID `-5144577688` to live bridge allowlist in `/etc/default/telegram-architect-bridge`.
+- Live allowlist is now `TELEGRAM_ALLOWED_CHAT_IDS=211761499,-5144577688`.
+- Verified bridge runtime is healthy after restart with `ExecMainStartTimestamp=Wed 2026-02-18 11:55:51 UTC`, `MainPID=154347`, and active running state.
+- Updated repo-tracked live env mirror and execution record for this allowlist change.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Last denied log for the group was before this change (`2026-02-18 11:42:59`).
+- Final operator validation is sending `/status` from the group and confirming no access-denied response.
+
 ## 2026-02-18 (Bridge Hardening: 10h Default + Async HA + Restart Verification Path)
 
 ### Summary
