@@ -154,6 +154,7 @@ For HA control, the bridge now uses an asset-aware interpreter:
 - Rejects low-confidence or ambiguous matches with a clarification prompt.
 After a plan is built, it sends a short summary and waits for explicit `APPROVE` before execution.
 Natural-language variants are supported for common phrases (for example `turn on masters AC to cool 24` and `please switch on mid kids room aircon to 23`).
+The parser also tolerates filler lead-ins and implied climate phrasing (for example `to your normal masters i see on cool mode 23`).
 Photo messages are also supported:
 - If a photo has a caption, the caption is used as the prompt.
 - If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`

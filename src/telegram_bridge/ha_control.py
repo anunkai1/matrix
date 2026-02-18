@@ -326,6 +326,10 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
     if len(tokens) >= 2 and tokens[0] in {"can", "could", "would"} and tokens[1] == "you":
         tokens = tokens[2:]
 
+    # Ignore filler lead-ins frequently seen in speech or dictation.
+    while tokens and tokens[0] in {"to", "your", "normal", "just", "simply", "now"}:
+        tokens = tokens[1:]
+
     if not tokens:
         return None
 
@@ -424,6 +428,9 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
         climate_candidate = True
     if set_idx >= 0 and (main_temp is not None or mode is not None):
         climate_candidate = True
+    if turn_state == "" and set_idx < 0 and (main_temp is not None or mode is not None):
+        if "aircon" in tokens:
+            climate_candidate = True
 
     if climate_candidate:
         if main_temp is None:
@@ -434,7 +441,10 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
         elif set_idx >= 0:
             target = extract_target(set_idx + 1, climate_hint=True)
         else:
-            target = ""
+            inferred_start = 0
+            while inferred_start < len(tokens) and tokens[inferred_start] in {"to", "in", "on", "at"}:
+                inferred_start += 1
+            target = extract_target(inferred_start, climate_hint=True)
 
         if not target:
             return None
@@ -879,6 +889,10 @@ def run_ha_parser_self_test() -> None:
         (
             "Turn on Master's AC to hit mode 23",
             {"kind": "climate_set", "target": "masters aircon", "mode": "heat", "temp_now": 23.0},
+        ),
+        (
+            "To your normal masters I see on cool mode 23",
+            {"kind": "climate_set", "target": "masters aircon", "mode": "cool", "temp_now": 23.0},
         ),
     ]
 

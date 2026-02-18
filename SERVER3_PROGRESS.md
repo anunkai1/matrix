@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-18 (HA Lead-In Filler Stripping + Implied Climate Intent)
+
+### Summary
+- Updated HA intent parsing in `src/telegram_bridge/ha_control.py` to ignore filler lead-ins (for example `to your normal ...`) before intent extraction.
+- Added implied climate-intent handling when a phrase includes AC target plus mode/temperature without explicit `turn on`/`set`.
+- Added parser self-test coverage for `To your normal masters I see on cool mode 23`.
+- Verified compile, bridge self-test, and smoke test all pass.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` edits were applied.
+
 ## 2026-02-18 (HA Mode Typo Normalization: `hit` -> `heat`)
 
 ### Summary
