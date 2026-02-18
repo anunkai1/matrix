@@ -12,7 +12,7 @@ Codex runs ON Server3 (you SSH from Windows / PuTTY and run: codex "..." on the 
 - This Git repo is the SINGLE SOURCE OF TRUTH.
 - The canonical repo is: `https://github.com/anunkai1/matrix` (public).
   
-- All changes MUST follow:  
+- All non-exempt changes MUST follow:  
   edit in repo → git status → git add → git commit → git push
   
 - Goal: Open-source on GitHub (public). Everyone can read; only you can merge/ship.
@@ -171,7 +171,7 @@ Working rules (use now)
 
 - Work directly on `main` by default
   
-- Codex commits and pushes directly to `origin/main`
+- For non-exempt changes, Codex commits and pushes directly to `origin/main`
   
 - Feature branches are optional and only used when the user explicitly asks for branch/PR workflow
   

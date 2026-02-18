@@ -1,5 +1,19 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Final Policy Wording Alignment for HA Quick-Ops)
+
+### Summary
+- Updated the remaining absolute wording in `ARCHITECT_INSTRUCTION.md` so non-exempt scope is explicit.
+- Changed the top-level change-control line from `All changes MUST follow ...` to `All non-exempt changes MUST follow ...`.
+- Changed working-rules wording from unconditional commit/push to `For non-exempt changes, Codex commits and pushes directly to origin/main`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates policy/docs only; no live `/etc` or runtime config edits were applied.
+
 ## 2026-02-18 (Policy Consistency Cleanup for HA Quick-Ops Exemption)
 
 ### Summary
