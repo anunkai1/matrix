@@ -66,7 +66,7 @@ class Config:
         "Voice transcription was empty. Please send clearer audio."
     )
     empty_output_message: str = "(No output from Architect)"
-    thinking_message: str = "💭🤔💭.....thinking.....💭🤔💭"
+    thinking_message: str = "💭🤔💭.....thinking.....💭🤔💭\nType /h for commands."
 
 
 @dataclass
@@ -732,6 +732,7 @@ def build_help_text() -> str:
         "Commands:\n"
         "/start - bridge intro\n"
         "/help - show commands\n"
+        "/h - short help alias\n"
         "/status - show bridge health\n"
         "/restart - safe restart (queued until current work completes)\n"
         "/reset - clear chat context\n\n"
@@ -1323,7 +1324,7 @@ def handle_update(
             reply_to_message_id=message_id,
         )
         return
-    if command == "/help":
+    if command in ("/help", "/h"):
         client.send_message(chat_id, build_help_text(), reply_to_message_id=message_id)
         return
     if command == "/status":

@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-18 (Telegram /h Help Alias + Thinking Hint)
+
+### Summary
+- Added `/h` as a short alias for `/help` in Telegram bridge command handling.
+- Updated help output to include `/h` in the command list.
+- Updated the thinking placeholder reply to include `Type /h for commands.` after each request acknowledgement.
+- Updated README and bridge runbook documentation for the new command alias/hint behavior.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` edits were applied in this task.
+
 ## 2026-02-18 (Telegram Safe Queued Restart Command)
 
 ### Summary

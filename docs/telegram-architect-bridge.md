@@ -137,6 +137,7 @@ bash ops/home-assistant/validate_architect_package.sh
 
 - `/start` basic intro
 - `/help` command list
+- `/h` short help alias
 - `/status` bridge health and uptime
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
@@ -160,6 +161,7 @@ Voice messages are also supported:
 
 Before executor completion, the bridge sends an immediate placeholder reply:
 `💭🤔💭.....thinking.....💭🤔💭`
+`Type /h for commands.`
 
 ## Context Persistence
 
