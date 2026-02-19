@@ -165,6 +165,7 @@ Routing behavior:
 - HA chat IDs: voice notes are transcribed and then evaluated by the same HA parser/status flow.
 - In HA chat mode, natural status prompts such as `what's on right now` are accepted.
 - In HA chat mode, OFF queries such as `what's off` / `what's off in HA` are also accepted.
+- In HA chat mode, natural garage/cover verbs such as `open garage` and `close garage` are accepted.
 - Other non-HA text/photo/voice/file requests are rejected with an HA-only reminder.
 - Complex HA plans require explicit `APPROVE` or `CANCEL` in the same chat before execution.
 Photo messages are also supported:

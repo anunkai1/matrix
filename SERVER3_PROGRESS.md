@@ -1,5 +1,44 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram HA Parser: Open/Close Garage Intent Support)
+
+### Summary
+- Investigated HA-only rejection of `open garage` / `Open garage please` after voice/text transcription.
+- Root cause: those phrases did not match existing HA parser intent grammar, so HA-only routing returned fallback message.
+- Added parser and execution support in `src/telegram_bridge/ha_control.py`:
+  - new intents: `entity_open`, `entity_close`
+  - parser now recognizes natural `open ...` / `close ...` phrases
+  - parser trims trailing polite suffixes in extracted target (`please`/`pls`/`kindly`)
+  - action resolver prefers `cover` domain for open/close intents when matching
+  - executor maps open/close by entity domain:
+    - `cover.*` -> `open_cover` / `close_cover`
+    - `lock.*` -> `unlock` / `lock`
+    - other domains -> `turn_on` / `turn_off` fallback
+  - schedule gate keywords expanded to include `open`, `close`, `garage`, `door`, `lock`, `unlock`
+- Added parser self-test cases for:
+  - `open garage`
+  - `Open garage please`
+  - `close garage`
+- Updated docs:
+  - `README.md`
+  - `docs/telegram-architect-bridge.md`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/ha_control.py src/telegram_bridge/main.py`
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+  - targeted parser check snippets confirmed open/close parsing behavior
+- Rolled out live runtime by restart + verify:
+  - `bash ops/telegram-bridge/restart_and_verify.sh`
+  - service healthy after restart (`active/running`, start `Fri 2026-02-20 08:52:37 AEST`)
+- Added repo-tracked change record:
+  - `logs/changes/20260219-225237-telegram-ha-open-close-intent-support.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc/default` env changes were required in this change set.
+
 ## 2026-02-20 (Telegram HA-Only Chat: Voice Commands Routed Through HA Parser)
 
 ### Summary

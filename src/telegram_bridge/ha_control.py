@@ -420,6 +420,14 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
             set_idx = i
             break
 
+    open_close_idx = -1
+    open_close_verb = ""
+    for i, token in enumerate(tokens):
+        if token in {"open", "close"}:
+            open_close_idx = i
+            open_close_verb = token
+            break
+
     def extract_target(start_idx: int, climate_hint: bool, stop_at_if: bool = False) -> str:
         idx = start_idx
         while idx < len(tokens) and tokens[idx] in {"the", "my", "our"}:
@@ -438,6 +446,8 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
                 break
             out.append(token)
             idx += 1
+        while out and out[-1] in polite_prefixes:
+            out.pop()
         return " ".join(out).strip()
 
     mode = None
@@ -541,6 +551,15 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
             return None
         return {
             "kind": "entity_turn_on" if turn_state == "on" else "entity_turn_off",
+            "target": target,
+        }
+
+    if open_close_idx >= 0:
+        target = extract_target(open_close_idx + 1, climate_hint=False, stop_at_if=True)
+        if not target:
+            return None
+        return {
+            "kind": "entity_open" if open_close_verb == "open" else "entity_close",
             "target": target,
         }
 
@@ -742,6 +761,8 @@ def _build_action_from_intent(
     preferred_domain = None
     if intent.get("kind") == "climate_set":
         preferred_domain = "climate"
+    elif intent.get("kind") in {"entity_open", "entity_close"}:
+        preferred_domain = "cover"
 
     entity_id, entity_state = _resolve_entity_id(
         target,
@@ -782,6 +803,20 @@ def _build_action_from_intent(
                 f"If solar export is NOT above {solar_threshold:g}W, turn OFF "
                 f"{entity_display} ({entity_id})."
             ),
+        }
+
+    if kind == "entity_open":
+        return {
+            "kind": "entity_open",
+            "entity_id": entity_id,
+            "summary": f"Open {entity_display} ({entity_id}).",
+        }
+
+    if kind == "entity_close":
+        return {
+            "kind": "entity_close",
+            "entity_id": entity_id,
+            "summary": f"Close {entity_display} ({entity_id}).",
         }
 
     if kind == "climate_set":
@@ -894,6 +929,26 @@ def execute_action(
             f"Executed: solar export is {sensor_value:g}W (not above {threshold_w:g}W), "
             f"turned OFF {entity_id}."
         )
+
+    if kind == "entity_open":
+        if domain == "cover":
+            client.call_service("cover", "open_cover", {"entity_id": entity_id})
+            return f"Executed: opened {entity_id}."
+        if domain == "lock":
+            client.call_service("lock", "unlock", {"entity_id": entity_id})
+            return f"Executed: unlocked {entity_id}."
+        client.call_service(domain, "turn_on", {"entity_id": entity_id})
+        return f"Executed: turned ON {entity_id} (open intent)."
+
+    if kind == "entity_close":
+        if domain == "cover":
+            client.call_service("cover", "close_cover", {"entity_id": entity_id})
+            return f"Executed: closed {entity_id}."
+        if domain == "lock":
+            client.call_service("lock", "lock", {"entity_id": entity_id})
+            return f"Executed: locked {entity_id}."
+        client.call_service(domain, "turn_off", {"entity_id": entity_id})
+        return f"Executed: turned OFF {entity_id} (close intent)."
 
     if kind == "climate_set":
         if not entity_id.startswith("climate."):
@@ -1022,7 +1077,7 @@ def _looks_like_ha_schedule_text(text: str) -> bool:
         return False
     return bool(
         re.search(
-            r"\b(turn|set|change|switch|aircon|heater|light|fan)\b",
+            r"\b(turn|set|change|switch|open|close|lock|unlock|aircon|heater|light|fan|garage|door)\b",
             lowered,
         )
     )
@@ -1405,6 +1460,18 @@ def run_ha_parser_self_test() -> None:
         (
             "turn on AC living to 25",
             {"kind": "climate_set", "target": "aircon living", "temp_now": 25.0, "power_on_requested": True},
+        ),
+        (
+            "open garage",
+            {"kind": "entity_open", "target": "garage"},
+        ),
+        (
+            "Open garage please",
+            {"kind": "entity_open", "target": "garage"},
+        ),
+        (
+            "close garage",
+            {"kind": "entity_close", "target": "garage"},
         ),
     ]
 
