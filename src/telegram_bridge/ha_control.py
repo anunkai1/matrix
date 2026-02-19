@@ -308,6 +308,7 @@ def parse_approval_command(text: str) -> Optional[Tuple[str, Optional[str]]]:
 
 
 def _canonical_token(token: str) -> str:
+    token = token.strip(".")
     mapping = {
         "ac": "aircon",
         "a.c": "aircon",
@@ -402,7 +403,7 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
         tokens = tokens[2:]
 
     # Ignore filler lead-ins frequently seen in speech or dictation.
-    while tokens and tokens[0] in {"to", "your", "normal", "just", "simply", "now"}:
+    while tokens and tokens[0] in {"to", "your", "normal", "just", "simply", "now", "only"}:
         tokens = tokens[1:]
 
     if not tokens:
@@ -451,11 +452,17 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
                 and (tokens[idx + 1] in hvac_modes or tokens[idx + 1] == "mode")
             ):
                 break
+            if (
+                climate_hint
+                and token in hvac_modes
+                and (idx == len(tokens) - 1 or tokens[idx + 1] == "mode")
+            ):
+                break
             if token in stop_words:
                 break
             out.append(token)
             idx += 1
-        while out and out[-1] in polite_prefixes:
+        while out and out[-1] in polite_prefixes.union({"only"}):
             out.pop()
         return " ".join(out).strip()
 
@@ -525,7 +532,8 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
             climate_candidate = True
 
     if climate_candidate:
-        if main_temp is None:
+        mode_only = main_temp is None and mode is not None
+        if main_temp is None and not mode_only:
             return None
 
         if turn_state == "on":
@@ -540,6 +548,14 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
 
         if not target:
             return None
+
+        if mode_only:
+            return {
+                "kind": "climate_mode_set",
+                "target": target,
+                "mode": mode,
+                "power_on_requested": turn_state == "on",
+            }
 
         if followup_hours is None:
             followup_temp = None
@@ -768,7 +784,7 @@ def _build_action_from_intent(
         raise HAControlError("Invalid target in parsed intent.")
 
     preferred_domain = None
-    if intent.get("kind") == "climate_set":
+    if intent.get("kind") in {"climate_set", "climate_mode_set"}:
         preferred_domain = "climate"
     elif intent.get("kind") in {"entity_open", "entity_close"}:
         preferred_domain = "cover"
@@ -867,6 +883,26 @@ def _build_action_from_intent(
             "temperature_now": temp_now,
             "followup_hours": float(followup_hours) if followup_hours is not None else None,
             "followup_temperature": followup_temp,
+            "power_on_requested": power_on_requested,
+            "summary": summary + ".",
+        }
+
+    if kind == "climate_mode_set":
+        if not entity_id.startswith("climate."):
+            raise HAControlError(f"'{entity_id}' is not a climate entity.")
+        mode = intent.get("mode")
+        if not isinstance(mode, str) or not mode:
+            raise HAControlError("Climate mode command is missing hvac mode.")
+        power_on_requested = bool(intent.get("power_on_requested") is True)
+
+        summary = f"Set {entity_display} ({entity_id}) mode to {mode}"
+        if power_on_requested:
+            summary = f"Turn ON {entity_display} ({entity_id}) and set mode to {mode}"
+
+        return {
+            "kind": "climate_mode_set",
+            "entity_id": entity_id,
+            "hvac_mode": mode,
             "power_on_requested": power_on_requested,
             "summary": summary + ".",
         }
@@ -1023,6 +1059,31 @@ def execute_action(
             else f"Executed: set {entity_id} to {float(temp_now):g}C"
         )
         return prefix + (f" with mode {hvac_mode}." if isinstance(hvac_mode, str) and hvac_mode else ".")
+
+    if kind == "climate_mode_set":
+        if not entity_id.startswith("climate."):
+            raise HAControlError("Climate mode action entity_id must be climate.*")
+
+        hvac_mode = action.get("hvac_mode")
+        if not isinstance(hvac_mode, str) or not hvac_mode:
+            raise HAControlError("Climate mode action missing hvac_mode.")
+
+        power_on_requested = bool(action.get("power_on_requested") is True)
+        if power_on_requested:
+            client.call_service(
+                "climate",
+                "turn_on",
+                {"entity_id": entity_id},
+            )
+
+        client.call_service(
+            "climate",
+            "set_hvac_mode",
+            {"entity_id": entity_id, "hvac_mode": hvac_mode},
+        )
+        if power_on_requested:
+            return f"Executed: turned ON {entity_id} and set mode to {hvac_mode}."
+        return f"Executed: set {entity_id} mode to {hvac_mode}."
 
     raise HAControlError(f"Unsupported action kind: {kind}")
 
@@ -1479,6 +1540,26 @@ def run_ha_parser_self_test() -> None:
                 "temp_now": 22.0,
                 "power_on_requested": True,
             },
+        ),
+        (
+            "Set Master's Aircon to cold mode",
+            {"kind": "climate_mode_set", "target": "masters aircon", "mode": "cool"},
+        ),
+        (
+            "Change Master's Aircon Mode to Cold",
+            {"kind": "climate_mode_set", "target": "masters aircon", "mode": "cool"},
+        ),
+        (
+            "Change Master's Aircon Mode to Cold.",
+            {"kind": "climate_mode_set", "target": "masters aircon", "mode": "cool"},
+        ),
+        (
+            "Master's Aircon cold mode",
+            {"kind": "climate_mode_set", "target": "masters aircon", "mode": "cool"},
+        ),
+        (
+            "Turn on Master's Aircon cold mode",
+            {"kind": "climate_mode_set", "target": "masters aircon", "mode": "cool", "power_on_requested": True},
         ),
         (
             "open garage",

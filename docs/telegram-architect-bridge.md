@@ -167,6 +167,7 @@ Routing behavior:
 - In HA chat mode, OFF queries such as `what's off` / `what's off in HA` are also accepted.
 - In HA chat mode, natural garage/cover verbs such as `open garage` and `close garage` are accepted.
 - In HA chat mode, climate room-context phrasing such as `turn on aircon in living room to 22 cold mode` is accepted and resolved against matching room entities.
+- In HA chat mode, climate mode-only phrasing such as `set master's aircon to cold mode` or `change master's aircon mode to cold` is accepted.
 - Other non-HA text/photo/voice/file requests are rejected with an HA-only reminder.
 - Complex HA plans require explicit `APPROVE` or `CANCEL` in the same chat before execution.
 Photo messages are also supported:

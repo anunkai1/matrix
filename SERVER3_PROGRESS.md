@@ -1,5 +1,40 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram HA Parser: Climate Mode-Only Intents Enabled)
+
+### Summary
+- Investigated HA-only voice/text failures for mode-only climate phrases, including:
+  - `Set Master's Aircon to cold mode.`
+  - `Change Master's Aircon Mode to Cold.`
+  - `Master's Aircon cold mode`
+- Root cause: parser required a temperature for all climate intents; mode-only commands were rejected and fell back to HA-only reminder.
+- Implemented parser/executor updates in `src/telegram_bridge/ha_control.py`:
+  - Added `climate_mode_set` intent/action path for mode-only climate commands.
+  - Mode-only parser now accepts set/change and shorthand phrasing without explicit temperature.
+  - Added explicit `turn on ... <mode>` handling by carrying `power_on_requested=True`.
+  - Executor now applies `climate.set_hvac_mode`; when `power_on_requested=True`, it calls `climate.turn_on` before setting mode.
+  - Token canonicalization now strips trailing periods so transcribed terms like `cold.` map correctly to `cool`.
+  - Added parser self-tests for mode-only phrases (including punctuation and `only` filler variants).
+- Updated docs:
+  - `README.md`
+  - `docs/telegram-architect-bridge.md`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/ha_control.py src/telegram_bridge/main.py`
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+  - targeted parser checks for the reported mode-only phrases (pass)
+- Rolled out live runtime by restart + verify:
+  - `bash ops/telegram-bridge/restart_and_verify.sh`
+  - service healthy after restart (`active/running`, start `Fri 2026-02-20 09:19:36 AEST`)
+- Added repo-tracked change record:
+  - `logs/changes/20260219-231936-telegram-ha-climate-mode-only-intents.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc/default` env changes were required in this change set.
+
 ## 2026-02-20 (Telegram HA Parser: Climate Room-Context + Cold-Mode Parsing Fix)
 
 ### Summary

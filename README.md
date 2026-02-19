@@ -70,6 +70,7 @@ In HA-only chats, read-only HA status queries are also supported (for example `w
 HA-only voice messages are transcribed and passed through the same HA parser path.
 HA parser now accepts natural cover-style commands such as `open garage` / `close garage`.
 Climate parser now keeps room context in phrases like `turn on aircon in living room to 22 cold mode`.
+Climate parser now also supports mode-only phrases like `set master's aircon to cold mode`.
 
 ## Operations
 
