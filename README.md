@@ -69,6 +69,7 @@ For strict separation, set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_I
 In HA-only chats, read-only HA status queries are also supported (for example `what's on right now` and `what's off`).
 HA-only voice messages are transcribed and passed through the same HA parser path.
 HA parser now accepts natural cover-style commands such as `open garage` / `close garage`.
+Climate parser now keeps room context in phrases like `turn on aircon in living room to 22 cold mode`.
 
 ## Operations
 

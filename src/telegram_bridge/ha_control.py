@@ -313,6 +313,8 @@ def _canonical_token(token: str) -> str:
         "a.c": "aircon",
         "airconditioner": "aircon",
         "conditioner": "aircon",
+        "cold": "cool",
+        "colder": "cool",
         "cooling": "cool",
         "heating": "heat",
         "hit": "heat",
@@ -437,11 +439,18 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
         if stop_at_if:
             stop_words.add("if")
         if climate_hint:
-            stop_words.update({"to", "on", "in", "mode"})
+            stop_words.update({"to", "on", "mode"})
 
         out: List[str] = []
         while idx < len(tokens):
             token = tokens[idx]
+            if (
+                climate_hint
+                and token == "in"
+                and idx + 1 < len(tokens)
+                and (tokens[idx + 1] in hvac_modes or tokens[idx + 1] == "mode")
+            ):
+                break
             if token in stop_words:
                 break
             out.append(token)
@@ -1460,6 +1469,16 @@ def run_ha_parser_self_test() -> None:
         (
             "turn on AC living to 25",
             {"kind": "climate_set", "target": "aircon living", "temp_now": 25.0, "power_on_requested": True},
+        ),
+        (
+            "Turn on aircon in living room to 22 degrees cold mode",
+            {
+                "kind": "climate_set",
+                "target": "aircon in living room",
+                "mode": "cool",
+                "temp_now": 22.0,
+                "power_on_requested": True,
+            },
         ),
         (
             "open garage",

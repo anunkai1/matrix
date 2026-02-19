@@ -1,5 +1,36 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram HA Parser: Climate Room-Context + Cold-Mode Parsing Fix)
+
+### Summary
+- Investigated HA-chat ambiguity on phrase:
+  - `Turn on aircon in living room to 22 degrees cold mode`
+  - Prior behavior extracted target as `aircon` only, causing ambiguity across multiple room AC entities.
+- Implemented parser fixes in `src/telegram_bridge/ha_control.py`:
+  - Added token normalization: `cold`/`colder` -> `cool`.
+  - Updated climate target extraction to preserve room context after `in` (for example `aircon in living room`).
+  - Kept mode boundary handling so `in cool mode` still terminates target parsing correctly.
+  - Added parser self-test case for the full living-room sentence.
+- Updated docs:
+  - `README.md`
+  - `docs/telegram-architect-bridge.md`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/ha_control.py src/telegram_bridge/main.py`
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+  - targeted parser checks confirmed room-preserved targets for living/master/guest phrasing examples.
+- Rolled out live runtime by restart + verify:
+  - `bash ops/telegram-bridge/restart_and_verify.sh`
+  - service healthy after restart (`active/running`, start `Fri 2026-02-20 09:07:14 AEST`)
+- Added repo-tracked change record:
+  - `logs/changes/20260219-230714-telegram-ha-climate-room-context-fix.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc/default` env changes were required in this change set.
+
 ## 2026-02-20 (Telegram HA Parser: Open/Close Garage Intent Support)
 
 ### Summary
