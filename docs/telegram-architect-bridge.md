@@ -162,6 +162,7 @@ Routing behavior:
 - Strict split mode (set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_IDS`):
 - Architect chat IDs: text/photo/voice/file requests go to local executor only.
 - HA chat IDs: HA control/schedule text and read-only HA status queries are handled.
+- HA chat IDs: voice notes are transcribed and then evaluated by the same HA parser/status flow.
 - In HA chat mode, natural status prompts such as `what's on right now` are accepted.
 - In HA chat mode, OFF queries such as `what's off` / `what's off in HA` are also accepted.
 - Other non-HA text/photo/voice/file requests are rejected with an HA-only reminder.

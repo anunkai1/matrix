@@ -1031,6 +1031,92 @@ def transcribe_voice(config: Config, voice_path: str) -> str:
     return transcript
 
 
+def transcribe_voice_for_chat(
+    config: Config,
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+    voice_file_id: str,
+    echo_transcript: bool = True,
+) -> Optional[str]:
+    if not config.voice_transcribe_cmd:
+        client.send_message(
+            chat_id,
+            config.voice_not_configured_message,
+            reply_to_message_id=message_id,
+        )
+        return None
+
+    voice_path: Optional[str] = None
+    try:
+        try:
+            voice_path = download_voice_to_temp(client, config, voice_file_id)
+        except ValueError as exc:
+            logging.warning("Voice rejected for chat_id=%s: %s", chat_id, exc)
+            client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+            return None
+        except Exception:
+            logging.exception("Voice download failed for chat_id=%s", chat_id)
+            client.send_message(
+                chat_id,
+                config.voice_download_error_message,
+                reply_to_message_id=message_id,
+            )
+            return None
+
+        try:
+            transcript = transcribe_voice(config, voice_path)
+        except subprocess.TimeoutExpired:
+            logging.warning("Voice transcription timeout for chat_id=%s", chat_id)
+            client.send_message(
+                chat_id,
+                config.timeout_message,
+                reply_to_message_id=message_id,
+            )
+            return None
+        except ValueError:
+            logging.warning("Voice transcription was empty for chat_id=%s", chat_id)
+            client.send_message(
+                chat_id,
+                config.voice_transcribe_empty_message,
+                reply_to_message_id=message_id,
+            )
+            return None
+        except RuntimeError:
+            client.send_message(
+                chat_id,
+                config.voice_transcribe_error_message,
+                reply_to_message_id=message_id,
+            )
+            return None
+        except Exception:
+            logging.exception("Unexpected voice transcription error for chat_id=%s", chat_id)
+            client.send_message(
+                chat_id,
+                config.voice_transcribe_error_message,
+                reply_to_message_id=message_id,
+            )
+            return None
+
+        if echo_transcript:
+            try:
+                client.send_message(
+                    chat_id,
+                    f"Voice transcript:\n{transcript}",
+                    reply_to_message_id=message_id,
+                )
+            except Exception:
+                logging.exception("Failed to send voice transcript echo for chat_id=%s", chat_id)
+
+        return transcript
+    finally:
+        if voice_path:
+            try:
+                os.remove(voice_path)
+            except OSError:
+                logging.warning("Failed to remove temp voice file: %s", voice_path)
+
+
 def build_help_text(chat_mode: str) -> str:
     mode_line = "Chat mode: mixed (HA + Architect in same chat)"
     if chat_mode == "architect":
@@ -1040,7 +1126,7 @@ def build_help_text(chat_mode: str) -> str:
 
     mode_note = "Any other text, photo, voice, or file message is sent to Architect."
     if chat_mode == "ha":
-        mode_note = "HA-only chat: only Home Assistant control text is handled here."
+        mode_note = "HA-only chat: Home Assistant text/voice requests are handled here."
     elif chat_mode == "architect":
         mode_note = "Architect-only chat: Home Assistant control is handled in your HA chat."
 
@@ -1622,7 +1708,6 @@ def process_prompt(
     previous_thread_id = get_thread_id(state, chat_id)
     prompt_text = prompt.strip()
     image_path: Optional[str] = None
-    voice_path: Optional[str] = None
     document_path: Optional[str] = None
     try:
         if photo_file_id:
@@ -1642,70 +1727,16 @@ def process_prompt(
                 return
 
         if voice_file_id:
-            if not config.voice_transcribe_cmd:
-                client.send_message(
-                    chat_id,
-                    config.voice_not_configured_message,
-                    reply_to_message_id=message_id,
-                )
+            transcript = transcribe_voice_for_chat(
+                config=config,
+                client=client,
+                chat_id=chat_id,
+                message_id=message_id,
+                voice_file_id=voice_file_id,
+                echo_transcript=True,
+            )
+            if transcript is None:
                 return
-            try:
-                voice_path = download_voice_to_temp(client, config, voice_file_id)
-            except ValueError as exc:
-                logging.warning("Voice rejected for chat_id=%s: %s", chat_id, exc)
-                client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
-                return
-            except Exception:
-                logging.exception("Voice download failed for chat_id=%s", chat_id)
-                client.send_message(
-                    chat_id,
-                    config.voice_download_error_message,
-                    reply_to_message_id=message_id,
-                )
-                return
-
-            try:
-                transcript = transcribe_voice(config, voice_path)
-            except subprocess.TimeoutExpired:
-                logging.warning("Voice transcription timeout for chat_id=%s", chat_id)
-                client.send_message(
-                    chat_id,
-                    config.timeout_message,
-                    reply_to_message_id=message_id,
-                )
-                return
-            except ValueError:
-                logging.warning("Voice transcription was empty for chat_id=%s", chat_id)
-                client.send_message(
-                    chat_id,
-                    config.voice_transcribe_empty_message,
-                    reply_to_message_id=message_id,
-                )
-                return
-            except RuntimeError:
-                client.send_message(
-                    chat_id,
-                    config.voice_transcribe_error_message,
-                    reply_to_message_id=message_id,
-                )
-                return
-            except Exception:
-                logging.exception("Unexpected voice transcription error for chat_id=%s", chat_id)
-                client.send_message(
-                    chat_id,
-                    config.voice_transcribe_error_message,
-                    reply_to_message_id=message_id,
-                )
-                return
-
-            try:
-                client.send_message(
-                    chat_id,
-                    f"Voice transcript:\n{transcript}",
-                    reply_to_message_id=message_id,
-                )
-            except Exception:
-                logging.exception("Failed to send voice transcript echo for chat_id=%s", chat_id)
 
             if prompt_text:
                 prompt_text = f"{prompt_text}\n\nVoice transcript:\n{transcript}"
@@ -1854,11 +1885,6 @@ def process_prompt(
                 os.remove(image_path)
             except OSError:
                 logging.warning("Failed to remove temp image file: %s", image_path)
-        if voice_path:
-            try:
-                os.remove(voice_path)
-            except OSError:
-                logging.warning("Failed to remove temp voice file: %s", voice_path)
         if document_path:
             try:
                 os.remove(document_path)
@@ -2047,8 +2073,42 @@ def handle_update(
 
     text_only = bool(prompt and photo_file_id is None and voice_file_id is None and document is None)
     if chat_mode == "ha":
+        if photo_file_id is not None or document is not None:
+            client.send_message(
+                chat_id,
+                config.ha_only_message,
+                reply_to_message_id=message_id,
+            )
+            return
+
+        ha_prompt = prompt
+        if voice_file_id is not None:
+            transcript = transcribe_voice_for_chat(
+                config=config,
+                client=client,
+                chat_id=chat_id,
+                message_id=message_id,
+                voice_file_id=voice_file_id,
+                echo_transcript=True,
+            )
+            if transcript is None:
+                return
+            if ha_prompt:
+                ha_prompt = f"{ha_prompt}\n{transcript}"
+            else:
+                ha_prompt = transcript
+            ha_prompt = ha_prompt.strip()
+
+        if ha_prompt and len(ha_prompt) > config.max_input_chars:
+            client.send_message(
+                chat_id,
+                f"Input too long ({len(ha_prompt)} chars). Max is {config.max_input_chars}.",
+                reply_to_message_id=message_id,
+            )
+            return
+
         if (
-            text_only
+            ha_prompt
             and handle_ha_request_text(
                 state=state,
                 config=config,
@@ -2056,7 +2116,7 @@ def handle_update(
                 client=client,
                 chat_id=chat_id,
                 message_id=message_id,
-                prompt=prompt,
+                prompt=ha_prompt,
                 allow_implicit_status=True,
             )
         ):

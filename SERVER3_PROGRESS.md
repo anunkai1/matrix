@@ -1,5 +1,40 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram HA-Only Chat: Voice Commands Routed Through HA Parser)
+
+### Summary
+- Implemented HA-only voice-command support in bridge runtime so voice notes no longer auto-fail with HA-only fallback.
+- Added shared voice helper in `src/telegram_bridge/main.py`:
+  - download voice
+  - transcribe using configured voice command
+  - send transcript echo
+  - clean up temp voice file
+- Updated HA-only routing path:
+  - if voice is present (and no photo/file), transcript is now passed into existing `handle_ha_request_text(...)` parser/status flow.
+  - keeps same HA parser behavior used for text requests (status/control/schedule).
+- Preserved HA-only guardrails:
+  - photo/document inputs still rejected in HA-only mode
+  - non-HA text/voice content still returns HA-only reminder
+- Updated docs/help wording for HA-only voice support:
+  - `README.md`
+  - `docs/telegram-architect-bridge.md`
+  - chat help mode note in `src/telegram_bridge/main.py`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/main.py src/telegram_bridge/ha_control.py`
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+- Rolled out live runtime by restart + verify:
+  - `bash ops/telegram-bridge/restart_and_verify.sh`
+  - service healthy after restart (`active/running`, start `Fri 2026-02-20 07:54:19 AEST`)
+- Added repo-tracked change record:
+  - `logs/changes/20260219-215419-telegram-ha-voice-parser-support.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc/default` env changes were required in this change set.
+
 ## 2026-02-20 (Telegram HA Allowed-Entities Allowlist Applied Live)
 
 ### Summary

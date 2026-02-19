@@ -67,6 +67,7 @@ Home Assistant scheduling requests can be sent in plain text (for example `turn 
 Complex multi-step plans require `APPROVE` in chat before execution.
 For strict separation, set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_IDS` so one chat handles only Architect actions and another handles only HA actions.
 In HA-only chats, read-only HA status queries are also supported (for example `what's on right now` and `what's off`).
+HA-only voice messages are transcribed and passed through the same HA parser path.
 
 ## Operations
 
