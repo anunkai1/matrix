@@ -161,7 +161,9 @@ Routing behavior:
 - Default (no split vars): mixed mode in each allowlisted chat. HA schedule requests are parsed first; non-HA text goes to local executor (`codex exec`).
 - Strict split mode (set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_IDS`):
 - Architect chat IDs: text/photo/voice/file requests go to local executor only.
-- HA chat IDs: only HA control text is handled. Non-HA text/photo/voice/file requests are rejected with an HA-only reminder.
+- HA chat IDs: HA control/schedule text and read-only HA status queries are handled.
+- In HA chat mode, natural status prompts such as `what's on right now` are accepted.
+- Other non-HA text/photo/voice/file requests are rejected with an HA-only reminder.
 - Complex HA plans require explicit `APPROVE` or `CANCEL` in the same chat before execution.
 Photo messages are also supported:
 - If a photo has a caption, the caption is used as the prompt.

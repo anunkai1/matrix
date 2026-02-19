@@ -64,6 +64,36 @@ DURATION_RE = re.compile(
 AT_TIME_RE = re.compile(r"\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b")
 SEGMENT_SPLIT_RE = re.compile(r"\b(?:and\s+then|then)\b")
 
+STATUS_QUERY_PHRASES = (
+    "whats on",
+    "what is on",
+    "whats running",
+    "what is running",
+    "whats active",
+    "what is active",
+    "what is happening",
+    "check whats on",
+    "check what is on",
+    "show whats on",
+    "show what is on",
+)
+
+STATUS_SUPPORTED_DOMAINS = {
+    "alarm_control_panel",
+    "climate",
+    "cover",
+    "fan",
+    "humidifier",
+    "input_boolean",
+    "light",
+    "lock",
+    "media_player",
+    "script",
+    "switch",
+    "vacuum",
+    "water_heater",
+}
+
 
 class HomeAssistantClient:
     def __init__(self, config: HAConfig, timeout_seconds: int = 15) -> None:
@@ -1146,6 +1176,114 @@ def now_ts() -> float:
     return time.time()
 
 
+def looks_like_ha_status_query(text: str, allow_implicit: bool = False) -> bool:
+    cleaned = text.strip()
+    if not cleaned:
+        return False
+    if parse_approval_command(cleaned):
+        return False
+    if _parse_control_intent(cleaned) is not None:
+        return False
+
+    tokens = _tokenize_text(cleaned)
+    if not tokens:
+        return False
+    token_set = set(tokens)
+    normalized = " ".join(tokens)
+
+    explicit_ha_context = "ha" in token_set or ("home" in token_set and "assistant" in token_set)
+    if not explicit_ha_context and not allow_implicit:
+        return False
+
+    if "status" in token_set:
+        return True
+
+    phrase_hit = any(phrase in normalized for phrase in STATUS_QUERY_PHRASES)
+    if not phrase_hit:
+        return False
+
+    if explicit_ha_context:
+        return True
+
+    if "right now" in normalized:
+        return True
+    if "now" in token_set or "currently" in token_set:
+        return True
+    return False
+
+
+def _is_active_entity_state(entity_id: str, state_raw: str, attrs: Dict[str, object]) -> bool:
+    state = (state_raw or "").strip().lower()
+    if not state or state in {"unknown", "unavailable", "none"}:
+        return False
+
+    domain = entity_id.split(".", 1)[0]
+    if domain not in STATUS_SUPPORTED_DOMAINS:
+        return False
+
+    if domain in {"switch", "light", "input_boolean", "fan", "humidifier", "script"}:
+        return state == "on"
+    if domain == "cover":
+        return state in {"open", "opening", "closing"}
+    if domain == "media_player":
+        return state in {"on", "playing", "paused", "buffering", "idle"}
+    if domain == "vacuum":
+        return state in {"cleaning", "returning", "paused", "error"}
+    if domain == "lock":
+        return state == "unlocked"
+    if domain == "alarm_control_panel":
+        return state.startswith("armed") or state == "triggered"
+    if domain == "water_heater":
+        return state != "off"
+    if domain == "climate":
+        hvac_action = str(attrs.get("hvac_action", "")).strip().lower()
+        if hvac_action in {"heating", "cooling", "drying", "fan", "preheating", "defrosting"}:
+            return True
+        return state in {"heat", "cool", "dry", "fan_only", "auto", "heat_cool", "heating", "cooling"}
+    return state == "on"
+
+
+def summarize_active_ha_entities(
+    client: HomeAssistantClient,
+    config: HAConfig,
+    limit: int = 20,
+) -> str:
+    states = client.get_states()
+    rows: List[Tuple[str, str, str, str, str]] = []
+
+    for entity in states:
+        entity_id = entity.get("entity_id")
+        if not isinstance(entity_id, str) or "." not in entity_id:
+            continue
+
+        eid = entity_id.strip().lower()
+        domain = eid.split(".", 1)[0]
+        if domain not in config.allowed_domains:
+            continue
+        if config.allowed_entities and eid not in config.allowed_entities:
+            continue
+
+        state_raw = str(entity.get("state", "")).strip()
+        attrs = entity.get("attributes")
+        attrs_dict = attrs if isinstance(attrs, dict) else {}
+        if not _is_active_entity_state(eid, state_raw, attrs_dict):
+            continue
+
+        name = _entity_name(entity)
+        rows.append((domain, name.lower(), name, eid, state_raw))
+
+    if not rows:
+        return "HA status: no allowed entities are currently on/active."
+
+    rows.sort(key=lambda item: (item[0], item[1], item[3]))
+    lines = [f"HA status: {len(rows)} allowed entities currently on/active."]
+    for _, _, name, eid, state_raw in rows[:limit]:
+        lines.append(f"- {name} ({eid}) -> {state_raw}")
+    if len(rows) > limit:
+        lines.append(f"- ...and {len(rows) - limit} more.")
+    return "\n".join(lines)
+
+
 def looks_like_ha_control_text(text: str) -> bool:
     cleaned = text.strip()
     if not cleaned:
@@ -1192,3 +1330,10 @@ def run_ha_parser_self_test() -> None:
                 raise RuntimeError(
                     f"HA parser self-test failed for {text!r}: expected {key}={value!r}, got {parsed.get(key)!r}"
                 )
+
+    if not looks_like_ha_status_query("Can you check what's on right now in HA"):
+        raise RuntimeError("HA parser self-test failed: explicit HA status query not detected")
+    if not looks_like_ha_status_query("what's on right now", allow_implicit=True):
+        raise RuntimeError("HA parser self-test failed: implicit HA-only status query not detected")
+    if looks_like_ha_status_query("what's on right now", allow_implicit=False):
+        raise RuntimeError("HA parser self-test failed: implicit status should require explicit HA context")

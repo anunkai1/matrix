@@ -26,8 +26,10 @@ from ha_control import (
     execute_action,
     is_ha_network_error,
     load_ha_config,
+    looks_like_ha_status_query,
     parse_approval_command,
     parse_schedule_plan_from_text,
+    summarize_active_ha_entities,
 )
 
 TELEGRAM_LIMIT = 4096
@@ -1365,6 +1367,7 @@ def handle_ha_request_text(
     chat_id: int,
     message_id: Optional[int],
     prompt: str,
+    allow_implicit_status: bool = False,
 ) -> bool:
     cleaned = (prompt or "").strip()
     if not cleaned:
@@ -1435,6 +1438,24 @@ def handle_ha_request_text(
 
     if runtime.client is None or runtime.config is None:
         return False
+
+    if looks_like_ha_status_query(cleaned, allow_implicit=allow_implicit_status):
+        try:
+            status_text = summarize_active_ha_entities(runtime.client, runtime.config)
+        except Exception as exc:
+            if is_ha_network_error(exc):
+                client.send_message(
+                    chat_id,
+                    "Home Assistant is unavailable right now. Please try again.",
+                    reply_to_message_id=message_id,
+                )
+                return True
+            logging.exception("Unexpected HA status query error for chat_id=%s", chat_id)
+            client.send_message(chat_id, config.generic_error_message, reply_to_message_id=message_id)
+            return True
+
+        client.send_message(chat_id, status_text, reply_to_message_id=message_id)
+        return True
 
     try:
         plan = parse_schedule_plan_from_text(
@@ -2031,6 +2052,7 @@ def handle_update(
                 chat_id=chat_id,
                 message_id=message_id,
                 prompt=prompt,
+                allow_implicit_status=True,
             )
         ):
             return
@@ -2052,6 +2074,7 @@ def handle_update(
             chat_id=chat_id,
             message_id=message_id,
             prompt=prompt,
+            allow_implicit_status=False,
         )
     ):
         return

@@ -1,5 +1,35 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram HA-Only Chat: Natural Status Queries Enabled)
+
+### Summary
+- Investigated HA-only chat rejection for natural read prompts such as `Can you check what's on right now`.
+- Root behavior before fix: HA-only routing accepted only control/schedule intents; status-style queries were treated as non-HA and rejected with the HA-only reminder.
+- Added dedicated HA status-query detection and handling in bridge runtime:
+  - New status-query matcher and active-entity summarizer in `src/telegram_bridge/ha_control.py`.
+  - `handle_ha_request_text(...)` now serves read-only HA status responses in `src/telegram_bridge/main.py`.
+  - HA-only chats allow implicit status phrasing (for example `what's on right now`).
+  - Mixed chats still require explicit HA context for status-query routing to avoid accidental hijack of normal Architect prompts.
+- Updated docs to reflect new behavior:
+  - `README.md`
+  - `docs/telegram-architect-bridge.md`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/ha_control.py src/telegram_bridge/main.py`
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+  - runtime intent check snippet confirmed expected true/false status-query routing behavior
+- Rolled out live runtime by restarting `telegram-architect-bridge.service` with verified helper:
+  - `bash ops/telegram-bridge/restart_and_verify.sh`
+  - service healthy after restart (`active/running`)
+- Added repo-tracked change record:
+  - `logs/changes/20260219-212038-telegram-ha-status-query-support.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc/default` env content changes in this change set; rollout required service restart only.
+
 ## 2026-02-20 (Telegram Bridge Live Env Recovery While Preserving Strict Routing)
 
 ### Summary
