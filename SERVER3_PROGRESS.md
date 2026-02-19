@@ -1,5 +1,24 @@
 # Server3 Progress Log
 
+## 2026-02-19 (ESPHome 2026.2.0 Xiaomi BLE Outage: Runtime Recovery Attempt + Permission Boundary)
+
+### Summary
+- Investigated user-reported outage after ESPHome add-on update (`2026.1.5` -> `2026.2.0`) and confirmed all Xiaomi `LYWSD03MMC` entities were `unavailable` on a shared timeline.
+- Verified BLE proxy path metadata remained present in HA (`esphome`, `bluetooth`, `xiaomi_ble` config entries loaded; proxy host reachable at LAN level with ESPHome API port `6053` open).
+- Attempted HA integration reload path (`homeassistant.reload_config_entry` for esphome/bluetooth/xiaomi_ble entries), but calls were blocked by token permission (`home_assistant_error: Unauthorized`).
+- Executed ESPHome add-on restart via `hassio.addon_restart` (`5c53de3b_esphome`) and monitored target Xiaomi entities for 6 minutes post-restart.
+- Result after restart window: no recovery; all watched Xiaomi temperature entities remained `unavailable`.
+- Attempted HA core restart via `homeassistant.restart`; also blocked by token permission (`home_assistant_error: Unauthorized`).
+- Recorded live operations and outcomes in `logs/changes/20260219-073900-esphome-xiaomi-ble-recovery-attempt.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This step performed runtime operations only (HA service calls and state checks) with no live config file changes.
+- Next required action is an admin-privileged rollback/restart path (for example, roll back ESPHome add-on to `2026.1.5` via Supervisor UI) because current token scope cannot execute HA core/integration reload services.
+
 ## 2026-02-18 (HA General Scheduling Runtime: Replace Policy + Brisbane TZ + Complex Confirm)
 
 ### Summary
