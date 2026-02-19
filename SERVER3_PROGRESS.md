@@ -1,5 +1,29 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram Bridge Live Env Recovery While Preserving Strict Routing)
+
+### Summary
+- Investigated Telegram outage and confirmed `telegram-architect-bridge.service` was crash-looping on startup with `Configuration error: TELEGRAM_BOT_TOKEN is required`.
+- Identified live root cause: `/etc/default/telegram-architect-bridge` had been truncated to only 3 routing keys during an in-place rewrite attempt at `2026-02-19 22:09:30 AEST`.
+- Recovered live env from `/etc/default/telegram-architect-bridge.bak-20260219-220930` and preserved strict routing keys:
+  - `TELEGRAM_ALLOWED_CHAT_IDS=211761499,-5144577688`
+  - `TELEGRAM_ARCHITECT_CHAT_IDS=211761499`
+  - `TELEGRAM_HA_CHAT_IDS=-5144577688`
+- Restarted bridge service and verified healthy runtime with routing enabled:
+  - `ActiveState=active`, `SubState=running`
+  - `ExecMainStartTimestamp=Fri 2026-02-20 07:06:40 AEST`
+  - Journal confirms `Bridge started` and `Chat routing enabled`.
+- Updated repo-tracked redacted env mirror and added change record:
+  - `infra/env/telegram-architect-bridge.server3.redacted.env`
+  - `logs/changes/20260219-210652-telegram-env-recovery-preserve-routing.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No bridge code changes were made in this recovery; fix scope was live env restore + traceability updates.
+
 ## 2026-02-19 (Telegram Bridge Strict Chat Routing: Architect-Only vs HA-Only)
 
 ### Summary
