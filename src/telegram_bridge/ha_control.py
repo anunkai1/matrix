@@ -78,6 +78,19 @@ STATUS_QUERY_PHRASES = (
     "show what is on",
 )
 
+STATUS_OFF_QUERY_PHRASES = (
+    "whats off",
+    "what is off",
+    "whats inactive",
+    "what is inactive",
+    "whats not on",
+    "what is not on",
+    "check whats off",
+    "check what is off",
+    "show whats off",
+    "show what is off",
+)
+
 STATUS_SUPPORTED_DOMAINS = {
     "alarm_control_panel",
     "climate",
@@ -519,6 +532,7 @@ def _parse_control_intent(text: str) -> Optional[Dict[str, object]]:
             "temp_now": float(main_temp),
             "hours": float(followup_hours) if followup_hours is not None else None,
             "temp_later": float(followup_temp) if followup_temp is not None else None,
+            "power_on_requested": turn_state == "on",
         }
 
     if turn_state in {"on", "off"}:
@@ -779,6 +793,7 @@ def _build_action_from_intent(
         mode = intent.get("mode")
         if mode is not None and not isinstance(mode, str):
             mode = None
+        power_on_requested = bool(intent.get("power_on_requested") is True)
 
         followup_hours = intent.get("hours")
         followup_temp = intent.get("temp_later")
@@ -794,6 +809,8 @@ def _build_action_from_intent(
             _validate_temperature(followup_temp, config)
 
         summary = f"Set {entity_display} ({entity_id}) to {temp_now:g}C"
+        if power_on_requested and not mode:
+            summary = f"Turn ON {entity_display} ({entity_id}) and set to {temp_now:g}C"
         if mode:
             summary += f" in {mode} mode"
         if followup_hours is not None and followup_temp is not None:
@@ -806,6 +823,7 @@ def _build_action_from_intent(
             "temperature_now": temp_now,
             "followup_hours": float(followup_hours) if followup_hours is not None else None,
             "followup_temperature": followup_temp,
+            "power_on_requested": power_on_requested,
             "summary": summary + ".",
         }
 
@@ -882,11 +900,18 @@ def execute_action(
             raise HAControlError("Climate action entity_id must be climate.*")
 
         hvac_mode = action.get("hvac_mode")
+        power_on_requested = bool(action.get("power_on_requested") is True)
         if isinstance(hvac_mode, str) and hvac_mode:
             client.call_service(
                 "climate",
                 "set_hvac_mode",
                 {"entity_id": entity_id, "hvac_mode": hvac_mode},
+            )
+        elif power_on_requested:
+            client.call_service(
+                "climate",
+                "turn_on",
+                {"entity_id": entity_id},
             )
 
         temp_now = action.get("temperature_now")
@@ -916,7 +941,11 @@ def execute_action(
                 },
             )
             return (
-                f"Executed: set {entity_id} to {float(temp_now):g}C"
+                (
+                    f"Executed: turned ON and set {entity_id} to {float(temp_now):g}C"
+                    if power_on_requested and not (isinstance(hvac_mode, str) and hvac_mode)
+                    else f"Executed: set {entity_id} to {float(temp_now):g}C"
+                )
                 + (f" with mode {hvac_mode}" if isinstance(hvac_mode, str) and hvac_mode else "")
                 + (
                     f"; scheduled {float(followup_temperature):g}C in {float(followup_hours):g} hour(s) "
@@ -924,10 +953,12 @@ def execute_action(
                 )
             )
 
-        return (
-            f"Executed: set {entity_id} to {float(temp_now):g}C"
-            + (f" with mode {hvac_mode}." if isinstance(hvac_mode, str) and hvac_mode else ".")
+        prefix = (
+            f"Executed: turned ON and set {entity_id} to {float(temp_now):g}C"
+            if power_on_requested and not (isinstance(hvac_mode, str) and hvac_mode)
+            else f"Executed: set {entity_id} to {float(temp_now):g}C"
         )
+        return prefix + (f" with mode {hvac_mode}." if isinstance(hvac_mode, str) and hvac_mode else ".")
 
     raise HAControlError(f"Unsupported action kind: {kind}")
 
@@ -1176,40 +1207,48 @@ def now_ts() -> float:
     return time.time()
 
 
-def looks_like_ha_status_query(text: str, allow_implicit: bool = False) -> bool:
+def parse_ha_status_query_mode(text: str, allow_implicit: bool = False) -> Optional[str]:
     cleaned = text.strip()
     if not cleaned:
-        return False
+        return None
     if parse_approval_command(cleaned):
-        return False
+        return None
     if _parse_control_intent(cleaned) is not None:
-        return False
+        return None
 
     tokens = _tokenize_text(cleaned)
     if not tokens:
-        return False
+        return None
     token_set = set(tokens)
     normalized = " ".join(tokens)
 
     explicit_ha_context = "ha" in token_set or ("home" in token_set and "assistant" in token_set)
     if not explicit_ha_context and not allow_implicit:
-        return False
+        return None
+
+    if any(phrase in normalized for phrase in STATUS_OFF_QUERY_PHRASES):
+        return "off"
+
+    if "status" in token_set and "off" in token_set:
+        return "off"
 
     if "status" in token_set:
-        return True
+        return "on"
 
-    phrase_hit = any(phrase in normalized for phrase in STATUS_QUERY_PHRASES)
-    if not phrase_hit:
-        return False
-
+    on_phrase_hit = any(phrase in normalized for phrase in STATUS_QUERY_PHRASES)
+    if not on_phrase_hit:
+        return None
     if explicit_ha_context:
-        return True
-
+        return "on"
     if "right now" in normalized:
-        return True
+        return "on"
     if "now" in token_set or "currently" in token_set:
-        return True
-    return False
+        return "on"
+    return None
+
+
+def looks_like_ha_status_query(text: str, allow_implicit: bool = False) -> bool:
+    return parse_ha_status_query_mode(text, allow_implicit=allow_implicit) is not None
 
 
 def _is_active_entity_state(entity_id: str, state_raw: str, attrs: Dict[str, object]) -> bool:
@@ -1243,11 +1282,41 @@ def _is_active_entity_state(entity_id: str, state_raw: str, attrs: Dict[str, obj
     return state == "on"
 
 
-def summarize_active_ha_entities(
+def _is_off_entity_state(entity_id: str, state_raw: str, attrs: Dict[str, object]) -> bool:
+    state = (state_raw or "").strip().lower()
+    if not state or state in {"unknown", "unavailable", "none"}:
+        return False
+
+    domain = entity_id.split(".", 1)[0]
+    if domain not in STATUS_SUPPORTED_DOMAINS:
+        return False
+
+    if domain in {"switch", "light", "input_boolean", "fan", "humidifier", "script"}:
+        return state == "off"
+    if domain == "cover":
+        return state == "closed"
+    if domain == "media_player":
+        return state in {"off", "standby"}
+    if domain == "vacuum":
+        return state in {"docked", "idle", "off"}
+    if domain == "lock":
+        return state == "locked"
+    if domain == "alarm_control_panel":
+        return state == "disarmed"
+    if domain == "water_heater":
+        return state == "off"
+    if domain == "climate":
+        return state == "off"
+    return state == "off"
+
+
+def summarize_ha_entities_by_status(
     client: HomeAssistantClient,
     config: HAConfig,
+    status_mode: str = "on",
     limit: int = 20,
 ) -> str:
+    include_off = status_mode == "off"
     states = client.get_states()
     rows: List[Tuple[str, str, str, str, str]] = []
 
@@ -1266,17 +1335,25 @@ def summarize_active_ha_entities(
         state_raw = str(entity.get("state", "")).strip()
         attrs = entity.get("attributes")
         attrs_dict = attrs if isinstance(attrs, dict) else {}
-        if not _is_active_entity_state(eid, state_raw, attrs_dict):
+        if include_off:
+            if not _is_off_entity_state(eid, state_raw, attrs_dict):
+                continue
+        elif not _is_active_entity_state(eid, state_raw, attrs_dict):
             continue
 
         name = _entity_name(entity)
         rows.append((domain, name.lower(), name, eid, state_raw))
 
     if not rows:
+        if include_off:
+            return "HA status: no allowed entities are currently off/inactive."
         return "HA status: no allowed entities are currently on/active."
 
     rows.sort(key=lambda item: (item[0], item[1], item[3]))
-    lines = [f"HA status: {len(rows)} allowed entities currently on/active."]
+    if include_off:
+        lines = [f"HA status: {len(rows)} allowed entities currently off/inactive."]
+    else:
+        lines = [f"HA status: {len(rows)} allowed entities currently on/active."]
     for _, _, name, eid, state_raw in rows[:limit]:
         lines.append(f"- {name} ({eid}) -> {state_raw}")
     if len(rows) > limit:
@@ -1297,7 +1374,13 @@ def run_ha_parser_self_test() -> None:
     cases = [
         (
             "turn on masters AC to cool 24",
-            {"kind": "climate_set", "target": "masters aircon", "mode": "cool", "temp_now": 24.0},
+            {
+                "kind": "climate_set",
+                "target": "masters aircon",
+                "mode": "cool",
+                "temp_now": 24.0,
+                "power_on_requested": True,
+            },
         ),
         (
             "please switch on living room aircon to 23",
@@ -1319,6 +1402,10 @@ def run_ha_parser_self_test() -> None:
             "To your normal masters I see on cool mode 23",
             {"kind": "climate_set", "target": "masters aircon", "mode": "cool", "temp_now": 23.0},
         ),
+        (
+            "turn on AC living to 25",
+            {"kind": "climate_set", "target": "aircon living", "temp_now": 25.0, "power_on_requested": True},
+        ),
     ]
 
     for text, expected in cases:
@@ -1331,9 +1418,13 @@ def run_ha_parser_self_test() -> None:
                     f"HA parser self-test failed for {text!r}: expected {key}={value!r}, got {parsed.get(key)!r}"
                 )
 
-    if not looks_like_ha_status_query("Can you check what's on right now in HA"):
+    if parse_ha_status_query_mode("Can you check what's on right now in HA") != "on":
         raise RuntimeError("HA parser self-test failed: explicit HA status query not detected")
-    if not looks_like_ha_status_query("what's on right now", allow_implicit=True):
+    if parse_ha_status_query_mode("what's on right now", allow_implicit=True) != "on":
         raise RuntimeError("HA parser self-test failed: implicit HA-only status query not detected")
-    if looks_like_ha_status_query("what's on right now", allow_implicit=False):
+    if parse_ha_status_query_mode("what's on right now", allow_implicit=False) is not None:
         raise RuntimeError("HA parser self-test failed: implicit status should require explicit HA context")
+    if parse_ha_status_query_mode("whats off in HA") != "off":
+        raise RuntimeError("HA parser self-test failed: explicit HA off-status query not detected")
+    if parse_ha_status_query_mode("whats off", allow_implicit=True) != "off":
+        raise RuntimeError("HA parser self-test failed: implicit HA-only off-status query not detected")

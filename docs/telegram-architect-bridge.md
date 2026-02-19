@@ -163,6 +163,7 @@ Routing behavior:
 - Architect chat IDs: text/photo/voice/file requests go to local executor only.
 - HA chat IDs: HA control/schedule text and read-only HA status queries are handled.
 - In HA chat mode, natural status prompts such as `what's on right now` are accepted.
+- In HA chat mode, OFF queries such as `what's off` / `what's off in HA` are also accepted.
 - Other non-HA text/photo/voice/file requests are rejected with an HA-only reminder.
 - Complex HA plans require explicit `APPROVE` or `CANCEL` in the same chat before execution.
 Photo messages are also supported:
@@ -184,6 +185,7 @@ Voice messages are also supported:
 - File size is guarded by `TELEGRAM_MAX_DOCUMENT_BYTES` (default `52428800`).
 - HA timing supports relative (`in 2 hours`, `after 30 mins`) and absolute (`at 7:30 pm`) scheduling.
 - Overlap behavior is controlled by `TELEGRAM_HA_SCHEDULE_POLICY` (`replace`, `queue`, `parallel`).
+- For climate commands phrased as `turn on ... to <temp>`, the bridge now explicitly calls `climate.turn_on` when no HVAC mode is given, then applies `set_temperature`.
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
 
 Before executor completion, the bridge sends an immediate placeholder reply:

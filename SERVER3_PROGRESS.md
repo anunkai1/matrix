@@ -1,5 +1,38 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram HA Chat: OFF Status Queries + Climate Turn-On Intent Fix)
+
+### Summary
+- Investigated two live HA-chat issues:
+  - `whats off` / `whats off in HA` returned HA-only fallback instead of status results.
+  - `turn on AC living to 25` set temperature but did not reliably power the climate entity on.
+- Implemented parser/executor fixes in bridge runtime:
+  - Added HA status-query mode parsing (`on`/`off`) and OFF-query phrase support in `src/telegram_bridge/ha_control.py`.
+  - Added status summary generation for both ON and OFF views, constrained to allowed HA domains/entities.
+  - Kept mixed-chat routing guard: implicit status prompts without explicit HA context are still not auto-routed to HA.
+  - Added `power_on_requested` intent flag for climate commands expressed as `turn on ... to <temp>`.
+  - Updated climate execution path to call `climate.turn_on` when no HVAC mode is provided, then apply `climate.set_temperature`.
+  - Updated execution messaging to reflect turn-on behavior when that path is used.
+- Updated docs:
+  - `README.md`
+  - `docs/telegram-architect-bridge.md`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/ha_control.py src/telegram_bridge/main.py`
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+  - targeted parser checks for OFF query modes and turn-on climate intent flag (pass)
+- Rolled out live runtime by restarting and verifying service:
+  - `bash ops/telegram-bridge/restart_and_verify.sh`
+  - service healthy after restart (`active/running`, start `Fri 2026-02-20 07:35:51 AEST`)
+- Added repo-tracked change record:
+  - `logs/changes/20260219-213551-telegram-ha-off-query-and-climate-turn-on-fix.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc/default` env changes were required in this change set.
+
 ## 2026-02-20 (Telegram HA-Only Chat: Natural Status Queries Enabled)
 
 ### Summary

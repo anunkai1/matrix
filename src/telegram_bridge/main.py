@@ -26,10 +26,10 @@ from ha_control import (
     execute_action,
     is_ha_network_error,
     load_ha_config,
-    looks_like_ha_status_query,
+    parse_ha_status_query_mode,
     parse_approval_command,
     parse_schedule_plan_from_text,
-    summarize_active_ha_entities,
+    summarize_ha_entities_by_status,
 )
 
 TELEGRAM_LIMIT = 4096
@@ -1439,9 +1439,14 @@ def handle_ha_request_text(
     if runtime.client is None or runtime.config is None:
         return False
 
-    if looks_like_ha_status_query(cleaned, allow_implicit=allow_implicit_status):
+    status_mode = parse_ha_status_query_mode(cleaned, allow_implicit=allow_implicit_status)
+    if status_mode is not None:
         try:
-            status_text = summarize_active_ha_entities(runtime.client, runtime.config)
+            status_text = summarize_ha_entities_by_status(
+                runtime.client,
+                runtime.config,
+                status_mode=status_mode,
+            )
         except Exception as exc:
             if is_ha_network_error(exc):
                 client.send_message(
