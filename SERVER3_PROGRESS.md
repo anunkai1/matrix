@@ -1,5 +1,20 @@
 # Server3 Progress Log
 
+## 2026-02-19 (Daily Surprise Instruction Added)
+
+### Summary
+- Added a persistent daily-surprise behavior section to `AGENTS.md` so the assistant can deliver a fresh surprise cadence.
+- Defined trigger phrases (`surprise me`, `daily surprise`, `enable daily surprise`) and stop phrases (`cancel surprise`, `stop daily surprise`).
+- Defined first-reply-of-day behavior for enabled mode plus explicit on-demand surprise behavior.
+- Added deterministic date-based variation and timezone default guidance (`America/New_York`) to keep daily content fresh without external state storage.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo policy/instructions only; no live `/etc` or runtime service config edits were applied.
+
 ## 2026-02-19 (ESPHome 2026.2.0 Xiaomi BLE Outage: Runtime Recovery Attempt + Permission Boundary)
 
 ### Summary
