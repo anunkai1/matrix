@@ -68,21 +68,10 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_HA_ENABLED=true
 # TELEGRAM_HA_BASE_URL=http://homeassistant.local:8123
 # TELEGRAM_HA_TOKEN=replace_with_long_lived_token
-# TELEGRAM_HA_TIMEZONE=Australia/Brisbane
-# TELEGRAM_HA_SCHEDULE_POLICY=replace
-# TELEGRAM_HA_REQUIRE_CONFIRM_COMPLEX=true
-# TELEGRAM_HA_SCHEDULER_INTERVAL_SECONDS=20
-# TELEGRAM_HA_APPROVAL_TTL_SECONDS=300
-# TELEGRAM_HA_TEMP_MIN_C=16
-# TELEGRAM_HA_TEMP_MAX_C=30
+# TELEGRAM_HA_CONVERSATION_AGENT_ID=conversation.chatgpt
+# TELEGRAM_HA_LANGUAGE=en
 # TELEGRAM_HA_ALLOWED_DOMAINS=climate,switch,light,water_heater,input_boolean
 # TELEGRAM_HA_ALLOWED_ENTITIES=
-# TELEGRAM_HA_ALIASES_PATH=/home/architect/.local/state/telegram-architect-bridge/ha_aliases.json
-# TELEGRAM_HA_CLIMATE_FOLLOWUP_SCRIPT=script.architect_schedule_climate_followup
-# TELEGRAM_HA_SOLAR_SENSOR_ENTITY=sensor.grid_export_power
-# TELEGRAM_HA_SOLAR_EXCESS_THRESHOLD_W=500
-# TELEGRAM_HA_MATCH_MIN_SCORE=0.46
-# TELEGRAM_HA_MATCH_AMBIGUITY_GAP=0.05
 # Optional override:
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
 EOF
@@ -129,16 +118,7 @@ homeassistant:
 
 4. Reload scripts + automations (or restart HA).
 5. Set HA env vars in `/etc/default/telegram-architect-bridge` (`TELEGRAM_HA_*`) and restart the bridge.
-6. Optional: define alias map JSON at `TELEGRAM_HA_ALIASES_PATH`, for example:
-
-```json
-{
-  "master aircon": "climate.master_aircon",
-  "living room aircon": "climate.living_rm_aircon",
-  "tapox02": "switch.tapox02",
-  "water heater": "switch.water_heater"
-}
-```
+6. Ensure your chosen HA conversation agent can control the entities you intend to expose.
 
 Validation:
 
@@ -154,22 +134,14 @@ bash ops/home-assistant/validate_architect_package.sh
 - `/status` bridge health and uptime
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
-- `APPROVE` approve a pending complex HA plan
-- `CANCEL` cancel a pending complex HA plan
 
 Routing behavior:
-- Default (no split vars): mixed mode in each allowlisted chat. HA schedule requests are parsed first; non-HA text goes to local executor (`codex exec`).
+- Default (no split vars): mixed mode in each allowlisted chat. HA text-only requests are sent to Home Assistant Conversation API; non-HA text/media goes to local executor (`codex exec`).
 - Strict split mode (set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_IDS`):
 - Architect chat IDs: text/photo/voice/file requests go to local executor only.
-- HA chat IDs: HA control/schedule text and read-only HA status queries are handled.
-- HA chat IDs: voice notes are transcribed and then evaluated by the same HA parser/status flow.
-- In HA chat mode, natural status prompts such as `what's on right now` are accepted.
-- In HA chat mode, OFF queries such as `what's off` / `what's off in HA` are also accepted.
-- In HA chat mode, natural garage/cover verbs such as `open garage` and `close garage` are accepted.
-- In HA chat mode, climate room-context phrasing such as `turn on aircon in living room to 22 cold mode` is accepted and resolved against matching room entities.
-- In HA chat mode, climate mode-only phrasing such as `set master's aircon to cold mode` or `change master's aircon mode to cold` is accepted.
+- HA chat IDs: HA text requests are sent directly to Home Assistant Conversation API.
+- HA chat IDs: voice notes are transcribed and the transcript is sent directly to Home Assistant Conversation API.
 - Other non-HA text/photo/voice/file requests are rejected with an HA-only reminder.
-- Complex HA plans require explicit `APPROVE` or `CANCEL` in the same chat before execution.
 Photo messages are also supported:
 - If a photo has a caption, the caption is used as the prompt.
 - If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`
@@ -187,9 +159,6 @@ Voice messages are also supported:
 - If a file has no caption, the bridge sends a default prompt: `Please analyze this file.`
 - The bridge downloads the file, injects local file context (path, name, MIME, size) into the prompt, and Codex analyzes it directly from disk.
 - File size is guarded by `TELEGRAM_MAX_DOCUMENT_BYTES` (default `52428800`).
-- HA timing supports relative (`in 2 hours`, `after 30 mins`) and absolute (`at 7:30 pm`) scheduling.
-- Overlap behavior is controlled by `TELEGRAM_HA_SCHEDULE_POLICY` (`replace`, `queue`, `parallel`).
-- For climate commands phrased as `turn on ... to <temp>`, the bridge now explicitly calls `climate.turn_on` when no HVAC mode is given, then applies `set_temperature`.
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
 
 Before executor completion, the bridge sends an immediate placeholder reply:
@@ -200,9 +169,8 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Chat context is stored per Telegram chat as `chat_id -> thread_id`.
 - Default state file path: `/home/architect/.local/state/telegram-architect-bridge/chat_threads.json`
 - Override with env var: `TELEGRAM_BRIDGE_STATE_DIR`.
+- HA conversation context is stored per chat at `/home/architect/.local/state/telegram-architect-bridge/ha_conversations.json`.
 - In-flight request markers are persisted at `/home/architect/.local/state/telegram-architect-bridge/in_flight_requests.json`.
-- HA scheduled steps are persisted at `/home/architect/.local/state/telegram-architect-bridge/ha_schedules.json`.
-- Pending complex-plan approvals are persisted at `/home/architect/.local/state/telegram-architect-bridge/pending_ha_plans.json`.
 - If the bridge restarts while a request is in progress, the chat receives a one-time startup notice to resend the interrupted request.
 - On resume failures, the bridge now preserves saved thread context by default.
 - It only auto-resets thread context when executor error output clearly indicates an invalid/missing thread.
@@ -218,8 +186,6 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Image size limit (`TELEGRAM_MAX_IMAGE_BYTES`, default `10485760`)
 - Voice file size limit (`TELEGRAM_MAX_VOICE_BYTES`, default `20971520`)
 - Document/file size limit (`TELEGRAM_MAX_DOCUMENT_BYTES`, default `52428800`)
-- HA scheduler interval guard (`TELEGRAM_HA_SCHEDULER_INTERVAL_SECONDS`)
-- HA timezone and overlap policy controls (`TELEGRAM_HA_TIMEZONE`, `TELEGRAM_HA_SCHEDULE_POLICY`)
 - Per-chat rate limit per minute
 - Generic user-facing error responses, detailed errors in journal logs
 

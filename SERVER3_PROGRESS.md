@@ -1,5 +1,37 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram HA: Parser Removed, Conversation-Agent Routing)
+
+### Summary
+- Replaced local HA parser/scheduler stack with direct Home Assistant Conversation API routing.
+- Rewrote `src/telegram_bridge/ha_control.py` to conversation-only helpers:
+  - HA config loading
+  - `/api/conversation/process` client call
+  - conversation reply extraction
+  - per-response `conversation_id` extraction
+- Updated `src/telegram_bridge/main.py` HA flow:
+  - HA requests now call Home Assistant conversation directly.
+  - Added per-chat HA conversation context persistence:
+    - state file: `/home/architect/.local/state/telegram-architect-bridge/ha_conversations.json`
+  - `/reset` now clears both Architect thread context and HA conversation context.
+  - Removed local HA schedule/approval execution code paths.
+- Updated docs/env templates:
+  - `docs/telegram-architect-bridge.md`
+  - `infra/env/telegram-architect-bridge.env.example`
+  - Added/used HA conversation env vars:
+    - `TELEGRAM_HA_CONVERSATION_AGENT_ID`
+    - `TELEGRAM_HA_LANGUAGE`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/main.py src/telegram_bridge/ha_control.py`
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set does not perform a live service restart from this session; apply with `bash ops/telegram-bridge/restart_and_verify.sh` on Server3.
+
 ## 2026-02-20 (Telegram HA Parser: Climate Mode-Only Intents Enabled)
 
 ### Summary

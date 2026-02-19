@@ -11,7 +11,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Built-in safe `/restart` command (queues restart until active work completes)
 - Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup
 - Help alias: `/h` (same as `/help`), also shown in thinking reply hint
-- HA scheduling supports relative/absolute timing with persistent queue and complex-plan `APPROVE` / `CANCEL`
+- HA requests are routed to Home Assistant Conversation API (local parser removed)
 - Optional strict split by chat ID: Architect-only chat(s) and HA-only chat(s)
 
 ## Repository Structure
@@ -63,14 +63,9 @@ bash ops/telegram-voice/configure_env.sh
 bash ops/telegram-bridge/restart_and_verify.sh
 ```
 
-Home Assistant scheduling requests can be sent in plain text (for example `turn living aircon off in 1 hour`).
-Complex multi-step plans require `APPROVE` in chat before execution.
+Home Assistant requests can be sent in plain text and are handled by your configured HA conversation agent.
 For strict separation, set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_IDS` so one chat handles only Architect actions and another handles only HA actions.
-In HA-only chats, read-only HA status queries are also supported (for example `what's on right now` and `what's off`).
-HA-only voice messages are transcribed and passed through the same HA parser path.
-HA parser now accepts natural cover-style commands such as `open garage` / `close garage`.
-Climate parser now keeps room context in phrases like `turn on aircon in living room to 22 cold mode`.
-Climate parser now also supports mode-only phrases like `set master's aircon to cold mode`.
+In HA-only chats, voice messages are transcribed and the transcript is sent to Home Assistant Conversation API.
 
 ## Operations
 
