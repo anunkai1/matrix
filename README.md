@@ -12,6 +12,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup
 - Help alias: `/h` (same as `/help`), also shown in thinking reply hint
 - HA scheduling supports relative/absolute timing with persistent queue and complex-plan `APPROVE` / `CANCEL`
+- Optional strict split by chat ID: Architect-only chat(s) and HA-only chat(s)
 
 ## Repository Structure
 
@@ -64,6 +65,7 @@ bash ops/telegram-bridge/restart_and_verify.sh
 
 Home Assistant scheduling requests can be sent in plain text (for example `turn living aircon off in 1 hour`).
 Complex multi-step plans require `APPROVE` in chat before execution.
+For strict separation, set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_IDS` so one chat handles only Architect actions and another handles only HA actions.
 
 ## Operations
 
@@ -93,6 +95,7 @@ Use `SERVER3_PROGRESS.md` as the session-to-session status log. Add one high-lev
 ## Troubleshooting
 
 - Service fails at startup: validate required env vars in `/etc/default/telegram-architect-bridge`.
+- If strict chat routing is enabled, ensure every `TELEGRAM_ALLOWED_CHAT_IDS` entry is assigned to either `TELEGRAM_ARCHITECT_CHAT_IDS` or `TELEGRAM_HA_CHAT_IDS`, with no overlap.
 - Voice messages fail: validate `TELEGRAM_VOICE_TRANSCRIBE_CMD` and ensure the command prints transcript text to stdout.
 - For GPU transcription, set `TELEGRAM_VOICE_WHISPER_DEVICE=cuda`; if CUDA is unavailable at runtime, transcription now retries on CPU fallback.
 - HA actions unavailable: validate `TELEGRAM_HA_BASE_URL`, `TELEGRAM_HA_TOKEN`, and HA package deployment.

@@ -1,5 +1,35 @@
 # Server3 Progress Log
 
+## 2026-02-19 (Telegram Bridge Strict Chat Routing: Architect-Only vs HA-Only)
+
+### Summary
+- Added strict chat-ID based routing support in bridge runtime (`src/telegram_bridge/main.py`) via new optional env keys:
+  - `TELEGRAM_ARCHITECT_CHAT_IDS`
+  - `TELEGRAM_HA_CHAT_IDS`
+- Added startup validation for strict split mode:
+  - no overlap between routing sets
+  - all routed IDs must be in `TELEGRAM_ALLOWED_CHAT_IDS`
+  - all allowlisted IDs must be assigned when split mode is enabled
+- Updated message handling behavior:
+  - Architect chat IDs bypass HA parser and route to local executor only
+  - HA chat IDs run HA handling only; non-HA or media/file requests are rejected with HA-only guidance
+  - `APPROVE`/`CANCEL` in Architect-only chats are blocked with routing guidance
+- Updated help text to show per-chat mode (`mixed`, `Architect-only`, `HA-only`).
+- Updated env/docs references for strict split configuration:
+  - `infra/env/telegram-architect-bridge.env.example`
+  - `README.md`
+  - `docs/telegram-architect-bridge.md`
+- Verified with:
+  - `python3 -m py_compile src/telegram_bridge/main.py`
+  - `bash src/telegram_bridge/smoke_test.sh`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set updates repo code/docs only; no live `/etc` runtime config edits were applied in this step.
+
 ## 2026-02-19 (Server3 System Timezone Set to Australia/Brisbane)
 
 ### Summary

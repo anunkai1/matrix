@@ -38,6 +38,9 @@ OUTPUT_BEGIN_MARKER = "OUTPUT_BEGIN"
 class Config:
     token: str
     allowed_chat_ids: Set[int]
+    architect_chat_ids: Set[int]
+    ha_chat_ids: Set[int]
+    chat_routing_enabled: bool
     api_base: str
     poll_timeout_seconds: int
     retry_sleep_seconds: float
@@ -63,6 +66,11 @@ class Config:
     image_download_error_message: str = "Image download failed. Please send another image."
     voice_download_error_message: str = "Voice download failed. Please send another voice message."
     document_download_error_message: str = "File download failed. Please send another file."
+    ha_only_message: str = "This chat is Home Assistant-only. Send a Home Assistant control request here."
+    architect_only_message: str = "This chat is Architect-only. Use your HA chat for Home Assistant control."
+    unassigned_chat_message: str = (
+        "Access denied for this chat. Chat routing is enabled and this chat is not assigned."
+    )
     voice_not_configured_message: str = (
         "Voice transcription is not configured. Please ask admin to set TELEGRAM_VOICE_TRANSCRIBE_CMD."
     )
@@ -145,6 +153,75 @@ def parse_allowed_chat_ids(raw: str) -> Set[int]:
     return parsed
 
 
+def parse_optional_chat_ids_env(name: str) -> Set[int]:
+    raw = os.getenv(name)
+    if raw is None:
+        return set()
+    cleaned = raw.strip()
+    if not cleaned:
+        return set()
+    values = [item.strip() for item in cleaned.split(",") if item.strip()]
+    parsed: Set[int] = set()
+    for value in values:
+        try:
+            parsed.add(int(value))
+        except ValueError as exc:
+            raise ValueError(f"Invalid {name} value: {value!r}") from exc
+    return parsed
+
+
+def resolve_chat_routing(allowed_chat_ids: Set[int]) -> tuple[Set[int], Set[int], bool]:
+    architect_chat_ids = parse_optional_chat_ids_env("TELEGRAM_ARCHITECT_CHAT_IDS")
+    ha_chat_ids = parse_optional_chat_ids_env("TELEGRAM_HA_CHAT_IDS")
+
+    routing_enabled = bool(architect_chat_ids or ha_chat_ids)
+    if not routing_enabled:
+        return set(), set(), False
+
+    overlap = architect_chat_ids & ha_chat_ids
+    if overlap:
+        raise ValueError(
+            "TELEGRAM_ARCHITECT_CHAT_IDS and TELEGRAM_HA_CHAT_IDS overlap: "
+            f"{sorted(overlap)}"
+        )
+
+    unknown = (architect_chat_ids | ha_chat_ids) - allowed_chat_ids
+    if unknown:
+        raise ValueError(
+            "Chat IDs in TELEGRAM_ARCHITECT_CHAT_IDS/TELEGRAM_HA_CHAT_IDS must be in "
+            f"TELEGRAM_ALLOWED_CHAT_IDS. Unknown IDs: {sorted(unknown)}"
+        )
+
+    if not architect_chat_ids:
+        architect_chat_ids = set(allowed_chat_ids - ha_chat_ids)
+    if not ha_chat_ids:
+        ha_chat_ids = set(allowed_chat_ids - architect_chat_ids)
+
+    if not architect_chat_ids:
+        raise ValueError("TELEGRAM_ARCHITECT_CHAT_IDS resolves to an empty set.")
+    if not ha_chat_ids:
+        raise ValueError("TELEGRAM_HA_CHAT_IDS resolves to an empty set.")
+
+    unassigned = allowed_chat_ids - (architect_chat_ids | ha_chat_ids)
+    if unassigned:
+        raise ValueError(
+            "Some TELEGRAM_ALLOWED_CHAT_IDS are unassigned while chat routing is enabled: "
+            f"{sorted(unassigned)}"
+        )
+
+    return architect_chat_ids, ha_chat_ids, True
+
+
+def get_chat_mode(config: Config, chat_id: int) -> str:
+    if not config.chat_routing_enabled:
+        return "mixed"
+    if chat_id in config.architect_chat_ids:
+        return "architect"
+    if chat_id in config.ha_chat_ids:
+        return "ha"
+    return "unassigned"
+
+
 def build_default_executor() -> str:
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     return os.path.join(repo_root, "src", "telegram_bridge", "executor.sh")
@@ -194,9 +271,15 @@ def load_config() -> Config:
     if ha_schedule_policy not in {"replace", "queue", "parallel"}:
         raise ValueError("TELEGRAM_HA_SCHEDULE_POLICY must be one of: replace, queue, parallel")
 
+    allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids)
+    architect_chat_ids, ha_chat_ids, chat_routing_enabled = resolve_chat_routing(allowed_chat_ids)
+
     return Config(
         token=token,
-        allowed_chat_ids=parse_allowed_chat_ids(raw_chat_ids),
+        allowed_chat_ids=allowed_chat_ids,
+        architect_chat_ids=architect_chat_ids,
+        ha_chat_ids=ha_chat_ids,
+        chat_routing_enabled=chat_routing_enabled,
         api_base=os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/"),
         poll_timeout_seconds=parse_int_env("TELEGRAM_POLL_TIMEOUT_SECONDS", 30),
         retry_sleep_seconds=float(os.getenv("TELEGRAM_RETRY_SLEEP_SECONDS", "3")),
@@ -946,7 +1029,19 @@ def transcribe_voice(config: Config, voice_path: str) -> str:
     return transcript
 
 
-def build_help_text() -> str:
+def build_help_text(chat_mode: str) -> str:
+    mode_line = "Chat mode: mixed (HA + Architect in same chat)"
+    if chat_mode == "architect":
+        mode_line = "Chat mode: Architect-only"
+    elif chat_mode == "ha":
+        mode_line = "Chat mode: HA-only"
+
+    mode_note = "Any other text, photo, voice, or file message is sent to Architect."
+    if chat_mode == "ha":
+        mode_note = "HA-only chat: only Home Assistant control text is handled here."
+    elif chat_mode == "architect":
+        mode_note = "Architect-only chat: Home Assistant control is handled in your HA chat."
+
     return (
         "Commands:\n"
         "/start - bridge intro\n"
@@ -954,11 +1049,12 @@ def build_help_text() -> str:
         "/h - short help alias\n"
         "/status - show bridge health\n"
         "/restart - safe restart (queued until current work completes)\n"
-        "/reset - clear chat context\n\n"
+        "/reset - clear chat context\n"
+        f"{mode_line}\n\n"
         "HA schedule notes:\n"
         "- Complex HA plans require APPROVE / CANCEL.\n"
         "- Relative and absolute timing use timezone configured by TELEGRAM_HA_TIMEZONE.\n\n"
-        "Any other text, photo, voice, or file message is sent to Architect."
+        f"{mode_note}"
     )
 
 
@@ -1880,6 +1976,12 @@ def handle_update(
         client.send_message(chat_id, config.denied_message, reply_to_message_id=message_id)
         return
 
+    chat_mode = get_chat_mode(config, chat_id)
+    if chat_mode == "unassigned":
+        logging.warning("Denied unassigned routed chat_id=%s", chat_id)
+        client.send_message(chat_id, config.unassigned_chat_message, reply_to_message_id=message_id)
+        return
+
     prompt_input, photo_file_id, voice_file_id, document = extract_prompt_and_media(message)
     if prompt_input is None and voice_file_id is None and document is None:
         return
@@ -1893,7 +1995,7 @@ def handle_update(
         )
         return
     if command in ("/help", "/h"):
-        client.send_message(chat_id, build_help_text(), reply_to_message_id=message_id)
+        client.send_message(chat_id, build_help_text(chat_mode), reply_to_message_id=message_id)
         return
     if command == "/status":
         client.send_message(chat_id, build_status_text(state), reply_to_message_id=message_id)
@@ -1917,11 +2019,31 @@ def handle_update(
         )
         return
 
+    text_only = bool(prompt and photo_file_id is None and voice_file_id is None and document is None)
+    if chat_mode == "ha":
+        if (
+            text_only
+            and handle_ha_request_text(
+                state=state,
+                config=config,
+                runtime=ha_runtime,
+                client=client,
+                chat_id=chat_id,
+                message_id=message_id,
+                prompt=prompt,
+            )
+        ):
+            return
+        client.send_message(
+            chat_id,
+            config.ha_only_message,
+            reply_to_message_id=message_id,
+        )
+        return
+
     if (
-        prompt
-        and photo_file_id is None
-        and voice_file_id is None
-        and document is None
+        chat_mode == "mixed"
+        and text_only
         and handle_ha_request_text(
             state=state,
             config=config,
@@ -1932,6 +2054,14 @@ def handle_update(
             prompt=prompt,
         )
     ):
+        return
+
+    if chat_mode == "architect" and text_only and parse_approval_command(prompt) is not None:
+        client.send_message(
+            chat_id,
+            config.architect_only_message,
+            reply_to_message_id=message_id,
+        )
         return
 
     if is_rate_limited(state, config, chat_id):
@@ -1996,6 +2126,38 @@ def run_self_test() -> int:
     if not ready or ready[0] != 1:
         raise RuntimeError("Restart self-test failed (pop_ready)")
     finish_restart_attempt(restart_state)
+
+    routing_config = Config(
+        token="t",
+        allowed_chat_ids={1, 2},
+        architect_chat_ids={1},
+        ha_chat_ids={2},
+        chat_routing_enabled=True,
+        api_base="https://api.telegram.org",
+        poll_timeout_seconds=30,
+        retry_sleep_seconds=1.0,
+        exec_timeout_seconds=30,
+        max_input_chars=100,
+        max_output_chars=100,
+        max_image_bytes=1024,
+        max_voice_bytes=1024,
+        max_document_bytes=1024,
+        rate_limit_per_minute=10,
+        ha_schedule_policy="replace",
+        ha_timezone="UTC",
+        ha_require_confirm_complex=True,
+        ha_scheduler_interval_seconds=20,
+        executor_cmd=["/bin/echo"],
+        voice_transcribe_cmd=[],
+        voice_transcribe_timeout_seconds=10,
+        state_dir="/tmp",
+    )
+    if get_chat_mode(routing_config, 1) != "architect":
+        raise RuntimeError("Routing self-test failed (architect)")
+    if get_chat_mode(routing_config, 2) != "ha":
+        raise RuntimeError("Routing self-test failed (ha)")
+    if get_chat_mode(routing_config, 3) != "unassigned":
+        raise RuntimeError("Routing self-test failed (unassigned)")
 
     print("self-test: ok")
     return 0
@@ -2128,6 +2290,14 @@ def run_bridge(config: Config) -> int:
         offset = 0
 
     logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
+    if config.chat_routing_enabled:
+        logging.info(
+            "Chat routing enabled. Architect chats=%s HA chats=%s",
+            sorted(config.architect_chat_ids),
+            sorted(config.ha_chat_ids),
+        )
+    else:
+        logging.info("Chat routing disabled. Mixed HA/Architect behavior is active.")
     logging.info("Executor command=%s", config.executor_cmd)
     logging.info("HA schedule policy=%s timezone=%s", config.ha_schedule_policy, config.ha_timezone)
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)

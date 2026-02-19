@@ -43,6 +43,9 @@ Equivalent manual content:
 sudo tee /etc/default/telegram-architect-bridge >/dev/null <<'EOF'
 TELEGRAM_BOT_TOKEN=123456:replace_me
 TELEGRAM_ALLOWED_CHAT_IDS=123456789
+# Optional strict split by chat ID:
+# TELEGRAM_ARCHITECT_CHAT_IDS=123456789
+# TELEGRAM_HA_CHAT_IDS=-100987654321
 TELEGRAM_EXEC_TIMEOUT_SECONDS=36000
 TELEGRAM_MAX_INPUT_CHARS=4096
 TELEGRAM_MAX_OUTPUT_CHARS=20000
@@ -154,10 +157,12 @@ bash ops/home-assistant/validate_architect_package.sh
 - `APPROVE` approve a pending complex HA plan
 - `CANCEL` cancel a pending complex HA plan
 
-Any non-command text is forwarded to the local executor (non-interactive `codex exec`).
-HA schedule requests are parsed on the bridge runtime and executed directly against Home Assistant API.
-For non-HA text, normal Codex executor routing remains unchanged.
-Complex HA plans require explicit `APPROVE` or `CANCEL` in the same chat before execution.
+Routing behavior:
+- Default (no split vars): mixed mode in each allowlisted chat. HA schedule requests are parsed first; non-HA text goes to local executor (`codex exec`).
+- Strict split mode (set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_IDS`):
+- Architect chat IDs: text/photo/voice/file requests go to local executor only.
+- HA chat IDs: only HA control text is handled. Non-HA text/photo/voice/file requests are rejected with an HA-only reminder.
+- Complex HA plans require explicit `APPROVE` or `CANCEL` in the same chat before execution.
 Photo messages are also supported:
 - If a photo has a caption, the caption is used as the prompt.
 - If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`
@@ -197,6 +202,7 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 ## Safety Controls
 
 - Chat ID allowlist (`TELEGRAM_ALLOWED_CHAT_IDS`)
+- Optional strict chat routing (`TELEGRAM_ARCHITECT_CHAT_IDS`, `TELEGRAM_HA_CHAT_IDS`)
 - Per-chat single in-flight request (`busy` response on overlap)
 - Built-in safe `/restart` command that bypasses busy rejection by queuing restart until active work completes
 - Request timeout guard (`TELEGRAM_EXEC_TIMEOUT_SECONDS`)
@@ -226,6 +232,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 ```
 
 Config mistakes (missing env vars) cause startup failure. The executor also requires a valid `codex login` for the `architect` user. Correct `/etc/default/telegram-architect-bridge` and run `bash ops/telegram-bridge/restart_and_verify.sh`.
+If strict split mode is enabled, every allowlisted chat ID must be assigned to exactly one routing set (`TELEGRAM_ARCHITECT_CHAT_IDS` or `TELEGRAM_HA_CHAT_IDS`) with no overlap.
 
 ## Rollback
 
