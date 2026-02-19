@@ -1,5 +1,31 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram HA Allowed-Entities Allowlist Applied Live)
+
+### Summary
+- Applied live HA entity allowlist in `/etc/default/telegram-architect-bridge` by setting `TELEGRAM_HA_ALLOWED_ENTITIES` to the approved explicit list:
+  - four `climate.*` aircon entities
+  - approved `select.*` airflow/swing controls for those aircons
+  - `switch.shelly01_water_heater`
+  - `switch.tapo_p110x02`
+  - `switch.shelly1minig3_garage`
+- Preserved strict chat routing keys (`TELEGRAM_ALLOWED_CHAT_IDS`, `TELEGRAM_ARCHITECT_CHAT_IDS`, `TELEGRAM_HA_CHAT_IDS`) unchanged.
+- Created live backup prior to apply: `/etc/default/telegram-architect-bridge.bak-20260219-214547`.
+- Rolled out runtime and verified service health:
+  - `ActiveState=active`, `SubState=running`
+  - `ExecMainStartTimestamp=Fri 2026-02-20 07:46:11 AEST`
+  - Journal confirms `Bridge started` and `Chat routing enabled`.
+- Updated repo traceability artifacts:
+  - `infra/env/telegram-architect-bridge.server3.redacted.env`
+  - `logs/changes/20260219-214859-telegram-ha-allowed-entities-allowlist.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- During live update, an in-place rewrite attempt was detected as unsafe after truncation behavior; the env file was immediately restored from backup and then re-applied via temp-file install to preserve full file content.
+
 ## 2026-02-20 (Telegram HA Chat: OFF Status Queries + Climate Turn-On Intent Fix)
 
 ### Summary
