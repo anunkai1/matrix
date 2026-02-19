@@ -1,5 +1,23 @@
 # Server3 Progress Log
 
+## 2026-02-19 (Server3 System Timezone Set to Australia/Brisbane)
+
+### Summary
+- Updated live system timezone from `Etc/UTC` to `Australia/Brisbane` using `timedatectl`.
+- Aligned `/etc/timezone` to `Australia/Brisbane` to match `/etc/localtime`.
+- Mirrored live timezone state into repo files:
+  - `infra/system/timezone.server3`
+  - `infra/system/localtime.server3.symlink`
+- Recorded live change details in `logs/changes/20260219-091124-server3-timezone-australia-brisbane.md`.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Final verification shows `Time zone: Australia/Brisbane (AEST, +1000)` with NTP synchronized.
+- UTC time remains synchronized; local display/interpretation now follows Brisbane time.
+
 ## 2026-02-19 (Daily Surprise Instruction Reverted)
 
 ### Summary
