@@ -69,6 +69,7 @@ bash ops/telegram-bridge/restart_and_verify.sh
 - Check status: `bash ops/telegram-bridge/status_service.sh`
 - Check logs: `sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager`
 - Roll back systemd install: `bash ops/telegram-bridge/install_systemd.sh rollback`
+- HA climate set/schedule runbook: `docs/home-assistant-ops.md`
 
 ## Change Control Rules
 
@@ -99,6 +100,7 @@ Use `SERVER3_PROGRESS.md` as the session-to-session status log. Add one high-lev
 ## Related Docs
 
 - `ARCHITECT_INSTRUCTION.md`
+- `docs/home-assistant-ops.md`
 - `docs/telegram-architect-bridge.md`
 - `docs/server-setup.md`
 - `SERVER3_PROGRESS.md`

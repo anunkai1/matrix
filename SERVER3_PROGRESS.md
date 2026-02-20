@@ -1,5 +1,38 @@
 # Server3 Progress Log
 
+## 2026-02-21 (HA Ops: Reliable Delayed Climate Scheduling Scripts)
+
+### Summary
+- Implemented repo-tracked HA operations scripts to prevent transient `systemd-run` variable-expansion failures in delayed climate actions.
+- Added new scripts under `ops/ha/`:
+  - `set_climate_temperature.sh`
+    - validates climate entity + temperature input
+    - reads HA URL/token from explicit env file or direct args
+    - executes `climate.set_temperature` and reports result
+    - supports `--dry-run` validation mode
+  - `schedule_climate_temperature.sh`
+    - schedules delayed climate actions via transient systemd timer/service
+    - executes the set script directly (no inline `${...}` shell in unit command)
+    - prints timer/service unit names for traceability and cancel/inspect workflows
+    - supports scheduled `--dry-run` canary mode
+- Added runbook:
+  - `docs/home-assistant-ops.md`
+- Updated docs index:
+  - `README.md` now links to the HA ops runbook in Operations and Related Docs.
+- Validation:
+  - `bash -n ops/ha/set_climate_temperature.sh ops/ha/schedule_climate_temperature.sh`
+  - canary schedule test (dry-run): `--delay 10s`
+  - journal confirms successful trigger + script execution without unset-variable errors:
+    - `ha-climate-temp-20260221062215.service`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc` configuration edits were made in this change set.
+- For environments where `/etc/default/telegram-architect-bridge` no longer contains HA keys, use `--env-file` with a file that does.
+
 ## 2026-02-20 (Telegram Bridge: Live Progress Streaming + Typing Updates)
 
 ### Summary
