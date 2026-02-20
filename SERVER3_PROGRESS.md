@@ -1,5 +1,30 @@
 # Server3 Progress Log
 
+## 2026-02-21 (Telegram Bridge: Persistent-Worker Safe Cleanup)
+
+### Summary
+- Applied low-risk cleanup in `src/telegram_bridge/main.py` after persistent-worker rollout, focused on reducing redundant state writes without changing user-visible bridge behavior.
+- Removed redundant session-touch call in `process_prompt(...)`; session freshness is already handled earlier via `ensure_chat_worker_session(...)`.
+- Removed dead helper function `touch_worker_session(...)` (no remaining call sites).
+- Optimized persistence behavior:
+  - `set_thread_id(...)` now persists `chat_threads.json` only when mapping changes.
+  - `clear_thread_id(...)` now persists `worker_sessions.json` only when a worker session exists.
+- Added repo-tracked change record:
+  - `logs/changes/20260221-094437-telegram-persistent-worker-safe-cleanup.md`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/main.py` (pass)
+  - `python3 src/telegram_bridge/main.py --self-test` (pass)
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+  - targeted state behavior verification snippet (pass)
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc` or systemd/runtime configuration changes were made in this change set.
+- Larger structural simplification (single source of truth for thread/session state) remains deferred to keep this change set low risk.
+
 ## 2026-02-21 (Telegram Bridge: Feature-Flagged Persistent Worker Sessions)
 
 ### Summary

@@ -872,18 +872,6 @@ def persist_worker_sessions(state: State) -> None:
     tmp_path.replace(path)
 
 
-def touch_worker_session(state: State, chat_id: int, at_time: Optional[float] = None) -> None:
-    now = time.time() if at_time is None else at_time
-    updated = False
-    with state.lock:
-        session = state.worker_sessions.get(chat_id)
-        if session is not None:
-            session.last_used_at = now
-            updated = True
-    if updated:
-        persist_worker_sessions(state)
-
-
 def clear_worker_session(state: State, chat_id: int) -> bool:
     removed = False
     with state.lock:
@@ -902,18 +890,26 @@ def get_thread_id(state: State, chat_id: int) -> Optional[str]:
 
 def set_thread_id(state: State, chat_id: int, thread_id: str) -> None:
     normalized_thread_id = thread_id.strip()
+    persist_threads = False
+    persist_sessions = False
     with state.lock:
-        state.chat_threads[chat_id] = normalized_thread_id
+        if state.chat_threads.get(chat_id) != normalized_thread_id:
+            state.chat_threads[chat_id] = normalized_thread_id
+            persist_threads = True
         session = state.worker_sessions.get(chat_id)
         if session is not None:
             session.thread_id = normalized_thread_id
             session.last_used_at = time.time()
-    persist_chat_threads(state)
-    persist_worker_sessions(state)
+            persist_sessions = True
+    if persist_threads:
+        persist_chat_threads(state)
+    if persist_sessions:
+        persist_worker_sessions(state)
 
 
 def clear_thread_id(state: State, chat_id: int) -> bool:
     removed = False
+    persist_sessions = False
     with state.lock:
         if chat_id in state.chat_threads:
             del state.chat_threads[chat_id]
@@ -922,9 +918,11 @@ def clear_thread_id(state: State, chat_id: int) -> bool:
         if session is not None:
             session.thread_id = ""
             session.last_used_at = time.time()
+            persist_sessions = True
     if removed:
         persist_chat_threads(state)
-    persist_worker_sessions(state)
+    if persist_sessions:
+        persist_worker_sessions(state)
     return removed
 
 
@@ -1822,7 +1820,6 @@ def process_prompt(
             )
             return
 
-        touch_worker_session(state, chat_id)
         progress.set_phase("Sending request to Architect.")
         allow_automatic_retry = config.persistent_workers_enabled
         retry_attempted = False
