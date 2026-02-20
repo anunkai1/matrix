@@ -1,5 +1,33 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram Bridge: Disable HA Routing + Disable Split Chat Mode)
+
+### Summary
+- Applied live runtime config change in `/etc/default/telegram-architect-bridge` to remove HA chat specialization and route both allowlisted chats through Architect behavior.
+- Updated live env values:
+  - set `TELEGRAM_HA_ENABLED=false`
+  - removed `TELEGRAM_ARCHITECT_CHAT_IDS`
+  - removed `TELEGRAM_HA_CHAT_IDS`
+  - removed `TELEGRAM_HA_BASE_URL`
+  - removed `TELEGRAM_HA_TOKEN`
+- Preserved `TELEGRAM_ALLOWED_CHAT_IDS=211761499,-5144577688`.
+- Backed up live env before apply:
+  - `/etc/default/telegram-architect-bridge.bak-20260220-143644-disable-ha-split`
+- Restarted and verified bridge runtime:
+  - `bash ops/telegram-bridge/restart_and_verify.sh`
+  - service healthy (`active/running`, start `Fri 2026-02-20 14:36:51 AEST`)
+  - journal confirms `Chat routing disabled. Mixed HA/Architect behavior is active.`
+- Updated repo-tracked mirrors/logs:
+  - `infra/env/telegram-architect-bridge.server3.redacted.env`
+  - `logs/changes/20260220-143651-telegram-disable-ha-routing-and-split-chat-mode.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This is an operational configuration switch only; no bridge source code changes were made.
+
 ## 2026-02-20 (Telegram HA: Parser Removed, Conversation-Agent Routing)
 
 ### Summary
