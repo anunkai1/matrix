@@ -1,5 +1,40 @@
 # Server3 Progress Log
 
+## 2026-02-21 (Telegram Bridge: Feature-Flagged Persistent Worker Sessions)
+
+### Summary
+- Implemented feature-flagged persistent worker-session lifecycle management in `src/telegram_bridge/main.py` using per-chat session metadata backed by `thread_id` reuse.
+- Added new runtime config flags:
+  - `TELEGRAM_PERSISTENT_WORKERS_ENABLED` (default `false`)
+  - `TELEGRAM_PERSISTENT_WORKERS_MAX` (default `4`)
+  - `TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS` (default `2700`)
+- Added worker-session state persistence:
+  - state file: `/home/architect/.local/state/telegram-architect-bridge/worker_sessions.json`
+  - sessions are restored across bridge restart when feature is enabled.
+- Implemented selected behavior set for persistent worker mode:
+  - overlap requests in same chat remain rejected while busy
+  - max-worker capacity enforcement with idle-session eviction
+  - 45-minute idle session expiry path with user notification that context was cleared
+  - policy/context file change detection (`AGENTS.md`, `ARCHITECT_INSTRUCTION.md`, `SERVER3_PROGRESS.md`) applied on next message with user notice and session reset
+  - `/reset` now clears both saved thread context and persistent worker session metadata
+  - `/status` now reports persistent-worker enablement and current chat worker state
+  - automatic one-time retry path for execution failures in persistent-worker mode, followed by explicit user-facing retry-failed notice
+- Updated docs/env templates:
+  - `infra/env/telegram-architect-bridge.env.example`
+  - `docs/telegram-architect-bridge.md`
+  - `README.md`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/main.py`
+  - `python3 src/telegram_bridge/main.py --self-test` (pass)
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Rollout remains guarded by feature flag; default runtime behavior is unchanged until `TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`.
+
 ## 2026-02-21 (HA Ops: Reliable Delayed Climate Scheduling Scripts)
 
 ### Summary

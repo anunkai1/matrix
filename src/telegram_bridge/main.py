@@ -2,6 +2,7 @@
 """Telegram long-poll bridge to local Architect/Codex CLI."""
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -42,6 +43,10 @@ class Config:
     voice_transcribe_cmd: List[str]
     voice_transcribe_timeout_seconds: int
     state_dir: str
+    persistent_workers_enabled: bool
+    persistent_workers_max: int
+    persistent_workers_idle_timeout_seconds: int
+    persistent_workers_policy_files: List[str]
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -66,6 +71,8 @@ class State:
     recent_requests: Dict[int, List[float]] = field(default_factory=dict)
     chat_threads: Dict[int, str] = field(default_factory=dict)
     chat_thread_path: str = ""
+    worker_sessions: Dict[int, "WorkerSession"] = field(default_factory=dict)
+    worker_sessions_path: str = ""
     in_flight_requests: Dict[int, Dict[str, object]] = field(default_factory=dict)
     in_flight_path: str = ""
     restart_requested: bool = False
@@ -89,6 +96,14 @@ class ExecutorProgressEvent:
     exit_code: Optional[int] = None
 
 
+@dataclass
+class WorkerSession:
+    created_at: float
+    last_used_at: float
+    thread_id: str
+    policy_fingerprint: str
+
+
 def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
     value = os.getenv(name)
     if value is None:
@@ -100,6 +115,18 @@ def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
     if parsed < minimum:
         raise ValueError(f"{name} must be >= {minimum}")
     return parsed
+
+
+def parse_bool_env(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in ("1", "true", "yes", "on"):
+        return True
+    if normalized in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"{name} must be a boolean value")
 
 
 def parse_allowed_chat_ids(raw: str) -> Set[int]:
@@ -117,13 +144,26 @@ def parse_allowed_chat_ids(raw: str) -> Set[int]:
     return parsed
 
 
+def build_repo_root() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def build_policy_watch_files() -> List[str]:
+    repo_root = build_repo_root()
+    return [
+        os.path.join(repo_root, "AGENTS.md"),
+        os.path.join(repo_root, "ARCHITECT_INSTRUCTION.md"),
+        os.path.join(repo_root, "SERVER3_PROGRESS.md"),
+    ]
+
+
 def build_default_executor() -> str:
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    repo_root = build_repo_root()
     return os.path.join(repo_root, "src", "telegram_bridge", "executor.sh")
 
 
 def build_restart_script_path() -> str:
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    repo_root = build_repo_root()
     return os.path.join(repo_root, "ops", "telegram-bridge", "restart_and_verify.sh")
 
 
@@ -184,6 +224,21 @@ def load_config() -> Config:
             120,
         ),
         state_dir=state_dir,
+        persistent_workers_enabled=parse_bool_env(
+            "TELEGRAM_PERSISTENT_WORKERS_ENABLED",
+            False,
+        ),
+        persistent_workers_max=parse_int_env(
+            "TELEGRAM_PERSISTENT_WORKERS_MAX",
+            4,
+            minimum=1,
+        ),
+        persistent_workers_idle_timeout_seconds=parse_int_env(
+            "TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS",
+            45 * 60,
+            minimum=60,
+        ),
+        persistent_workers_policy_files=build_policy_watch_files(),
     )
 
 
@@ -699,6 +754,22 @@ def ensure_state_dir(path: str) -> None:
     Path(path).mkdir(parents=True, exist_ok=True)
 
 
+def compute_policy_fingerprint(paths: List[str]) -> str:
+    hasher = hashlib.sha256()
+    for file_path in paths:
+        hasher.update(file_path.encode("utf-8"))
+        hasher.update(b"\0")
+        try:
+            stats = os.stat(file_path)
+            hasher.update(str(stats.st_mtime_ns).encode("utf-8"))
+            hasher.update(b":")
+            hasher.update(str(stats.st_size).encode("utf-8"))
+        except OSError:
+            hasher.update(b"missing")
+        hasher.update(b"\0")
+    return hasher.hexdigest()
+
+
 def quarantine_corrupt_state_file(path: str) -> Optional[str]:
     data_path = Path(path)
     if not data_path.exists():
@@ -731,6 +802,46 @@ def load_chat_threads(path: str) -> Dict[int, str]:
     return parsed
 
 
+def load_worker_sessions(path: str) -> Dict[int, WorkerSession]:
+    data_path = Path(path)
+    if not data_path.exists():
+        return {}
+    try:
+        raw = json.loads(data_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to parse worker session state {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid worker session state {path}: root is not object")
+
+    parsed: Dict[int, WorkerSession] = {}
+    for key, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        try:
+            chat_id = int(key)
+        except ValueError:
+            continue
+        created_at = value.get("created_at")
+        last_used_at = value.get("last_used_at")
+        thread_id = value.get("thread_id")
+        policy_fingerprint = value.get("policy_fingerprint")
+        if not isinstance(created_at, (int, float)):
+            continue
+        if not isinstance(last_used_at, (int, float)):
+            last_used_at = float(created_at)
+        if not isinstance(thread_id, str):
+            thread_id = ""
+        if not isinstance(policy_fingerprint, str):
+            policy_fingerprint = ""
+        parsed[chat_id] = WorkerSession(
+            created_at=float(created_at),
+            last_used_at=float(last_used_at),
+            thread_id=thread_id.strip(),
+            policy_fingerprint=policy_fingerprint.strip(),
+        )
+    return parsed
+
+
 def persist_chat_threads(state: State) -> None:
     if not state.chat_thread_path:
         return
@@ -742,15 +853,63 @@ def persist_chat_threads(state: State) -> None:
     tmp_path.replace(path)
 
 
+def persist_worker_sessions(state: State) -> None:
+    if not state.worker_sessions_path:
+        return
+    path = Path(state.worker_sessions_path)
+    tmp_path = path.with_suffix(".tmp")
+    with state.lock:
+        serialized = {
+            str(chat_id): {
+                "created_at": session.created_at,
+                "last_used_at": session.last_used_at,
+                "thread_id": session.thread_id,
+                "policy_fingerprint": session.policy_fingerprint,
+            }
+            for chat_id, session in state.worker_sessions.items()
+        }
+    tmp_path.write_text(json.dumps(serialized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def touch_worker_session(state: State, chat_id: int, at_time: Optional[float] = None) -> None:
+    now = time.time() if at_time is None else at_time
+    updated = False
+    with state.lock:
+        session = state.worker_sessions.get(chat_id)
+        if session is not None:
+            session.last_used_at = now
+            updated = True
+    if updated:
+        persist_worker_sessions(state)
+
+
+def clear_worker_session(state: State, chat_id: int) -> bool:
+    removed = False
+    with state.lock:
+        if chat_id in state.worker_sessions:
+            del state.worker_sessions[chat_id]
+            removed = True
+    if removed:
+        persist_worker_sessions(state)
+    return removed
+
+
 def get_thread_id(state: State, chat_id: int) -> Optional[str]:
     with state.lock:
         return state.chat_threads.get(chat_id)
 
 
 def set_thread_id(state: State, chat_id: int, thread_id: str) -> None:
+    normalized_thread_id = thread_id.strip()
     with state.lock:
-        state.chat_threads[chat_id] = thread_id
+        state.chat_threads[chat_id] = normalized_thread_id
+        session = state.worker_sessions.get(chat_id)
+        if session is not None:
+            session.thread_id = normalized_thread_id
+            session.last_used_at = time.time()
     persist_chat_threads(state)
+    persist_worker_sessions(state)
 
 
 def clear_thread_id(state: State, chat_id: int) -> bool:
@@ -759,9 +918,169 @@ def clear_thread_id(state: State, chat_id: int) -> bool:
         if chat_id in state.chat_threads:
             del state.chat_threads[chat_id]
             removed = True
+        session = state.worker_sessions.get(chat_id)
+        if session is not None:
+            session.thread_id = ""
+            session.last_used_at = time.time()
     if removed:
         persist_chat_threads(state)
+    persist_worker_sessions(state)
     return removed
+
+
+def ensure_chat_worker_session(
+    state: State,
+    config: Config,
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+) -> bool:
+    if not config.persistent_workers_enabled:
+        return True
+
+    now = time.time()
+    current_policy_fingerprint = compute_policy_fingerprint(config.persistent_workers_policy_files)
+    session_replaced_for_policy = False
+    evicted_idle_chat_id: Optional[int] = None
+    rejected_for_capacity = False
+    needs_persist_threads = False
+    needs_persist_sessions = False
+
+    with state.lock:
+        session = state.worker_sessions.get(chat_id)
+
+        if (
+            session is not None
+            and session.policy_fingerprint
+            and session.policy_fingerprint != current_policy_fingerprint
+        ):
+            del state.worker_sessions[chat_id]
+            if chat_id in state.chat_threads:
+                del state.chat_threads[chat_id]
+                needs_persist_threads = True
+            session = None
+            session_replaced_for_policy = True
+            needs_persist_sessions = True
+
+        if session is None and len(state.worker_sessions) >= config.persistent_workers_max:
+            idle_candidates = [
+                (candidate_chat_id, candidate_session)
+                for candidate_chat_id, candidate_session in state.worker_sessions.items()
+                if candidate_chat_id not in state.busy_chats and candidate_chat_id != chat_id
+            ]
+            if idle_candidates:
+                idle_candidates.sort(key=lambda item: item[1].last_used_at)
+                evicted_idle_chat_id = idle_candidates[0][0]
+                del state.worker_sessions[evicted_idle_chat_id]
+                if evicted_idle_chat_id in state.chat_threads:
+                    del state.chat_threads[evicted_idle_chat_id]
+                    needs_persist_threads = True
+                needs_persist_sessions = True
+            else:
+                rejected_for_capacity = True
+
+        if not rejected_for_capacity:
+            session = state.worker_sessions.get(chat_id)
+            if session is None:
+                seed_thread_id = state.chat_threads.get(chat_id, "")
+                state.worker_sessions[chat_id] = WorkerSession(
+                    created_at=now,
+                    last_used_at=now,
+                    thread_id=seed_thread_id,
+                    policy_fingerprint=current_policy_fingerprint,
+                )
+                needs_persist_sessions = True
+            else:
+                session.last_used_at = now
+                session.policy_fingerprint = current_policy_fingerprint
+                session.thread_id = state.chat_threads.get(chat_id, session.thread_id)
+                needs_persist_sessions = True
+
+    if needs_persist_threads:
+        persist_chat_threads(state)
+    if needs_persist_sessions:
+        persist_worker_sessions(state)
+
+    if evicted_idle_chat_id is not None and evicted_idle_chat_id in config.allowed_chat_ids:
+        try:
+            client.send_message(
+                evicted_idle_chat_id,
+                "Your Architect session was closed to free worker capacity. "
+                "Send a new message to start a fresh context.",
+            )
+        except Exception:
+            logging.exception(
+                "Failed to send worker-eviction notice for chat_id=%s",
+                evicted_idle_chat_id,
+            )
+
+    if session_replaced_for_policy:
+        try:
+            client.send_message(
+                chat_id,
+                "Policy/context files changed. Your previous session was reset and this request "
+                "will continue in a new session.",
+                reply_to_message_id=message_id,
+            )
+        except Exception:
+            logging.exception("Failed to send policy-refresh notice for chat_id=%s", chat_id)
+
+    if rejected_for_capacity:
+        client.send_message(
+            chat_id,
+            "All Architect workers are currently in use. Please wait and retry.",
+            reply_to_message_id=message_id,
+        )
+        return False
+
+    return True
+
+
+def expire_idle_worker_sessions(
+    state: State,
+    config: Config,
+    client: TelegramClient,
+) -> None:
+    if not config.persistent_workers_enabled:
+        return
+
+    now = time.time()
+    expired_chat_ids: List[int] = []
+    needs_persist_threads = False
+    needs_persist_sessions = False
+    with state.lock:
+        for chat_id, session in list(state.worker_sessions.items()):
+            if chat_id in state.busy_chats:
+                continue
+            if now - session.last_used_at < config.persistent_workers_idle_timeout_seconds:
+                continue
+            expired_chat_ids.append(chat_id)
+            del state.worker_sessions[chat_id]
+            if chat_id in state.chat_threads:
+                del state.chat_threads[chat_id]
+                needs_persist_threads = True
+            needs_persist_sessions = True
+
+    if needs_persist_threads:
+        persist_chat_threads(state)
+    if needs_persist_sessions:
+        persist_worker_sessions(state)
+
+    if not expired_chat_ids:
+        return
+
+    timeout_mins = max(1, config.persistent_workers_idle_timeout_seconds // 60)
+    for chat_id in expired_chat_ids:
+        if chat_id not in config.allowed_chat_ids:
+            continue
+        try:
+            client.send_message(
+                chat_id,
+                f"Your Architect session expired after {timeout_mins} minutes of inactivity. "
+                "Context was cleared.",
+            )
+        except Exception:
+            logging.exception("Failed to send idle-expiry notice for chat_id=%s", chat_id)
 
 
 def load_in_flight_requests(path: str) -> Dict[int, Dict[str, object]]:
@@ -1228,19 +1547,48 @@ def build_help_text() -> str:
     )
 
 
-def build_status_text(state: State) -> str:
+def build_status_text(state: State, config: Config, chat_id: Optional[int] = None) -> str:
     uptime = int(time.time() - state.started_at)
+    now = time.time()
     with state.lock:
         busy_count = len(state.busy_chats)
         restart_queued = state.restart_requested
         restart_running = state.restart_in_progress
-    return (
-        "Bridge status: healthy\n"
-        f"Uptime: {uptime}s\n"
-        f"Busy chats: {busy_count}\n"
-        f"Restart queued: {'yes' if restart_queued else 'no'}\n"
-        f"Restart in progress: {'yes' if restart_running else 'no'}"
-    )
+        worker_count = len(state.worker_sessions)
+        session = state.worker_sessions.get(chat_id) if chat_id is not None else None
+        chat_has_thread = chat_id in state.chat_threads if chat_id is not None else False
+        chat_busy = chat_id in state.busy_chats if chat_id is not None else False
+
+    lines = [
+        "Bridge status: healthy",
+        f"Uptime: {uptime}s",
+        f"Busy chats: {busy_count}",
+        f"Restart queued: {'yes' if restart_queued else 'no'}",
+        f"Restart in progress: {'yes' if restart_running else 'no'}",
+        f"Persistent workers: {'enabled' if config.persistent_workers_enabled else 'disabled'}",
+    ]
+
+    if config.persistent_workers_enabled:
+        lines.append(
+            f"Workers active: {worker_count}/{config.persistent_workers_max}"
+        )
+        lines.append(
+            f"Worker idle timeout: {config.persistent_workers_idle_timeout_seconds}s"
+        )
+        if chat_id is not None:
+            if session is None:
+                lines.append("This chat worker: none")
+            else:
+                idle_for = int(max(0, now - session.last_used_at))
+                lines.append(
+                    "This chat worker: active "
+                    f"(idle={idle_for}s busy={'yes' if chat_busy else 'no'} "
+                    f"thread={'yes' if bool(session.thread_id) else 'no'})"
+                )
+    elif chat_id is not None and chat_has_thread:
+        lines.append("This chat has saved context.")
+
+    return "\n".join(lines)
 
 
 def request_safe_restart(
@@ -1474,123 +1822,111 @@ def process_prompt(
             )
             return
 
+        touch_worker_session(state, chat_id)
         progress.set_phase("Sending request to Architect.")
-        try:
-            result = run_executor(
-                config,
-                prompt_text,
-                previous_thread_id,
-                image_path=image_path,
-                progress_callback=progress.handle_executor_event,
-            )
-        except subprocess.TimeoutExpired:
-            logging.warning("Executor timeout for chat_id=%s", chat_id)
-            progress.mark_failure("Execution timed out.")
-            client.send_message(chat_id, config.timeout_message, reply_to_message_id=message_id)
-            return
-        except FileNotFoundError:
-            logging.exception("Executor command not found: %s", config.executor_cmd)
-            progress.mark_failure("Executor command not found.")
-            client.send_message(
-                chat_id,
-                config.generic_error_message,
-                reply_to_message_id=message_id,
-            )
-            return
-        except Exception:
-            logging.exception("Unexpected executor error for chat_id=%s", chat_id)
-            progress.mark_failure("Execution failed before completion.")
-            client.send_message(
-                chat_id,
-                config.generic_error_message,
-                reply_to_message_id=message_id,
-            )
-            return
+        allow_automatic_retry = config.persistent_workers_enabled
+        retry_attempted = False
+        attempt_thread_id: Optional[str] = previous_thread_id
 
-        if result.returncode != 0:
-            if previous_thread_id:
-                if should_reset_thread_after_resume_failure(
-                    result.stderr or "",
-                    result.stdout or "",
-                ):
-                    logging.warning(
-                        "Executor failed for chat_id=%s on resume due to invalid thread; "
-                        "clearing thread and retrying as new. stderr=%r",
-                        chat_id,
-                        (result.stderr or "")[-1000:],
-                    )
-                    clear_thread_id(state, chat_id)
-                    try:
-                        progress.set_phase("Retrying as a new Architect session.")
-                        retry = run_executor(
-                            config,
-                            prompt_text,
-                            None,
-                            image_path=image_path,
-                            progress_callback=progress.handle_executor_event,
-                        )
-                    except subprocess.TimeoutExpired:
-                        logging.warning("Executor retry timeout for chat_id=%s", chat_id)
-                        progress.mark_failure("Retry timed out.")
-                        client.send_message(
-                            chat_id,
-                            config.timeout_message,
-                            reply_to_message_id=message_id,
-                        )
-                        return
-                    except Exception:
-                        logging.exception("Executor retry error for chat_id=%s", chat_id)
-                        progress.mark_failure("Retry failed before completion.")
-                        client.send_message(
-                            chat_id,
-                            config.generic_error_message,
-                            reply_to_message_id=message_id,
-                        )
-                        return
-                    if retry.returncode != 0:
-                        logging.error(
-                            "Executor retry failed for chat_id=%s returncode=%s stderr=%r",
-                            chat_id,
-                            retry.returncode,
-                            retry.stderr[-1000:],
-                        )
-                        progress.mark_failure("Retry failed.")
-                        client.send_message(
-                            chat_id,
-                            config.generic_error_message,
-                            reply_to_message_id=message_id,
-                        )
-                        return
-                    result = retry
-                else:
-                    logging.error(
-                        "Executor failed for chat_id=%s on resume; preserving saved thread_id. "
-                        "returncode=%s stderr=%r",
-                        chat_id,
-                        result.returncode,
-                        (result.stderr or "")[-1000:],
-                    )
-                    progress.mark_failure("Execution failed.")
-                    client.send_message(
-                        chat_id,
-                        config.generic_error_message,
-                        reply_to_message_id=message_id,
-                    )
-                    return
-            else:
-                logging.error(
-                    "Executor failed for chat_id=%s returncode=%s stderr=%r",
-                    chat_id,
-                    result.returncode,
-                    result.stderr[-1000:],
+        while True:
+            try:
+                result = run_executor(
+                    config,
+                    prompt_text,
+                    attempt_thread_id,
+                    image_path=image_path,
+                    progress_callback=progress.handle_executor_event,
                 )
-                progress.mark_failure("Execution failed.")
+            except subprocess.TimeoutExpired:
+                logging.warning("Executor timeout for chat_id=%s", chat_id)
+                progress.mark_failure("Execution timed out.")
+                client.send_message(chat_id, config.timeout_message, reply_to_message_id=message_id)
+                return
+            except FileNotFoundError:
+                logging.exception("Executor command not found: %s", config.executor_cmd)
+                progress.mark_failure("Executor command not found.")
                 client.send_message(
                     chat_id,
                     config.generic_error_message,
                     reply_to_message_id=message_id,
                 )
                 return
+            except Exception:
+                logging.exception("Unexpected executor error for chat_id=%s", chat_id)
+                if allow_automatic_retry and not retry_attempted:
+                    retry_attempted = True
+                    clear_thread_id(state, chat_id)
+                    attempt_thread_id = None
+                    progress.set_phase("Execution failed. Retrying once with a new session.")
+                    continue
+                progress.mark_failure("Execution failed before completion.")
+                if allow_automatic_retry:
+                    client.send_message(
+                        chat_id,
+                        "Execution failed after an automatic retry. Please resend your request.",
+                        reply_to_message_id=message_id,
+                    )
+                else:
+                    client.send_message(
+                        chat_id,
+                        config.generic_error_message,
+                        reply_to_message_id=message_id,
+                    )
+                return
+
+            if result.returncode == 0:
+                break
+
+            reset_and_retry_new = False
+            if attempt_thread_id and should_reset_thread_after_resume_failure(
+                result.stderr or "",
+                result.stdout or "",
+            ):
+                logging.warning(
+                    "Executor failed for chat_id=%s on resume due to invalid thread; "
+                    "clearing thread and retrying as new. stderr=%r",
+                    chat_id,
+                    (result.stderr or "")[-1000:],
+                )
+                reset_and_retry_new = True
+                progress.set_phase("Retrying as a new Architect session.")
+            elif allow_automatic_retry and not retry_attempted:
+                logging.warning(
+                    "Executor failed for chat_id=%s; retrying once as new. returncode=%s stderr=%r",
+                    chat_id,
+                    result.returncode,
+                    (result.stderr or "")[-1000:],
+                )
+                reset_and_retry_new = True
+                retry_attempted = True
+                progress.set_phase("Execution failed. Retrying once with a new session.")
+
+            if reset_and_retry_new:
+                clear_thread_id(state, chat_id)
+                attempt_thread_id = None
+                retry_attempted = True
+                continue
+
+            logging.error(
+                "Executor failed for chat_id=%s returncode=%s stderr=%r",
+                chat_id,
+                result.returncode,
+                (result.stderr or "")[-1000:],
+            )
+            progress.mark_failure("Execution failed.")
+            if allow_automatic_retry:
+                client.send_message(
+                    chat_id,
+                    "Execution failed after an automatic retry. Please resend your request.",
+                    reply_to_message_id=message_id,
+                )
+            else:
+                client.send_message(
+                    chat_id,
+                    config.generic_error_message,
+                    reply_to_message_id=message_id,
+                )
+            return
 
         new_thread_id, output = parse_executor_output(result.stdout or "")
         if new_thread_id:
@@ -1657,11 +1993,14 @@ def process_message_worker(
 
 def handle_reset_command(
     state: State,
+    config: Config,
     client: TelegramClient,
     chat_id: int,
     message_id: Optional[int],
 ) -> None:
-    if clear_thread_id(state, chat_id):
+    removed_thread = clear_thread_id(state, chat_id)
+    removed_worker = clear_worker_session(state, chat_id) if config.persistent_workers_enabled else False
+    if removed_thread or removed_worker:
         client.send_message(
             chat_id,
             "Context reset. Your next message starts a new conversation.",
@@ -1759,13 +2098,17 @@ def handle_update(
         )
         return
     if command == "/status":
-        client.send_message(chat_id, build_status_text(state), reply_to_message_id=message_id)
+        client.send_message(
+            chat_id,
+            build_status_text(state, config, chat_id=chat_id),
+            reply_to_message_id=message_id,
+        )
         return
     if command == "/restart":
         handle_restart_command(state, client, chat_id, message_id)
         return
     if command == "/reset":
-        handle_reset_command(state, client, chat_id, message_id)
+        handle_reset_command(state, config, client, chat_id, message_id)
         return
 
     prompt = (prompt_input or "").strip()
@@ -1786,6 +2129,9 @@ def handle_update(
             "Rate limit exceeded. Please wait a minute and retry.",
             reply_to_message_id=message_id,
         )
+        return
+
+    if not ensure_chat_worker_session(state, config, client, chat_id, message_id):
         return
 
     if not mark_busy(state, chat_id):
@@ -1898,6 +2244,7 @@ def drop_pending_updates(client: TelegramClient) -> int:
 def run_bridge(config: Config) -> int:
     ensure_state_dir(config.state_dir)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
+    worker_sessions_path = os.path.join(config.state_dir, "worker_sessions.json")
     in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
     try:
         loaded_threads = load_chat_threads(chat_thread_path)
@@ -1912,6 +2259,18 @@ def run_bridge(config: Config) -> int:
         loaded_threads = {}
 
     try:
+        loaded_worker_sessions = load_worker_sessions(worker_sessions_path)
+    except Exception:
+        logging.exception(
+            "Failed to load worker session state from %s; starting with empty worker sessions.",
+            worker_sessions_path,
+        )
+        moved = quarantine_corrupt_state_file(worker_sessions_path)
+        if moved:
+            logging.error("Quarantined corrupt worker session state file to %s", moved)
+        loaded_worker_sessions = {}
+
+    try:
         loaded_in_flight = load_in_flight_requests(in_flight_path)
     except Exception:
         logging.exception(
@@ -1923,13 +2282,36 @@ def run_bridge(config: Config) -> int:
             logging.error("Quarantined corrupt in-flight state file to %s", moved)
         loaded_in_flight = {}
 
+    if config.persistent_workers_enabled:
+        now = time.time()
+        current_policy_fingerprint = compute_policy_fingerprint(config.persistent_workers_policy_files)
+        if not loaded_worker_sessions and loaded_threads:
+            loaded_worker_sessions = {
+                chat_id: WorkerSession(
+                    created_at=now,
+                    last_used_at=now,
+                    thread_id=thread_id,
+                    policy_fingerprint=current_policy_fingerprint,
+                )
+                for chat_id, thread_id in loaded_threads.items()
+            }
+        for chat_id, session in loaded_worker_sessions.items():
+            if session.thread_id:
+                loaded_threads[chat_id] = session.thread_id
+
     state = State(
         chat_threads=loaded_threads,
         chat_thread_path=chat_thread_path,
+        worker_sessions=loaded_worker_sessions,
+        worker_sessions_path=worker_sessions_path,
         in_flight_requests=loaded_in_flight,
         in_flight_path=in_flight_path,
     )
     client = TelegramClient(config)
+
+    if config.persistent_workers_enabled:
+        persist_chat_threads(state)
+        persist_worker_sessions(state)
 
     interrupted = pop_interrupted_requests(state)
     if interrupted:
@@ -1962,10 +2344,18 @@ def run_bridge(config: Config) -> int:
     logging.info("Architect-only routing active for all allowlisted chats.")
     logging.info("Executor command=%s", config.executor_cmd)
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
+    logging.info(
+        "Persistent workers enabled=%s count=%s max=%s idle_timeout=%ss",
+        config.persistent_workers_enabled,
+        len(loaded_worker_sessions),
+        config.persistent_workers_max,
+        config.persistent_workers_idle_timeout_seconds,
+    )
     logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
 
     while True:
         try:
+            expire_idle_worker_sessions(state, config, client)
             updates = client.get_updates(offset)
             for update in updates:
                 update_id = update.get("update_id")

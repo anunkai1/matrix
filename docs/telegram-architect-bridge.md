@@ -60,6 +60,9 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_VOICE_WHISPER_LANGUAGE=
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
+# TELEGRAM_PERSISTENT_WORKERS_ENABLED=false
+# TELEGRAM_PERSISTENT_WORKERS_MAX=4
+# TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS=2700
 ENV
 ```
 
@@ -112,10 +115,19 @@ Message handling:
 - Chat context is stored per Telegram chat as `chat_id -> thread_id`.
 - Default state file path: `/home/architect/.local/state/telegram-architect-bridge/chat_threads.json`
 - Override with env var: `TELEGRAM_BRIDGE_STATE_DIR`.
+- Optional persistent worker-session manager (feature-flagged):
+  - enable with `TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`
+  - default max workers: `TELEGRAM_PERSISTENT_WORKERS_MAX=4`
+  - default idle expiry: `TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS=2700` (45 min)
+  - worker session state file: `/home/architect/.local/state/telegram-architect-bridge/worker_sessions.json`
 - In-flight request markers are persisted at `/home/architect/.local/state/telegram-architect-bridge/in_flight_requests.json`.
 - If the bridge restarts while a request is in progress, the chat receives a one-time startup notice to resend the interrupted request.
 - On resume failures, the bridge preserves saved thread context by default.
 - It only auto-resets thread context when executor error output clearly indicates an invalid or missing thread.
+- With persistent workers enabled:
+  - overlapping requests are still rejected while a chat is busy
+  - stale sessions are reset on next message when policy files change, with user notice
+  - idle sessions are expired and user is notified that context was cleared
 
 ## Safety Controls
 

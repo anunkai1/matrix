@@ -8,6 +8,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Runtime mode: Telegram long polling + local `codex exec` executor
 - Input modes: text, photo (image + optional caption), voice snippets (transcribed to text and echoed back), and generic files/documents for analysis
 - Context behavior: per-chat context persistence (`chat_id -> thread_id`) with `/reset`
+- Optional persistent worker-session manager via env flag (`TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`)
 - Built-in safe `/restart` command (queues restart until active work completes)
 - Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup
 - Help alias: `/h` (same as `/help`)
@@ -92,6 +93,7 @@ Use `SERVER3_PROGRESS.md` as the session-to-session status log. Add one high-lev
 ## Troubleshooting
 
 - Service fails at startup: validate required env vars in `/etc/default/telegram-architect-bridge`.
+- Persistent worker sessions not behaving as expected: check `TELEGRAM_PERSISTENT_WORKERS_*` env values and bridge journal.
 - Voice messages fail: validate `TELEGRAM_VOICE_TRANSCRIBE_CMD` and ensure the command prints transcript text to stdout.
 - For GPU transcription, set `TELEGRAM_VOICE_WHISPER_DEVICE=cuda`; if CUDA is unavailable at runtime, transcription now retries on CPU fallback.
 - Bridge replies with execution failure: verify `codex` is installed and authenticated for `architect`.
