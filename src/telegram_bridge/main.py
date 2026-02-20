@@ -17,16 +17,6 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-from ha_control import (
-    HAConfig,
-    HAControlError,
-    HomeAssistantClient,
-    extract_conversation_id,
-    extract_conversation_reply,
-    is_ha_network_error,
-    load_ha_config,
-)
-
 TELEGRAM_LIMIT = 4096
 OUTPUT_BEGIN_MARKER = "OUTPUT_BEGIN"
 
@@ -35,9 +25,6 @@ OUTPUT_BEGIN_MARKER = "OUTPUT_BEGIN"
 class Config:
     token: str
     allowed_chat_ids: Set[int]
-    architect_chat_ids: Set[int]
-    ha_chat_ids: Set[int]
-    chat_routing_enabled: bool
     api_base: str
     poll_timeout_seconds: int
     retry_sleep_seconds: float
@@ -59,11 +46,6 @@ class Config:
     image_download_error_message: str = "Image download failed. Please send another image."
     voice_download_error_message: str = "Voice download failed. Please send another voice message."
     document_download_error_message: str = "File download failed. Please send another file."
-    ha_only_message: str = "This chat is Home Assistant-only. Send a Home Assistant control request here."
-    architect_only_message: str = "This chat is Architect-only. Use your HA chat for Home Assistant control."
-    unassigned_chat_message: str = (
-        "Access denied for this chat. Chat routing is enabled and this chat is not assigned."
-    )
     voice_not_configured_message: str = (
         "Voice transcription is not configured. Please ask admin to set TELEGRAM_VOICE_TRANSCRIBE_CMD."
     )
@@ -82,8 +64,6 @@ class State:
     recent_requests: Dict[int, List[float]] = field(default_factory=dict)
     chat_threads: Dict[int, str] = field(default_factory=dict)
     chat_thread_path: str = ""
-    ha_conversations: Dict[int, str] = field(default_factory=dict)
-    ha_conversation_path: str = ""
     in_flight_requests: Dict[int, Dict[str, object]] = field(default_factory=dict)
     in_flight_path: str = ""
     restart_requested: bool = False
@@ -98,12 +78,6 @@ class DocumentPayload:
     file_id: str
     file_name: str
     mime_type: str
-
-
-@dataclass
-class HARuntime:
-    config: Optional[HAConfig]
-    client: Optional[HomeAssistantClient]
 
 
 def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
@@ -132,75 +106,6 @@ def parse_allowed_chat_ids(raw: str) -> Set[int]:
                 f"Invalid TELEGRAM_ALLOWED_CHAT_IDS value: {value!r}"
             ) from exc
     return parsed
-
-
-def parse_optional_chat_ids_env(name: str) -> Set[int]:
-    raw = os.getenv(name)
-    if raw is None:
-        return set()
-    cleaned = raw.strip()
-    if not cleaned:
-        return set()
-    values = [item.strip() for item in cleaned.split(",") if item.strip()]
-    parsed: Set[int] = set()
-    for value in values:
-        try:
-            parsed.add(int(value))
-        except ValueError as exc:
-            raise ValueError(f"Invalid {name} value: {value!r}") from exc
-    return parsed
-
-
-def resolve_chat_routing(allowed_chat_ids: Set[int]) -> tuple[Set[int], Set[int], bool]:
-    architect_chat_ids = parse_optional_chat_ids_env("TELEGRAM_ARCHITECT_CHAT_IDS")
-    ha_chat_ids = parse_optional_chat_ids_env("TELEGRAM_HA_CHAT_IDS")
-
-    routing_enabled = bool(architect_chat_ids or ha_chat_ids)
-    if not routing_enabled:
-        return set(), set(), False
-
-    overlap = architect_chat_ids & ha_chat_ids
-    if overlap:
-        raise ValueError(
-            "TELEGRAM_ARCHITECT_CHAT_IDS and TELEGRAM_HA_CHAT_IDS overlap: "
-            f"{sorted(overlap)}"
-        )
-
-    unknown = (architect_chat_ids | ha_chat_ids) - allowed_chat_ids
-    if unknown:
-        raise ValueError(
-            "Chat IDs in TELEGRAM_ARCHITECT_CHAT_IDS/TELEGRAM_HA_CHAT_IDS must be in "
-            f"TELEGRAM_ALLOWED_CHAT_IDS. Unknown IDs: {sorted(unknown)}"
-        )
-
-    if not architect_chat_ids:
-        architect_chat_ids = set(allowed_chat_ids - ha_chat_ids)
-    if not ha_chat_ids:
-        ha_chat_ids = set(allowed_chat_ids - architect_chat_ids)
-
-    if not architect_chat_ids:
-        raise ValueError("TELEGRAM_ARCHITECT_CHAT_IDS resolves to an empty set.")
-    if not ha_chat_ids:
-        raise ValueError("TELEGRAM_HA_CHAT_IDS resolves to an empty set.")
-
-    unassigned = allowed_chat_ids - (architect_chat_ids | ha_chat_ids)
-    if unassigned:
-        raise ValueError(
-            "Some TELEGRAM_ALLOWED_CHAT_IDS are unassigned while chat routing is enabled: "
-            f"{sorted(unassigned)}"
-        )
-
-    return architect_chat_ids, ha_chat_ids, True
-
-
-def get_chat_mode(config: Config, chat_id: int) -> str:
-    if not config.chat_routing_enabled:
-        return "mixed"
-    if chat_id in config.architect_chat_ids:
-        return "architect"
-    if chat_id in config.ha_chat_ids:
-        return "ha"
-    return "unassigned"
 
 
 def build_default_executor() -> str:
@@ -249,14 +154,10 @@ def load_config() -> Config:
         raise ValueError("TELEGRAM_BRIDGE_STATE_DIR cannot be empty")
 
     allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids)
-    architect_chat_ids, ha_chat_ids, chat_routing_enabled = resolve_chat_routing(allowed_chat_ids)
 
     return Config(
         token=token,
         allowed_chat_ids=allowed_chat_ids,
-        architect_chat_ids=architect_chat_ids,
-        ha_chat_ids=ha_chat_ids,
-        chat_routing_enabled=chat_routing_enabled,
         api_base=os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/"),
         poll_timeout_seconds=parse_int_env("TELEGRAM_POLL_TIMEOUT_SECONDS", 30),
         retry_sleep_seconds=float(os.getenv("TELEGRAM_RETRY_SLEEP_SECONDS", "3")),
@@ -528,65 +429,6 @@ def clear_thread_id(state: State, chat_id: int) -> bool:
             removed = True
     if removed:
         persist_chat_threads(state)
-    return removed
-
-
-def load_ha_conversations(path: str) -> Dict[int, str]:
-    data_path = Path(path)
-    if not data_path.exists():
-        return {}
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"Failed to parse HA conversation state {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid HA conversation state {path}: root is not object")
-
-    parsed: Dict[int, str] = {}
-    for key, value in raw.items():
-        if not isinstance(value, str) or not value.strip():
-            continue
-        try:
-            chat_id = int(key)
-        except ValueError:
-            continue
-        parsed[chat_id] = value.strip()
-    return parsed
-
-
-def persist_ha_conversations(state: State) -> None:
-    if not state.ha_conversation_path:
-        return
-    path = Path(state.ha_conversation_path)
-    tmp_path = path.with_suffix(".tmp")
-    with state.lock:
-        serialized = {
-            str(chat_id): conversation_id
-            for chat_id, conversation_id in state.ha_conversations.items()
-        }
-    tmp_path.write_text(json.dumps(serialized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp_path.replace(path)
-
-
-def get_ha_conversation_id(state: State, chat_id: int) -> Optional[str]:
-    with state.lock:
-        return state.ha_conversations.get(chat_id)
-
-
-def set_ha_conversation_id(state: State, chat_id: int, conversation_id: str) -> None:
-    with state.lock:
-        state.ha_conversations[chat_id] = conversation_id
-    persist_ha_conversations(state)
-
-
-def clear_ha_conversation_id(state: State, chat_id: int) -> bool:
-    removed = False
-    with state.lock:
-        if chat_id in state.ha_conversations:
-            del state.ha_conversations[chat_id]
-            removed = True
-    if removed:
-        persist_ha_conversations(state)
     return removed
 
 
@@ -1021,34 +863,7 @@ def transcribe_voice_for_chat(
                 logging.warning("Failed to remove temp voice file: %s", voice_path)
 
 
-def build_help_text(chat_mode: str, ha_enabled: bool) -> str:
-    mode_line = "Chat mode: mixed (HA + Architect in same chat)"
-    if chat_mode == "architect":
-        mode_line = "Chat mode: Architect-only"
-    elif chat_mode == "ha":
-        mode_line = "Chat mode: HA-only"
-
-    mode_note = "Any other text, photo, voice, or file message is sent to Architect."
-    if chat_mode == "ha":
-        mode_note = "HA-only chat: Home Assistant text/voice requests are handled here."
-    elif chat_mode == "architect":
-        mode_note = "Architect-only chat: Home Assistant control is handled in your HA chat."
-
-    if not ha_enabled:
-        return (
-            "Commands:\n"
-            "/start - bridge intro\n"
-            "/help - show commands\n"
-            "/h - short help alias\n"
-            "/status - show bridge health\n"
-            "/restart - safe restart (queued until current work completes)\n"
-            "/reset - clear chat context\n"
-            "Chat mode: mixed (Architect-only; HA routing disabled)\n\n"
-            "HA handling:\n"
-            "- Home Assistant conversation routing is disabled in current runtime.\n"
-            "- All text/photo/voice/file messages are sent to Architect."
-        )
-
+def build_help_text() -> str:
     return (
         "Commands:\n"
         "/start - bridge intro\n"
@@ -1057,10 +872,8 @@ def build_help_text(chat_mode: str, ha_enabled: bool) -> str:
         "/status - show bridge health\n"
         "/restart - safe restart (queued until current work completes)\n"
         "/reset - clear chat context\n"
-        f"{mode_line}\n\n"
-        "HA handling:\n"
-        "- HA text/voice requests are sent to Home Assistant Conversation Agent.\n\n"
-        f"{mode_note}"
+        "Chat mode: Architect-only for all allowlisted chats.\n\n"
+        "All text/photo/voice/file messages are sent to Architect."
     )
 
 
@@ -1213,64 +1026,6 @@ def finalize_chat_work(
             restart_chat_id,
         )
     trigger_restart_async(state, client, restart_chat_id, restart_reply_to)
-
-
-def build_ha_runtime(config: Config) -> HARuntime:
-    try:
-        ha_config = load_ha_config(config.state_dir)
-    except Exception:
-        logging.exception("Failed to load HA runtime config; HA conversation handling disabled.")
-        return HARuntime(config=None, client=None)
-
-    if ha_config is None:
-        return HARuntime(config=None, client=None)
-
-    return HARuntime(config=ha_config, client=HomeAssistantClient(ha_config))
-
-
-def handle_ha_request_text(
-    state: State,
-    config: Config,
-    runtime: HARuntime,
-    client: TelegramClient,
-    chat_id: int,
-    message_id: Optional[int],
-    prompt: str,
-) -> bool:
-    cleaned = (prompt or "").strip()
-    if not cleaned:
-        return False
-
-    if runtime.client is None or runtime.config is None:
-        return False
-
-    try:
-        conversation_id = get_ha_conversation_id(state, chat_id)
-        response = runtime.client.process_conversation(
-            cleaned,
-            conversation_id=conversation_id,
-        )
-    except HAControlError as exc:
-        client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
-        return True
-    except Exception as exc:
-        if is_ha_network_error(exc):
-            client.send_message(
-                chat_id,
-                "Home Assistant is unavailable right now. Please try again.",
-                reply_to_message_id=message_id,
-            )
-            return True
-        logging.exception("Unexpected HA conversation error for chat_id=%s", chat_id)
-        client.send_message(chat_id, config.generic_error_message, reply_to_message_id=message_id)
-        return True
-
-    next_id = extract_conversation_id(response)
-    if next_id:
-        set_ha_conversation_id(state, chat_id, next_id)
-    reply_text = extract_conversation_reply(response)
-    client.send_message(chat_id, reply_text, reply_to_message_id=message_id)
-    return True
 
 
 def process_prompt(
@@ -1528,9 +1283,7 @@ def handle_reset_command(
     chat_id: int,
     message_id: Optional[int],
 ) -> None:
-    reset_architect = clear_thread_id(state, chat_id)
-    reset_ha = clear_ha_conversation_id(state, chat_id)
-    if reset_architect or reset_ha:
+    if clear_thread_id(state, chat_id):
         client.send_message(
             chat_id,
             "Context reset. Your next message starts a new conversation.",
@@ -1585,7 +1338,6 @@ def handle_update(
     state: State,
     config: Config,
     client: TelegramClient,
-    ha_runtime: HARuntime,
     update: Dict[str, object],
 ) -> None:
     message = update.get("message")
@@ -1609,12 +1361,6 @@ def handle_update(
         client.send_message(chat_id, config.denied_message, reply_to_message_id=message_id)
         return
 
-    chat_mode = get_chat_mode(config, chat_id)
-    if chat_mode == "unassigned":
-        logging.warning("Denied unassigned routed chat_id=%s", chat_id)
-        client.send_message(chat_id, config.unassigned_chat_message, reply_to_message_id=message_id)
-        return
-
     prompt_input, photo_file_id, voice_file_id, document = extract_prompt_and_media(message)
     if prompt_input is None and voice_file_id is None and document is None:
         return
@@ -1628,10 +1374,9 @@ def handle_update(
         )
         return
     if command in ("/help", "/h"):
-        ha_enabled = bool(ha_runtime.client is not None and ha_runtime.config is not None)
         client.send_message(
             chat_id,
-            build_help_text(chat_mode, ha_enabled),
+            build_help_text(),
             reply_to_message_id=message_id,
         )
         return
@@ -1655,77 +1400,6 @@ def handle_update(
             f"Input too long ({len(prompt)} chars). Max is {config.max_input_chars}.",
             reply_to_message_id=message_id,
         )
-        return
-
-    text_only = bool(prompt and photo_file_id is None and voice_file_id is None and document is None)
-    if chat_mode == "ha":
-        if photo_file_id is not None or document is not None:
-            client.send_message(
-                chat_id,
-                config.ha_only_message,
-                reply_to_message_id=message_id,
-            )
-            return
-
-        ha_prompt = prompt
-        if voice_file_id is not None:
-            transcript = transcribe_voice_for_chat(
-                config=config,
-                client=client,
-                chat_id=chat_id,
-                message_id=message_id,
-                voice_file_id=voice_file_id,
-                echo_transcript=True,
-            )
-            if transcript is None:
-                return
-            if ha_prompt:
-                ha_prompt = f"{ha_prompt}\n{transcript}"
-            else:
-                ha_prompt = transcript
-            ha_prompt = ha_prompt.strip()
-
-        if ha_prompt and len(ha_prompt) > config.max_input_chars:
-            client.send_message(
-                chat_id,
-                f"Input too long ({len(ha_prompt)} chars). Max is {config.max_input_chars}.",
-                reply_to_message_id=message_id,
-            )
-            return
-
-        if (
-            ha_prompt
-            and handle_ha_request_text(
-                state=state,
-                config=config,
-                runtime=ha_runtime,
-                client=client,
-                chat_id=chat_id,
-                message_id=message_id,
-                prompt=ha_prompt,
-            )
-        ):
-            return
-        client.send_message(
-            chat_id,
-            config.ha_only_message,
-            reply_to_message_id=message_id,
-        )
-        return
-
-    if (
-        chat_mode == "mixed"
-        and text_only
-        and handle_ha_request_text(
-            state=state,
-            config=config,
-            runtime=ha_runtime,
-            client=client,
-            chat_id=chat_id,
-            message_id=message_id,
-            prompt=prompt,
-        )
-    ):
         return
 
     if is_rate_limited(state, config, chat_id):
@@ -1791,34 +1465,6 @@ def run_self_test() -> int:
         raise RuntimeError("Restart self-test failed (pop_ready)")
     finish_restart_attempt(restart_state)
 
-    routing_config = Config(
-        token="t",
-        allowed_chat_ids={1, 2},
-        architect_chat_ids={1},
-        ha_chat_ids={2},
-        chat_routing_enabled=True,
-        api_base="https://api.telegram.org",
-        poll_timeout_seconds=30,
-        retry_sleep_seconds=1.0,
-        exec_timeout_seconds=30,
-        max_input_chars=100,
-        max_output_chars=100,
-        max_image_bytes=1024,
-        max_voice_bytes=1024,
-        max_document_bytes=1024,
-        rate_limit_per_minute=10,
-        executor_cmd=["/bin/echo"],
-        voice_transcribe_cmd=[],
-        voice_transcribe_timeout_seconds=10,
-        state_dir="/tmp",
-    )
-    if get_chat_mode(routing_config, 1) != "architect":
-        raise RuntimeError("Routing self-test failed (architect)")
-    if get_chat_mode(routing_config, 2) != "ha":
-        raise RuntimeError("Routing self-test failed (ha)")
-    if get_chat_mode(routing_config, 3) != "unassigned":
-        raise RuntimeError("Routing self-test failed (unassigned)")
-
     print("self-test: ok")
     return 0
 
@@ -1857,7 +1503,6 @@ def drop_pending_updates(client: TelegramClient) -> int:
 def run_bridge(config: Config) -> int:
     ensure_state_dir(config.state_dir)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
-    ha_conversation_path = os.path.join(config.state_dir, "ha_conversations.json")
     in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
     try:
         loaded_threads = load_chat_threads(chat_thread_path)
@@ -1883,28 +1528,13 @@ def run_bridge(config: Config) -> int:
             logging.error("Quarantined corrupt in-flight state file to %s", moved)
         loaded_in_flight = {}
 
-    try:
-        loaded_ha_conversations = load_ha_conversations(ha_conversation_path)
-    except Exception:
-        logging.exception(
-            "Failed to load HA conversation state from %s; starting with empty mappings.",
-            ha_conversation_path,
-        )
-        moved = quarantine_corrupt_state_file(ha_conversation_path)
-        if moved:
-            logging.error("Quarantined corrupt HA conversation state file to %s", moved)
-        loaded_ha_conversations = {}
-
     state = State(
         chat_threads=loaded_threads,
         chat_thread_path=chat_thread_path,
-        ha_conversations=loaded_ha_conversations,
-        ha_conversation_path=ha_conversation_path,
         in_flight_requests=loaded_in_flight,
         in_flight_path=in_flight_path,
     )
     client = TelegramClient(config)
-    ha_runtime = build_ha_runtime(config)
 
     interrupted = pop_interrupted_requests(state)
     if interrupted:
@@ -1934,25 +1564,9 @@ def run_bridge(config: Config) -> int:
         offset = 0
 
     logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
-    if config.chat_routing_enabled:
-        logging.info(
-            "Chat routing enabled. Architect chats=%s HA chats=%s",
-            sorted(config.architect_chat_ids),
-            sorted(config.ha_chat_ids),
-        )
-    else:
-        logging.info("Chat routing disabled. Mixed HA/Architect behavior is active.")
+    logging.info("Architect-only routing active for all allowlisted chats.")
     logging.info("Executor command=%s", config.executor_cmd)
-    if ha_runtime.client is not None and ha_runtime.config is not None:
-        logging.info("HA conversation mode enabled; local HA parser is disabled.")
-    else:
-        logging.info("HA conversation mode disabled by runtime config.")
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
-    logging.info(
-        "Loaded %s HA conversation mapping(s) from %s",
-        len(loaded_ha_conversations),
-        ha_conversation_path,
-    )
     logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
 
     while True:
@@ -1962,7 +1576,7 @@ def run_bridge(config: Config) -> int:
                 update_id = update.get("update_id")
                 if isinstance(update_id, int):
                     offset = max(offset, update_id + 1)
-                handle_update(state, config, client, ha_runtime, update)
+                handle_update(state, config, client, update)
         except (HTTPError, URLError, TimeoutError):
             logging.exception("Network/API error while polling Telegram")
             time.sleep(config.retry_sleep_seconds)

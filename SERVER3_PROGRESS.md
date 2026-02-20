@@ -1,5 +1,42 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram Bridge: Permanent Architect-Only Code/Docs Cleanup)
+
+### Summary
+- Completed full permanent Architect-only cleanup for Telegram bridge runtime and repo artifacts.
+- Removed Home Assistant-specific bridge components from repo:
+  - deleted `src/telegram_bridge/ha_control.py`
+  - deleted `infra/home_assistant/packages/architect_executor.yaml`
+  - deleted `ops/home-assistant/validate_architect_package.sh`
+- Refactored `src/telegram_bridge/main.py`:
+  - removed split chat routing and HA conversation handling code paths
+  - removed HA conversation state handling
+  - `/help` now describes Architect-only handling for all allowlisted chats
+  - startup logs now report Architect-only routing mode
+- Updated docs/templates to match permanent Architect-only behavior:
+  - `README.md`
+  - `docs/telegram-architect-bridge.md`
+  - `infra/env/telegram-architect-bridge.env.example`
+  - `infra/env/telegram-architect-bridge.server3.redacted.env`
+- Updated smoke test:
+  - `src/telegram_bridge/smoke_test.sh` no longer validates removed HA files
+- Live server cleanup:
+  - removed remaining HA env key from `/etc/default/telegram-architect-bridge` (backup created)
+  - archived stale HA/pending state files under `/home/architect/.local/state/telegram-architect-bridge/`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/main.py`
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+  - service healthy after restart; journal confirms `Architect-only routing active for all allowlisted chats.`
+- Added change record:
+  - `logs/changes/20260220-153114-telegram-permanent-architect-only-cleanup.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Home Assistant control is no longer provided by bridge runtime. Any future HA integration would require reintroducing code and env/docs support.
+
 ## 2026-02-20 (Telegram Bridge: HA-Disabled Cleanup)
 
 ### Summary

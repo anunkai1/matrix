@@ -11,8 +11,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Built-in safe `/restart` command (queues restart until active work completes)
 - Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup
 - Help alias: `/h` (same as `/help`), also shown in thinking reply hint
-- HA requests are routed to Home Assistant Conversation API (local parser removed)
-- Optional strict split by chat ID: Architect-only chat(s) and HA-only chat(s)
+- Architect-only routing for all allowlisted chats
 
 ## Repository Structure
 
@@ -63,10 +62,6 @@ bash ops/telegram-voice/configure_env.sh
 bash ops/telegram-bridge/restart_and_verify.sh
 ```
 
-Home Assistant requests can be sent in plain text and are handled by your configured HA conversation agent.
-For strict separation, set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_IDS` so one chat handles only Architect actions and another handles only HA actions.
-In HA-only chats, voice messages are transcribed and the transcript is sent to Home Assistant Conversation API.
-
 ## Operations
 
 - Restart bridge (verified): `bash ops/telegram-bridge/restart_and_verify.sh`
@@ -80,7 +75,7 @@ In HA-only chats, voice messages are transcribed and the transcript is sent to H
 - Default path: every non-exempt change set is GitHub-traceable through commit + push.
 - For non-exempt live edits outside repo paths, mirror intended/final state under `infra/`, use `ops/` for apply/rollback, document in `docs/`, and record applied changes under `logs/` in the same session.
 - For non-exempt change sets, update `SERVER3_PROGRESS.md` and push in the same session.
-- Exception: routine HA quick-ops (device state control only, no persistent config/code changes) use journal-only runtime logging and do not require per-action repo commit/push; see `ARCHITECT_INSTRUCTION.md` for exact boundary.
+- Exception boundaries and operational exemptions are defined in `ARCHITECT_INSTRUCTION.md`.
 
 ## Progress Tracking
 
@@ -95,10 +90,8 @@ Use `SERVER3_PROGRESS.md` as the session-to-session status log. Add one high-lev
 ## Troubleshooting
 
 - Service fails at startup: validate required env vars in `/etc/default/telegram-architect-bridge`.
-- If strict chat routing is enabled, ensure every `TELEGRAM_ALLOWED_CHAT_IDS` entry is assigned to either `TELEGRAM_ARCHITECT_CHAT_IDS` or `TELEGRAM_HA_CHAT_IDS`, with no overlap.
 - Voice messages fail: validate `TELEGRAM_VOICE_TRANSCRIBE_CMD` and ensure the command prints transcript text to stdout.
 - For GPU transcription, set `TELEGRAM_VOICE_WHISPER_DEVICE=cuda`; if CUDA is unavailable at runtime, transcription now retries on CPU fallback.
-- HA actions unavailable: validate `TELEGRAM_HA_BASE_URL`, `TELEGRAM_HA_TOKEN`, and HA package deployment.
 - Bridge replies with execution failure: verify `codex` is installed and authenticated for `architect`.
 - No Telegram responses: confirm bot token/chat allowlist and check service journal logs.
 

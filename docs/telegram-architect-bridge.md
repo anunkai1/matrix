@@ -1,27 +1,25 @@
 # Telegram Architect Bridge
 
-This bridge lets Telegram users chat with local Architect/Codex on Server3 without using OpenAI API integration in bridge code.
+This bridge lets allowlisted Telegram chats send prompts to local Architect/Codex execution on Server3.
 
 ## Architecture
 
 - Transport: Telegram Bot API (long polling)
 - Executor: local CLI command (default wrapper: `src/telegram_bridge/executor.sh`)
 - Runtime: `systemd` service
+- Routing: Architect-only for all allowlisted chats
 
 ## Files
 
 - Bridge runtime: `src/telegram_bridge/main.py`
 - Safe executor wrapper: `src/telegram_bridge/executor.sh`
-- HA control helpers: `src/telegram_bridge/ha_control.py`
 - Voice transcription runner: `src/telegram_bridge/voice_transcribe.py`
 - Local smoke test: `src/telegram_bridge/smoke_test.sh`
-- HA package template: `infra/home_assistant/packages/architect_executor.yaml`
 - Systemd source-of-truth unit: `infra/systemd/telegram-architect-bridge.service`
 - Install/rollback unit: `ops/telegram-bridge/install_systemd.sh`
 - Restart + verification helper: `ops/telegram-bridge/restart_and_verify.sh`
 - Restart helper: `ops/telegram-bridge/restart_service.sh`
 - Status helper: `ops/telegram-bridge/status_service.sh`
-- HA package validator: `ops/home-assistant/validate_architect_package.sh`
 - Voice runtime installer: `ops/telegram-voice/install_faster_whisper.sh`
 - Voice env updater: `ops/telegram-voice/configure_env.sh`
 - Voice command wrapper: `ops/telegram-voice/transcribe_voice.sh`
@@ -29,7 +27,7 @@ This bridge lets Telegram users chat with local Architect/Codex on Server3 witho
 ## Bot Setup
 
 1. Create a bot via BotFather and capture the token.
-2. Find your Telegram chat ID.
+2. Find your Telegram chat ID(s).
 3. Create `/etc/default/telegram-architect-bridge`:
 
 ```bash
@@ -40,12 +38,9 @@ sudo nano /etc/default/telegram-architect-bridge
 Equivalent manual content:
 
 ```bash
-sudo tee /etc/default/telegram-architect-bridge >/dev/null <<'EOF'
+sudo tee /etc/default/telegram-architect-bridge >/dev/null <<'ENV'
 TELEGRAM_BOT_TOKEN=123456:replace_me
 TELEGRAM_ALLOWED_CHAT_IDS=123456789
-# Optional strict split by chat ID:
-# TELEGRAM_ARCHITECT_CHAT_IDS=123456789
-# TELEGRAM_HA_CHAT_IDS=-100987654321
 TELEGRAM_EXEC_TIMEOUT_SECONDS=36000
 TELEGRAM_MAX_INPUT_CHARS=4096
 TELEGRAM_MAX_OUTPUT_CHARS=20000
@@ -53,9 +48,8 @@ TELEGRAM_MAX_IMAGE_BYTES=10485760
 TELEGRAM_MAX_VOICE_BYTES=20971520
 TELEGRAM_MAX_DOCUMENT_BYTES=52428800
 TELEGRAM_RATE_LIMIT_PER_MINUTE=12
-# Required for voice messages (must print transcript to stdout):
+# Optional voice command (must print transcript to stdout):
 # TELEGRAM_VOICE_TRANSCRIBE_CMD=/home/architect/matrix/ops/telegram-voice/transcribe_voice.sh {file}
-# Optional voice transcription timeout:
 # TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS=180
 # TELEGRAM_VOICE_WHISPER_VENV=/home/architect/.local/share/telegram-voice/venv
 # TELEGRAM_VOICE_WHISPER_MODEL=base
@@ -65,16 +59,8 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_VOICE_WHISPER_FALLBACK_COMPUTE_TYPE=int8
 # TELEGRAM_VOICE_WHISPER_LANGUAGE=
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
-# TELEGRAM_HA_ENABLED=true
-# TELEGRAM_HA_BASE_URL=http://homeassistant.local:8123
-# TELEGRAM_HA_TOKEN=replace_with_long_lived_token
-# TELEGRAM_HA_CONVERSATION_AGENT_ID=conversation.chatgpt
-# TELEGRAM_HA_LANGUAGE=en
-# TELEGRAM_HA_ALLOWED_DOMAINS=climate,switch,light,water_heater,input_boolean
-# TELEGRAM_HA_ALLOWED_ENTITIES=
-# Optional override:
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
-EOF
+ENV
 ```
 
 ## Install and Start
@@ -100,32 +86,6 @@ bash ops/telegram-voice/transcribe_voice.sh /path/to/sample.ogg
 sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 ```
 
-## Home Assistant Setup
-
-1. Create a dedicated HA user and long-lived token.
-2. Copy package file into HA packages folder:
-
-```bash
-cp infra/home_assistant/packages/architect_executor.yaml /config/packages/architect_executor.yaml
-```
-
-3. Ensure HA loads packages from `/config/packages`:
-
-```yaml
-homeassistant:
-  packages: !include_dir_named packages
-```
-
-4. Reload scripts + automations (or restart HA).
-5. Set HA env vars in `/etc/default/telegram-architect-bridge` (`TELEGRAM_HA_*`) and restart the bridge.
-6. Ensure your chosen HA conversation agent can control the entities you intend to expose.
-
-Validation:
-
-```bash
-bash ops/home-assistant/validate_architect_package.sh
-```
-
 ## Bridge Commands
 
 - `/start` basic intro
@@ -135,31 +95,13 @@ bash ops/home-assistant/validate_architect_package.sh
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
 
-Routing behavior:
-- Default (no split vars): mixed mode in each allowlisted chat. HA text-only requests are sent to Home Assistant Conversation API; non-HA text/media goes to local executor (`codex exec`).
-- If HA runtime is disabled (`TELEGRAM_HA_ENABLED=false` and no HA URL/token), all requests in mixed mode go to Architect.
-- Strict split mode (set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_IDS`):
-- Architect chat IDs: text/photo/voice/file requests go to local executor only.
-- HA chat IDs: HA text requests are sent directly to Home Assistant Conversation API.
-- HA chat IDs: voice notes are transcribed and the transcript is sent directly to Home Assistant Conversation API.
-- Other non-HA text/photo/voice/file requests are rejected with an HA-only reminder.
-Photo messages are also supported:
-- If a photo has a caption, the caption is used as the prompt.
-- If a photo has no caption, the bridge sends a default prompt: `Please analyze this image.`
-- The photo is attached to Codex using `codex exec --image`.
-Voice messages are also supported:
-- The bridge downloads the Telegram voice file and runs `TELEGRAM_VOICE_TRANSCRIBE_CMD`.
-- If command args contain `{file}`, it is replaced with the downloaded voice file path.
-- If `{file}` is not present, the voice file path is appended as the final command argument.
-- The transcription command must write plain transcript text to stdout.
-- If `TELEGRAM_VOICE_WHISPER_DEVICE=cuda` is set but CUDA is not available, the transcriber retries on CPU fallback (`TELEGRAM_VOICE_WHISPER_FALLBACK_*`).
-- After successful transcription, the bridge echoes `Voice transcript:` back to chat.
-- If the voice message has a caption, the bridge prefixes that caption and appends `Voice transcript:` plus transcript text.
-- Telegram document/file messages are also supported:
-- If a file has a caption, the caption is used as the prompt.
-- If a file has no caption, the bridge sends a default prompt: `Please analyze this file.`
-- The bridge downloads the file, injects local file context (path, name, MIME, size) into the prompt, and Codex analyzes it directly from disk.
-- File size is guarded by `TELEGRAM_MAX_DOCUMENT_BYTES` (default `52428800`).
+Message handling:
+
+- All allowlisted chats route to Architect.
+- Text, photo, voice, and document/file inputs are supported.
+- Photo without caption uses: `Please analyze this image.`
+- File without caption uses: `Please analyze this file.`
+- Voice transcription is echoed as `Voice transcript:` before Architect output.
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
 
 Before executor completion, the bridge sends an immediate placeholder reply:
@@ -170,16 +112,14 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 - Chat context is stored per Telegram chat as `chat_id -> thread_id`.
 - Default state file path: `/home/architect/.local/state/telegram-architect-bridge/chat_threads.json`
 - Override with env var: `TELEGRAM_BRIDGE_STATE_DIR`.
-- HA conversation context is stored per chat at `/home/architect/.local/state/telegram-architect-bridge/ha_conversations.json`.
 - In-flight request markers are persisted at `/home/architect/.local/state/telegram-architect-bridge/in_flight_requests.json`.
 - If the bridge restarts while a request is in progress, the chat receives a one-time startup notice to resend the interrupted request.
-- On resume failures, the bridge now preserves saved thread context by default.
-- It only auto-resets thread context when executor error output clearly indicates an invalid/missing thread.
+- On resume failures, the bridge preserves saved thread context by default.
+- It only auto-resets thread context when executor error output clearly indicates an invalid or missing thread.
 
 ## Safety Controls
 
 - Chat ID allowlist (`TELEGRAM_ALLOWED_CHAT_IDS`)
-- Optional strict chat routing (`TELEGRAM_ARCHITECT_CHAT_IDS`, `TELEGRAM_HA_CHAT_IDS`)
 - Per-chat single in-flight request (`busy` response on overlap)
 - Built-in safe `/restart` command that bypasses busy rejection by queuing restart until active work completes
 - Request timeout guard (`TELEGRAM_EXEC_TIMEOUT_SECONDS`)
@@ -193,7 +133,7 @@ Before executor completion, the bridge sends an immediate placeholder reply:
 ## Privileged Operations
 
 - The source-of-truth unit (`infra/systemd/telegram-architect-bridge.service`) sets `NoNewPrivileges=false`.
-- This is required if you want Telegram-triggered Architect sessions to run scripts that use `sudo` (for example `ops/telegram-bridge/restart_and_verify.sh`).
+- This is required if Telegram-triggered Architect sessions must run scripts that use `sudo` (for example `ops/telegram-bridge/restart_and_verify.sh`).
 - Both new and resumed Codex sessions are launched with `--dangerously-bypass-approvals-and-sandbox`.
 - Keep `TELEGRAM_ALLOWED_CHAT_IDS` strict. Any allowed chat can request operations with `architect` user privileges, including sudo-capable commands.
 
@@ -206,8 +146,12 @@ bash ops/telegram-bridge/status_service.sh
 sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 ```
 
-Config mistakes (missing env vars) cause startup failure. The executor also requires a valid `codex login` for the `architect` user. Correct `/etc/default/telegram-architect-bridge` and run `bash ops/telegram-bridge/restart_and_verify.sh`.
-If strict split mode is enabled, every allowlisted chat ID must be assigned to exactly one routing set (`TELEGRAM_ARCHITECT_CHAT_IDS` or `TELEGRAM_HA_CHAT_IDS`) with no overlap.
+Common checks:
+
+- Missing bot token or allowlist in `/etc/default/telegram-architect-bridge`
+- Invalid `TELEGRAM_EXECUTOR_CMD`
+- Missing `codex login` for user `architect`
+- Voice pipeline issues in `TELEGRAM_VOICE_TRANSCRIBE_CMD`
 
 ## Rollback
 
