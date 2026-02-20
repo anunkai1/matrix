@@ -137,6 +137,7 @@ bash ops/home-assistant/validate_architect_package.sh
 
 Routing behavior:
 - Default (no split vars): mixed mode in each allowlisted chat. HA text-only requests are sent to Home Assistant Conversation API; non-HA text/media goes to local executor (`codex exec`).
+- If HA runtime is disabled (`TELEGRAM_HA_ENABLED=false` and no HA URL/token), all requests in mixed mode go to Architect.
 - Strict split mode (set `TELEGRAM_ARCHITECT_CHAT_IDS` and `TELEGRAM_HA_CHAT_IDS`):
 - Architect chat IDs: text/photo/voice/file requests go to local executor only.
 - HA chat IDs: HA text requests are sent directly to Home Assistant Conversation API.

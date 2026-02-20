@@ -1,5 +1,38 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram Bridge: HA-Disabled Cleanup)
+
+### Summary
+- Completed post-migration cleanup for Architect-only Telegram operation after HA routing disablement.
+- Live runtime env cleanup in `/etc/default/telegram-architect-bridge`:
+  - removed residual HA-only keys (`TELEGRAM_HA_*`) that were unused with HA runtime disabled
+  - retained explicit `TELEGRAM_HA_ENABLED=false`
+  - backup created: `/etc/default/telegram-architect-bridge.bak-20260220-145256-ha-cleanup`
+- Cleared stale HA conversation state:
+  - set `/home/architect/.local/state/telegram-architect-bridge/ha_conversations.json` to empty object `{}`.
+  - backup created: `/home/architect/.local/state/telegram-architect-bridge/ha_conversations.json.bak-20260220-145256`
+- Updated bridge runtime/operator visibility:
+  - `src/telegram_bridge/main.py` now reports HA runtime disabled in startup logs when HA config is off
+  - `/help` text now reflects Architect-only behavior when HA runtime is disabled
+- Updated docs/env traceability:
+  - `docs/telegram-architect-bridge.md`
+  - `infra/env/telegram-architect-bridge.server3.redacted.env`
+  - `logs/changes/20260220-145309-telegram-ha-disabled-cleanup.md`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/main.py src/telegram_bridge/ha_control.py`
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+  - service healthy after restart; journal shows:
+    - `Chat routing disabled. Mixed HA/Architect behavior is active.`
+    - `HA conversation mode disabled by runtime config.`
+    - `Loaded 0 HA conversation mapping(s) ...`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This cleanup intentionally does not delete HA support code; it removes operational redundancy and misleading runtime messaging for the current HA-disabled mode.
+
 ## 2026-02-20 (Telegram Bridge: Disable HA Routing + Disable Split Chat Mode)
 
 ### Summary

@@ -1021,7 +1021,7 @@ def transcribe_voice_for_chat(
                 logging.warning("Failed to remove temp voice file: %s", voice_path)
 
 
-def build_help_text(chat_mode: str) -> str:
+def build_help_text(chat_mode: str, ha_enabled: bool) -> str:
     mode_line = "Chat mode: mixed (HA + Architect in same chat)"
     if chat_mode == "architect":
         mode_line = "Chat mode: Architect-only"
@@ -1033,6 +1033,21 @@ def build_help_text(chat_mode: str) -> str:
         mode_note = "HA-only chat: Home Assistant text/voice requests are handled here."
     elif chat_mode == "architect":
         mode_note = "Architect-only chat: Home Assistant control is handled in your HA chat."
+
+    if not ha_enabled:
+        return (
+            "Commands:\n"
+            "/start - bridge intro\n"
+            "/help - show commands\n"
+            "/h - short help alias\n"
+            "/status - show bridge health\n"
+            "/restart - safe restart (queued until current work completes)\n"
+            "/reset - clear chat context\n"
+            "Chat mode: mixed (Architect-only; HA routing disabled)\n\n"
+            "HA handling:\n"
+            "- Home Assistant conversation routing is disabled in current runtime.\n"
+            "- All text/photo/voice/file messages are sent to Architect."
+        )
 
     return (
         "Commands:\n"
@@ -1613,7 +1628,12 @@ def handle_update(
         )
         return
     if command in ("/help", "/h"):
-        client.send_message(chat_id, build_help_text(chat_mode), reply_to_message_id=message_id)
+        ha_enabled = bool(ha_runtime.client is not None and ha_runtime.config is not None)
+        client.send_message(
+            chat_id,
+            build_help_text(chat_mode, ha_enabled),
+            reply_to_message_id=message_id,
+        )
         return
     if command == "/status":
         client.send_message(chat_id, build_status_text(state), reply_to_message_id=message_id)
@@ -1923,7 +1943,10 @@ def run_bridge(config: Config) -> int:
     else:
         logging.info("Chat routing disabled. Mixed HA/Architect behavior is active.")
     logging.info("Executor command=%s", config.executor_cmd)
-    logging.info("HA conversation mode enabled; local HA parser is disabled.")
+    if ha_runtime.client is not None and ha_runtime.config is not None:
+        logging.info("HA conversation mode enabled; local HA parser is disabled.")
+    else:
+        logging.info("HA conversation mode disabled by runtime config.")
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
     logging.info(
         "Loaded %s HA conversation mapping(s) from %s",
