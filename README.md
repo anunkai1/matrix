@@ -10,7 +10,8 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Context behavior: per-chat context persistence (`chat_id -> thread_id`) with `/reset`
 - Built-in safe `/restart` command (queues restart until active work completes)
 - Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup
-- Help alias: `/h` (same as `/help`), also shown in thinking reply hint
+- Help alias: `/h` (same as `/help`)
+- Live request progress: typing heartbeat + in-place progress status updates while Architect is running
 - Architect-only routing for all allowlisted chats
 
 ## Repository Structure

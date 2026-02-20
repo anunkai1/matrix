@@ -64,66 +64,10 @@ else
   EXEC_ARGS=(--color never)
 fi
 
-log_file="$(mktemp)"
-cleanup() {
-  rm -f "${log_file}"
-}
-trap cleanup EXIT
-
 if [[ "${mode}" == "resume" ]]; then
   CMD=("${CODEX_BIN}" exec resume --dangerously-bypass-approvals-and-sandbox --json "${IMAGE_ARGS[@]}" "${thread_id}" -)
 else
   CMD=("${CODEX_BIN}" exec --dangerously-bypass-approvals-and-sandbox "${EXEC_ARGS[@]}" --json "${IMAGE_ARGS[@]}" -)
 fi
 
-if ! printf '%s\n' "${prompt}" | "${CMD[@]}" >"${log_file}" 2>&1; then
-  tail -n 80 "${log_file}" >&2 || true
-  exit 1
-fi
-
-python3 - "${mode}" "${log_file}" <<'PY'
-import json
-import sys
-
-mode = sys.argv[1]
-path = sys.argv[2]
-thread_id = None
-message = None
-
-with open(path, "r", encoding="utf-8", errors="replace") as f:
-    for raw in f:
-        line = raw.strip()
-        if not line or line[0] != "{":
-            continue
-        try:
-            obj = json.loads(line)
-        except Exception:
-            continue
-
-        if not isinstance(obj, dict):
-            continue
-
-        if obj.get("type") == "thread.started" and isinstance(obj.get("thread_id"), str):
-            thread_id = obj["thread_id"]
-            continue
-
-        if obj.get("type") != "item.completed":
-            continue
-
-        item = obj.get("item")
-        if not isinstance(item, dict):
-            continue
-
-        if item.get("type") == "agent_message" and isinstance(item.get("text"), str):
-            message = item["text"]
-
-if mode == "new":
-    if not thread_id:
-        print("Failed to parse thread_id from codex json output", file=sys.stderr)
-        raise SystemExit(1)
-    print(f"THREAD_ID={thread_id}")
-
-print("OUTPUT_BEGIN")
-if message:
-    print(message, end="")
-PY
+printf '%s\n' "${prompt}" | "${CMD[@]}"

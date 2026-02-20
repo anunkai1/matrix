@@ -12,13 +12,16 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 TELEGRAM_LIMIT = 4096
 OUTPUT_BEGIN_MARKER = "OUTPUT_BEGIN"
+PROGRESS_TYPING_INTERVAL_SECONDS = 4
+PROGRESS_EDIT_MIN_INTERVAL_SECONDS = 6
+PROGRESS_HEARTBEAT_EDIT_SECONDS = 30
 
 
 @dataclass
@@ -54,7 +57,6 @@ class Config:
         "Voice transcription was empty. Please send clearer audio."
     )
     empty_output_message: str = "(No output from Architect)"
-    thinking_message: str = "💭🤔💭.....thinking.....💭🤔💭 (/h)"
 
 
 @dataclass
@@ -78,6 +80,13 @@ class DocumentPayload:
     file_id: str
     file_name: str
     mime_type: str
+
+
+@dataclass
+class ExecutorProgressEvent:
+    kind: str
+    detail: str = ""
+    exit_code: Optional[int] = None
 
 
 def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
@@ -227,6 +236,43 @@ class TelegramClient:
                 payload["reply_to_message_id"] = str(reply_to_message_id)
             self._request("sendMessage", payload)
 
+    def send_message_get_id(
+        self,
+        chat_id: int,
+        text: str,
+        reply_to_message_id: Optional[int] = None,
+    ) -> Optional[int]:
+        payload: Dict[str, object] = {
+            "chat_id": str(chat_id),
+            "text": text,
+            "disable_web_page_preview": "true",
+        }
+        if reply_to_message_id is not None:
+            payload["reply_to_message_id"] = str(reply_to_message_id)
+        response = self._request("sendMessage", payload)
+        result = response.get("result")
+        if isinstance(result, dict):
+            message_id = result.get("message_id")
+            if isinstance(message_id, int):
+                return message_id
+        return None
+
+    def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
+        payload: Dict[str, object] = {
+            "chat_id": str(chat_id),
+            "message_id": str(message_id),
+            "text": text,
+            "disable_web_page_preview": "true",
+        }
+        self._request("editMessageText", payload)
+
+    def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
+        payload: Dict[str, object] = {
+            "chat_id": str(chat_id),
+            "action": action,
+        }
+        self._request("sendChatAction", payload)
+
     def get_file(self, file_id: str) -> Dict[str, object]:
         response = self._request("getFile", {"file_id": file_id})
         result = response.get("result")
@@ -314,11 +360,240 @@ def to_telegram_chunks(text: str) -> List[str]:
     return output
 
 
+def compact_progress_text(text: str, max_chars: int = 120) -> str:
+    cleaned = " ".join(text.replace("\n", " ").split())
+    cleaned = cleaned.replace("**", "").replace("`", "")
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[: max_chars - 3].rstrip() + "..."
+
+
+def parse_stream_json_line(raw_line: str) -> Optional[Dict[str, object]]:
+    stripped = raw_line.strip()
+    if not stripped.startswith("{"):
+        return None
+    try:
+        payload = json.loads(stripped)
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def extract_executor_progress_event(payload: Dict[str, object]) -> Optional[ExecutorProgressEvent]:
+    event_type = payload.get("type")
+    if event_type == "turn.started":
+        return ExecutorProgressEvent(kind="turn_started")
+    if event_type == "turn.completed":
+        return ExecutorProgressEvent(kind="turn_completed")
+
+    if event_type not in ("item.started", "item.completed"):
+        return None
+    item = payload.get("item")
+    if not isinstance(item, dict):
+        return None
+
+    item_type = item.get("type")
+    if event_type == "item.started" and item_type == "command_execution":
+        command = item.get("command")
+        detail = command if isinstance(command, str) else ""
+        return ExecutorProgressEvent(kind="command_started", detail=detail)
+
+    if event_type == "item.completed" and item_type == "command_execution":
+        command = item.get("command")
+        detail = command if isinstance(command, str) else ""
+        exit_code = item.get("exit_code")
+        parsed_exit_code = exit_code if isinstance(exit_code, int) else None
+        return ExecutorProgressEvent(
+            kind="command_completed",
+            detail=detail,
+            exit_code=parsed_exit_code,
+        )
+
+    if event_type == "item.completed" and item_type == "reasoning":
+        text = item.get("text")
+        detail = text if isinstance(text, str) else ""
+        return ExecutorProgressEvent(kind="reasoning", detail=detail)
+
+    if event_type == "item.completed" and item_type == "agent_message":
+        text = item.get("text")
+        detail = text if isinstance(text, str) else ""
+        return ExecutorProgressEvent(kind="agent_message", detail=detail)
+
+    return None
+
+
+class ProgressReporter:
+    def __init__(
+        self,
+        client: TelegramClient,
+        chat_id: int,
+        reply_to_message_id: Optional[int],
+    ) -> None:
+        self.client = client
+        self.chat_id = chat_id
+        self.reply_to_message_id = reply_to_message_id
+        self.started_at = time.time()
+        self.phase = "Preparing request."
+        self.commands_started = 0
+        self.commands_completed = 0
+        self.progress_message_id: Optional[int] = None
+        self.last_rendered_text = ""
+        self.last_edit_at = 0.0
+        self.pending_update = False
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._heartbeat_thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        initial = self._render_progress_text()
+        try:
+            self.progress_message_id = self.client.send_message_get_id(
+                self.chat_id,
+                initial,
+                reply_to_message_id=self.reply_to_message_id,
+            )
+            self.last_rendered_text = initial
+            self.last_edit_at = time.time()
+        except Exception:
+            logging.exception("Failed to send progress bootstrap message for chat_id=%s", self.chat_id)
+            self.progress_message_id = None
+
+        self._send_typing()
+        self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
+        self._heartbeat_thread.start()
+
+    def close(self) -> None:
+        self._stop_event.set()
+        if self._heartbeat_thread and self._heartbeat_thread.is_alive():
+            self._heartbeat_thread.join(timeout=1.5)
+
+    def set_phase(self, phase: str, force: bool = False, immediate: bool = True) -> None:
+        with self._lock:
+            self.phase = compact_progress_text(phase, max_chars=180)
+            self.pending_update = True
+        if immediate or force:
+            self._maybe_edit(force=force)
+
+    def mark_success(self) -> None:
+        self.set_phase("Completed. Sending response.", force=True)
+
+    def mark_failure(self, reason: str) -> None:
+        self.set_phase(reason, force=True)
+
+    def handle_executor_event(self, event: ExecutorProgressEvent) -> None:
+        if event.kind == "turn_started":
+            self.set_phase("Architect is planning the approach.", immediate=False)
+            return
+        if event.kind == "turn_completed":
+            self.set_phase("Architect is finalizing the response.", immediate=False)
+            return
+        if event.kind == "reasoning":
+            if event.detail:
+                self.set_phase(
+                    f"Architect step: {compact_progress_text(event.detail)}",
+                    immediate=False,
+                )
+            return
+        if event.kind == "agent_message":
+            self.set_phase("Architect is composing the reply.", immediate=False)
+            return
+        if event.kind == "command_started":
+            with self._lock:
+                self.commands_started += 1
+            command_text = compact_progress_text(event.detail) if event.detail else "shell command"
+            self.set_phase(f"Running command: {command_text}", immediate=False)
+            return
+        if event.kind == "command_completed":
+            with self._lock:
+                self.commands_completed += 1
+            if event.exit_code is None:
+                self.set_phase("A command finished.", immediate=False)
+            elif event.exit_code == 0:
+                self.set_phase("A command finished successfully.", immediate=False)
+            else:
+                self.set_phase(
+                    f"A command finished with exit code {event.exit_code}.",
+                    immediate=False,
+                )
+
+    def _heartbeat_loop(self) -> None:
+        next_typing_at = 0.0
+        next_progress_at = 0.0
+        while not self._stop_event.is_set():
+            now = time.time()
+            if now >= next_typing_at:
+                self._send_typing()
+                next_typing_at = now + PROGRESS_TYPING_INTERVAL_SECONDS
+            self._maybe_edit(force=False)
+            if now >= next_progress_at:
+                self._maybe_edit(force=True)
+                next_progress_at = now + PROGRESS_HEARTBEAT_EDIT_SECONDS
+            self._stop_event.wait(1.0)
+
+    def _send_typing(self) -> None:
+        try:
+            self.client.send_chat_action(self.chat_id, action="typing")
+        except Exception:
+            logging.debug("Failed to send typing action for chat_id=%s", self.chat_id)
+
+    def _render_progress_text(self) -> str:
+        elapsed = max(1, int(time.time() - self.started_at))
+        with self._lock:
+            phase = self.phase
+            started = self.commands_started
+            completed = self.commands_completed
+        text = f"Architect is working... {elapsed}s elapsed.\n{phase}"
+        if started > 0:
+            text += f"\nCommands done: {completed}/{started}"
+        return trim_output(text, TELEGRAM_LIMIT)
+
+    def _maybe_edit(self, force: bool = False) -> None:
+        message_id = self.progress_message_id
+        if message_id is None:
+            return
+
+        with self._lock:
+            pending_update = self.pending_update
+        if not force and not pending_update:
+            return
+
+        now = time.time()
+        if not force and now - self.last_edit_at < PROGRESS_EDIT_MIN_INTERVAL_SECONDS:
+            return
+
+        text = self._render_progress_text()
+        if not force and text == self.last_rendered_text:
+            with self._lock:
+                self.pending_update = False
+            return
+
+        try:
+            self.client.edit_message(self.chat_id, message_id, text)
+        except RuntimeError as exc:
+            if "message is not modified" in str(exc).lower():
+                with self._lock:
+                    self.pending_update = False
+                return
+            logging.debug("Failed to edit progress message for chat_id=%s: %s", self.chat_id, exc)
+            return
+        except Exception:
+            logging.debug("Failed to edit progress message for chat_id=%s", self.chat_id)
+            return
+
+        self.last_rendered_text = text
+        self.last_edit_at = now
+        with self._lock:
+            self.pending_update = False
+
+
 def run_executor(
     config: Config,
     prompt: str,
     thread_id: Optional[str],
     image_path: Optional[str] = None,
+    progress_callback: Optional[Callable[[ExecutorProgressEvent], None]] = None,
 ) -> subprocess.CompletedProcess[str]:
     cmd = list(config.executor_cmd)
     if thread_id:
@@ -328,13 +603,70 @@ def run_executor(
     if image_path:
         cmd.extend(["--image", image_path])
     logging.info("Running executor command: %s", cmd)
-    return subprocess.run(
+    process = subprocess.Popen(
         cmd,
-        input=prompt,
-        capture_output=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=config.exec_timeout_seconds,
-        check=False,
+        bufsize=1,
+    )
+
+    stdout_chunks: List[str] = []
+    stderr_chunks: List[str] = []
+
+    if process.stdin is None or process.stdout is None or process.stderr is None:
+        raise RuntimeError("Failed to initialize executor process pipes")
+
+    def drain_stdout() -> None:
+        for raw_line in process.stdout:
+            stdout_chunks.append(raw_line)
+            payload = parse_stream_json_line(raw_line)
+            if payload is None:
+                continue
+            event = extract_executor_progress_event(payload)
+            if event and progress_callback:
+                try:
+                    progress_callback(event)
+                except Exception:
+                    logging.exception("Progress callback failure")
+
+    def drain_stderr() -> None:
+        for raw_line in process.stderr:
+            stderr_chunks.append(raw_line)
+
+    stdout_worker = threading.Thread(target=drain_stdout, daemon=True)
+    stderr_worker = threading.Thread(target=drain_stderr, daemon=True)
+    stdout_worker.start()
+    stderr_worker.start()
+
+    try:
+        process.stdin.write(prompt)
+        if not prompt.endswith("\n"):
+            process.stdin.write("\n")
+        process.stdin.close()
+    except Exception:
+        process.kill()
+        process.wait(timeout=5)
+        raise
+
+    try:
+        return_code = process.wait(timeout=config.exec_timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        process.kill()
+        process.wait(timeout=5)
+        stdout_worker.join(timeout=1.5)
+        stderr_worker.join(timeout=1.5)
+        raise subprocess.TimeoutExpired(cmd, config.exec_timeout_seconds) from exc
+
+    stdout_worker.join(timeout=1.5)
+    stderr_worker.join(timeout=1.5)
+
+    return subprocess.CompletedProcess(
+        args=cmd,
+        returncode=return_code,
+        stdout="".join(stdout_chunks),
+        stderr="".join(stderr_chunks),
     )
 
 
@@ -511,9 +843,26 @@ def pop_interrupted_requests(state: State) -> Dict[int, Dict[str, object]]:
 def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
     lines = (stdout or "").splitlines()
     thread_id: Optional[str] = None
+    last_agent_message: Optional[str] = None
     output_lines: List[str] = []
     seen_output = False
+    seen_json_events = False
     for line in lines:
+        payload = parse_stream_json_line(line)
+        if payload is not None:
+            seen_json_events = True
+            payload_type = payload.get("type")
+            if payload_type == "thread.started":
+                payload_thread_id = payload.get("thread_id")
+                if isinstance(payload_thread_id, str) and payload_thread_id.strip():
+                    thread_id = payload_thread_id.strip()
+            elif payload_type == "item.completed":
+                item = payload.get("item")
+                if isinstance(item, dict) and item.get("type") == "agent_message":
+                    text = item.get("text")
+                    if isinstance(text, str):
+                        last_agent_message = text
+
         if not seen_output:
             if line.startswith("THREAD_ID="):
                 thread_id = line[len("THREAD_ID="):].strip()
@@ -526,6 +875,8 @@ def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
 
     if seen_output:
         output = "\n".join(output_lines).strip()
+    elif seen_json_events and last_agent_message is not None:
+        output = last_agent_message.strip()
     else:
         output = (stdout or "").strip()
     return thread_id, output
@@ -1043,16 +1394,22 @@ def process_prompt(
     prompt_text = prompt.strip()
     image_path: Optional[str] = None
     document_path: Optional[str] = None
+    progress = ProgressReporter(client, chat_id, message_id)
     try:
+        progress.start()
+
         if photo_file_id:
+            progress.set_phase("Downloading image from Telegram.")
             try:
                 image_path = download_photo_to_temp(client, config, photo_file_id)
             except ValueError as exc:
                 logging.warning("Photo rejected for chat_id=%s: %s", chat_id, exc)
+                progress.mark_failure("Image request rejected.")
                 client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
                 return
             except Exception:
                 logging.exception("Photo download failed for chat_id=%s", chat_id)
+                progress.mark_failure("Image download failed.")
                 client.send_message(
                     chat_id,
                     config.image_download_error_message,
@@ -1061,6 +1418,7 @@ def process_prompt(
                 return
 
         if voice_file_id:
+            progress.set_phase("Transcribing voice message.")
             transcript = transcribe_voice_for_chat(
                 config=config,
                 client=client,
@@ -1070,6 +1428,7 @@ def process_prompt(
                 echo_transcript=True,
             )
             if transcript is None:
+                progress.mark_failure("Voice transcription failed.")
                 return
 
             if prompt_text:
@@ -1078,14 +1437,17 @@ def process_prompt(
                 prompt_text = transcript
 
         if document:
+            progress.set_phase("Downloading file from Telegram.")
             try:
                 document_path, file_size = download_document_to_temp(client, config, document)
             except ValueError as exc:
                 logging.warning("Document rejected for chat_id=%s: %s", chat_id, exc)
+                progress.mark_failure("File request rejected.")
                 client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
                 return
             except Exception:
                 logging.exception("Document download failed for chat_id=%s", chat_id)
+                progress.mark_failure("File download failed.")
                 client.send_message(
                     chat_id,
                     config.document_download_error_message,
@@ -1100,9 +1462,11 @@ def process_prompt(
                 prompt_text = context
 
         if not prompt_text:
+            progress.mark_failure("No prompt content to execute.")
             return
 
         if len(prompt_text) > config.max_input_chars:
+            progress.mark_failure("Input rejected as too long.")
             client.send_message(
                 chat_id,
                 f"Input too long ({len(prompt_text)} chars). Max is {config.max_input_chars}.",
@@ -1110,14 +1474,23 @@ def process_prompt(
             )
             return
 
+        progress.set_phase("Sending request to Architect.")
         try:
-            result = run_executor(config, prompt_text, previous_thread_id, image_path=image_path)
+            result = run_executor(
+                config,
+                prompt_text,
+                previous_thread_id,
+                image_path=image_path,
+                progress_callback=progress.handle_executor_event,
+            )
         except subprocess.TimeoutExpired:
             logging.warning("Executor timeout for chat_id=%s", chat_id)
+            progress.mark_failure("Execution timed out.")
             client.send_message(chat_id, config.timeout_message, reply_to_message_id=message_id)
             return
         except FileNotFoundError:
             logging.exception("Executor command not found: %s", config.executor_cmd)
+            progress.mark_failure("Executor command not found.")
             client.send_message(
                 chat_id,
                 config.generic_error_message,
@@ -1126,6 +1499,7 @@ def process_prompt(
             return
         except Exception:
             logging.exception("Unexpected executor error for chat_id=%s", chat_id)
+            progress.mark_failure("Execution failed before completion.")
             client.send_message(
                 chat_id,
                 config.generic_error_message,
@@ -1147,9 +1521,17 @@ def process_prompt(
                     )
                     clear_thread_id(state, chat_id)
                     try:
-                        retry = run_executor(config, prompt_text, None, image_path=image_path)
+                        progress.set_phase("Retrying as a new Architect session.")
+                        retry = run_executor(
+                            config,
+                            prompt_text,
+                            None,
+                            image_path=image_path,
+                            progress_callback=progress.handle_executor_event,
+                        )
                     except subprocess.TimeoutExpired:
                         logging.warning("Executor retry timeout for chat_id=%s", chat_id)
+                        progress.mark_failure("Retry timed out.")
                         client.send_message(
                             chat_id,
                             config.timeout_message,
@@ -1158,6 +1540,7 @@ def process_prompt(
                         return
                     except Exception:
                         logging.exception("Executor retry error for chat_id=%s", chat_id)
+                        progress.mark_failure("Retry failed before completion.")
                         client.send_message(
                             chat_id,
                             config.generic_error_message,
@@ -1171,6 +1554,7 @@ def process_prompt(
                             retry.returncode,
                             retry.stderr[-1000:],
                         )
+                        progress.mark_failure("Retry failed.")
                         client.send_message(
                             chat_id,
                             config.generic_error_message,
@@ -1186,6 +1570,7 @@ def process_prompt(
                         result.returncode,
                         (result.stderr or "")[-1000:],
                     )
+                    progress.mark_failure("Execution failed.")
                     client.send_message(
                         chat_id,
                         config.generic_error_message,
@@ -1199,6 +1584,7 @@ def process_prompt(
                     result.returncode,
                     result.stderr[-1000:],
                 )
+                progress.mark_failure("Execution failed.")
                 client.send_message(
                     chat_id,
                     config.generic_error_message,
@@ -1212,8 +1598,10 @@ def process_prompt(
         if not output:
             output = config.empty_output_message
         output = trim_output(output, config.max_output_chars)
+        progress.mark_success()
         client.send_message(chat_id, output, reply_to_message_id=message_id)
     finally:
+        progress.close()
         if image_path:
             try:
                 os.remove(image_path)
@@ -1238,19 +1626,9 @@ def process_message_worker(
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
 ) -> None:
-    delegated_to_prompt = False
+    prompt_invoked = False
     try:
-        try:
-            client.send_message(
-                chat_id,
-                config.thinking_message,
-                reply_to_message_id=message_id,
-            )
-        except Exception:
-            logging.exception("Failed to send thinking ack for chat_id=%s", chat_id)
-            return
-
-        delegated_to_prompt = True
+        prompt_invoked = True
         process_prompt(
             state,
             config,
@@ -1273,7 +1651,7 @@ def process_message_worker(
         except Exception:
             logging.exception("Failed to send worker error response for chat_id=%s", chat_id)
     finally:
-        if not delegated_to_prompt:
+        if not prompt_invoked:
             finalize_chat_work(state, client, chat_id)
 
 
@@ -1448,6 +1826,23 @@ def run_self_test() -> int:
     )
     if prompt != "Please analyze this file." or not document or document.file_id != "f1":
         raise RuntimeError("Document parsing self-test failed")
+
+    sample_stream = (
+        '{"type":"thread.started","thread_id":"thread-123"}\n'
+        '{"type":"item.completed","item":{"type":"agent_message","text":"hello"}}\n'
+    )
+    parsed_thread, parsed_output = parse_executor_output(sample_stream)
+    if parsed_thread != "thread-123" or parsed_output != "hello":
+        raise RuntimeError("Executor stream parse self-test failed")
+
+    progress_event = extract_executor_progress_event(
+        {
+            "type": "item.started",
+            "item": {"type": "command_execution", "command": "pwd", "status": "in_progress"},
+        }
+    )
+    if not progress_event or progress_event.kind != "command_started":
+        raise RuntimeError("Progress event self-test failed")
 
     restart_state = State()
     status, _ = request_safe_restart(restart_state, chat_id=1, reply_to_message_id=None)

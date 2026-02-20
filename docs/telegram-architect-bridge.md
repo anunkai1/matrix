@@ -103,9 +103,9 @@ Message handling:
 - File without caption uses: `Please analyze this file.`
 - Voice transcription is echoed as `Voice transcript:` before Architect output.
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
-
-Before executor completion, the bridge sends an immediate placeholder reply:
-`💭🤔💭.....thinking.....💭🤔💭 (/h)`
+- While Architect is running, the bridge sends:
+  - Telegram typing actions (`typing`)
+  - a progress status message that is edited in place with elapsed time and step updates
 
 ## Context Persistence
 

@@ -1,5 +1,39 @@
 # Server3 Progress Log
 
+## 2026-02-20 (Telegram Bridge: Live Progress Streaming + Typing Updates)
+
+### Summary
+- Implemented live Architect progress updates for Telegram requests and removed the old static thinking placeholder behavior.
+- Updated `src/telegram_bridge/main.py`:
+  - added real-time executor stream handling for JSON events from Codex
+  - added `ProgressReporter` for:
+    - periodic Telegram `typing` actions while work is in progress
+    - in-place edited progress message with elapsed time + current step
+  - wired event-to-status mapping for `turn`, `reasoning`, `command_execution`, and `agent_message` events
+  - removed worker path that sent `💭🤔💭.....thinking.....💭🤔💭 (/h)` before execution
+  - added self-tests for streamed executor output parsing and progress event extraction
+- Updated `src/telegram_bridge/executor.sh`:
+  - removed end-of-run buffering/parsing
+  - now streams `codex exec --json` output directly for live progress consumption
+- Updated docs:
+  - `README.md`
+  - `docs/telegram-architect-bridge.md`
+- Added repo-tracked change record:
+  - `logs/changes/20260220-154505-telegram-live-progress-streaming.md`
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/main.py`
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+  - executor stream sanity check via `bash src/telegram_bridge/executor.sh new` (JSON stream observed)
+  - `bash ops/telegram-bridge/restart_and_verify.sh` (pass)
+  - service healthy after restart (`active/running`, start `Fri 2026-02-20 15:46:06 AEST`)
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc/default/telegram-architect-bridge` env changes were required in this change set.
+
 ## 2026-02-20 (Telegram Bridge: Permanent Architect-Only Code/Docs Cleanup)
 
 ### Summary
