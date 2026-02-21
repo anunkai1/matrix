@@ -18,11 +18,21 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+try:
+    from .media import TelegramFileDownloadSpec, download_telegram_file_to_temp
+    from .stream_buffer import BoundedTextBuffer
+except ImportError:
+    from media import TelegramFileDownloadSpec, download_telegram_file_to_temp
+    from stream_buffer import BoundedTextBuffer
+
 TELEGRAM_LIMIT = 4096
 OUTPUT_BEGIN_MARKER = "OUTPUT_BEGIN"
 PROGRESS_TYPING_INTERVAL_SECONDS = 4
 PROGRESS_EDIT_MIN_INTERVAL_SECONDS = 6
 PROGRESS_HEARTBEAT_EDIT_SECONDS = 30
+EXECUTOR_STREAM_BUFFER_MAX_CHARS = 2 * 1024 * 1024
+EXECUTOR_STREAM_BUFFER_HEAD_CHARS = 32 * 1024
+EXECUTOR_STREAM_TRUNCATION_MARKER = "\n...[executor stream truncated]...\n"
 
 
 @dataclass
@@ -102,6 +112,13 @@ class WorkerSession:
     last_used_at: float
     thread_id: str
     policy_fingerprint: str
+
+
+@dataclass
+class PreparedPromptInput:
+    prompt_text: str
+    image_path: Optional[str] = None
+    document_path: Optional[str] = None
 
 
 def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
@@ -667,15 +684,23 @@ def run_executor(
         bufsize=1,
     )
 
-    stdout_chunks: List[str] = []
-    stderr_chunks: List[str] = []
+    stdout_buffer = BoundedTextBuffer(
+        EXECUTOR_STREAM_BUFFER_MAX_CHARS,
+        head_chars=EXECUTOR_STREAM_BUFFER_HEAD_CHARS,
+        truncation_marker=EXECUTOR_STREAM_TRUNCATION_MARKER,
+    )
+    stderr_buffer = BoundedTextBuffer(
+        EXECUTOR_STREAM_BUFFER_MAX_CHARS,
+        head_chars=EXECUTOR_STREAM_BUFFER_HEAD_CHARS,
+        truncation_marker=EXECUTOR_STREAM_TRUNCATION_MARKER,
+    )
 
     if process.stdin is None or process.stdout is None or process.stderr is None:
         raise RuntimeError("Failed to initialize executor process pipes")
 
     def drain_stdout() -> None:
         for raw_line in process.stdout:
-            stdout_chunks.append(raw_line)
+            stdout_buffer.append(raw_line)
             payload = parse_stream_json_line(raw_line)
             if payload is None:
                 continue
@@ -688,7 +713,7 @@ def run_executor(
 
     def drain_stderr() -> None:
         for raw_line in process.stderr:
-            stderr_chunks.append(raw_line)
+            stderr_buffer.append(raw_line)
 
     stdout_worker = threading.Thread(target=drain_stdout, daemon=True)
     stderr_worker = threading.Thread(target=drain_stderr, daemon=True)
@@ -720,8 +745,8 @@ def run_executor(
     return subprocess.CompletedProcess(
         args=cmd,
         returncode=return_code,
-        stdout="".join(stdout_chunks),
-        stderr="".join(stderr_chunks),
+        stdout=stdout_buffer.render(),
+        stderr=stderr_buffer.render(),
     )
 
 
@@ -842,22 +867,25 @@ def load_worker_sessions(path: str) -> Dict[int, WorkerSession]:
     return parsed
 
 
-def persist_chat_threads(state: State) -> None:
-    if not state.chat_thread_path:
+def persist_json_state_file(path_value: str, serialized: Dict[str, object]) -> None:
+    if not path_value:
         return
-    path = Path(state.chat_thread_path)
+    path = Path(path_value)
     tmp_path = path.with_suffix(".tmp")
-    with state.lock:
-        serialized = {str(chat_id): thread_id for chat_id, thread_id in state.chat_threads.items()}
-    tmp_path.write_text(json.dumps(serialized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp_path.write_text(
+        json.dumps(serialized, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     tmp_path.replace(path)
 
 
+def persist_chat_threads(state: State) -> None:
+    with state.lock:
+        serialized = {str(chat_id): thread_id for chat_id, thread_id in state.chat_threads.items()}
+    persist_json_state_file(state.chat_thread_path, serialized)
+
+
 def persist_worker_sessions(state: State) -> None:
-    if not state.worker_sessions_path:
-        return
-    path = Path(state.worker_sessions_path)
-    tmp_path = path.with_suffix(".tmp")
     with state.lock:
         serialized = {
             str(chat_id): {
@@ -868,8 +896,7 @@ def persist_worker_sessions(state: State) -> None:
             }
             for chat_id, session in state.worker_sessions.items()
         }
-    tmp_path.write_text(json.dumps(serialized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp_path.replace(path)
+    persist_json_state_file(state.worker_sessions_path, serialized)
 
 
 def clear_worker_session(state: State, chat_id: int) -> bool:
@@ -1112,20 +1139,12 @@ def load_in_flight_requests(path: str) -> Dict[int, Dict[str, object]]:
 
 
 def persist_in_flight_requests(state: State) -> None:
-    if not state.in_flight_path:
-        return
-    path = Path(state.in_flight_path)
-    tmp_path = path.with_suffix(".tmp")
     with state.lock:
         serialized = {
             str(chat_id): payload
             for chat_id, payload in state.in_flight_requests.items()
         }
-    tmp_path.write_text(
-        json.dumps(serialized, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    tmp_path.replace(path)
+    persist_json_state_file(state.in_flight_path, serialized)
 
 
 def mark_in_flight_request(state: State, chat_id: int, message_id: Optional[int]) -> None:
@@ -1155,6 +1174,34 @@ def pop_interrupted_requests(state: State) -> Dict[int, Dict[str, object]]:
         state.in_flight_requests = {}
     persist_in_flight_requests(state)
     return interrupted
+
+
+class StateRepository:
+    """State operations adapter used by handlers/workers."""
+
+    def __init__(self, state: State) -> None:
+        self.state = state
+
+    def get_thread_id(self, chat_id: int) -> Optional[str]:
+        return get_thread_id(self.state, chat_id)
+
+    def set_thread_id(self, chat_id: int, thread_id: str) -> None:
+        set_thread_id(self.state, chat_id, thread_id)
+
+    def clear_thread_id(self, chat_id: int) -> bool:
+        return clear_thread_id(self.state, chat_id)
+
+    def clear_worker_session(self, chat_id: int) -> bool:
+        return clear_worker_session(self.state, chat_id)
+
+    def mark_in_flight_request(self, chat_id: int, message_id: Optional[int]) -> None:
+        mark_in_flight_request(self.state, chat_id, message_id)
+
+    def clear_in_flight_request(self, chat_id: int) -> None:
+        clear_in_flight_request(self.state, chat_id)
+
+    def pop_interrupted_requests(self) -> Dict[int, Dict[str, object]]:
+        return pop_interrupted_requests(self.state)
 
 
 def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
@@ -1287,33 +1334,15 @@ def download_photo_to_temp(
     config: Config,
     photo_file_id: str,
 ) -> str:
-    file_meta = client.get_file(photo_file_id)
-    file_path = file_meta.get("file_path")
-    if not isinstance(file_path, str) or not file_path.strip():
-        raise RuntimeError("Telegram getFile response missing file_path")
-
-    file_size = file_meta.get("file_size")
-    if isinstance(file_size, int) and file_size > config.max_image_bytes:
-        raise ValueError(
-            f"Image too large ({file_size} bytes). Max is {config.max_image_bytes} bytes."
-        )
-
-    suffix = Path(file_path).suffix or ".jpg"
-    fd, tmp_path = tempfile.mkstemp(prefix="telegram-bridge-photo-", suffix=suffix)
-    os.close(fd)
-    try:
-        client.download_file_to_path(
-            file_path,
-            tmp_path,
-            config.max_image_bytes,
-            size_label="Image",
-        )
-    except Exception:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-        raise
+    spec = TelegramFileDownloadSpec(
+        file_id=photo_file_id,
+        max_bytes=config.max_image_bytes,
+        size_label="Image",
+        temp_prefix="telegram-bridge-photo-",
+        default_suffix=".jpg",
+        too_large_label="Image",
+    )
+    tmp_path, _ = download_telegram_file_to_temp(client, spec)
     return tmp_path
 
 
@@ -1322,33 +1351,15 @@ def download_voice_to_temp(
     config: Config,
     voice_file_id: str,
 ) -> str:
-    file_meta = client.get_file(voice_file_id)
-    file_path = file_meta.get("file_path")
-    if not isinstance(file_path, str) or not file_path.strip():
-        raise RuntimeError("Telegram getFile response missing file_path")
-
-    file_size = file_meta.get("file_size")
-    if isinstance(file_size, int) and file_size > config.max_voice_bytes:
-        raise ValueError(
-            f"Voice file too large ({file_size} bytes). Max is {config.max_voice_bytes} bytes."
-        )
-
-    suffix = Path(file_path).suffix or ".ogg"
-    fd, tmp_path = tempfile.mkstemp(prefix="telegram-bridge-voice-", suffix=suffix)
-    os.close(fd)
-    try:
-        client.download_file_to_path(
-            file_path,
-            tmp_path,
-            config.max_voice_bytes,
-            size_label="Voice file",
-        )
-    except Exception:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-        raise
+    spec = TelegramFileDownloadSpec(
+        file_id=voice_file_id,
+        max_bytes=config.max_voice_bytes,
+        size_label="Voice file",
+        temp_prefix="telegram-bridge-voice-",
+        default_suffix=".ogg",
+        too_large_label="Voice file",
+    )
+    tmp_path, _ = download_telegram_file_to_temp(client, spec)
     return tmp_path
 
 
@@ -1357,36 +1368,16 @@ def download_document_to_temp(
     config: Config,
     document: DocumentPayload,
 ) -> tuple[str, int]:
-    file_meta = client.get_file(document.file_id)
-    file_path = file_meta.get("file_path")
-    if not isinstance(file_path, str) or not file_path.strip():
-        raise RuntimeError("Telegram getFile response missing file_path")
-
-    file_size = file_meta.get("file_size")
-    if isinstance(file_size, int) and file_size > config.max_document_bytes:
-        raise ValueError(
-            f"File too large ({file_size} bytes). Max is {config.max_document_bytes} bytes."
-        )
-
-    suffix = Path(document.file_name).suffix or Path(file_path).suffix or ".bin"
-    fd, tmp_path = tempfile.mkstemp(prefix="telegram-bridge-file-", suffix=suffix)
-    os.close(fd)
-    try:
-        client.download_file_to_path(
-            file_path,
-            tmp_path,
-            config.max_document_bytes,
-            size_label="File",
-        )
-    except Exception:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-        raise
-
-    final_size = file_size if isinstance(file_size, int) else os.path.getsize(tmp_path)
-    return tmp_path, final_size
+    spec = TelegramFileDownloadSpec(
+        file_id=document.file_id,
+        max_bytes=config.max_document_bytes,
+        size_label="File",
+        temp_prefix="telegram-bridge-file-",
+        default_suffix=".bin",
+        too_large_label="File",
+        suffix_hint=document.file_name,
+    )
+    return download_telegram_file_to_temp(client, spec)
 
 
 def build_document_analysis_context(
@@ -1704,7 +1695,8 @@ def finalize_chat_work(
     client: TelegramClient,
     chat_id: int,
 ) -> None:
-    clear_in_flight_request(state, chat_id)
+    state_repo = StateRepository(state)
+    state_repo.clear_in_flight_request(chat_id)
     clear_busy(state, chat_id)
     ready_restart = pop_ready_restart_request(state)
     if not ready_restart:
@@ -1725,8 +1717,7 @@ def finalize_chat_work(
     trigger_restart_async(state, client, restart_chat_id, restart_reply_to)
 
 
-def process_prompt(
-    state: State,
+def prepare_prompt_input(
     config: Config,
     client: TelegramClient,
     chat_id: int,
@@ -1735,182 +1726,141 @@ def process_prompt(
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
-) -> None:
-    previous_thread_id = get_thread_id(state, chat_id)
+    progress: ProgressReporter,
+) -> Optional[PreparedPromptInput]:
     prompt_text = prompt.strip()
     image_path: Optional[str] = None
     document_path: Optional[str] = None
-    progress = ProgressReporter(client, chat_id, message_id)
-    try:
-        progress.start()
 
-        if photo_file_id:
-            progress.set_phase("Downloading image from Telegram.")
-            try:
-                image_path = download_photo_to_temp(client, config, photo_file_id)
-            except ValueError as exc:
-                logging.warning("Photo rejected for chat_id=%s: %s", chat_id, exc)
-                progress.mark_failure("Image request rejected.")
-                client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
-                return
-            except Exception:
-                logging.exception("Photo download failed for chat_id=%s", chat_id)
-                progress.mark_failure("Image download failed.")
-                client.send_message(
-                    chat_id,
-                    config.image_download_error_message,
-                    reply_to_message_id=message_id,
-                )
-                return
-
-        if voice_file_id:
-            progress.set_phase("Transcribing voice message.")
-            transcript = transcribe_voice_for_chat(
-                config=config,
-                client=client,
-                chat_id=chat_id,
-                message_id=message_id,
-                voice_file_id=voice_file_id,
-                echo_transcript=True,
-            )
-            if transcript is None:
-                progress.mark_failure("Voice transcription failed.")
-                return
-
-            if prompt_text:
-                prompt_text = f"{prompt_text}\n\nVoice transcript:\n{transcript}"
-            else:
-                prompt_text = transcript
-
-        if document:
-            progress.set_phase("Downloading file from Telegram.")
-            try:
-                document_path, file_size = download_document_to_temp(client, config, document)
-            except ValueError as exc:
-                logging.warning("Document rejected for chat_id=%s: %s", chat_id, exc)
-                progress.mark_failure("File request rejected.")
-                client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
-                return
-            except Exception:
-                logging.exception("Document download failed for chat_id=%s", chat_id)
-                progress.mark_failure("File download failed.")
-                client.send_message(
-                    chat_id,
-                    config.document_download_error_message,
-                    reply_to_message_id=message_id,
-                )
-                return
-
-            context = build_document_analysis_context(document_path, document, file_size)
-            if prompt_text:
-                prompt_text = f"{prompt_text}\n\n{context}"
-            else:
-                prompt_text = context
-
-        if not prompt_text:
-            progress.mark_failure("No prompt content to execute.")
-            return
-
-        if len(prompt_text) > config.max_input_chars:
-            progress.mark_failure("Input rejected as too long.")
+    if photo_file_id:
+        progress.set_phase("Downloading image from Telegram.")
+        try:
+            image_path = download_photo_to_temp(client, config, photo_file_id)
+        except ValueError as exc:
+            logging.warning("Photo rejected for chat_id=%s: %s", chat_id, exc)
+            progress.mark_failure("Image request rejected.")
+            client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+            return None
+        except Exception:
+            logging.exception("Photo download failed for chat_id=%s", chat_id)
+            progress.mark_failure("Image download failed.")
             client.send_message(
                 chat_id,
-                f"Input too long ({len(prompt_text)} chars). Max is {config.max_input_chars}.",
+                config.image_download_error_message,
                 reply_to_message_id=message_id,
             )
-            return
+            return None
 
-        progress.set_phase("Sending request to Architect.")
-        allow_automatic_retry = config.persistent_workers_enabled
-        retry_attempted = False
-        attempt_thread_id: Optional[str] = previous_thread_id
+    if voice_file_id:
+        progress.set_phase("Transcribing voice message.")
+        transcript = transcribe_voice_for_chat(
+            config=config,
+            client=client,
+            chat_id=chat_id,
+            message_id=message_id,
+            voice_file_id=voice_file_id,
+            echo_transcript=True,
+        )
+        if transcript is None:
+            progress.mark_failure("Voice transcription failed.")
+            return None
+        if prompt_text:
+            prompt_text = f"{prompt_text}\n\nVoice transcript:\n{transcript}"
+        else:
+            prompt_text = transcript
 
-        while True:
-            try:
-                result = run_executor(
-                    config,
-                    prompt_text,
-                    attempt_thread_id,
-                    image_path=image_path,
-                    progress_callback=progress.handle_executor_event,
-                )
-            except subprocess.TimeoutExpired:
-                logging.warning("Executor timeout for chat_id=%s", chat_id)
-                progress.mark_failure("Execution timed out.")
-                client.send_message(chat_id, config.timeout_message, reply_to_message_id=message_id)
-                return
-            except FileNotFoundError:
-                logging.exception("Executor command not found: %s", config.executor_cmd)
-                progress.mark_failure("Executor command not found.")
-                client.send_message(
-                    chat_id,
-                    config.generic_error_message,
-                    reply_to_message_id=message_id,
-                )
-                return
-            except Exception:
-                logging.exception("Unexpected executor error for chat_id=%s", chat_id)
-                if allow_automatic_retry and not retry_attempted:
-                    retry_attempted = True
-                    clear_thread_id(state, chat_id)
-                    attempt_thread_id = None
-                    progress.set_phase("Execution failed. Retrying once with a new session.")
-                    continue
-                progress.mark_failure("Execution failed before completion.")
-                if allow_automatic_retry:
-                    client.send_message(
-                        chat_id,
-                        "Execution failed after an automatic retry. Please resend your request.",
-                        reply_to_message_id=message_id,
-                    )
-                else:
-                    client.send_message(
-                        chat_id,
-                        config.generic_error_message,
-                        reply_to_message_id=message_id,
-                    )
-                return
-
-            if result.returncode == 0:
-                break
-
-            reset_and_retry_new = False
-            if attempt_thread_id and should_reset_thread_after_resume_failure(
-                result.stderr or "",
-                result.stdout or "",
-            ):
-                logging.warning(
-                    "Executor failed for chat_id=%s on resume due to invalid thread; "
-                    "clearing thread and retrying as new. stderr=%r",
-                    chat_id,
-                    (result.stderr or "")[-1000:],
-                )
-                reset_and_retry_new = True
-                progress.set_phase("Retrying as a new Architect session.")
-            elif allow_automatic_retry and not retry_attempted:
-                logging.warning(
-                    "Executor failed for chat_id=%s; retrying once as new. returncode=%s stderr=%r",
-                    chat_id,
-                    result.returncode,
-                    (result.stderr or "")[-1000:],
-                )
-                reset_and_retry_new = True
-                retry_attempted = True
-                progress.set_phase("Execution failed. Retrying once with a new session.")
-
-            if reset_and_retry_new:
-                clear_thread_id(state, chat_id)
-                attempt_thread_id = None
-                retry_attempted = True
-                continue
-
-            logging.error(
-                "Executor failed for chat_id=%s returncode=%s stderr=%r",
+    if document:
+        progress.set_phase("Downloading file from Telegram.")
+        try:
+            document_path, file_size = download_document_to_temp(client, config, document)
+        except ValueError as exc:
+            logging.warning("Document rejected for chat_id=%s: %s", chat_id, exc)
+            progress.mark_failure("File request rejected.")
+            client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+            return None
+        except Exception:
+            logging.exception("Document download failed for chat_id=%s", chat_id)
+            progress.mark_failure("File download failed.")
+            client.send_message(
                 chat_id,
-                result.returncode,
-                (result.stderr or "")[-1000:],
+                config.document_download_error_message,
+                reply_to_message_id=message_id,
             )
-            progress.mark_failure("Execution failed.")
+            return None
+
+        context = build_document_analysis_context(document_path, document, file_size)
+        if prompt_text:
+            prompt_text = f"{prompt_text}\n\n{context}"
+        else:
+            prompt_text = context
+
+    if not prompt_text:
+        progress.mark_failure("No prompt content to execute.")
+        return None
+
+    if len(prompt_text) > config.max_input_chars:
+        progress.mark_failure("Input rejected as too long.")
+        client.send_message(
+            chat_id,
+            f"Input too long ({len(prompt_text)} chars). Max is {config.max_input_chars}.",
+            reply_to_message_id=message_id,
+        )
+        return None
+
+    return PreparedPromptInput(
+        prompt_text=prompt_text,
+        image_path=image_path,
+        document_path=document_path,
+    )
+
+
+def execute_prompt_with_retry(
+    state_repo: StateRepository,
+    config: Config,
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+    prompt_text: str,
+    previous_thread_id: Optional[str],
+    image_path: Optional[str],
+    progress: ProgressReporter,
+) -> Optional[subprocess.CompletedProcess[str]]:
+    allow_automatic_retry = config.persistent_workers_enabled
+    retry_attempted = False
+    attempt_thread_id: Optional[str] = previous_thread_id
+
+    while True:
+        try:
+            result = run_executor(
+                config,
+                prompt_text,
+                attempt_thread_id,
+                image_path=image_path,
+                progress_callback=progress.handle_executor_event,
+            )
+        except subprocess.TimeoutExpired:
+            logging.warning("Executor timeout for chat_id=%s", chat_id)
+            progress.mark_failure("Execution timed out.")
+            client.send_message(chat_id, config.timeout_message, reply_to_message_id=message_id)
+            return None
+        except FileNotFoundError:
+            logging.exception("Executor command not found: %s", config.executor_cmd)
+            progress.mark_failure("Executor command not found.")
+            client.send_message(
+                chat_id,
+                config.generic_error_message,
+                reply_to_message_id=message_id,
+            )
+            return None
+        except Exception:
+            logging.exception("Unexpected executor error for chat_id=%s", chat_id)
+            if allow_automatic_retry and not retry_attempted:
+                retry_attempted = True
+                state_repo.clear_thread_id(chat_id)
+                attempt_thread_id = None
+                progress.set_phase("Execution failed. Retrying once with a new session.")
+                continue
+            progress.mark_failure("Execution failed before completion.")
             if allow_automatic_retry:
                 client.send_message(
                     chat_id,
@@ -1923,16 +1873,138 @@ def process_prompt(
                     config.generic_error_message,
                     reply_to_message_id=message_id,
                 )
-            return
+            return None
 
-        new_thread_id, output = parse_executor_output(result.stdout or "")
-        if new_thread_id:
-            set_thread_id(state, chat_id, new_thread_id)
-        if not output:
-            output = config.empty_output_message
-        output = trim_output(output, config.max_output_chars)
-        progress.mark_success()
-        client.send_message(chat_id, output, reply_to_message_id=message_id)
+        if result.returncode == 0:
+            return result
+
+        reset_and_retry_new = False
+        if attempt_thread_id and should_reset_thread_after_resume_failure(
+            result.stderr or "",
+            result.stdout or "",
+        ):
+            logging.warning(
+                "Executor failed for chat_id=%s on resume due to invalid thread; "
+                "clearing thread and retrying as new. stderr=%r",
+                chat_id,
+                (result.stderr or "")[-1000:],
+            )
+            reset_and_retry_new = True
+            progress.set_phase("Retrying as a new Architect session.")
+        elif allow_automatic_retry and not retry_attempted:
+            logging.warning(
+                "Executor failed for chat_id=%s; retrying once as new. returncode=%s stderr=%r",
+                chat_id,
+                result.returncode,
+                (result.stderr or "")[-1000:],
+            )
+            reset_and_retry_new = True
+            retry_attempted = True
+            progress.set_phase("Execution failed. Retrying once with a new session.")
+
+        if reset_and_retry_new:
+            state_repo.clear_thread_id(chat_id)
+            attempt_thread_id = None
+            retry_attempted = True
+            continue
+
+        logging.error(
+            "Executor failed for chat_id=%s returncode=%s stderr=%r",
+            chat_id,
+            result.returncode,
+            (result.stderr or "")[-1000:],
+        )
+        progress.mark_failure("Execution failed.")
+        if allow_automatic_retry:
+            client.send_message(
+                chat_id,
+                "Execution failed after an automatic retry. Please resend your request.",
+                reply_to_message_id=message_id,
+            )
+        else:
+            client.send_message(
+                chat_id,
+                config.generic_error_message,
+                reply_to_message_id=message_id,
+            )
+        return None
+
+
+def finalize_prompt_success(
+    state_repo: StateRepository,
+    config: Config,
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+    result: subprocess.CompletedProcess[str],
+    progress: ProgressReporter,
+) -> None:
+    new_thread_id, output = parse_executor_output(result.stdout or "")
+    if new_thread_id:
+        state_repo.set_thread_id(chat_id, new_thread_id)
+    if not output:
+        output = config.empty_output_message
+    output = trim_output(output, config.max_output_chars)
+    progress.mark_success()
+    client.send_message(chat_id, output, reply_to_message_id=message_id)
+
+
+def process_prompt(
+    state: State,
+    config: Config,
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+    prompt: str,
+    photo_file_id: Optional[str],
+    voice_file_id: Optional[str],
+    document: Optional[DocumentPayload],
+) -> None:
+    state_repo = StateRepository(state)
+    previous_thread_id = state_repo.get_thread_id(chat_id)
+    image_path: Optional[str] = None
+    document_path: Optional[str] = None
+    progress = ProgressReporter(client, chat_id, message_id)
+    try:
+        progress.start()
+        prepared = prepare_prompt_input(
+            config=config,
+            client=client,
+            chat_id=chat_id,
+            message_id=message_id,
+            prompt=prompt,
+            photo_file_id=photo_file_id,
+            voice_file_id=voice_file_id,
+            document=document,
+            progress=progress,
+        )
+        if prepared is None:
+            return
+        image_path = prepared.image_path
+        document_path = prepared.document_path
+        progress.set_phase("Sending request to Architect.")
+        result = execute_prompt_with_retry(
+            state_repo=state_repo,
+            config=config,
+            client=client,
+            chat_id=chat_id,
+            message_id=message_id,
+            prompt_text=prepared.prompt_text,
+            previous_thread_id=previous_thread_id,
+            image_path=image_path,
+            progress=progress,
+        )
+        if result is None:
+            return
+        finalize_prompt_success(
+            state_repo=state_repo,
+            config=config,
+            client=client,
+            chat_id=chat_id,
+            message_id=message_id,
+            result=result,
+            progress=progress,
+        )
     finally:
         progress.close()
         if image_path:
@@ -1990,8 +2062,9 @@ def handle_reset_command(
     chat_id: int,
     message_id: Optional[int],
 ) -> None:
-    removed_thread = clear_thread_id(state, chat_id)
-    removed_worker = clear_worker_session(state, chat_id) if config.persistent_workers_enabled else False
+    state_repo = StateRepository(state)
+    removed_thread = state_repo.clear_thread_id(chat_id)
+    removed_worker = state_repo.clear_worker_session(chat_id) if config.persistent_workers_enabled else False
     if removed_thread or removed_worker:
         client.send_message(
             chat_id,
@@ -2049,6 +2122,7 @@ def handle_update(
     client: TelegramClient,
     update: Dict[str, object],
 ) -> None:
+    state_repo = StateRepository(state)
     message = update.get("message")
     if not isinstance(message, dict):
         return
@@ -2133,7 +2207,7 @@ def handle_update(
             reply_to_message_id=message_id,
         )
         return
-    mark_in_flight_request(state, chat_id, message_id)
+    state_repo.mark_in_flight_request(chat_id, message_id)
 
     worker = threading.Thread(
         target=process_message_worker,
@@ -2181,6 +2255,17 @@ def run_self_test() -> int:
     )
     if not progress_event or progress_event.kind != "command_started":
         raise RuntimeError("Progress event self-test failed")
+
+    stream_buffer = BoundedTextBuffer(
+        96,
+        head_chars=24,
+        truncation_marker="\n...[truncated]...\n",
+    )
+    stream_buffer.append("HEAD-CONTENT-")
+    stream_buffer.append("x" * 300)
+    rendered = stream_buffer.render()
+    if len(rendered) > 96 or "...[truncated]..." not in rendered:
+        raise RuntimeError("Stream buffer self-test failed")
 
     restart_state = State()
     status, _ = request_safe_restart(restart_state, chat_id=1, reply_to_message_id=None)
@@ -2299,13 +2384,14 @@ def run_bridge(config: Config) -> int:
         in_flight_requests=loaded_in_flight,
         in_flight_path=in_flight_path,
     )
+    state_repo = StateRepository(state)
     client = TelegramClient(config)
 
     if config.persistent_workers_enabled:
         persist_chat_threads(state)
         persist_worker_sessions(state)
 
-    interrupted = pop_interrupted_requests(state)
+    interrupted = state_repo.pop_interrupted_requests()
     if interrupted:
         for chat_id in sorted(interrupted):
             if chat_id not in config.allowed_chat_ids:
