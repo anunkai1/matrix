@@ -1,5 +1,38 @@
 # Server3 Progress Log
 
+## 2026-02-21 (Telegram Bridge: Full Low-Risk Module Split Completion)
+
+### Summary
+- Completed full low-risk module split for Telegram bridge runtime while preserving behavior and existing runtime contracts.
+- Refactored `src/telegram_bridge/main.py` into orchestration/bootstrap only (`load_config`, self-test, startup/backlog handling, polling loop).
+- Added new runtime modules:
+  - `src/telegram_bridge/transport.py` (Telegram client + chunking)
+  - `src/telegram_bridge/executor.py` (executor stream/progress parsing + bounded buffering execution wrapper)
+  - `src/telegram_bridge/state_store.py` (state dataclasses + persistence/load/store APIs)
+  - `src/telegram_bridge/session_manager.py` (rate limiting, worker lifecycle, restart orchestration)
+  - `src/telegram_bridge/handlers.py` (message routing, prompt pipeline, command handlers, progress reporter)
+- Kept existing helper modules:
+  - `src/telegram_bridge/media.py`
+  - `src/telegram_bridge/stream_buffer.py`
+- Expanded characterization test coverage:
+  - `tests/telegram_bridge/test_bridge_core.py` now includes `/status` routing assertion in addition to parser/state/session/buffer checks.
+- Updated CI compile scope in `.github/workflows/telegram-bridge-ci.yml` to include all split bridge modules.
+- Updated README structure section to reflect new module layout.
+
+### Validation
+- `python3 -m py_compile src/telegram_bridge/main.py src/telegram_bridge/executor.py src/telegram_bridge/handlers.py src/telegram_bridge/media.py src/telegram_bridge/session_manager.py src/telegram_bridge/state_store.py src/telegram_bridge/stream_buffer.py src/telegram_bridge/transport.py` (pass)
+- `python3 src/telegram_bridge/main.py --self-test` (pass)
+- `python3 -m unittest discover -s tests -p 'test_*.py'` (pass, 6 tests)
+- `bash src/telegram_bridge/smoke_test.sh` (pass)
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc` or systemd/runtime configuration changes were made in this change set.
+- Canonical `chat_threads` + `worker_sessions` data-model unification remains intentionally deferred as medium-risk follow-up.
+
 ## 2026-02-21 (Telegram Bridge: Low-Risk Structure Refactor + Test Gates)
 
 ### Summary
