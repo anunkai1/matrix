@@ -1,5 +1,44 @@
 # Server3 Progress Log
 
+## 2026-02-21 (Telegram Bridge: Canonical Session Model Phase 1)
+
+### Summary
+- Implemented Phase 1 of canonical session-model migration without runtime cutover.
+- Added canonical schema and compatibility helpers in `src/telegram_bridge/state_store.py`:
+  - `CanonicalSession` dataclass
+  - `load_canonical_sessions(...)`
+  - `build_canonical_sessions_from_legacy(...)`
+  - `persist_canonical_sessions(...)`
+  - sync helpers (`sync_canonical_session(...)`, `sync_all_canonical_sessions(...)`)
+- Added optional runtime feature flag (off by default):
+  - `TELEGRAM_CANONICAL_SESSIONS_ENABLED` -> `Config.canonical_sessions_enabled`
+  - when enabled, bridge maintains `chat_sessions.json` as canonical mirror while legacy stores remain active behavior source.
+- Updated startup compatibility path in `src/telegram_bridge/main.py`:
+  - loads canonical store when enabled
+  - falls back to compatibility snapshot built from legacy state if canonical file is absent/empty
+  - quarantines corrupt canonical state files using existing quarantine path
+  - logs canonical-session enablement/count/path for operator visibility
+- Updated session lifecycle synchronization in `src/telegram_bridge/session_manager.py` so worker eviction/expiry and lifecycle updates keep canonical mirror aligned when enabled.
+- Expanded characterization tests in `tests/telegram_bridge/test_bridge_core.py`:
+  - legacy->canonical migration mapping test
+  - repository canonical-sync behavior test
+  - total test count now 8.
+- Updated `README.md` status line to document optional canonical-session flag.
+
+### Validation
+- `python3 -m py_compile src/telegram_bridge/main.py src/telegram_bridge/executor.py src/telegram_bridge/handlers.py src/telegram_bridge/media.py src/telegram_bridge/session_manager.py src/telegram_bridge/state_store.py src/telegram_bridge/stream_buffer.py src/telegram_bridge/transport.py` (pass)
+- `python3 -m unittest discover -s tests -p 'test_*.py'` (pass, 8 tests)
+- `python3 src/telegram_bridge/main.py --self-test` (pass)
+- `bash src/telegram_bridge/smoke_test.sh` (pass)
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc` or systemd/runtime configuration changes were made in this change set.
+- This phase intentionally avoids canonical-only cutover; legacy stores continue to drive runtime behavior by default.
+
 ## 2026-02-21 (Telegram Bridge: Full Low-Risk Module Split Completion)
 
 ### Summary
