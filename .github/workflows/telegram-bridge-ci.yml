@@ -28,8 +28,13 @@ jobs:
       - name: Lint (lightweight)
         run: |
           python3 -m py_compile src/telegram_bridge/main.py
+          python3 -m py_compile src/telegram_bridge/executor.py
+          python3 -m py_compile src/telegram_bridge/handlers.py
           python3 -m py_compile src/telegram_bridge/media.py
+          python3 -m py_compile src/telegram_bridge/session_manager.py
+          python3 -m py_compile src/telegram_bridge/state_store.py
           python3 -m py_compile src/telegram_bridge/stream_buffer.py
+          python3 -m py_compile src/telegram_bridge/transport.py
 
       - name: Unit tests
         run: |

@@ -164,6 +164,23 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(client.messages)
         self.assertIn("workers are currently in use", client.messages[-1][1])
 
+    def test_handle_update_routes_status_command(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": 1},
+                "text": "/status",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+        self.assertTrue(client.messages)
+        self.assertIn("Bridge status: online", client.messages[-1][1])
+
 
 if __name__ == "__main__":
     unittest.main()
