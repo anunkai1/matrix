@@ -13,6 +13,7 @@ try:
         WorkerSession,
         persist_chat_threads,
         persist_worker_sessions,
+        sync_canonical_session,
     )
 except ImportError:
     from state_store import (
@@ -21,6 +22,7 @@ except ImportError:
         WorkerSession,
         persist_chat_threads,
         persist_worker_sessions,
+        sync_canonical_session,
     )
 
 
@@ -146,6 +148,10 @@ def ensure_chat_worker_session(
         persist_chat_threads(state)
     if needs_persist_sessions:
         persist_worker_sessions(state)
+    if state.canonical_sessions_enabled:
+        sync_canonical_session(state, chat_id)
+        if evicted_idle_chat_id is not None:
+            sync_canonical_session(state, evicted_idle_chat_id)
 
     if evicted_idle_chat_id is not None and evicted_idle_chat_id in config.allowed_chat_ids:
         try:
@@ -211,6 +217,9 @@ def expire_idle_worker_sessions(
         persist_chat_threads(state)
     if needs_persist_sessions:
         persist_worker_sessions(state)
+    if state.canonical_sessions_enabled:
+        for chat_id in expired_chat_ids:
+            sync_canonical_session(state, chat_id)
 
     if not expired_chat_ids:
         return

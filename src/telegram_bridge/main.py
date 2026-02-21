@@ -28,16 +28,21 @@ try:
         request_safe_restart,
     )
     from .state_store import (
+        CanonicalSession,
         State,
         StateRepository,
         WorkerSession,
+        build_canonical_sessions_from_legacy,
         ensure_state_dir,
+        load_canonical_sessions,
         load_chat_threads,
         load_in_flight_requests,
         load_worker_sessions,
         persist_chat_threads,
+        persist_canonical_sessions,
         persist_worker_sessions,
         quarantine_corrupt_state_file,
+        sync_all_canonical_sessions,
     )
     from .stream_buffer import BoundedTextBuffer
     from .transport import TELEGRAM_LIMIT, TelegramClient, to_telegram_chunks
@@ -59,16 +64,21 @@ except ImportError:
         request_safe_restart,
     )
     from state_store import (
+        CanonicalSession,
         State,
         StateRepository,
         WorkerSession,
+        build_canonical_sessions_from_legacy,
         ensure_state_dir,
+        load_canonical_sessions,
         load_chat_threads,
         load_in_flight_requests,
         load_worker_sessions,
         persist_chat_threads,
+        persist_canonical_sessions,
         persist_worker_sessions,
         quarantine_corrupt_state_file,
+        sync_all_canonical_sessions,
     )
     from stream_buffer import BoundedTextBuffer
     from transport import TELEGRAM_LIMIT, TelegramClient, to_telegram_chunks
@@ -96,6 +106,7 @@ class Config:
     persistent_workers_max: int
     persistent_workers_idle_timeout_seconds: int
     persistent_workers_policy_files: List[str]
+    canonical_sessions_enabled: bool
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -243,6 +254,10 @@ def load_config() -> Config:
             minimum=60,
         ),
         persistent_workers_policy_files=build_policy_watch_files(),
+        canonical_sessions_enabled=parse_bool_env(
+            "TELEGRAM_CANONICAL_SESSIONS_ENABLED",
+            False,
+        ),
     )
 
 
@@ -342,6 +357,7 @@ def run_bridge(config: Config) -> int:
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
     worker_sessions_path = os.path.join(config.state_dir, "worker_sessions.json")
     in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
+    chat_sessions_path = os.path.join(config.state_dir, "chat_sessions.json")
     try:
         loaded_threads = load_chat_threads(chat_thread_path)
     except Exception:
@@ -378,6 +394,20 @@ def run_bridge(config: Config) -> int:
             logging.error("Quarantined corrupt in-flight state file to %s", moved)
         loaded_in_flight = {}
 
+    loaded_canonical_sessions: Dict[int, CanonicalSession] = {}
+    if config.canonical_sessions_enabled:
+        try:
+            loaded_canonical_sessions = load_canonical_sessions(chat_sessions_path)
+        except Exception:
+            logging.exception(
+                "Failed to load canonical session state from %s; starting with compatibility snapshot.",
+                chat_sessions_path,
+            )
+            moved = quarantine_corrupt_state_file(chat_sessions_path)
+            if moved:
+                logging.error("Quarantined corrupt canonical session state file to %s", moved)
+            loaded_canonical_sessions = {}
+
     if config.persistent_workers_enabled:
         now = time.time()
         current_policy_fingerprint = compute_policy_fingerprint(config.persistent_workers_policy_files)
@@ -402,6 +432,9 @@ def run_bridge(config: Config) -> int:
         worker_sessions_path=worker_sessions_path,
         in_flight_requests=loaded_in_flight,
         in_flight_path=in_flight_path,
+        canonical_sessions_enabled=config.canonical_sessions_enabled,
+        chat_sessions=loaded_canonical_sessions,
+        chat_sessions_path=chat_sessions_path,
     )
     state_repo = StateRepository(state)
     client = TelegramClient(config)
@@ -409,6 +442,15 @@ def run_bridge(config: Config) -> int:
     if config.persistent_workers_enabled:
         persist_chat_threads(state)
         persist_worker_sessions(state)
+    if config.canonical_sessions_enabled:
+        if not state.chat_sessions:
+            state.chat_sessions = build_canonical_sessions_from_legacy(
+                state.chat_threads,
+                state.worker_sessions,
+                state.in_flight_requests,
+            )
+        persist_canonical_sessions(state)
+        sync_all_canonical_sessions(state)
 
     interrupted = state_repo.pop_interrupted_requests()
     if interrupted:
@@ -449,6 +491,12 @@ def run_bridge(config: Config) -> int:
         config.persistent_workers_idle_timeout_seconds,
     )
     logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
+    logging.info(
+        "Canonical sessions enabled=%s count=%s path=%s",
+        config.canonical_sessions_enabled,
+        len(state.chat_sessions),
+        chat_sessions_path,
+    )
 
     while True:
         try:
