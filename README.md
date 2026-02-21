@@ -14,6 +14,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Help alias: `/h` (same as `/help`)
 - Live request progress: typing heartbeat + in-place progress status updates while Architect is running
 - Architect-only routing for all allowlisted chats
+- CI checks: `.github/workflows/telegram-bridge-ci.yml` (compile + unit tests + self/smoke tests)
 
 ## Repository Structure
 
@@ -62,6 +63,14 @@ Enable voice transcription runtime:
 bash ops/telegram-voice/install_faster_whisper.sh
 bash ops/telegram-voice/configure_env.sh
 bash ops/telegram-bridge/restart_and_verify.sh
+```
+
+Local validation:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py'
+python3 src/telegram_bridge/main.py --self-test
+bash src/telegram_bridge/smoke_test.sh
 ```
 
 ## Operations

@@ -1,5 +1,43 @@
 # Server3 Progress Log
 
+## 2026-02-21 (Telegram Bridge: Low-Risk Structure Refactor + Test Gates)
+
+### Summary
+- Completed a low-risk internal refactor focused on structure/testability with no intentional runtime behavior change.
+- Refactored `src/telegram_bridge/main.py`:
+  - split prompt handling into explicit pipeline helpers:
+    - `prepare_prompt_input(...)`
+    - `execute_prompt_with_retry(...)`
+    - `finalize_prompt_success(...)`
+  - introduced `StateRepository` adapter for thread/in-flight/session state operations at call sites.
+  - consolidated duplicated JSON persistence write pattern via `persist_json_state_file(...)`.
+  - consolidated duplicated Telegram media download logic via shared helper:
+    - `src/telegram_bridge/media.py` (`TelegramFileDownloadSpec`, `download_telegram_file_to_temp(...)`)
+  - added bounded executor stdout/stderr buffering with truncation marker to cap memory growth on noisy runs.
+- Began module split from monolith (move-only utility extraction):
+  - added `src/telegram_bridge/media.py`
+  - added `src/telegram_bridge/stream_buffer.py`
+- Added focused unit tests:
+  - `tests/telegram_bridge/test_bridge_core.py`
+  - coverage includes parser output handling, bounded buffer behavior, download guard behavior, state repository persistence, and worker-capacity rejection behavior.
+- Added lightweight CI workflow:
+  - `.github/workflows/telegram-bridge-ci.yml` (compile + unit tests + self/smoke tests)
+- Updated `README.md` with local validation commands and CI reference.
+
+### Validation
+- `python3 -m py_compile src/telegram_bridge/main.py src/telegram_bridge/media.py src/telegram_bridge/stream_buffer.py` (pass)
+- `python3 src/telegram_bridge/main.py --self-test` (pass)
+- `python3 -m unittest discover -s tests -p 'test_*.py'` (pass)
+- `bash src/telegram_bridge/smoke_test.sh` (pass)
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc` or systemd/runtime configuration changes were made in this change set.
+- Canonical model unification of `chat_threads` + `worker_sessions` remains intentionally deferred as a higher-risk follow-up.
+
 ## 2026-02-21 (Telegram Bridge: Unreachable Worker Guard Cleanup)
 
 ### Summary
