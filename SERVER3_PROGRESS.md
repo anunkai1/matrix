@@ -1,5 +1,23 @@
 # Server3 Progress Log
 
+## 2026-02-21 (Telegram Bridge: Unreachable Worker Guard Cleanup)
+
+### Summary
+- Applied additional low-risk cleanup in `src/telegram_bridge/main.py` by removing unreachable guard logic in `process_message_worker(...)`.
+- Removed dead `prompt_invoked` flag and no-op `finally` branch that could never execute.
+- Runtime behavior remains unchanged; `process_prompt(...)` retains ownership of request finalization and cleanup.
+- Validation:
+  - `python3 -m py_compile src/telegram_bridge/main.py` (pass)
+  - `python3 src/telegram_bridge/main.py --self-test` (pass)
+  - `bash src/telegram_bridge/smoke_test.sh` (pass)
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc` or systemd/runtime configuration changes were made in this change set.
+
 ## 2026-02-21 (Telegram Bridge: Persistent-Worker Safe Cleanup)
 
 ### Summary

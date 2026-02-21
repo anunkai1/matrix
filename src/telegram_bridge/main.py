@@ -1959,9 +1959,7 @@ def process_message_worker(
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
 ) -> None:
-    prompt_invoked = False
     try:
-        prompt_invoked = True
         process_prompt(
             state,
             config,
@@ -1983,9 +1981,6 @@ def process_message_worker(
             )
         except Exception:
             logging.exception("Failed to send worker error response for chat_id=%s", chat_id)
-    finally:
-        if not prompt_invoked:
-            finalize_chat_work(state, client, chat_id)
 
 
 def handle_reset_command(
