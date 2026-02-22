@@ -8,18 +8,26 @@ from typing import List, Optional
 
 try:
     from .state_store import (
+        CanonicalSession,
         State,
         StateRepository,
         WorkerSession,
+        canonical_session_is_empty,
+        mirror_legacy_from_canonical,
+        persist_canonical_sessions,
         persist_chat_threads,
         persist_worker_sessions,
         sync_canonical_session,
     )
 except ImportError:
     from state_store import (
+        CanonicalSession,
         State,
         StateRepository,
         WorkerSession,
+        canonical_session_is_empty,
+        mirror_legacy_from_canonical,
+        persist_canonical_sessions,
         persist_chat_threads,
         persist_worker_sessions,
         sync_canonical_session,
@@ -76,6 +84,14 @@ def clear_busy(state: State, chat_id: int) -> None:
         state.busy_chats.discard(chat_id)
 
 
+def _has_active_worker(session: Optional[CanonicalSession]) -> bool:
+    return (
+        session is not None
+        and session.worker_created_at is not None
+        and session.worker_last_used_at is not None
+    )
+
+
 def ensure_chat_worker_session(
     state: State,
     config,
@@ -91,6 +107,117 @@ def ensure_chat_worker_session(
     session_replaced_for_policy = False
     evicted_idle_chat_id: Optional[int] = None
     rejected_for_capacity = False
+
+    if state.canonical_sessions_enabled:
+        changed = False
+        with state.lock:
+            session = state.chat_sessions.get(chat_id)
+
+            if (
+                _has_active_worker(session)
+                and session is not None
+                and session.worker_policy_fingerprint
+                and session.worker_policy_fingerprint != current_policy_fingerprint
+            ):
+                session.worker_created_at = None
+                session.worker_last_used_at = None
+                session.worker_policy_fingerprint = ""
+                session.thread_id = ""
+                if canonical_session_is_empty(session):
+                    del state.chat_sessions[chat_id]
+                    session = None
+                session_replaced_for_policy = True
+                changed = True
+
+            active_workers = {
+                candidate_chat_id: candidate_session
+                for candidate_chat_id, candidate_session in state.chat_sessions.items()
+                if _has_active_worker(candidate_session)
+            }
+
+            if not _has_active_worker(session) and len(active_workers) >= config.persistent_workers_max:
+                idle_candidates = [
+                    (candidate_chat_id, candidate_session)
+                    for candidate_chat_id, candidate_session in active_workers.items()
+                    if candidate_chat_id not in state.busy_chats and candidate_chat_id != chat_id
+                ]
+                if idle_candidates:
+                    idle_candidates.sort(
+                        key=lambda item: item[1].worker_last_used_at
+                        if item[1].worker_last_used_at is not None
+                        else 0.0
+                    )
+                    evicted_idle_chat_id = idle_candidates[0][0]
+                    evicted = state.chat_sessions.get(evicted_idle_chat_id)
+                    if evicted is not None:
+                        evicted.worker_created_at = None
+                        evicted.worker_last_used_at = None
+                        evicted.worker_policy_fingerprint = ""
+                        evicted.thread_id = ""
+                        if canonical_session_is_empty(evicted):
+                            del state.chat_sessions[evicted_idle_chat_id]
+                        changed = True
+                else:
+                    rejected_for_capacity = True
+
+            if not rejected_for_capacity:
+                session = state.chat_sessions.get(chat_id)
+                if session is None:
+                    session = CanonicalSession()
+                    state.chat_sessions[chat_id] = session
+                    changed = True
+
+                if not _has_active_worker(session):
+                    session.worker_created_at = now
+                    session.worker_last_used_at = now
+                    session.worker_policy_fingerprint = current_policy_fingerprint
+                    changed = True
+                else:
+                    if session.worker_last_used_at != now:
+                        session.worker_last_used_at = now
+                        changed = True
+                    if session.worker_policy_fingerprint != current_policy_fingerprint:
+                        session.worker_policy_fingerprint = current_policy_fingerprint
+                        changed = True
+
+        if changed:
+            persist_canonical_sessions(state)
+            mirror_legacy_from_canonical(state, persist=True)
+
+        if evicted_idle_chat_id is not None and evicted_idle_chat_id in config.allowed_chat_ids:
+            try:
+                client.send_message(
+                    evicted_idle_chat_id,
+                    "Your Architect session was closed to free worker capacity. "
+                    "Send a new message to start a fresh context.",
+                )
+            except Exception:
+                logging.exception(
+                    "Failed to send worker-eviction notice for chat_id=%s",
+                    evicted_idle_chat_id,
+                )
+
+        if session_replaced_for_policy:
+            try:
+                client.send_message(
+                    chat_id,
+                    "Policy/context files changed. Your previous session was reset and this request "
+                    "will continue in a new session.",
+                    reply_to_message_id=message_id,
+                )
+            except Exception:
+                logging.exception("Failed to send policy-refresh notice for chat_id=%s", chat_id)
+
+        if rejected_for_capacity:
+            client.send_message(
+                chat_id,
+                "All Architect workers are currently in use. Please wait and retry.",
+                reply_to_message_id=message_id,
+            )
+            return False
+
+        return True
+
     needs_persist_threads = False
     needs_persist_sessions = False
 
@@ -197,6 +324,51 @@ def expire_idle_worker_sessions(
         return
 
     now = time.time()
+
+    if state.canonical_sessions_enabled:
+        expired_chat_ids: List[int] = []
+        changed = False
+        with state.lock:
+            for chat_id, session in list(state.chat_sessions.items()):
+                if chat_id in state.busy_chats:
+                    continue
+                if not _has_active_worker(session):
+                    continue
+                if (
+                    session.worker_last_used_at is not None
+                    and now - session.worker_last_used_at < config.persistent_workers_idle_timeout_seconds
+                ):
+                    continue
+                expired_chat_ids.append(chat_id)
+                session.worker_created_at = None
+                session.worker_last_used_at = None
+                session.worker_policy_fingerprint = ""
+                session.thread_id = ""
+                if canonical_session_is_empty(session):
+                    del state.chat_sessions[chat_id]
+                changed = True
+
+        if changed:
+            persist_canonical_sessions(state)
+            mirror_legacy_from_canonical(state, persist=True)
+
+        if not expired_chat_ids:
+            return
+
+        timeout_mins = max(1, config.persistent_workers_idle_timeout_seconds // 60)
+        for chat_id in expired_chat_ids:
+            if chat_id not in config.allowed_chat_ids:
+                continue
+            try:
+                client.send_message(
+                    chat_id,
+                    f"Your Architect session expired after {timeout_mins} minutes of inactivity. "
+                    "Context was cleared.",
+                )
+            except Exception:
+                logging.exception("Failed to send idle-expiry notice for chat_id=%s", chat_id)
+        return
+
     expired_chat_ids: List[int] = []
     needs_persist_threads = False
     needs_persist_sessions = False

@@ -261,6 +261,58 @@ def build_canonical_sessions_from_legacy(
     return out
 
 
+def _canonical_session_to_legacy(
+    session: CanonicalSession,
+) -> tuple[Optional[str], Optional[WorkerSession], Optional[Dict[str, object]]]:
+    thread_id = session.thread_id.strip()
+    thread_value: Optional[str] = thread_id if thread_id else None
+
+    worker_value: Optional[WorkerSession] = None
+    if session.worker_created_at is not None and session.worker_last_used_at is not None:
+        worker_value = WorkerSession(
+            created_at=float(session.worker_created_at),
+            last_used_at=float(session.worker_last_used_at),
+            thread_id=thread_id,
+            policy_fingerprint=session.worker_policy_fingerprint.strip(),
+        )
+
+    in_flight_value: Optional[Dict[str, object]] = None
+    if session.in_flight_started_at is not None:
+        in_flight_value = {"started_at": float(session.in_flight_started_at)}
+        if session.in_flight_message_id is not None:
+            in_flight_value["message_id"] = session.in_flight_message_id
+
+    return thread_value, worker_value, in_flight_value
+
+
+def build_legacy_from_canonical(
+    canonical_sessions: Dict[int, CanonicalSession],
+) -> tuple[Dict[int, str], Dict[int, WorkerSession], Dict[int, Dict[str, object]]]:
+    chat_threads: Dict[int, str] = {}
+    worker_sessions: Dict[int, WorkerSession] = {}
+    in_flight_requests: Dict[int, Dict[str, object]] = {}
+    for chat_id, session in canonical_sessions.items():
+        thread_value, worker_value, in_flight_value = _canonical_session_to_legacy(session)
+        if thread_value is not None:
+            chat_threads[chat_id] = thread_value
+        if worker_value is not None:
+            worker_sessions[chat_id] = worker_value
+        if in_flight_value is not None:
+            in_flight_requests[chat_id] = in_flight_value
+    return chat_threads, worker_sessions, in_flight_requests
+
+
+def canonical_session_is_empty(session: CanonicalSession) -> bool:
+    return (
+        not session.thread_id.strip()
+        and session.worker_created_at is None
+        and session.worker_last_used_at is None
+        and not session.worker_policy_fingerprint.strip()
+        and session.in_flight_started_at is None
+        and session.in_flight_message_id is None
+    )
+
+
 def persist_json_state_file(path_value: str, serialized: Dict[str, object]) -> None:
     if not path_value:
         return
@@ -320,6 +372,22 @@ def persist_canonical_sessions(state: State) -> None:
     persist_json_state_file(state.chat_sessions_path, serialized)
 
 
+def mirror_legacy_from_canonical(state: State, persist: bool = True) -> None:
+    if not state.canonical_sessions_enabled:
+        return
+    with state.lock:
+        chat_threads, worker_sessions, in_flight_requests = build_legacy_from_canonical(
+            state.chat_sessions
+        )
+        state.chat_threads = chat_threads
+        state.worker_sessions = worker_sessions
+        state.in_flight_requests = in_flight_requests
+    if persist:
+        persist_chat_threads(state)
+        persist_worker_sessions(state)
+        persist_in_flight_requests(state)
+
+
 def sync_canonical_session(state: State, chat_id: int) -> None:
     if not state.canonical_sessions_enabled:
         return
@@ -356,6 +424,26 @@ def sync_all_canonical_sessions(state: State) -> None:
 
 
 def clear_worker_session(state: State, chat_id: int) -> bool:
+    if state.canonical_sessions_enabled:
+        changed = False
+        with state.lock:
+            session = state.chat_sessions.get(chat_id)
+            if session is not None and (
+                session.worker_created_at is not None
+                or session.worker_last_used_at is not None
+                or session.worker_policy_fingerprint
+            ):
+                session.worker_created_at = None
+                session.worker_last_used_at = None
+                session.worker_policy_fingerprint = ""
+                if canonical_session_is_empty(session):
+                    del state.chat_sessions[chat_id]
+                changed = True
+        if changed:
+            persist_canonical_sessions(state)
+            mirror_legacy_from_canonical(state, persist=True)
+        return changed
+
     removed = False
     with state.lock:
         if chat_id in state.worker_sessions:
@@ -368,11 +456,39 @@ def clear_worker_session(state: State, chat_id: int) -> bool:
 
 
 def get_thread_id(state: State, chat_id: int) -> Optional[str]:
+    if state.canonical_sessions_enabled:
+        with state.lock:
+            session = state.chat_sessions.get(chat_id)
+            if session is None:
+                return None
+            thread_id = session.thread_id.strip()
+            return thread_id or None
     with state.lock:
         return state.chat_threads.get(chat_id)
 
 
 def set_thread_id(state: State, chat_id: int, thread_id: str) -> None:
+    if state.canonical_sessions_enabled:
+        normalized_thread_id = thread_id.strip()
+        changed = False
+        with state.lock:
+            session = state.chat_sessions.get(chat_id)
+            if session is None:
+                session = CanonicalSession()
+                state.chat_sessions[chat_id] = session
+            if session.thread_id != normalized_thread_id:
+                session.thread_id = normalized_thread_id
+                changed = True
+            if session.worker_created_at is not None:
+                now = time.time()
+                if session.worker_last_used_at != now:
+                    session.worker_last_used_at = now
+                    changed = True
+        if changed:
+            persist_canonical_sessions(state)
+            mirror_legacy_from_canonical(state, persist=True)
+        return
+
     normalized_thread_id = thread_id.strip()
     persist_threads = False
     persist_sessions = False
@@ -394,6 +510,25 @@ def set_thread_id(state: State, chat_id: int, thread_id: str) -> None:
 
 
 def clear_thread_id(state: State, chat_id: int) -> bool:
+    if state.canonical_sessions_enabled:
+        removed = False
+        with state.lock:
+            session = state.chat_sessions.get(chat_id)
+            if session is not None:
+                if session.thread_id:
+                    session.thread_id = ""
+                    removed = True
+                if session.worker_created_at is not None:
+                    session.worker_last_used_at = time.time()
+                    removed = True
+                if canonical_session_is_empty(session):
+                    del state.chat_sessions[chat_id]
+                    removed = True
+        if removed:
+            persist_canonical_sessions(state)
+            mirror_legacy_from_canonical(state, persist=True)
+        return removed
+
     removed = False
     persist_sessions = False
     with state.lock:
@@ -415,6 +550,18 @@ def clear_thread_id(state: State, chat_id: int) -> bool:
 
 
 def mark_in_flight_request(state: State, chat_id: int, message_id: Optional[int]) -> None:
+    if state.canonical_sessions_enabled:
+        with state.lock:
+            session = state.chat_sessions.get(chat_id)
+            if session is None:
+                session = CanonicalSession()
+                state.chat_sessions[chat_id] = session
+            session.in_flight_started_at = time.time()
+            session.in_flight_message_id = message_id if isinstance(message_id, int) else None
+        persist_canonical_sessions(state)
+        mirror_legacy_from_canonical(state, persist=True)
+        return
+
     payload: Dict[str, object] = {"started_at": time.time()}
     if isinstance(message_id, int):
         payload["message_id"] = message_id
@@ -425,6 +572,24 @@ def mark_in_flight_request(state: State, chat_id: int, message_id: Optional[int]
 
 
 def clear_in_flight_request(state: State, chat_id: int) -> None:
+    if state.canonical_sessions_enabled:
+        changed = False
+        with state.lock:
+            session = state.chat_sessions.get(chat_id)
+            if session is not None and (
+                session.in_flight_started_at is not None
+                or session.in_flight_message_id is not None
+            ):
+                session.in_flight_started_at = None
+                session.in_flight_message_id = None
+                if canonical_session_is_empty(session):
+                    del state.chat_sessions[chat_id]
+                changed = True
+        if changed:
+            persist_canonical_sessions(state)
+            mirror_legacy_from_canonical(state, persist=True)
+        return
+
     removed = False
     with state.lock:
         if chat_id in state.in_flight_requests:
@@ -436,6 +601,32 @@ def clear_in_flight_request(state: State, chat_id: int) -> None:
 
 
 def pop_interrupted_requests(state: State) -> Dict[int, Dict[str, object]]:
+    if state.canonical_sessions_enabled:
+        interrupted: Dict[int, Dict[str, object]] = {}
+        with state.lock:
+            for chat_id, session in state.chat_sessions.items():
+                if session.in_flight_started_at is None:
+                    continue
+                payload: Dict[str, object] = {"started_at": float(session.in_flight_started_at)}
+                if session.in_flight_message_id is not None:
+                    payload["message_id"] = session.in_flight_message_id
+                interrupted[chat_id] = payload
+
+            if not interrupted:
+                return {}
+
+            for chat_id in list(interrupted):
+                session = state.chat_sessions.get(chat_id)
+                if session is None:
+                    continue
+                session.in_flight_started_at = None
+                session.in_flight_message_id = None
+                if canonical_session_is_empty(session):
+                    del state.chat_sessions[chat_id]
+        persist_canonical_sessions(state)
+        mirror_legacy_from_canonical(state, persist=True)
+        return interrupted
+
     with state.lock:
         if not state.in_flight_requests:
             return {}

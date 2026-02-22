@@ -33,11 +33,13 @@ try:
         StateRepository,
         WorkerSession,
         build_canonical_sessions_from_legacy,
+        build_legacy_from_canonical,
         ensure_state_dir,
         load_canonical_sessions,
         load_chat_threads,
         load_in_flight_requests,
         load_worker_sessions,
+        mirror_legacy_from_canonical,
         persist_chat_threads,
         persist_canonical_sessions,
         persist_worker_sessions,
@@ -69,11 +71,13 @@ except ImportError:
         StateRepository,
         WorkerSession,
         build_canonical_sessions_from_legacy,
+        build_legacy_from_canonical,
         ensure_state_dir,
         load_canonical_sessions,
         load_chat_threads,
         load_in_flight_requests,
         load_worker_sessions,
+        mirror_legacy_from_canonical,
         persist_chat_threads,
         persist_canonical_sessions,
         persist_worker_sessions,
@@ -408,6 +412,13 @@ def run_bridge(config: Config) -> int:
                 logging.error("Quarantined corrupt canonical session state file to %s", moved)
             loaded_canonical_sessions = {}
 
+        if loaded_canonical_sessions:
+            (
+                loaded_threads,
+                loaded_worker_sessions,
+                loaded_in_flight,
+            ) = build_legacy_from_canonical(loaded_canonical_sessions)
+
     if config.persistent_workers_enabled:
         now = time.time()
         current_policy_fingerprint = compute_policy_fingerprint(config.persistent_workers_policy_files)
@@ -450,7 +461,7 @@ def run_bridge(config: Config) -> int:
                 state.in_flight_requests,
             )
         persist_canonical_sessions(state)
-        sync_all_canonical_sessions(state)
+        mirror_legacy_from_canonical(state, persist=True)
 
     interrupted = state_repo.pop_interrupted_requests()
     if interrupted:
