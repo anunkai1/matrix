@@ -1,5 +1,33 @@
 # Server3 Progress Log
 
+## 2026-02-22 (Telegram Bridge: Live Canonical Rollout Enable + Restart Verification)
+
+### Summary
+- Applied live runtime env rollout for canonical session mode with temporary legacy-mirror safety.
+- Updated live `/etc/default/telegram-architect-bridge` flags:
+  - `TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`
+  - `TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED=true`
+- Created live env backup before apply:
+  - `/etc/default/telegram-architect-bridge.bak-20260222-001727-canonical-rollout`
+- Restarted and verified bridge service:
+  - `bash ops/telegram-bridge/restart_and_verify.sh`
+  - verification passed (`active/running`, new main PID observed)
+- Journal confirms canonical rollout is active:
+  - `Canonical sessions enabled=True ...`
+  - `Canonical legacy mirror enabled=True`
+- Updated repo-tracked mirrors and live-change record:
+  - `infra/env/telegram-architect-bridge.server3.redacted.env`
+  - `infra/env/telegram-architect-bridge.env.example`
+  - `logs/changes/20260222-001727-telegram-canonical-rollout-enable-and-restart.md`
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No code logic changes were made in this rollout step.
+- This step activates previously-implemented canonical mode in live runtime config.
+
 ## 2026-02-21 (Telegram Bridge: Canonical Session Model Phase 3 - Canonical-Only Runtime Path)
 
 ### Summary
