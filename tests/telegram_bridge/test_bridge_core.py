@@ -63,6 +63,7 @@ def make_config(**overrides):
         "persistent_workers_idle_timeout_seconds": 120,
         "persistent_workers_policy_files": [],
         "canonical_sessions_enabled": False,
+        "canonical_legacy_mirror_enabled": False,
     }
     base.update(overrides)
     return bridge.Config(**base)
@@ -243,6 +244,7 @@ class BridgeCoreTests(unittest.TestCase):
                 in_flight_path=str(Path(tmpdir) / "in_flight_requests.json"),
                 chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
                 canonical_sessions_enabled=True,
+                canonical_legacy_mirror_enabled=True,
                 chat_sessions={
                     5: bridge.CanonicalSession(
                         thread_id="old-thread",
@@ -267,6 +269,23 @@ class BridgeCoreTests(unittest.TestCase):
             workers = json.loads(Path(state.worker_sessions_path).read_text(encoding="utf-8"))
             self.assertEqual(threads["5"], "new-thread")
             self.assertEqual(workers, {})
+
+    def test_canonical_first_without_legacy_mirror_skips_legacy_persist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = bridge.State(
+                chat_thread_path=str(Path(tmpdir) / "chat_threads.json"),
+                worker_sessions_path=str(Path(tmpdir) / "worker_sessions.json"),
+                in_flight_path=str(Path(tmpdir) / "in_flight_requests.json"),
+                chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
+                canonical_sessions_enabled=True,
+                canonical_legacy_mirror_enabled=False,
+            )
+            repo = bridge.StateRepository(state)
+            repo.set_thread_id(11, "thread-11")
+
+            sessions = bridge.load_canonical_sessions(state.chat_sessions_path)
+            self.assertEqual(sessions[11].thread_id, "thread-11")
+            self.assertFalse(Path(state.chat_thread_path).exists())
 
 
 if __name__ == "__main__":
