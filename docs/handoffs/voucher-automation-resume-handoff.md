@@ -17,7 +17,7 @@ Date context:
 
 Mandatory process rules:
 1. Read and follow `ARCHITECT_INSTRUCTION.md` first (authoritative).
-2. Read `SERVER3_SUMMARY.md` at session start before planning/editing; open `SERVER3_PROGRESS.md` only when more detail is required.
+2. Read `SERVER3_SUMMARY.md` at session start before planning/editing; open `SERVER3_ARCHIVE.md` only when more detail is required.
 3. Before any change, print **AI Prompt for Action** with:
    - Objective
    - Scope (IN / OUT)
@@ -31,7 +31,7 @@ Mandatory process rules:
    - `git status`
    - `git show --stat --oneline -1`
    - `git log -1 --oneline`
-6. Update `SERVER3_SUMMARY.md` at end of non-exempt work; update `SERVER3_PROGRESS.md` only for detailed archival context.
+6. Update `SERVER3_SUMMARY.md` at end of non-exempt work; update `SERVER3_ARCHIVE.md` only for detailed archival context.
 7. Do not assume missing values. Ask user when required.
 8. Keep secrets out of git.
 9. Follow minimal-change principle.
@@ -123,7 +123,7 @@ Resume sequence requested:
 4. Implement ETH/USDT sender (chainId=1 only, USDT fixed address).
 5. Implement voucher storage/output and log redaction.
 6. Add tests/validations.
-7. Commit + push + update `SERVER3_PROGRESS.md`.
+7. Commit + push + update `SERVER3_SUMMARY.md` (and update `SERVER3_ARCHIVE.md` when detailed archival context is needed).
 
 Security reminders for public GitHub repo:
 - Never commit private keys, tokens, API secrets, voucher card/PIN, or full credential dumps.

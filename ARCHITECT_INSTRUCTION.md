@@ -61,7 +61,7 @@ HA QUICK-OPS EXCEPTION (ROUTINE DEVICE CONTROL ONLY)
   - other non-persistent state changes on existing entities
 - For these routine HA operations:
   - keep short runtime logs in system journal only (no required `logs/changes` file per action)
-  - no mandatory `SERVER3_PROGRESS.md` update per action
+  - no mandatory `SERVER3_ARCHIVE.md` update per action
   - no mandatory commit/push per action
 
 EXEMPTION BOUNDARY (MANDATORY)
@@ -79,14 +79,14 @@ EXEMPTION BOUNDARY (MANDATORY)
 SESSION START RULE (MANDATORY)
 
 - At the start of every new Codex session on Server3, read `SERVER3_SUMMARY.md` before planning or editing.
-- Read `SERVER3_PROGRESS.md` only when the current task needs deeper historical detail than the summary provides.
-- Treat `SERVER3_SUMMARY.md` as the default running context and `SERVER3_PROGRESS.md` as the detailed archive.
+- Read `SERVER3_ARCHIVE.md` only when the current task needs deeper historical detail than the summary provides.
+- Treat `SERVER3_SUMMARY.md` as the default running context and `SERVER3_ARCHIVE.md` as the detailed archive.
 
 SESSION END RULE (MANDATORY)
 
 - After each completed non-exempt task/change set, Codex must update `SERVER3_SUMMARY.md` with high-level current state (what changed, current status, and notable next step/risk if any).
-- Add/update `SERVER3_PROGRESS.md` only when detailed archival context is needed (for example: live rollout steps, incidents, rollback trails, or multi-step technical diagnostics).
-- Required summary/progress updates must be committed and pushed to GitHub in the same session for non-exempt changes.
+- Add/update `SERVER3_ARCHIVE.md` only when detailed archival context is needed (for example: live rollout steps, incidents, rollback trails, or multi-step technical diagnostics).
+- Required summary/archive updates must be committed and pushed to GitHub in the same session for non-exempt changes.
 - Routine HA quick-ops follow the `HA QUICK-OPS EXCEPTION` section.
 
   

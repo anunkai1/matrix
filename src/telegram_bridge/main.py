@@ -178,7 +178,7 @@ def build_policy_watch_files() -> List[str]:
     return [
         os.path.join(repo_root, "AGENTS.md"),
         os.path.join(repo_root, "ARCHITECT_INSTRUCTION.md"),
-        os.path.join(repo_root, "SERVER3_PROGRESS.md"),
+        os.path.join(repo_root, "SERVER3_ARCHIVE.md"),
     ]
 
 

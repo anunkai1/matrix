@@ -1,4 +1,4 @@
-# Server3 Progress Log
+# Server3 Archive
 
 Summary-first note:
 - Read `SERVER3_SUMMARY.md` first for normal session context.
@@ -10,8 +10,8 @@ Summary-first note:
 - Added summary-first session context file: `SERVER3_SUMMARY.md`.
 - Updated authoritative workflow policy in `ARCHITECT_INSTRUCTION.md`:
   - session start now requires `SERVER3_SUMMARY.md` first
-  - `SERVER3_PROGRESS.md` is now detailed archive context loaded when needed
-  - session-end update requirement now centers on `SERVER3_SUMMARY.md`, with progress log updates for detailed archival scenarios
+  - `SERVER3_ARCHIVE.md` is now detailed archive context loaded when needed
+  - session-end update requirement now centers on `SERVER3_SUMMARY.md`, with archive updates for detailed archival scenarios
 - Updated documentation for consistency:
   - `README.md` progress-tracking and structure references updated for summary-first workflow
   - `docs/telegram-architect-bridge.md` refreshed runtime file map and canonical-session env flags
@@ -376,7 +376,7 @@ Summary-first note:
   - overlap requests in same chat remain rejected while busy
   - max-worker capacity enforcement with idle-session eviction
   - 45-minute idle session expiry path with user notification that context was cleared
-  - policy/context file change detection (`AGENTS.md`, `ARCHITECT_INSTRUCTION.md`, `SERVER3_PROGRESS.md`) applied on next message with user notice and session reset
+  - policy/context file change detection (`AGENTS.md`, `ARCHITECT_INSTRUCTION.md`, `SERVER3_ARCHIVE.md`) applied on next message with user notice and session reset
   - `/reset` now clears both saved thread context and persistent worker session metadata
   - `/status` now reports persistent-worker enablement and current chat worker state
   - automatic one-time retry path for execution failures in persistent-worker mode, followed by explicit user-facing retry-failed notice
