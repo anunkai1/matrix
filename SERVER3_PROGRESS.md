@@ -1,5 +1,31 @@
 # Server3 Progress Log
 
+## 2026-02-22 (Workflow Policy: Execution Quality Gates Added)
+
+### Summary
+- Updated `ARCHITECT_INSTRUCTION.md` with new mandatory section:
+  - `7. EXECUTION QUALITY GATES (MANDATORY)`
+- Added non-redundant enforcement rules for the selected top-3 workflow points:
+  - verification-before-done net-new requirements:
+    - behavior diff vs `main` when relevant
+    - tests/log checks + correctness evidence
+    - final staff-engineer quality check prompt
+  - self-improvement loop requirements:
+    - capture user-correction patterns and prevention rules in `tasks/lessons.md`
+    - review and apply relevant lessons at session start
+  - plan-mode net-new requirements:
+    - stop and re-plan when execution deviates or assumptions break
+    - include explicit verification steps for non-trivial work
+- No runtime/service/live system changes were made.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- Existing plan/commit/push/proof gates remain unchanged.
+- New section was written to avoid duplicating already-enforced rules.
+
 ## 2026-02-22 (Voucher Automation: Resume Handoff Prompt + Telegram Delivery)
 
 ### Summary

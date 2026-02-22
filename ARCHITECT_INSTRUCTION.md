@@ -275,3 +275,28 @@ If the user says: “start the project”, Codex should propose:
 4. First commit + push to `origin/main` (unless user explicitly requests branch/PR workflow)
   
 5. Update this file (ARCHITECT_INSTRUCTION.md) when workflow rules change
+
+---
+
+7. EXECUTION QUALITY GATES (MANDATORY)
+
+These gates add net-new execution rigor and do not replace existing plan/commit/push/proof requirements above.
+
+A) VERIFICATION BEFORE DONE (NET-NEW PARTS)
+
+- When relevant, compare behavior between `main` and your changes (intended deltas + no unintended regressions).
+- Run tests, check logs, and provide correctness evidence before marking done.
+- Perform a final quality check: “Would a staff engineer approve this?”
+
+B) SELF-IMPROVEMENT LOOP
+
+- After any user correction, update `tasks/lessons.md` with:
+  - mistake pattern
+  - prevention rule
+  - where/when the rule is applied
+- Review relevant lessons at session start and apply them during planning/execution.
+
+C) PLAN MODE DEFAULT (NET-NEW PARTS)
+
+- If execution goes sideways (deviation, broken assumption, or new risk), STOP and re-plan before continuing.
+- For non-trivial work, plans must include explicit verification steps, not only implementation steps.
