@@ -1,5 +1,44 @@
 # Server3 Progress Log
 
+## 2026-02-21 (Telegram Bridge: Canonical Session Model Phase 2 - Canonical-First Behind Flag)
+
+### Summary
+- Completed Phase 2 canonical-session migration path by switching state operations to canonical-first behavior when feature flag is enabled.
+- Updated `src/telegram_bridge/state_store.py`:
+  - added canonical->legacy conversion helpers:
+    - `build_legacy_from_canonical(...)`
+    - `mirror_legacy_from_canonical(...)`
+  - canonical-first repository behaviors now apply when `state.canonical_sessions_enabled`:
+    - thread operations (`get_thread_id`, `set_thread_id`, `clear_thread_id`)
+    - worker session clear (`clear_worker_session`)
+    - in-flight operations (`mark_in_flight_request`, `clear_in_flight_request`, `pop_interrupted_requests`)
+  - canonical mutations now persist `chat_sessions.json` first, then mirror legacy files (`chat_threads.json`, `worker_sessions.json`, `in_flight_requests.json`) for rollback compatibility.
+- Updated startup behavior in `src/telegram_bridge/main.py`:
+  - when canonical mode is enabled and `chat_sessions.json` exists, runtime now loads canonical as source-of-truth and derives legacy runtime maps from canonical snapshot.
+  - when canonical mode is enabled but canonical state is empty/missing, bridge keeps compatibility fallback by deriving canonical from legacy state.
+- Updated session lifecycle in `src/telegram_bridge/session_manager.py`:
+  - added canonical-mode branches for `ensure_chat_worker_session(...)` and `expire_idle_worker_sessions(...)` so worker lifecycle decisions execute against canonical sessions directly.
+  - in canonical mode these paths persist canonical first and mirror legacy files afterward.
+- Expanded characterization coverage in `tests/telegram_bridge/test_bridge_core.py`:
+  - canonical->legacy conversion test
+  - canonical-first thread/worker mutation + legacy mirror persistence test
+  - total unit tests now 10.
+- Updated README canonical mode description to clarify rollback-compatible legacy mirroring.
+
+### Validation
+- `python3 -m py_compile src/telegram_bridge/main.py src/telegram_bridge/executor.py src/telegram_bridge/handlers.py src/telegram_bridge/media.py src/telegram_bridge/session_manager.py src/telegram_bridge/state_store.py src/telegram_bridge/stream_buffer.py src/telegram_bridge/transport.py` (pass)
+- `python3 -m unittest discover -s tests -p 'test_*.py'` (pass, 10 tests)
+- `python3 src/telegram_bridge/main.py --self-test` (pass)
+- `bash src/telegram_bridge/smoke_test.sh` (pass)
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc` or systemd/runtime configuration changes were made in this change set.
+- Flag default remains disabled; production behavior remains unchanged unless canonical mode is explicitly enabled.
+
 ## 2026-02-21 (Telegram Bridge: Canonical Session Model Phase 1)
 
 ### Summary
