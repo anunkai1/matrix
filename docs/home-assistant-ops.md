@@ -15,7 +15,7 @@ Both scripts avoid embedding `${...}` variables in transient unit command lines.
 bash ops/ha/set_climate_temperature.sh \
   --entity climate.master_brm_aircon \
   --temperature 25 \
-  --env-file /etc/default/telegram-architect-bridge.bak-20260220-143644-disable-ha-split
+  --env-file /etc/default/telegram-architect-bridge
 ```
 
 ## Schedule for Later
@@ -25,7 +25,7 @@ bash ops/ha/schedule_climate_temperature.sh \
   --delay 2h \
   --entity climate.master_brm_aircon \
   --temperature 25 \
-  --env-file /etc/default/telegram-architect-bridge.bak-20260220-143644-disable-ha-split
+  --env-file /etc/default/telegram-architect-bridge
 ```
 
 The command prints transient timer and service unit names.
@@ -39,14 +39,15 @@ bash ops/ha/schedule_climate_temperature.sh \
   --delay 15s \
   --entity climate.master_brm_aircon \
   --temperature 25 \
-  --env-file /etc/default/telegram-architect-bridge.bak-20260220-143644-disable-ha-split \
+  --env-file /etc/default/telegram-architect-bridge \
   --dry-run
 ```
 
 ## Cancel a Scheduled Action
 
 ```bash
-sudo systemctl cancel <timer-unit-name>.timer
+sudo systemctl stop <timer-unit-name>.timer
+sudo systemctl status <timer-unit-name>.timer --no-pager
 ```
 
 ## Verify Outcome
@@ -58,3 +59,4 @@ sudo journalctl -u <service-unit-name>.service -n 50 --no-pager
 Notes:
 - Keep tokens in live env files only; do not commit them to git.
 - If `/etc/default/telegram-architect-bridge` no longer contains HA keys, pass an explicit `--env-file` that does.
+- If the timer already fired and started execution, stop the service with `sudo systemctl stop <service-unit-name>.service`.

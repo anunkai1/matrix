@@ -17,7 +17,7 @@ Date context:
 
 Mandatory process rules:
 1. Read and follow `ARCHITECT_INSTRUCTION.md` first (authoritative).
-2. Read `SERVER3_PROGRESS.md` at session start before planning/editing.
+2. Read `SERVER3_SUMMARY.md` at session start before planning/editing; open `SERVER3_PROGRESS.md` only when more detail is required.
 3. Before any change, print **AI Prompt for Action** with:
    - Objective
    - Scope (IN / OUT)
@@ -29,9 +29,9 @@ Mandatory process rules:
 4. Ask for explicit confirmation and WAIT before implementing.
 5. For non-exempt changes: commit + push to `origin/main`, then show:
    - `git status`
-   - `git diff --stat`
+   - `git show --stat --oneline -1`
    - `git log -1 --oneline`
-6. Update `SERVER3_PROGRESS.md` at end of non-exempt work.
+6. Update `SERVER3_SUMMARY.md` at end of non-exempt work; update `SERVER3_PROGRESS.md` only for detailed archival context.
 7. Do not assume missing values. Ask user when required.
 8. Keep secrets out of git.
 9. Follow minimal-change principle.

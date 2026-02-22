@@ -25,7 +25,8 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - `ops/` apply/rollback/restart/status scripts for live rollout
 - `docs/` operator runbooks
 - `logs/` repo-tracked execution/change records
-- `SERVER3_PROGRESS.md` running high-level context log
+- `SERVER3_SUMMARY.md` summary-first session context log
+- `SERVER3_PROGRESS.md` detailed historical/diagnostic archive
 - `ARCHITECT_INSTRUCTION.md` authoritative workflow rules
 
 ## Prerequisites
@@ -93,7 +94,9 @@ bash src/telegram_bridge/smoke_test.sh
 
 ## Progress Tracking
 
-Use `SERVER3_PROGRESS.md` as the session-to-session status log. Add one high-level entry after each completed non-exempt task/change set.
+Use `SERVER3_SUMMARY.md` as the default session-to-session status log and read it first.
+Open `SERVER3_PROGRESS.md` only when more detail is needed for the current task.
+For non-exempt changes, update `SERVER3_SUMMARY.md` each time; update `SERVER3_PROGRESS.md` only when detailed archival context is useful.
 
 ## Security Notes
 
@@ -116,4 +119,5 @@ Use `SERVER3_PROGRESS.md` as the session-to-session status log. Add one high-lev
 - `docs/home-assistant-ops.md`
 - `docs/telegram-architect-bridge.md`
 - `docs/server-setup.md`
+- `SERVER3_SUMMARY.md`
 - `SERVER3_PROGRESS.md`

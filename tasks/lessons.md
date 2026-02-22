@@ -14,3 +14,8 @@ Use one section per lesson:
 ## Lessons
 
 <!-- Add new lessons below this line using the template above. -->
+
+### 2026-02-22T20:24:56+10:00 - Approval Gate Output Clarity
+- Mistake pattern: I paused at the mandatory approval gate but did not immediately make the blocked state and next action obvious enough.
+- Prevention rule: When waiting for required approval, reply with explicit status (`paused pending approval`) and one clear action command the user can send.
+- Where/when applied: Immediately after any AI Prompt for Action where execution is blocked until user confirmation.

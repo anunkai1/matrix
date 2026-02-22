@@ -1,5 +1,31 @@
 # Server3 Progress Log
 
+Summary-first note:
+- Read `SERVER3_SUMMARY.md` first for normal session context.
+- Use this file as the detailed archive when additional history/diagnostics are needed.
+
+## 2026-02-22 (Summary-First Context Workflow + Doc Consistency Fixes)
+
+### Summary
+- Added summary-first session context file: `SERVER3_SUMMARY.md`.
+- Updated authoritative workflow policy in `ARCHITECT_INSTRUCTION.md`:
+  - session start now requires `SERVER3_SUMMARY.md` first
+  - `SERVER3_PROGRESS.md` is now detailed archive context loaded when needed
+  - session-end update requirement now centers on `SERVER3_SUMMARY.md`, with progress log updates for detailed archival scenarios
+- Updated documentation for consistency:
+  - `README.md` progress-tracking and structure references updated for summary-first workflow
+  - `docs/telegram-architect-bridge.md` refreshed runtime file map and canonical-session env flags
+  - `docs/home-assistant-ops.md` fixed stale env-file examples and corrected scheduled-action cancel flow
+  - `docs/handoffs/voucher-automation-resume-handoff.md` aligned with current proof command (`git show --stat --oneline -1`) and summary-first startup workflow
+- No runtime/service/live system changes were made.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change set is documentation/policy only.
+
 ## 2026-02-22 (Policy Hardening: Beginner Clarity + Brisbane Timestamp Standard)
 
 ### Summary
