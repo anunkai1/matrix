@@ -516,12 +516,32 @@ def build_help_text() -> str:
 def build_status_text(state: State, config, chat_id: Optional[int] = None) -> str:
     with state.lock:
         busy_count = len(state.busy_chats)
-        thread_count = len(state.chat_threads)
-        worker_count = len(state.worker_sessions)
         restart_requested = state.restart_requested
         restart_in_progress = state.restart_in_progress
-        has_thread = chat_id in state.chat_threads if chat_id is not None else False
-        has_worker = chat_id in state.worker_sessions if chat_id is not None else False
+        if state.canonical_sessions_enabled:
+            thread_count = sum(
+                1 for session in state.chat_sessions.values() if session.thread_id.strip()
+            )
+            worker_count = sum(
+                1
+                for session in state.chat_sessions.values()
+                if session.worker_created_at is not None and session.worker_last_used_at is not None
+            )
+            has_thread = False
+            has_worker = False
+            if chat_id is not None:
+                session = state.chat_sessions.get(chat_id)
+                if session is not None:
+                    has_thread = bool(session.thread_id.strip())
+                    has_worker = (
+                        session.worker_created_at is not None
+                        and session.worker_last_used_at is not None
+                    )
+        else:
+            thread_count = len(state.chat_threads)
+            worker_count = len(state.worker_sessions)
+            has_thread = chat_id in state.chat_threads if chat_id is not None else False
+            has_worker = chat_id in state.worker_sessions if chat_id is not None else False
 
     lines = [
         "Bridge status: online",

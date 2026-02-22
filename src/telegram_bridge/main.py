@@ -111,6 +111,7 @@ class Config:
     persistent_workers_idle_timeout_seconds: int
     persistent_workers_policy_files: List[str]
     canonical_sessions_enabled: bool
+    canonical_legacy_mirror_enabled: bool
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -260,6 +261,10 @@ def load_config() -> Config:
         persistent_workers_policy_files=build_policy_watch_files(),
         canonical_sessions_enabled=parse_bool_env(
             "TELEGRAM_CANONICAL_SESSIONS_ENABLED",
+            False,
+        ),
+        canonical_legacy_mirror_enabled=parse_bool_env(
+            "TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED",
             False,
         ),
     )
@@ -444,13 +449,16 @@ def run_bridge(config: Config) -> int:
         in_flight_requests=loaded_in_flight,
         in_flight_path=in_flight_path,
         canonical_sessions_enabled=config.canonical_sessions_enabled,
+        canonical_legacy_mirror_enabled=config.canonical_legacy_mirror_enabled,
         chat_sessions=loaded_canonical_sessions,
         chat_sessions_path=chat_sessions_path,
     )
     state_repo = StateRepository(state)
     client = TelegramClient(config)
 
-    if config.persistent_workers_enabled:
+    if config.persistent_workers_enabled and (
+        not config.canonical_sessions_enabled or config.canonical_legacy_mirror_enabled
+    ):
         persist_chat_threads(state)
         persist_worker_sessions(state)
     if config.canonical_sessions_enabled:
@@ -461,7 +469,10 @@ def run_bridge(config: Config) -> int:
                 state.in_flight_requests,
             )
         persist_canonical_sessions(state)
-        mirror_legacy_from_canonical(state, persist=True)
+        mirror_legacy_from_canonical(
+            state,
+            persist=state.canonical_legacy_mirror_enabled,
+        )
 
     interrupted = state_repo.pop_interrupted_requests()
     if interrupted:
@@ -507,6 +518,10 @@ def run_bridge(config: Config) -> int:
         config.canonical_sessions_enabled,
         len(state.chat_sessions),
         chat_sessions_path,
+    )
+    logging.info(
+        "Canonical legacy mirror enabled=%s",
+        config.canonical_legacy_mirror_enabled,
     )
 
     while True:

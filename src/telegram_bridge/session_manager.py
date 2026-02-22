@@ -182,7 +182,10 @@ def ensure_chat_worker_session(
 
         if changed:
             persist_canonical_sessions(state)
-            mirror_legacy_from_canonical(state, persist=True)
+            mirror_legacy_from_canonical(
+                state,
+                persist=state.canonical_legacy_mirror_enabled,
+            )
 
         if evicted_idle_chat_id is not None and evicted_idle_chat_id in config.allowed_chat_ids:
             try:
@@ -350,7 +353,10 @@ def expire_idle_worker_sessions(
 
         if changed:
             persist_canonical_sessions(state)
-            mirror_legacy_from_canonical(state, persist=True)
+            mirror_legacy_from_canonical(
+                state,
+                persist=state.canonical_legacy_mirror_enabled,
+            )
 
         if not expired_chat_ids:
             return
