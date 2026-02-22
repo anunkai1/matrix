@@ -9,7 +9,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Input modes: text, photo (image + optional caption), voice snippets (transcribed to text and echoed back), and generic files/documents for analysis
 - Context behavior: per-chat context persistence (`chat_id -> thread_id`) with `/reset`
 - Optional persistent worker-session manager via env flag (`TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`)
-- Optional canonical session-store mode via env flag (`TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`) with legacy file mirrors retained for rollback compatibility
+- Optional canonical session-store mode via env flag (`TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`); legacy mirror writes are optional via `TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED=true` for temporary rollback compatibility
 - Built-in safe `/restart` command (queues restart until active work completes)
 - Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup
 - Help alias: `/h` (same as `/help`)

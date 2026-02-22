@@ -1,5 +1,46 @@
 # Server3 Progress Log
 
+## 2026-02-21 (Telegram Bridge: Canonical Session Model Phase 3 - Canonical-Only Runtime Path)
+
+### Summary
+- Completed Phase 3 canonical-session migration by finalizing canonical-only runtime semantics when canonical mode is enabled.
+- Added temporary rollback mirror control:
+  - new config flag: `TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED` (default `false`)
+  - wired to `Config.canonical_legacy_mirror_enabled` and `State.canonical_legacy_mirror_enabled`
+- Updated `src/telegram_bridge/state_store.py`:
+  - canonical-first operations now mirror legacy files only when rollback mirror flag is enabled
+  - added canonical->legacy conversion helpers:
+    - `_canonical_session_to_legacy(...)`
+    - `build_legacy_from_canonical(...)`
+    - `canonical_session_is_empty(...)`
+  - `mirror_legacy_from_canonical(...)` now always keeps in-memory legacy views aligned, but persists legacy files only when rollback mirror flag is enabled
+- Updated `src/telegram_bridge/session_manager.py` canonical-mode lifecycle paths to honor optional legacy mirror persistence.
+- Updated startup behavior in `src/telegram_bridge/main.py`:
+  - added canonical legacy mirror config parsing
+  - canonical mode startup now uses canonical source-of-truth path with optional legacy persistence based on rollback mirror flag
+  - startup logging now reports canonical legacy mirror enablement.
+- Updated `src/telegram_bridge/handlers.py` status reporting:
+  - `/status` now reports context/worker counts directly from canonical sessions when canonical mode is enabled (independent of legacy mirror persistence).
+- Expanded tests in `tests/telegram_bridge/test_bridge_core.py`:
+  - canonical-first + mirror-enabled persistence behavior
+  - canonical-first + mirror-disabled no-legacy-persist behavior
+  - total test count now 11.
+- Updated `README.md` to document canonical mode and temporary rollback mirror flag.
+
+### Validation
+- `python3 -m py_compile src/telegram_bridge/main.py src/telegram_bridge/executor.py src/telegram_bridge/handlers.py src/telegram_bridge/media.py src/telegram_bridge/session_manager.py src/telegram_bridge/state_store.py src/telegram_bridge/stream_buffer.py src/telegram_bridge/transport.py` (pass)
+- `python3 -m unittest discover -s tests -p 'test_*.py'` (pass, 11 tests)
+- `python3 src/telegram_bridge/main.py --self-test` (pass)
+- `bash src/telegram_bridge/smoke_test.sh` (pass)
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- No live `/etc` or systemd/runtime configuration changes were made in this change set.
+- Canonical mode remains feature-flagged; production behavior is unchanged unless enabled explicitly.
+
 ## 2026-02-21 (Telegram Bridge: Canonical Session Model Phase 2 - Canonical-First Behind Flag)
 
 ### Summary
