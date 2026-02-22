@@ -1,5 +1,25 @@
 # Server3 Progress Log
 
+## 2026-02-22 (Voucher Automation: Resume Handoff Prompt + Telegram Delivery)
+
+### Summary
+- Added a resume handoff document for paused voucher automation work:
+  - `docs/handoffs/voucher-automation-resume-handoff.md`
+- Handoff includes:
+  - beginner-friendly high-level status summary
+  - full LLM/Codex continuation prompt with decisions, constraints, rollback status, and next sequence
+- Sent the handoff markdown file to Telegram chat ID `211761499` as a document for easy reuse in a new chat.
+- No voucher automation implementation code was added in this step.
+- No live staker/server1 changes were made in this step.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- This change is documentation/operational handoff only.
+- Voucher automation implementation remains pending.
+
 ## 2026-02-22 (Telegram Bridge: Live Canonical Rollout Enable + Restart Verification)
 
 ### Summary
