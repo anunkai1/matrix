@@ -12,6 +12,7 @@ Last updated: 2026-02-22 (AEST, +10:00)
 - Policy hardening completed for git safety, staging safety, and Brisbane timestamp consistency.
 - Canonical session rollout has been enabled in live bridge env with restart verification.
 - Documentation updated for summary-first session context and runbook consistency.
+- README change-control wording aligned with authoritative summary/progress policy to remove ambiguity.
 
 ## Session Start Guidance
 - Read this file first at the start of each Codex session.
