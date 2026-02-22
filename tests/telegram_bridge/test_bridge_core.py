@@ -219,6 +219,55 @@ class BridgeCoreTests(unittest.TestCase):
             self.assertEqual(sessions[7].thread_id, "thread-7")
             self.assertEqual(sessions[7].in_flight_message_id, 700)
 
+    def test_build_legacy_from_canonical(self):
+        canonical = {
+            9: bridge.CanonicalSession(
+                thread_id="thread-9",
+                worker_created_at=1.0,
+                worker_last_used_at=2.0,
+                worker_policy_fingerprint="fp",
+                in_flight_started_at=3.0,
+                in_flight_message_id=90,
+            )
+        }
+        chat_threads, worker_sessions, in_flight = bridge.build_legacy_from_canonical(canonical)
+        self.assertEqual(chat_threads[9], "thread-9")
+        self.assertEqual(worker_sessions[9].policy_fingerprint, "fp")
+        self.assertEqual(in_flight[9]["message_id"], 90)
+
+    def test_canonical_first_set_thread_and_clear_worker_mirrors_legacy(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = bridge.State(
+                chat_thread_path=str(Path(tmpdir) / "chat_threads.json"),
+                worker_sessions_path=str(Path(tmpdir) / "worker_sessions.json"),
+                in_flight_path=str(Path(tmpdir) / "in_flight_requests.json"),
+                chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
+                canonical_sessions_enabled=True,
+                chat_sessions={
+                    5: bridge.CanonicalSession(
+                        thread_id="old-thread",
+                        worker_created_at=1.0,
+                        worker_last_used_at=1.0,
+                        worker_policy_fingerprint="old",
+                    )
+                },
+            )
+            bridge.persist_canonical_sessions(state)
+            bridge.mirror_legacy_from_canonical(state, persist=True)
+
+            repo = bridge.StateRepository(state)
+            repo.set_thread_id(5, "new-thread")
+            repo.clear_worker_session(5)
+
+            sessions = bridge.load_canonical_sessions(state.chat_sessions_path)
+            self.assertEqual(sessions[5].thread_id, "new-thread")
+            self.assertIsNone(sessions[5].worker_created_at)
+
+            threads = json.loads(Path(state.chat_thread_path).read_text(encoding="utf-8"))
+            workers = json.loads(Path(state.worker_sessions_path).read_text(encoding="utf-8"))
+            self.assertEqual(threads["5"], "new-thread")
+            self.assertEqual(workers, {})
+
 
 if __name__ == "__main__":
     unittest.main()
