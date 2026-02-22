@@ -1,5 +1,33 @@
 # Server3 Progress Log
 
+## 2026-02-22 (Policy Hardening: Beginner Clarity + Brisbane Timestamp Standard)
+
+### Summary
+- Updated `ARCHITECT_INSTRUCTION.md` to improve execution safety and beginner clarity.
+- Git safety updates:
+  - removed masked pull behavior (`git pull --ff-only` now hard-stop on failure)
+  - replaced weak post-commit proof (`git diff --stat`) with `git show --stat --oneline -1`
+  - changed staging guidance to explicit file paths by default, with `git add -A` only when intentionally staging all task changes
+- Policy clarity updates:
+  - renamed repo settings section from placeholder wording to current-state wording
+  - added explicit exempt vs non-exempt quick decision rule under HA boundary
+- Traceability time standard updates:
+  - required `logs/` timestamps now must use Australia/Brisbane ISO-8601 with offset (AEST, +10:00)
+- Bootstrap/enforceability updates:
+  - added mandatory bootstrap mention for `tasks/lessons.md` in from-scratch rules
+  - expanded section 7B with minimal schema requirements for each lesson entry
+- Created new file: `tasks/lessons.md` with minimal template for lesson capture.
+- Removed decorative emoji heading style in `ARCHITECT_INSTRUCTION.md` for cleaner policy readability.
+- No runtime/service/live system changes were made.
+
+### Git State
+- Current branch: `main`
+- Remote: `origin https://github.com/anunkai1/matrix.git`
+
+### Notes
+- These are documentation/policy hardening changes only.
+- Brisbane timestamp requirement applies to future repo-tracked execution logs.
+
 ## 2026-02-22 (Workflow Policy: Execution Quality Gates Added)
 
 ### Summary

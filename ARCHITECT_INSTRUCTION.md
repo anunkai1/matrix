@@ -1,4 +1,4 @@
-🤖 ARCHITECT_INSTRUCTION.md — Server3 Codex Workflow (AUTHORITATIVE)
+ARCHITECT_INSTRUCTION.md - Server3 Codex Workflow (AUTHORITATIVE)
 
 Project: matrix (Server3)  
 Status: active repo (policies + infra/ops/docs/logs workflow enabled)
@@ -7,7 +7,7 @@ Codex runs ON Server3 (you SSH from Windows / PuTTY and run: codex "..." on the 
 
 ---
 
-🔐 GOLDEN RULE — CHANGE CONTROL (AUTHORITATIVE)
+GOLDEN RULE - CHANGE CONTROL (AUTHORITATIVE)
 
 - This Git repo is the SINGLE SOURCE OF TRUTH.
 - The canonical repo is: `https://github.com/anunkai1/matrix` (public).
@@ -47,6 +47,8 @@ TRACEABILITY RULE (MANDATORY, ALL NON-EXEMPT SERVER CHANGES)
   4. Use `docs/` for human-readable procedures/runbooks
     
   5. Record what was applied and where (path + timestamp) in `logs/` (repo-tracked execution records)
+     Timestamp format is mandatory: Australia/Brisbane ISO-8601 with offset
+     (example: `2026-02-22T19:45:00+10:00`)
     
 - No “server-only” state is allowed to remain undocumented or unpushed after the session ends.
 
@@ -70,6 +72,9 @@ EXEMPTION BOUNDARY (MANDATORY)
   - Home Assistant package/automation/script/template changes
   - any infra/ops/docs/logs artifact updates in this repo
 - If any non-routine or persistent change occurs, full traceability rules above remain mandatory (document + commit + push in same session).
+- Quick decision rule:
+  - EXEMPT only if the action is a direct HA runtime state call and does not edit/create any persistent file or config.
+  - NON-EXEMPT if any file/config/code/docs/script/automation/repo artifact changes, even if triggered from HA context.
   
 SESSION START RULE (MANDATORY)
 
@@ -115,7 +120,7 @@ Codex MUST:
   
   - git status
     
-  - git diff --stat
+  - git show --stat --oneline -1
     
   - git log -1 --oneline
     
@@ -158,7 +163,7 @@ If anything is unknown → Codex must STOP and ask the user.
 
 2. GIT + GITHUB RULES (MANDATORY)
 
-Repo settings (placeholders — decide later)
+Repo settings (current)
 
 - GitHub repo: `https://github.com/anunkai1/matrix`
   
@@ -179,14 +184,15 @@ Working rules (use now)
 Required command sequence (non-exempt changes):
 
 cd ~/matrix  
-git pull --ff-only || true  
+git pull --ff-only  
 git status
 
 # edit files
 
 git status  
 git diff  
-git add -A  
+git add <explicit file paths changed for this task>  
+# use `git add -A` only if intentionally staging all current changes for this same task
 git commit -m "..."  
 git push origin main
 
@@ -195,7 +201,7 @@ Routine HA quick-ops do not require repo file updates, commit, or push.
 After commit, Codex must always show:
 
 git status  
-git diff --stat  
+git show --stat --oneline -1  
 git log -1 --oneline
 
 If git push fails:
@@ -245,6 +251,8 @@ For project setup tasks:
   - .gitignore (minimal)
     
   - optional docs/ folder if needed
+
+  - `tasks/lessons.md` bootstrap file (create if missing, using section 7B schema)
     
 
 ---
@@ -291,6 +299,12 @@ A) VERIFICATION BEFORE DONE (NET-NEW PARTS)
 B) SELF-IMPROVEMENT LOOP
 
 - After any user correction, update `tasks/lessons.md` with:
+  - mistake pattern
+  - prevention rule
+  - where/when the rule is applied
+- If `tasks/lessons.md` does not exist yet, create it before adding the first lesson.
+- Minimal schema per lesson entry:
+  - timestamp (Australia/Brisbane ISO-8601 with offset)
   - mistake pattern
   - prevention rule
   - where/when the rule is applied
