@@ -1,0 +1,71 @@
+# Server3 Summary
+
+Last updated: 2026-02-26 (AEST, +10:00)
+
+## Current Snapshot
+- Primary active component: `telegram-architect-bridge.service`
+- Runtime pattern: Telegram long polling + local `codex exec`
+- Major enabled capabilities: text/photo/voice/document input handling, per-chat context persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
+- Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
+
+## Most Recent Changes
+- Repository scope cleanup completed on 2026-02-26:
+  - Removed legacy media automation artifacts, docs, env templates, helper scripts, and change records from tracked repo content.
+  - Updated shared summary/archive and docker target-state documents to match current project scope.
+- Applied managed Architect launcher to live shell profile and restarted Telegram bridge (live):
+  - Live launcher apply:
+    - command: `bash ops/bash/deploy-bashrc.sh apply`
+    - target: `/home/architect/.bashrc`
+    - backup created: `/home/architect/.bashrc.bak.20260226200618.346165`
+  - Verification:
+    - `bash -ic 'type architect; declare -f architect'` confirms `architect` now routes prompt usage through:
+      - `/home/architect/matrix/src/architect_cli/main.py`
+    - codex subcommand passthrough remains available in launcher function.
+  - Bridge restart/verify:
+    - command: `bash ops/telegram-bridge/restart_and_verify.sh`
+    - verification: `pass`
+    - service active after restart with new PID/start:
+      - PID: `346400`
+      - start: `Thu 2026-02-26 20:07:33 AEST`
+  - Post-restart status confirms shared memory runtime logging:
+    - `Memory SQLite path=/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3`
+    - `bridge.started` event present.
+  - Updated traceability artifacts:
+    - `logs/changes/20260226-200802-bashrc-launcher-apply-and-bridge-restart-live.md`
+- Added Memory v1.1 shared SQLite engine for Telegram + Architect CLI (repo-only):
+  - New shared memory module:
+    - `src/telegram_bridge/memory_engine.py`
+    - canonical tables:
+      - `messages`, `sessions`, `memory_facts`, `chat_summaries`, `memory_state`, `memory_config`
+    - per-conversation-key model:
+      - Telegram: `tg:<chat_id>`
+      - CLI default: `cli:architect:default`
+      - CLI named profile: `cli:architect:<profile_name>`
+    - modes:
+      - `full` (default for new keys)
+      - `session_only`
+    - no persistent `off` mode
+  - Telegram bridge integration:
+    - `src/telegram_bridge/main.py` now initializes shared memory DB (env: `TELEGRAM_MEMORY_SQLITE_PATH`, default `<state_dir>/memory.sqlite3`)
+    - `src/telegram_bridge/handlers.py` now supports memory commands + `/ask` stateless one-turn path:
+      - `/memory mode`, `/memory mode full`, `/memory mode session_only`, `/memory status`, `/memory export`
+      - `/remember`, `/forget`, `/forget-all`, `/reset-session`, `/hard-reset-memory`
+      - `/ask <prompt>`
+    - `/help` and `/h` now include memory command section
+  - Architect CLI integration:
+    - new script: `src/architect_cli/main.py`
+    - launcher update: `infra/bash/home/architect/.bashrc`
+      - non-subcommand `architect ...` usage now routes through shared-memory CLI wrapper
+      - preserves direct codex passthrough for codex subcommands
+  - QA and docs:
+    - new test suite: `tests/telegram_bridge/test_memory_engine.py`
+    - extended bridge tests: `tests/telegram_bridge/test_bridge_core.py`
+    - smoke compile list updated: `src/telegram_bridge/smoke_test.sh`
+    - docs/env updates:
+      - `README.md`
+      - `docs/telegram-architect-bridge.md`
+      - `infra/env/telegram-architect-bridge.env.example`
+  - Validation outcomes:
+    - `python3 -m unittest discover -s tests -p 'test_*.py'` -> `33 passed`
+    - `python3 src/telegram_bridge/main.py --self-test` -> `self-test: ok`
+    - `bash src/telegram_bridge/smoke_test.sh` -> `smoke-test: ok`
