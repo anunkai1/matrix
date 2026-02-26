@@ -151,6 +151,10 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 Message handling:
 
 - All allowlisted chats route to Architect.
+- Messages starting with `HA` or `Home Assistant` are forced into Home Assistant mode:
+  - the bridge wraps the request with strict policy to use only `ops/ha/*.sh` scripts
+  - HA-keyword requests run stateless (no memory/session carryover)
+  - empty keyword-only messages are rejected with a usage hint
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`
 - File without caption uses: `Please analyze this file.`

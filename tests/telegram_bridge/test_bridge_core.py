@@ -138,6 +138,15 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(trimmed.endswith("[output truncated]"))
         self.assertLessEqual(len(trimmed), 20)
 
+    def test_extract_ha_keyword_request_variants(self):
+        self.assertEqual(bridge_handlers.extract_ha_keyword_request("HA open garage"), (True, "open garage"))
+        self.assertEqual(
+            bridge_handlers.extract_ha_keyword_request("Home Assistant: turn off light"),
+            (True, "turn off light"),
+        )
+        self.assertEqual(bridge_handlers.extract_ha_keyword_request("ha"), (True, ""))
+        self.assertEqual(bridge_handlers.extract_ha_keyword_request("happy path"), (False, ""))
+
     def test_json_log_formatter_includes_event_and_fields(self):
         record = logging.LogRecord(
             "telegram_bridge",
@@ -264,6 +273,49 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Available commands:", client.messages[-1][1])
         self.assertIn("/memory mode", client.messages[-1][1])
         self.assertIn("/ask <prompt>", client.messages[-1][1])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_routes_ha_keyword_prompt_stateless(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 10,
+            "message": {
+                "message_id": 40,
+                "chat": {"id": 1},
+                "text": "Home Assistant turn on masters AC to dry mode at 9:25am",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertTrue(kwargs["stateless"])
+        self.assertIn("Home Assistant priority mode is active.", kwargs["prompt"])
+        self.assertIn("User request: turn on masters AC to dry mode at 9:25am", kwargs["prompt"])
+        self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_rejects_ha_keyword_without_action(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 11,
+            "message": {
+                "message_id": 41,
+                "chat": {"id": 1},
+                "text": "HA",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertFalse(start_message_worker.called)
+        self.assertEqual(len(client.messages), 1)
+        self.assertIn("HA mode needs an action.", client.messages[0][1])
 
     def test_handle_update_routes_memory_status_command(self):
         with tempfile.TemporaryDirectory() as tmpdir:

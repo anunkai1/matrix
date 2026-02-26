@@ -9,6 +9,21 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Added explicit HA keyword routing in Telegram bridge on 2026-02-27 (repo-only):
+  - New trigger prefixes:
+    - `HA ...`
+    - `Home Assistant ...`
+  - Routing behavior:
+    - keyword-triggered prompts are wrapped in strict HA execution policy
+    - policy requires use of `ops/ha/*.sh` scripts and blocks inline HA shell/curl paths
+    - keyword-triggered requests run stateless to avoid context carryover
+    - empty keyword-only requests are rejected with usage hint
+  - Code/docs updates:
+    - `src/telegram_bridge/handlers.py`
+    - `tests/telegram_bridge/test_bridge_core.py`
+    - `docs/telegram-architect-bridge.md`
+  - Validation outcomes:
+    - targeted bridge tests passed for keyword parsing + routing
 - Added dedicated HA climate mode set/schedule path on 2026-02-27 (repo + live validation):
   - Root cause addressed:
     - ad-hoc `systemd-run` command for 08:23 dry-mode scheduling failed due transient shell/env interpolation issues.

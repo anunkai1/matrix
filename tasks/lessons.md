@@ -34,3 +34,8 @@ Use one section per lesson:
 - Mistake pattern: A one-off inline `systemd-run` climate mode command failed at execution due shell/env interpolation behavior in the transient unit.
 - Prevention rule: Use dedicated versioned scripts (`set_climate_mode.sh` and `schedule_climate_mode.sh`) with explicit arguments and preflight checks, not ad-hoc inline command strings.
 - Where/when applied: Any future HA climate mode request, especially scheduled `--at`/`--in` actions.
+
+### 2026-02-27T09:38:29+10:00 - Require Explicit HA Prefix for Deterministic Chat Routing
+- Mistake pattern: Free-form chat requests could still flow into generic execution paths even after HA scripts were hardened.
+- Prevention rule: Reserve `HA` / `Home Assistant` as explicit routing triggers and force those requests into stateless HA-script-only policy mode.
+- Where/when applied: Telegram bridge message routing before memory/command handling in `src/telegram_bridge/handlers.py`.

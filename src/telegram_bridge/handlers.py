@@ -58,6 +58,17 @@ RATE_LIMIT_MESSAGE = "Rate limit exceeded. Please wait a minute and retry."
 RETRY_WITH_NEW_SESSION_PHASE = "Execution failed. Retrying once with a new session."
 RESUME_RETRY_PHASE = "Retrying as a new Architect session."
 RETRY_FAILED_MESSAGE = "Execution failed after an automatic retry. Please resend your request."
+HA_KEYWORD_HELP_MESSAGE = (
+    "HA mode needs an action. Example: `HA turn on masters AC to dry mode at 9:25am`."
+)
+HA_ROUTING_SCRIPT_ALLOWLIST = (
+    "/home/architect/matrix/ops/ha/turn_entity_power.sh",
+    "/home/architect/matrix/ops/ha/schedule_entity_power.sh",
+    "/home/architect/matrix/ops/ha/set_climate_temperature.sh",
+    "/home/architect/matrix/ops/ha/schedule_climate_temperature.sh",
+    "/home/architect/matrix/ops/ha/set_climate_mode.sh",
+    "/home/architect/matrix/ops/ha/schedule_climate_mode.sh",
+)
 
 
 @dataclass
@@ -80,6 +91,38 @@ def normalize_command(text: str) -> Optional[str]:
         return None
     head = stripped.split(maxsplit=1)[0]
     return head.split("@", maxsplit=1)[0]
+
+
+def extract_ha_keyword_request(text: str) -> tuple[bool, str]:
+    stripped = text.strip()
+    if not stripped:
+        return False, ""
+
+    lowered = stripped.lower()
+    for keyword in ("ha", "home assistant"):
+        if lowered == keyword:
+            return True, ""
+        if lowered.startswith(keyword):
+            remainder = stripped[len(keyword):]
+            if remainder and remainder[0] not in (" ", ":", "-"):
+                continue
+            return True, remainder.lstrip(" :-\t")
+    return False, ""
+
+
+def build_ha_keyword_prompt(user_request: str) -> str:
+    scripts = "\n".join(f"- {path}" for path in HA_ROUTING_SCRIPT_ALLOWLIST)
+    return (
+        "Home Assistant priority mode is active.\n"
+        "Treat this as a Home Assistant action request.\n"
+        f"User request: {user_request.strip()}\n\n"
+        "Mandatory execution policy:\n"
+        f"{scripts}\n"
+        "- For scheduling, only use the schedule_* scripts with --at or --in.\n"
+        "- Do not use inline systemd-run, /bin/bash -lc, or direct curl commands for HA actions.\n"
+        "- If entity/time/mode is unclear, ask one concise clarification question instead of guessing.\n"
+        "- After execution, report the result with state or timer/service unit names."
+    )
 
 
 def trim_output(text: str, limit: int) -> str:
@@ -592,7 +635,8 @@ def build_help_text() -> str:
         "/status - show bridge status and context\n"
         "/reset - clear saved context for this chat\n"
         "/restart - queue a safe bridge restart\n\n"
-        "Send text, images, voice notes, or files and Architect will process them."
+        "Send text, images, voice notes, or files and Architect will process them.\n"
+        "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing."
     )
     return base + "\n\n" + "\n".join(build_memory_help_lines())
 
@@ -1324,10 +1368,38 @@ def handle_update(
         return
 
     sender_name = extract_sender_name(message)
-    command = normalize_command(prompt_input or "")
     stateless = False
+    command = normalize_command(prompt_input or "")
+    ha_keyword_mode = False
+    if prompt_input:
+        ha_keyword_mode, ha_request = extract_ha_keyword_request(prompt_input)
+        if ha_keyword_mode:
+            if not ha_request.strip():
+                emit_event(
+                    "bridge.request_rejected",
+                    level=logging.WARNING,
+                    fields={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "reason": "ha_keyword_missing_action",
+                    },
+                )
+                client.send_message(
+                    chat_id,
+                    HA_KEYWORD_HELP_MESSAGE,
+                    reply_to_message_id=message_id,
+                )
+                return
+            prompt_input = build_ha_keyword_prompt(ha_request)
+            command = None
+            stateless = True
+            emit_event(
+                "bridge.ha_keyword_routed",
+                fields={"chat_id": chat_id, "message_id": message_id},
+            )
+
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
-    if memory_engine is not None and prompt_input:
+    if memory_engine is not None and prompt_input and not ha_keyword_mode:
         cmd_result = handle_memory_command(
             engine=memory_engine,
             conversation_key=MemoryEngine.telegram_key(chat_id),
