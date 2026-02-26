@@ -9,6 +9,42 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Memory hardening phase 2 completed on 2026-02-27 (repo + live):
+  - Repo hardening updates:
+    - Added privacy guardrails in `src/telegram_bridge/memory_engine.py`:
+      - `/remember` now auto-redacts obvious secret-like values before storage.
+      - `/memory export` is redacted by default; `/memory export raw` is explicit opt-in.
+    - Added memory monitoring and drill tooling:
+      - `ops/telegram-bridge/memory_health_check.sh`
+      - `ops/telegram-bridge/memory_restore_drill.sh`
+    - Added memory timer install helper:
+      - `ops/telegram-bridge/install_memory_timers.sh`
+    - Added systemd source-of-truth units:
+      - `infra/systemd/telegram-architect-memory-maintenance.service`
+      - `infra/systemd/telegram-architect-memory-maintenance.timer`
+      - `infra/systemd/telegram-architect-memory-health.service`
+      - `infra/systemd/telegram-architect-memory-health.timer`
+    - Maintenance script enhanced with backup retention pruning:
+      - `ops/telegram-bridge/memory_maintenance.sh`
+    - Docs/env updates:
+      - `docs/telegram-architect-bridge.md`
+      - `infra/env/telegram-architect-bridge.env.example`
+    - Validation outcomes:
+      - `python3 -m unittest discover -s tests -p 'test_*.py'` -> `40 passed`
+      - `python3 src/telegram_bridge/main.py --self-test` -> `self-test: ok`
+      - `bash src/telegram_bridge/smoke_test.sh` -> `smoke-test: ok`
+  - Live rollout on Server3:
+    - Applied timers with `bash ops/telegram-bridge/install_memory_timers.sh apply`
+    - Active timers:
+      - `telegram-architect-memory-maintenance.timer`
+      - `telegram-architect-memory-health.timer`
+    - Verified one-shot runs:
+      - health service emitted `memory-health: ok ...`
+      - maintenance service created backup + prune + checkpoint/vacuum success
+    - Verified restore drill pass:
+      - `bash ops/telegram-bridge/memory_restore_drill.sh`
+    - Updated traceability artifact:
+      - `logs/changes/20260227-073037-telegram-memory-hardening-phase2-live.md`
 - Rolled out Telegram bridge memory retention env on Server3 (live) on 2026-02-27:
   - Updated live `/etc/default/telegram-architect-bridge` with:
     - `TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY=4000`

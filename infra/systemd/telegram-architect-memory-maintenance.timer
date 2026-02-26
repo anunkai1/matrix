@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Telegram Architect Memory Maintenance Timer
+
+[Timer]
+OnCalendar=*-*-* 03:25:00
+RandomizedDelaySec=600
+Persistent=true
+Unit=telegram-architect-memory-maintenance.service
+
+[Install]
+WantedBy=timers.target

@@ -118,6 +118,51 @@ class MemoryEngineTests(unittest.TestCase):
             self.assertFalse(status.session_active)
             self.assertEqual(status.mode, memory.MODE_FULL)
 
+    def test_remember_redacts_obvious_secret_values(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.cli_key("default")
+            engine = memory.MemoryEngine(db_path)
+
+            remember = memory.handle_memory_command(
+                engine,
+                key,
+                "/remember api_key: sk-SecretToken1234567890",
+            )
+            self.assertTrue(remember.handled)
+            self.assertIn("Remembered", remember.response or "")
+
+            exported = engine.export_facts(key, include_sensitive=True)
+            self.assertEqual(len(exported), 1)
+            value = str(exported[0]["fact_value"])
+            self.assertIn("[REDACTED]", value)
+            self.assertNotIn("sk-SecretToken1234567890", value)
+
+    def test_memory_export_is_redacted_by_default_with_raw_opt_in(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.cli_key("default")
+            engine = memory.MemoryEngine(db_path)
+
+            with engine._lock, engine._connect() as conn:
+                engine._upsert_fact(
+                    conn,
+                    key,
+                    "legacy:token",
+                    "token: sk-rawlegacy1234567890",
+                    explicit=True,
+                    confidence=0.99,
+                    source_msg_id=None,
+                )
+
+            safe_export = memory.handle_memory_command(engine, key, "/memory export")
+            self.assertIn("redacted", safe_export.response or "")
+            self.assertNotIn("sk-rawlegacy1234567890", safe_export.response or "")
+            self.assertIn("[REDACTED]", safe_export.response or "")
+
+            raw_export = memory.handle_memory_command(engine, key, "/memory export raw")
+            self.assertIn("sk-rawlegacy1234567890", raw_export.response or "")
+
     def test_ask_command_is_stateless(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = str(Path(tmpdir) / "memory.sqlite3")

@@ -1,0 +1,11 @@
+[Unit]
+Description=Telegram Architect Memory Health Timer
+
+[Timer]
+OnCalendar=*:0/30
+RandomizedDelaySec=120
+Persistent=true
+Unit=telegram-architect-memory-health.service
+
+[Install]
+WantedBy=timers.target

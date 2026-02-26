@@ -28,6 +28,14 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Status helper: `ops/telegram-bridge/status_service.sh`
 - Memory maintenance helper: `ops/telegram-bridge/memory_maintenance.sh`
 - Memory restore helper: `ops/telegram-bridge/memory_restore.sh`
+- Memory restore drill helper: `ops/telegram-bridge/memory_restore_drill.sh`
+- Memory timer installer: `ops/telegram-bridge/install_memory_timers.sh`
+- Memory maintenance systemd units:
+  - `infra/systemd/telegram-architect-memory-maintenance.service`
+  - `infra/systemd/telegram-architect-memory-maintenance.timer`
+- Memory health systemd units:
+  - `infra/systemd/telegram-architect-memory-health.service`
+  - `infra/systemd/telegram-architect-memory-health.timer`
 - Voice runtime installer: `ops/telegram-voice/install_faster_whisper.sh`
 - Voice env updater: `ops/telegram-voice/configure_env.sh`
 - Voice command wrapper: `ops/telegram-voice/transcribe_voice.sh`
@@ -80,6 +88,12 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY=4000
 # TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY=80
 # TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS=300
+# TELEGRAM_MEMORY_BACKUP_RETENTION_DAYS=14
+# TELEGRAM_MEMORY_HEALTH_MAX_DB_BYTES=1073741824
+# TELEGRAM_MEMORY_HEALTH_MAX_QUERY_MS=1500
+# TELEGRAM_MEMORY_HEALTH_LOOKBACK_MINUTES=60
+# TELEGRAM_MEMORY_HEALTH_MAX_LOCK_ERRORS=0
+# TELEGRAM_MEMORY_HEALTH_MAX_WRITE_FAILURES=0
 ENV
 ```
 
@@ -118,8 +132,9 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/memory mode full` use summary + durable facts + recent messages
 - `/memory mode session_only` use recent messages + session continuity only
 - `/memory status` show mode/session/fact/summary counts for this key
-- `/memory export` list stored facts for this key
-- `/remember <text>` store explicit durable memory
+- `/memory export` list stored facts for this key (sensitive values redacted)
+- `/memory export raw` list stored facts including raw values
+- `/remember <text>` store explicit durable memory (obvious secrets auto-redacted)
 - `/forget <fact_id|fact_key>` disable one fact
 - `/forget-all` disable all facts for this key
 - `/reset-session` clear session continuity only
@@ -168,6 +183,7 @@ Message handling:
   - messages are auto-pruned per conversation key after `TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY` (default `4000`)
   - summaries are auto-pruned per conversation key after `TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY` (default `80`)
   - prune cadence is `TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS` (default `300`)
+  - backup cleanup retention uses `TELEGRAM_MEMORY_BACKUP_RETENTION_DAYS` (default `14`)
   - use `/forget`, `/forget-all`, `/reset-session`, or `/hard-reset-memory` for per-key cleanup
 - Optional persistent worker-session manager (feature-flagged):
   - enable with `TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`
@@ -250,7 +266,7 @@ Memory maintenance:
 ```bash
 bash ops/telegram-bridge/memory_maintenance.sh
 # optional:
-# bash ops/telegram-bridge/memory_maintenance.sh --db /path/to/memory.sqlite3 --skip-vacuum
+# bash ops/telegram-bridge/memory_maintenance.sh --db /path/to/memory.sqlite3 --backup-retention-days 21 --skip-vacuum
 ```
 
 Memory restore (run while bridge service is stopped):
@@ -259,6 +275,27 @@ Memory restore (run while bridge service is stopped):
 bash ops/telegram-bridge/memory_restore.sh /path/to/backup.sqlite3
 # optional:
 # bash ops/telegram-bridge/memory_restore.sh /path/to/backup.sqlite3 --db /path/to/memory.sqlite3
+```
+
+Non-destructive restore drill:
+
+```bash
+bash ops/telegram-bridge/memory_restore_drill.sh
+# optional:
+# bash ops/telegram-bridge/memory_restore_drill.sh --backup /path/to/memory-backup.sqlite3 --keep-temp
+```
+
+Scheduled memory timers:
+
+```bash
+bash ops/telegram-bridge/install_memory_timers.sh apply
+bash ops/telegram-bridge/install_memory_timers.sh status
+```
+
+Memory health check (on-demand):
+
+```bash
+bash ops/telegram-bridge/memory_health_check.sh
 ```
 
 ## Rollback

@@ -1,0 +1,13 @@
+[Unit]
+Description=Telegram Architect Memory Maintenance
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=architect
+Group=architect
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/default/telegram-architect-bridge
+ExecStart=/bin/bash /home/architect/matrix/ops/telegram-bridge/memory_maintenance.sh

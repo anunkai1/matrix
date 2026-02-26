@@ -38,6 +38,16 @@ SENSITIVE_PATTERNS = (
     "health record",
 )
 
+SENSITIVE_KEY_VALUE_PATTERN = re.compile(
+    r"(?i)\b(password|passcode|secret|private[ _-]?key|api[ _-]?key|token|ssn|social security|credit card|debit card|bank account|routing number)\b\s*[:=]\s*([^\s,;]+)"
+)
+SENSITIVE_PHRASE_PATTERN = re.compile(
+    r"(?i)\b(password|passcode|secret|private[ _-]?key|api[ _-]?key|token)\b\s+(?:is\s+)?([^\s,;]+)"
+)
+BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9_\-\.=]{10,})")
+API_TOKEN_PATTERN = re.compile(r"\b(sk-[A-Za-z0-9_-]{8,})\b")
+LONG_HEX_PATTERN = re.compile(r"\b([A-Fa-f0-9]{32,})\b")
+
 
 @dataclass
 class TurnContext:
@@ -816,6 +826,51 @@ class MemoryEngine:
         lowered = (text or "").lower()
         return any(marker in lowered for marker in SENSITIVE_PATTERNS)
 
+    @staticmethod
+    def _mask_secret_token(token: str) -> str:
+        clean = (token or "").strip()
+        if len(clean) <= 6:
+            return "[REDACTED]"
+        return f"{clean[:2]}...[REDACTED]...{clean[-2:]}"
+
+    @classmethod
+    def _redact_sensitive_text(cls, text: str) -> Tuple[str, bool]:
+        value = (text or "").strip()
+        if not value:
+            return value, False
+
+        redacted = value
+        changed = False
+
+        def redact_key_value(match: re.Match[str]) -> str:
+            nonlocal changed
+            changed = True
+            key = match.group(1)
+            return f"{key}: [REDACTED]"
+
+        def redact_phrase(match: re.Match[str]) -> str:
+            nonlocal changed
+            changed = True
+            key = match.group(1)
+            return f"{key} [REDACTED]"
+
+        def redact_bearer(match: re.Match[str]) -> str:
+            nonlocal changed
+            changed = True
+            return f"Bearer {cls._mask_secret_token(match.group(1))}"
+
+        def redact_token(match: re.Match[str]) -> str:
+            nonlocal changed
+            changed = True
+            return cls._mask_secret_token(match.group(1))
+
+        redacted = SENSITIVE_KEY_VALUE_PATTERN.sub(redact_key_value, redacted)
+        redacted = SENSITIVE_PHRASE_PATTERN.sub(redact_phrase, redacted)
+        redacted = BEARER_PATTERN.sub(redact_bearer, redacted)
+        redacted = API_TOKEN_PATTERN.sub(redact_token, redacted)
+        redacted = LONG_HEX_PATTERN.sub(redact_token, redacted)
+        return redacted, changed
+
     def _upsert_fact(
         self,
         conn: sqlite3.Connection,
@@ -870,6 +925,11 @@ class MemoryEngine:
         value = (text or "").strip()
         if not value:
             raise ValueError("No memory text provided")
+        value, changed = self._redact_sensitive_text(value)
+        if self._is_sensitive(value) and not changed:
+            raise ValueError(
+                "Refusing to store raw sensitive memory. Remove secrets or use non-sensitive summary text."
+            )
         fact_key = self._derive_explicit_fact_key(value)
         with self._lock, self._connect() as conn:
             fact_id = self._upsert_fact(
@@ -962,9 +1022,13 @@ class MemoryEngine:
             dedup[item[0]] = item
         return list(dedup.values())
 
-    def export_facts(self, conversation_key: str) -> List[sqlite3.Row]:
+    def export_facts(
+        self,
+        conversation_key: str,
+        include_sensitive: bool = False,
+    ) -> List[Dict[str, object]]:
         with self._lock, self._connect() as conn:
-            return conn.execute(
+            rows = conn.execute(
                 """
                 SELECT id, fact_key, fact_value, explicit, confidence, status
                 FROM memory_facts
@@ -973,6 +1037,22 @@ class MemoryEngine:
                 """,
                 (conversation_key,),
             ).fetchall()
+        out: List[Dict[str, object]] = []
+        for row in rows:
+            fact_value = str(row["fact_value"] or "")
+            safe_value, changed = self._redact_sensitive_text(fact_value)
+            out.append(
+                {
+                    "id": int(row["id"]),
+                    "fact_key": str(row["fact_key"]),
+                    "fact_value": fact_value if include_sensitive else safe_value,
+                    "explicit": int(row["explicit"]),
+                    "confidence": float(row["confidence"]),
+                    "status": str(row["status"]),
+                    "sensitive": bool(changed or self._is_sensitive(fact_value)),
+                }
+            )
+        return out
 
     def forget_fact(self, conversation_key: str, selector: str) -> str:
         candidate = (selector or "").strip()
@@ -1131,15 +1211,24 @@ def handle_memory_command(engine: MemoryEngine, conversation_key: str, text: str
                 ),
             )
 
-        if tail.lower() == "export":
-            rows = engine.export_facts(conversation_key)
+        if tail.lower() in {"export", "export raw"}:
+            include_sensitive = tail.lower() == "export raw"
+            rows = engine.export_facts(
+                conversation_key,
+                include_sensitive=include_sensitive,
+            )
             if not rows:
                 return CommandResult(handled=True, response="No facts stored for this conversation key.")
-            lines = ["Active/known facts:"]
+            lines = [
+                "Active/known facts:"
+                if include_sensitive
+                else "Active/known facts (sensitive values redacted by default):"
+            ]
             for row in rows:
                 status = str(row["status"])
+                sensitivity = "yes" if bool(row["sensitive"]) else "no"
                 lines.append(
-                    f"- id={row['id']} key={row['fact_key']} status={status} value={row['fact_value']}"
+                    f"- id={row['id']} key={row['fact_key']} status={status} sensitive={sensitivity} value={row['fact_value']}"
                 )
             return CommandResult(handled=True, response="\n".join(lines))
 
@@ -1151,7 +1240,8 @@ def handle_memory_command(engine: MemoryEngine, conversation_key: str, text: str
                 "/memory mode full\n"
                 "/memory mode session_only\n"
                 "/memory status\n"
-                "/memory export"
+                "/memory export\n"
+                "/memory export raw"
             ),
         )
 
@@ -1192,8 +1282,9 @@ def build_memory_help_lines() -> List[str]:
         "/memory mode full - use summary + facts + recent messages",
         "/memory mode session_only - keep session continuity and recent messages only",
         "/memory status - show memory/session counts for this key",
-        "/memory export - list stored facts for this key",
-        "/remember <text> - store explicit durable memory",
+        "/memory export - list stored facts for this key (redacted)",
+        "/memory export raw - list stored facts including raw values",
+        "/remember <text> - store explicit durable memory (secrets auto-redacted)",
         "/forget <fact_id|fact_key> - disable one fact",
         "/forget-all - disable all facts for this key",
         "/reset-session - clear session continuity only",

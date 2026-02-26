@@ -6,10 +6,11 @@ DEFAULT_STATE_DIR="/home/architect/.local/state/telegram-architect-bridge"
 DB_PATH="${TELEGRAM_MEMORY_SQLITE_PATH:-${DEFAULT_STATE_DIR}/memory.sqlite3}"
 BACKUP_DIR=""
 RUN_VACUUM=1
+BACKUP_RETENTION_DAYS="${TELEGRAM_MEMORY_BACKUP_RETENTION_DAYS:-14}"
 
 usage() {
   cat <<'EOF'
-Usage: memory_maintenance.sh [--db <path>] [--backup-dir <dir>] [--skip-vacuum]
+Usage: memory_maintenance.sh [--db <path>] [--backup-dir <dir>] [--backup-retention-days <n>] [--skip-vacuum]
 
 Creates a consistent SQLite backup, runs forced retention pruning, and optionally VACUUM.
 EOF
@@ -29,6 +30,10 @@ while [[ $# -gt 0 ]]; do
       RUN_VACUUM=0
       shift
       ;;
+    --backup-retention-days)
+      BACKUP_RETENTION_DAYS="${2:-}"
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -43,6 +48,10 @@ done
 
 if [[ -z "${DB_PATH}" ]]; then
   echo "Database path is empty." >&2
+  exit 1
+fi
+if ! [[ "${BACKUP_RETENTION_DAYS}" =~ ^[0-9]+$ ]]; then
+  echo "Backup retention days must be a non-negative integer." >&2
   exit 1
 fi
 if [[ ! -f "${DB_PATH}" ]]; then
@@ -74,6 +83,14 @@ if [[ "${integrity}" != "ok" ]]; then
 fi
 
 echo "Backup created: ${backup_path}"
+
+if [[ "${BACKUP_RETENTION_DAYS}" -gt 0 ]]; then
+  prune_days=$((BACKUP_RETENTION_DAYS - 1))
+  removed_count="$(find "${BACKUP_DIR}" -type f -name 'memory-*.sqlite3' -mtime +${prune_days} -print -delete | wc -l | tr -d ' ')"
+  echo "Old backups pruned: ${removed_count} (retention_days=${BACKUP_RETENTION_DAYS})"
+else
+  echo "Backup retention pruning disabled (retention_days=0)."
+fi
 
 export MATRIX_REPO_ROOT="${REPO_ROOT}"
 export MATRIX_MEMORY_DB_PATH="${DB_PATH}"
