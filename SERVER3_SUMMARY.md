@@ -9,6 +9,25 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Added dedicated HA climate mode set/schedule path on 2026-02-27 (repo + live validation):
+  - Root cause addressed:
+    - ad-hoc `systemd-run` command for 08:23 dry-mode scheduling failed due transient shell/env interpolation issues.
+  - New scripts:
+    - `ops/ha/set_climate_mode.sh`
+      - immediate HVAC mode set for climate entities
+      - validates requested mode against HA-reported `hvac_modes`
+      - defaults to `/etc/default/ha-ops` and runs API preflight
+    - `ops/ha/schedule_climate_mode.sh`
+      - supports both `--in` and `--at`
+      - runs preflight before creating timer to fail fast
+  - Docs update:
+    - `docs/home-assistant-ops.md` now includes climate mode examples + dry-run canary command.
+  - Validation outcomes:
+    - script syntax checks pass (`bash -n`)
+    - immediate dry-run returns `preflight=ok`
+    - 20-second scheduled dry-run fired and completed successfully with `preflight=ok`
+  - Traceability artifact:
+    - `logs/changes/20260227-084722-ha-climate-mode-scheduler-add-live.md`
 - Hardened HA ops fast-path on 2026-02-27 (live + repo):
   - Root cause addressed:
     - HA ops scripts were defaulting to `/etc/default/telegram-architect-bridge`, which no longer carries HA keys; scheduled actions could fail late at trigger time.

@@ -29,3 +29,8 @@ Use one section per lesson:
 - Mistake pattern: I let simple HA requests fail late because scripts depended on a changing env file and I troubleshot before applying an immediate fallback action.
 - Prevention rule: Keep HA ops on a dedicated stable env path, run API preflight before scheduling, and for urgent user requests execute the direct action first when safe.
 - Where/when applied: Every HA on/off/mode/temperature request and before creating any HA schedule timer.
+
+### 2026-02-27T08:48:27+10:00 - Avoid Ad-Hoc systemd-run Shell Payloads for HA Climate Mode
+- Mistake pattern: A one-off inline `systemd-run` climate mode command failed at execution due shell/env interpolation behavior in the transient unit.
+- Prevention rule: Use dedicated versioned scripts (`set_climate_mode.sh` and `schedule_climate_mode.sh`) with explicit arguments and preflight checks, not ad-hoc inline command strings.
+- Where/when applied: Any future HA climate mode request, especially scheduled `--at`/`--in` actions.

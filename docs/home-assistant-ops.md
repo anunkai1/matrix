@@ -75,6 +75,31 @@ bash ops/ha/schedule_climate_temperature.sh \
   --temperature 25
 ```
 
+## Climate Mode Scripts
+
+- Immediate HVAC mode action: `ops/ha/set_climate_mode.sh`
+- Delayed/scheduled HVAC mode action: `ops/ha/schedule_climate_mode.sh`
+
+```bash
+bash ops/ha/set_climate_mode.sh \
+  --entity climate.master_brm_aircon \
+  --mode dry
+```
+
+```bash
+bash ops/ha/schedule_climate_mode.sh \
+  --at "08:23" \
+  --entity climate.master_brm_aircon \
+  --mode dry
+```
+
+```bash
+bash ops/ha/schedule_climate_mode.sh \
+  --in "10 minutes" \
+  --entity climate.master_brm_aircon \
+  --mode cool
+```
+
 ## Safe Validation (Canary)
 
 Use short dry-runs to validate timer wiring without writing to Home Assistant:
@@ -92,6 +117,14 @@ bash ops/ha/schedule_climate_temperature.sh \
   --delay 15s \
   --entity climate.master_brm_aircon \
   --temperature 25 \
+  --dry-run
+```
+
+```bash
+bash ops/ha/schedule_climate_mode.sh \
+  --in "15 seconds" \
+  --entity climate.master_brm_aircon \
+  --mode dry \
   --dry-run
 ```
 
