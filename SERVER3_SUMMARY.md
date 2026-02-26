@@ -9,6 +9,23 @@ Last updated: 2026-02-26 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Memory hardening v1.2 applied on 2026-02-26 (repo-only):
+  - Added configurable automatic retention pruning in `src/telegram_bridge/memory_engine.py`:
+    - per-key message cap: `TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY` (default `4000`)
+    - per-key summary cap: `TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY` (default `80`)
+    - prune cadence: `TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS` (default `300`)
+  - Wired retention config through bridge runtime in `src/telegram_bridge/main.py` and startup telemetry/logging.
+  - Added memory maintenance/recovery scripts:
+    - `ops/telegram-bridge/memory_maintenance.sh` (backup + forced prune + optional vacuum)
+    - `ops/telegram-bridge/memory_restore.sh` (restore backup with integrity checks + pre-restore snapshot)
+  - Added retention regression tests in `tests/telegram_bridge/test_memory_engine.py` and updated bridge config test fixtures in `tests/telegram_bridge/test_bridge_core.py`.
+  - Updated operator docs/env template:
+    - `docs/telegram-architect-bridge.md`
+    - `infra/env/telegram-architect-bridge.env.example`
+  - Validation outcomes:
+    - `python3 -m unittest discover -s tests -p 'test_*.py'` -> `38 passed`
+    - `python3 src/telegram_bridge/main.py --self-test` -> `self-test: ok`
+    - `bash src/telegram_bridge/smoke_test.sh` -> `smoke-test: ok`
 - Bridge reliability fixes applied on 2026-02-26 (repo-only):
   - Fixed concurrent state persistence race in `src/telegram_bridge/state_store.py` by switching to unique atomic temp writes per operation.
   - Hardened worker finalization in `src/telegram_bridge/session_manager.py` to always clear busy state even if in-flight persistence cleanup fails.

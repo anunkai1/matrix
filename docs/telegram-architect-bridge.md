@@ -26,6 +26,8 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Restart + verification helper: `ops/telegram-bridge/restart_and_verify.sh`
 - Restart helper: `ops/telegram-bridge/restart_service.sh`
 - Status helper: `ops/telegram-bridge/status_service.sh`
+- Memory maintenance helper: `ops/telegram-bridge/memory_maintenance.sh`
+- Memory restore helper: `ops/telegram-bridge/memory_restore.sh`
 - Voice runtime installer: `ops/telegram-voice/install_faster_whisper.sh`
 - Voice env updater: `ops/telegram-voice/configure_env.sh`
 - Voice command wrapper: `ops/telegram-voice/transcribe_voice.sh`
@@ -75,6 +77,9 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_CANONICAL_SQLITE_PATH=/home/architect/.local/state/telegram-architect-bridge/chat_sessions.sqlite3
 # TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED=false
 # TELEGRAM_MEMORY_SQLITE_PATH=/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3
+# TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY=4000
+# TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY=80
+# TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS=300
 ENV
 ```
 
@@ -159,7 +164,10 @@ Message handling:
   - unsummarized messages `>=100`, or
   - unsummarized estimated tokens `>=12000`
 - Retention defaults:
-  - messages/facts/summaries are retained in SQLite until explicitly cleared
+  - explicit and inferred facts are retained until explicitly cleared
+  - messages are auto-pruned per conversation key after `TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY` (default `4000`)
+  - summaries are auto-pruned per conversation key after `TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY` (default `80`)
+  - prune cadence is `TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS` (default `300`)
   - use `/forget`, `/forget-all`, `/reset-session`, or `/hard-reset-memory` for per-key cleanup
 - Optional persistent worker-session manager (feature-flagged):
   - enable with `TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`
@@ -236,6 +244,22 @@ Common checks:
 - Invalid `TELEGRAM_EXECUTOR_CMD`
 - Missing `codex login` for user `architect`
 - Voice pipeline issues in `TELEGRAM_VOICE_TRANSCRIBE_CMD`
+
+Memory maintenance:
+
+```bash
+bash ops/telegram-bridge/memory_maintenance.sh
+# optional:
+# bash ops/telegram-bridge/memory_maintenance.sh --db /path/to/memory.sqlite3 --skip-vacuum
+```
+
+Memory restore (run while bridge service is stopped):
+
+```bash
+bash ops/telegram-bridge/memory_restore.sh /path/to/backup.sqlite3
+# optional:
+# bash ops/telegram-bridge/memory_restore.sh /path/to/backup.sqlite3 --db /path/to/memory.sqlite3
+```
 
 ## Rollback
 

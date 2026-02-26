@@ -124,6 +124,9 @@ class Config:
     canonical_sqlite_path: str
     canonical_json_mirror_enabled: bool
     memory_sqlite_path: str
+    memory_max_messages_per_key: int
+    memory_max_summaries_per_key: int
+    memory_prune_interval_seconds: int
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -295,6 +298,21 @@ def load_config() -> Config:
             False,
         ),
         memory_sqlite_path=memory_sqlite_path,
+        memory_max_messages_per_key=parse_int_env(
+            "TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY",
+            4000,
+            minimum=0,
+        ),
+        memory_max_summaries_per_key=parse_int_env(
+            "TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY",
+            80,
+            minimum=0,
+        ),
+        memory_prune_interval_seconds=parse_int_env(
+            "TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS",
+            300,
+            minimum=0,
+        ),
     )
 
 
@@ -407,7 +425,12 @@ def run_bridge(config: Config) -> int:
         },
     )
     ensure_state_dir(config.state_dir)
-    memory_engine = MemoryEngine(config.memory_sqlite_path)
+    memory_engine = MemoryEngine(
+        config.memory_sqlite_path,
+        max_messages_per_key=config.memory_max_messages_per_key,
+        max_summaries_per_key=config.memory_max_summaries_per_key,
+        prune_interval_seconds=config.memory_prune_interval_seconds,
+    )
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
     worker_sessions_path = os.path.join(config.state_dir, "worker_sessions.json")
     in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
@@ -691,6 +714,12 @@ def run_bridge(config: Config) -> int:
     logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
     logging.info("Memory SQLite path=%s", config.memory_sqlite_path)
     logging.info(
+        "Memory retention max_messages_per_key=%s max_summaries_per_key=%s prune_interval_seconds=%s",
+        config.memory_max_messages_per_key,
+        config.memory_max_summaries_per_key,
+        config.memory_prune_interval_seconds,
+    )
+    logging.info(
         "Canonical sessions enabled=%s count=%s backend=%s source=%s json_path=%s sqlite_path=%s",
         config.canonical_sessions_enabled,
         len(state.chat_sessions),
@@ -722,6 +751,9 @@ def run_bridge(config: Config) -> int:
                 else "json"
             ),
             "canonical_bootstrap_source": canonical_bootstrap_source,
+            "memory_max_messages_per_key": config.memory_max_messages_per_key,
+            "memory_max_summaries_per_key": config.memory_max_summaries_per_key,
+            "memory_prune_interval_seconds": config.memory_prune_interval_seconds,
         },
     )
 

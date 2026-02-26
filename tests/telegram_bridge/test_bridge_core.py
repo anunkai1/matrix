@@ -75,6 +75,9 @@ def make_config(**overrides):
         "canonical_sqlite_path": "/tmp/chat_sessions.sqlite3",
         "canonical_json_mirror_enabled": False,
         "memory_sqlite_path": "/tmp/memory.sqlite3",
+        "memory_max_messages_per_key": 4000,
+        "memory_max_summaries_per_key": 80,
+        "memory_prune_interval_seconds": 300,
     }
     base.update(overrides)
     return bridge.Config(**base)

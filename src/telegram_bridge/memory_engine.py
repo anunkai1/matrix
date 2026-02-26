@@ -16,6 +16,9 @@ SUMMARY_TRIGGER_MESSAGES = 100
 SUMMARY_TRIGGER_TOKENS = 12000
 RECENT_WINDOW = 30
 FACT_LIMIT = 20
+DEFAULT_MAX_MESSAGES_PER_KEY = 4000
+DEFAULT_MAX_SUMMARIES_PER_KEY = 80
+DEFAULT_PRUNE_INTERVAL_SECONDS = 300
 
 SENSITIVE_PATTERNS = (
     "password",
@@ -64,10 +67,27 @@ class MemoryStatus:
     message_count: int
 
 
+@dataclass
+class RetentionPruneResult:
+    scanned_keys: int
+    pruned_messages: int
+    pruned_summaries: int
+
+
 class MemoryEngine:
-    def __init__(self, db_path: str) -> None:
+    def __init__(
+        self,
+        db_path: str,
+        max_messages_per_key: int = DEFAULT_MAX_MESSAGES_PER_KEY,
+        max_summaries_per_key: int = DEFAULT_MAX_SUMMARIES_PER_KEY,
+        prune_interval_seconds: int = DEFAULT_PRUNE_INTERVAL_SECONDS,
+    ) -> None:
         self.db_path = db_path
         self._lock = threading.RLock()
+        self.max_messages_per_key = max(0, int(max_messages_per_key))
+        self.max_summaries_per_key = max(0, int(max_summaries_per_key))
+        self.prune_interval_seconds = max(0, int(prune_interval_seconds))
+        self._next_prune_deadline: Dict[str, float] = {}
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.ensure_schema()
 
@@ -387,6 +407,186 @@ class MemoryEngine:
         sections.append(f"Current User Input:\n{current_input.strip()}")
         return "\n\n".join(sections).strip()
 
+    def _list_conversation_keys(self, conn: sqlite3.Connection) -> List[str]:
+        rows = conn.execute(
+            """
+            SELECT conversation_key FROM memory_state
+            UNION
+            SELECT DISTINCT conversation_key FROM messages
+            UNION
+            SELECT DISTINCT conversation_key FROM chat_summaries
+            """
+        ).fetchall()
+        keys: List[str] = []
+        for row in rows:
+            key = str(row["conversation_key"] or "").strip()
+            if key:
+                keys.append(key)
+        return keys
+
+    def _reconcile_memory_state(self, conn: sqlite3.Connection, conversation_key: str) -> None:
+        self._ensure_memory_rows(conn, conversation_key)
+        state_row = conn.execute(
+            """
+            SELECT unsummarized_start_msg_id
+            FROM memory_state
+            WHERE conversation_key = ?
+            """,
+            (conversation_key,),
+        ).fetchone()
+        unsummarized_start = (
+            int(state_row["unsummarized_start_msg_id"])
+            if state_row and state_row["unsummarized_start_msg_id"] is not None
+            else None
+        )
+
+        summary_row = conn.execute(
+            """
+            SELECT end_msg_id
+            FROM chat_summaries
+            WHERE conversation_key = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (conversation_key,),
+        ).fetchone()
+        latest_summary_end = int(summary_row["end_msg_id"]) if summary_row else None
+
+        oldest_message_row = conn.execute(
+            """
+            SELECT id
+            FROM messages
+            WHERE conversation_key = ?
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (conversation_key,),
+        ).fetchone()
+        oldest_message_id = int(oldest_message_row["id"]) if oldest_message_row else None
+
+        if oldest_message_id is None:
+            new_unsummarized_start = None
+        else:
+            floor_id = oldest_message_id
+            if latest_summary_end is not None:
+                floor_id = max(floor_id, latest_summary_end + 1)
+            if unsummarized_start is None or unsummarized_start < floor_id:
+                new_unsummarized_start = floor_id
+            else:
+                new_unsummarized_start = unsummarized_start
+
+        conn.execute(
+            """
+            UPDATE memory_state
+            SET unsummarized_start_msg_id = ?, last_summary_msg_id = ?, updated_at = ?
+            WHERE conversation_key = ?
+            """,
+            (new_unsummarized_start, latest_summary_end, time.time(), conversation_key),
+        )
+
+    def _prune_messages_for_key(self, conn: sqlite3.Connection, conversation_key: str) -> int:
+        if self.max_messages_per_key <= 0:
+            return 0
+        cutoff_row = conn.execute(
+            """
+            SELECT id
+            FROM messages
+            WHERE conversation_key = ?
+            ORDER BY id DESC
+            LIMIT 1 OFFSET ?
+            """,
+            (conversation_key, self.max_messages_per_key - 1),
+        ).fetchone()
+        if not cutoff_row:
+            return 0
+
+        cutoff_id = int(cutoff_row["id"])
+        delete_row = conn.execute(
+            "DELETE FROM messages WHERE conversation_key = ? AND id < ?",
+            (conversation_key, cutoff_id),
+        )
+        deleted = int(delete_row.rowcount or 0)
+        if deleted > 0:
+            self._reconcile_memory_state(conn, conversation_key)
+        return deleted
+
+    def _prune_summaries_for_key(self, conn: sqlite3.Connection, conversation_key: str) -> int:
+        if self.max_summaries_per_key <= 0:
+            return 0
+        cutoff_row = conn.execute(
+            """
+            SELECT id
+            FROM chat_summaries
+            WHERE conversation_key = ?
+            ORDER BY id DESC
+            LIMIT 1 OFFSET ?
+            """,
+            (conversation_key, self.max_summaries_per_key - 1),
+        ).fetchone()
+        if not cutoff_row:
+            return 0
+
+        cutoff_id = int(cutoff_row["id"])
+        delete_row = conn.execute(
+            "DELETE FROM chat_summaries WHERE conversation_key = ? AND id < ?",
+            (conversation_key, cutoff_id),
+        )
+        deleted = int(delete_row.rowcount or 0)
+        if deleted > 0:
+            self._reconcile_memory_state(conn, conversation_key)
+        return deleted
+
+    def _prune_conversation(
+        self,
+        conn: sqlite3.Connection,
+        conversation_key: str,
+        force: bool = False,
+    ) -> Tuple[int, int]:
+        now = time.time()
+        if not force and self.prune_interval_seconds > 0:
+            next_deadline = self._next_prune_deadline.get(conversation_key, 0.0)
+            if now < next_deadline:
+                return 0, 0
+            self._next_prune_deadline[conversation_key] = now + float(
+                self.prune_interval_seconds
+            )
+        elif force and self.prune_interval_seconds > 0:
+            self._next_prune_deadline[conversation_key] = now + float(
+                self.prune_interval_seconds
+            )
+
+        deleted_messages = self._prune_messages_for_key(conn, conversation_key)
+        deleted_summaries = self._prune_summaries_for_key(conn, conversation_key)
+        return deleted_messages, deleted_summaries
+
+    def run_retention_prune(
+        self,
+        conversation_key: Optional[str] = None,
+        force: bool = False,
+    ) -> RetentionPruneResult:
+        with self._lock, self._connect() as conn:
+            keys = [conversation_key] if conversation_key else self._list_conversation_keys(conn)
+            total_messages = 0
+            total_summaries = 0
+            for key in keys:
+                deleted_messages, deleted_summaries = self._prune_conversation(
+                    conn,
+                    key,
+                    force=force,
+                )
+                total_messages += deleted_messages
+                total_summaries += deleted_summaries
+        return RetentionPruneResult(
+            scanned_keys=len(keys),
+            pruned_messages=total_messages,
+            pruned_summaries=total_summaries,
+        )
+
+    def checkpoint_and_vacuum(self) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.execute("VACUUM")
+
     def begin_turn(
         self,
         conversation_key: str,
@@ -487,6 +687,7 @@ class MemoryEngine:
                     (turn.conversation_key, new_thread_id.strip(), now),
                 )
             self._maybe_summarize(conn, turn.conversation_key, turn.mode)
+            self._prune_conversation(conn, turn.conversation_key, force=False)
 
     def run_summarization_if_needed(self, conversation_key: str) -> bool:
         with self._lock, self._connect() as conn:
@@ -851,6 +1052,7 @@ class MemoryEngine:
             conn.execute("DELETE FROM memory_state WHERE conversation_key = ?", (conversation_key,))
             conn.execute("DELETE FROM messages WHERE conversation_key = ?", (conversation_key,))
             conn.execute("DELETE FROM memory_config WHERE conversation_key = ?", (conversation_key,))
+            self._next_prune_deadline.pop(conversation_key, None)
 
     def get_status(self, conversation_key: str) -> MemoryStatus:
         with self._lock, self._connect() as conn:

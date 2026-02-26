@@ -1,6 +1,7 @@
 import importlib.util
 import re
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -174,6 +175,96 @@ class MemoryEngineTests(unittest.TestCase):
             recent_block = assembled.prompt_text.split("Recent Messages:\n", maxsplit=1)[1]
             recent_lines = [line for line in recent_block.splitlines() if line.startswith("- [")]
             self.assertLessEqual(len(recent_lines), memory.RECENT_WINDOW)
+
+    def test_retention_prunes_old_messages_and_keeps_explicit_facts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.telegram_key(88)
+            engine = memory.MemoryEngine(
+                db_path,
+                max_messages_per_key=6,
+                max_summaries_per_key=80,
+                prune_interval_seconds=0,
+            )
+            engine.remember_explicit(key, "favorite_shell: bash")
+
+            for i in range(8):
+                turn = engine.begin_turn(
+                    conversation_key=key,
+                    channel="telegram",
+                    sender_name="User",
+                    user_input=f"Retention message {i}",
+                )
+                engine.finish_turn(
+                    turn,
+                    channel="telegram",
+                    assistant_text=f"Retention reply {i}",
+                    new_thread_id="thread-r",
+                )
+
+            status = engine.get_status(key)
+            self.assertLessEqual(status.message_count, 6)
+            facts = [row for row in engine.export_facts(key) if row["status"] == "active"]
+            self.assertEqual(len(facts), 1)
+            self.assertEqual(facts[0]["fact_key"], "explicit:favorite_shell")
+
+    def test_force_retention_prunes_summary_rows_and_reconciles_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.cli_key("ops")
+            engine = memory.MemoryEngine(
+                db_path,
+                max_messages_per_key=0,
+                max_summaries_per_key=1,
+                prune_interval_seconds=300,
+            )
+
+            with engine._lock, engine._connect() as conn:
+                engine._ensure_memory_rows(conn, key)
+                now = time.time()
+                conn.executemany(
+                    """
+                    INSERT INTO chat_summaries (
+                        conversation_key,
+                        start_msg_id,
+                        end_msg_id,
+                        summary_text,
+                        key_points_json,
+                        open_loops_json,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (key, 1, 10, "s1", "[]", "[]", now),
+                        (key, 11, 20, "s2", "[]", "[]", now + 1),
+                        (key, 21, 30, "s3", "[]", "[]", now + 2),
+                    ],
+                )
+                conn.execute(
+                    """
+                    UPDATE memory_state
+                    SET unsummarized_start_msg_id = ?, last_summary_msg_id = ?, updated_at = ?
+                    WHERE conversation_key = ?
+                    """,
+                    (31, 30, now + 2, key),
+                )
+
+            result = engine.run_retention_prune(conversation_key=key, force=True)
+            self.assertEqual(result.scanned_keys, 1)
+            self.assertEqual(result.pruned_summaries, 2)
+
+            status = engine.get_status(key)
+            self.assertEqual(status.summary_count, 1)
+            with engine._lock, engine._connect() as conn:
+                state = conn.execute(
+                    """
+                    SELECT last_summary_msg_id
+                    FROM memory_state
+                    WHERE conversation_key = ?
+                    """,
+                    (key,),
+                ).fetchone()
+            self.assertEqual(int(state["last_summary_msg_id"]), 30)
 
 
 if __name__ == "__main__":
