@@ -9,6 +9,33 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Hardened HA ops fast-path on 2026-02-27 (live + repo):
+  - Root cause addressed:
+    - HA ops scripts were defaulting to `/etc/default/telegram-architect-bridge`, which no longer carries HA keys; scheduled actions could fail late at trigger time.
+  - Live credentials baseline:
+    - created dedicated HA ops env file:
+      - `/etc/default/ha-ops`
+    - source used:
+      - `/etc/default/telegram-architect-bridge.bak.20260218-114545`
+    - permissions:
+      - owner/group `root:architect`, mode `640`
+  - Script reliability hardening:
+    - defaults switched to `/etc/default/ha-ops`:
+      - `ops/ha/turn_entity_power.sh`
+      - `ops/ha/set_climate_temperature.sh`
+      - `ops/ha/schedule_entity_power.sh`
+      - `ops/ha/schedule_climate_temperature.sh`
+    - added Home Assistant API preflight in immediate action scripts.
+    - added preflight-before-schedule in timer scripts so failures happen immediately (before timer creation).
+  - Repo traceability and docs:
+    - `infra/env/ha-ops.env.example`
+    - `infra/env/ha-ops.server3.redacted.env`
+    - `docs/home-assistant-ops.md`
+    - `README.md`
+    - `logs/changes/20260227-080640-ha-ops-fast-path-hardening-live.md`
+  - Validation outcomes:
+    - immediate dry-runs returned `preflight=ok` for power + temperature scripts.
+    - 30-second scheduled dry-runs for both power + temperature fired and completed successfully with `preflight=ok`.
 - Memory hardening phase 3 completed on 2026-02-27 (live + repo):
   - Pinned explicit memory-health thresholds in live `/etc/default/telegram-architect-bridge`:
     - `TELEGRAM_MEMORY_HEALTH_MAX_DB_BYTES=1073741824`

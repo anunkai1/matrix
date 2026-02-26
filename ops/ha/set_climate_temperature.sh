@@ -8,7 +8,7 @@ Usage:
 
 Options:
   --env-file PATH   Environment file containing TELEGRAM_HA_BASE_URL/TELEGRAM_HA_TOKEN
-                    (default: /etc/default/telegram-architect-bridge)
+                    (default: /etc/default/ha-ops)
   --base-url URL    Home Assistant base URL (overrides env-file value)
   --token TOKEN     Home Assistant token (overrides env-file value)
   --dry-run         Validate inputs and print target action without calling Home Assistant
@@ -36,9 +36,19 @@ extract_env_value() {
   trim_wrapped_quotes "${line#*=}"
 }
 
+preflight_ha_api() {
+  local resolved_base_url="$1"
+  local resolved_token="$2"
+  if ! curl -fsS -m 5 -H "Authorization: Bearer $resolved_token" \
+    "${resolved_base_url}/api/" >/dev/null; then
+    echo "[set_climate_temperature] Home Assistant API preflight failed: ${resolved_base_url}/api/" >&2
+    exit 2
+  fi
+}
+
 entity=""
 temperature=""
-env_file="/etc/default/telegram-architect-bridge"
+env_file="/etc/default/ha-ops"
 base_url="${HA_BASE_URL:-}"
 token="${HA_TOKEN:-}"
 dry_run="false"
@@ -138,9 +148,10 @@ fi
 
 base_url="${base_url%/}"
 payload="$(printf '{"entity_id":"%s","temperature":%s}' "$entity" "$temperature")"
+preflight_ha_api "$base_url" "$token"
 
 if [[ "$dry_run" == "true" ]]; then
-  echo "[set_climate_temperature] dry_run=true entity=$entity temperature=$temperature env_file=$env_file base_url=$base_url"
+  echo "[set_climate_temperature] dry_run=true entity=$entity temperature=$temperature env_file=$env_file base_url=$base_url preflight=ok"
   exit 0
 fi
 

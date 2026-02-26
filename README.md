@@ -105,7 +105,7 @@ For non-exempt changes, update `SERVER3_SUMMARY.md` each time; update `SERVER3_A
 ## Security Notes
 
 - Never commit secrets, tokens, or private keys.
-- Keep production secrets in live environment files (for example `/etc/default/telegram-architect-bridge`) and out of git.
+- Keep production secrets in live environment files (for example `/etc/default/telegram-architect-bridge` and `/etc/default/ha-ops`) and out of git.
 - Review command outputs before sharing to avoid exposing sensitive values.
 
 ## Troubleshooting

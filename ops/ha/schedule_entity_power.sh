@@ -15,7 +15,7 @@ Options:
   --action on|off    Power action
   --entity ID        Home Assistant entity id (domain.object_id)
   --env-file PATH    Env file consumed by turn_entity_power.sh
-                     (default: /etc/default/telegram-architect-bridge)
+                     (default: /etc/default/ha-ops)
   --base-url URL     Home Assistant base URL (overrides env-file value)
   --token TOKEN      Home Assistant token (overrides env-file value)
   --unit-prefix NAME Prefix for transient systemd unit names
@@ -96,7 +96,7 @@ in_spec=""
 at_spec=""
 action=""
 entity=""
-env_file="/etc/default/telegram-architect-bridge"
+env_file="/etc/default/ha-ops"
 base_url=""
 token=""
 unit_prefix="ha-entity-power"
@@ -198,6 +198,16 @@ fi
 if [[ "$dry_run" == "true" ]]; then
   cmd+=(--dry-run)
 fi
+
+preflight_cmd=("$POWER_SCRIPT" --action "$action" --entity "$entity" --env-file "$env_file" --dry-run)
+if [[ -n "$base_url" ]]; then
+  preflight_cmd+=(--base-url "$base_url")
+fi
+if [[ -n "$token" ]]; then
+  preflight_cmd+=(--token "$token")
+fi
+run_privileged "${preflight_cmd[@]}" >/dev/null
+echo "[schedule_entity_power] preflight=ok"
 
 if [[ -n "$in_spec" ]]; then
   in_spec="$(normalize_in_spec "$in_spec")"

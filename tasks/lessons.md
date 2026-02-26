@@ -24,3 +24,8 @@ Use one section per lesson:
 - Mistake pattern: I initially reported no scheduled action existed because I checked active timers/repo notes but not unit journal history.
 - Prevention rule: For any schedule verification, check both current units and historical evidence (`systemctl status <unit>` and `journalctl -u <timer> -u <service>` in the target time window).
 - Where/when applied: Incident/ops checks when user asks whether a timed HA action was planned or executed.
+
+### 2026-02-27T08:08:01+10:00 - Urgent HA Actions Must Use Stable Credentials and Fast Preflight
+- Mistake pattern: I let simple HA requests fail late because scripts depended on a changing env file and I troubleshot before applying an immediate fallback action.
+- Prevention rule: Keep HA ops on a dedicated stable env path, run API preflight before scheduling, and for urgent user requests execute the direct action first when safe.
+- Where/when applied: Every HA on/off/mode/temperature request and before creating any HA schedule timer.

@@ -11,7 +11,7 @@ Usage:
 
 Options:
   --env-file PATH     Env file consumed by set_climate_temperature.sh
-                      (default: /etc/default/telegram-architect-bridge)
+                      (default: /etc/default/ha-ops)
   --unit-prefix NAME  Prefix for transient systemd unit names
                       (default: ha-climate-temp)
   --dry-run           Schedule a dry-run execution (no Home Assistant write)
@@ -30,7 +30,7 @@ run_privileged() {
 delay=""
 entity=""
 temperature=""
-env_file="/etc/default/telegram-architect-bridge"
+env_file="/etc/default/ha-ops"
 unit_prefix="ha-climate-temp"
 dry_run="false"
 
@@ -102,6 +102,10 @@ cmd=("$SET_SCRIPT" --entity "$entity" --temperature "$temperature" --env-file "$
 if [[ "$dry_run" == "true" ]]; then
   cmd+=(--dry-run)
 fi
+
+preflight_cmd=("$SET_SCRIPT" --entity "$entity" --temperature "$temperature" --env-file "$env_file" --dry-run)
+run_privileged "${preflight_cmd[@]}" >/dev/null
+echo "[schedule_climate_temperature] preflight=ok"
 
 run_output="$(run_privileged systemd-run --unit "$unit" --on-active="$delay" "${cmd[@]}")"
 printf '%s\n' "$run_output"
