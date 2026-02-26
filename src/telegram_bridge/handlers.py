@@ -994,18 +994,6 @@ def process_prompt(
     image_path: Optional[str] = None
     document_path: Optional[str] = None
     progress = ProgressReporter(client, chat_id, message_id)
-    emit_event(
-        "bridge.request_processing_started",
-        fields={
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "prompt_chars": len(prompt or ""),
-            "has_photo": bool(photo_file_id),
-            "has_voice": bool(voice_file_id),
-            "has_document": document is not None,
-            "has_previous_thread": bool(previous_thread_id),
-        },
-    )
     try:
         progress.start()
         prepared = prepare_prompt_input(
@@ -1041,6 +1029,18 @@ def process_prompt(
                 previous_thread_id = None if stateless else state_repo.get_thread_id(chat_id)
         else:
             previous_thread_id = None if stateless else state_repo.get_thread_id(chat_id)
+        emit_event(
+            "bridge.request_processing_started",
+            fields={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "prompt_chars": len(prompt or ""),
+                "has_photo": bool(photo_file_id),
+                "has_voice": bool(voice_file_id),
+                "has_document": document is not None,
+                "has_previous_thread": bool(previous_thread_id),
+            },
+        )
         progress.set_phase("Sending request to Architect.")
         result = execute_prompt_with_retry(
             state_repo=state_repo,

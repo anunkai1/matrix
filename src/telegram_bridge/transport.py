@@ -36,7 +36,7 @@ def to_telegram_chunks(text: str) -> List[str]:
     total = len(base_chunks)
     output: List[str] = []
     for index, chunk in enumerate(base_chunks, start=1):
-        output.append(f"[{index}/{total}]\\n{chunk}")
+        output.append(f"[{index}/{total}]\n{chunk}")
     return output
 
 

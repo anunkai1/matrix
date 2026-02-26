@@ -1,5 +1,7 @@
 import json
+import os
 import sqlite3
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -441,12 +443,30 @@ def persist_json_state_file(path_value: str, serialized: Dict[str, object]) -> N
     if not path_value:
         return
     path = Path(path_value)
-    tmp_path = path.with_suffix(".tmp")
-    tmp_path.write_text(
-        json.dumps(serialized, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(serialized, indent=2, sort_keys=True) + "\n"
+
+    # Use a unique temp file per write to avoid cross-thread collisions on a
+    # shared '<name>.tmp' path.
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
     )
-    tmp_path.replace(path)
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        tmp_path.replace(path)
+    except Exception:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def persist_chat_threads(state: State) -> None:

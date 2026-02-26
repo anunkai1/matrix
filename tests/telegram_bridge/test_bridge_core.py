@@ -2,8 +2,10 @@ import importlib.util
 import json
 import logging
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -100,6 +102,12 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertLessEqual(len(rendered), 64)
         self.assertIn("...[truncated]...", rendered)
         self.assertTrue(rendered.startswith("HEAD-SECTION"))
+
+    def test_to_telegram_chunks_uses_real_newline_prefix(self):
+        chunks = bridge.to_telegram_chunks("x" * 5000)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(chunks[0].startswith("[1/2]\n"))
+        self.assertNotIn("\\n", chunks[0][:10])
 
     def test_parse_stream_json_line_rejects_invalid_payloads(self):
         self.assertIsNone(bridge_executor.parse_stream_json_line("not-json"))
@@ -574,6 +582,52 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Policy/context files changed", client.messages[-1][1])
         self.assertIn(1, state.chat_sessions)
         self.assertEqual(state.chat_sessions[1].thread_id, "")
+
+    def test_state_repository_concurrent_inflight_persistence_is_safe(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = bridge.State(
+                chat_thread_path=str(Path(tmpdir) / "chat_threads.json"),
+                worker_sessions_path=str(Path(tmpdir) / "worker_sessions.json"),
+                in_flight_path=str(Path(tmpdir) / "in_flight_requests.json"),
+            )
+            repo = bridge.StateRepository(state)
+            errors = []
+            errors_lock = threading.Lock()
+
+            def worker(seed: int) -> None:
+                for i in range(120):
+                    chat_id = ((seed * 7) + i) % 12 + 1
+                    try:
+                        repo.mark_in_flight_request(chat_id, i)
+                        repo.clear_in_flight_request(chat_id)
+                    except Exception as exc:  # pragma: no cover - regression guard
+                        with errors_lock:
+                            errors.append(repr(exc))
+                        return
+
+            threads = [threading.Thread(target=worker, args=(idx,)) for idx in range(16)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+            self.assertEqual(errors, [])
+
+    def test_finalize_chat_work_clears_busy_when_inflight_clear_fails(self):
+        state = bridge.State()
+        state.busy_chats.add(1)
+        client = FakeTelegramClient()
+
+        class FailingStateRepo:
+            def __init__(self, _state):
+                pass
+
+            def clear_in_flight_request(self, _chat_id):
+                raise RuntimeError("boom")
+
+        with mock.patch.object(bridge_session_manager, "StateRepository", FailingStateRepo):
+            bridge_session_manager.finalize_chat_work(state, client, chat_id=1)
+        self.assertNotIn(1, state.busy_chats)
 
 
 if __name__ == "__main__":

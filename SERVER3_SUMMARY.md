@@ -9,6 +9,16 @@ Last updated: 2026-02-26 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Bridge reliability fixes applied on 2026-02-26 (repo-only):
+  - Fixed concurrent state persistence race in `src/telegram_bridge/state_store.py` by switching to unique atomic temp writes per operation.
+  - Hardened worker finalization in `src/telegram_bridge/session_manager.py` to always clear busy state even if in-flight persistence cleanup fails.
+  - Fixed Telegram multipart message prefix formatting in `src/telegram_bridge/transport.py` to use a real newline instead of literal `\n`.
+  - Corrected request-start telemetry in `src/telegram_bridge/handlers.py` so `has_previous_thread` reflects actual continuity state.
+  - Added regression coverage in `tests/telegram_bridge/test_bridge_core.py` for chunk prefix formatting, concurrent in-flight persistence safety, and busy-clear behavior on cleanup failure.
+  - Validation outcomes:
+    - `python3 -m unittest discover -s tests -p 'test_*.py'` -> `36 passed`
+    - `python3 src/telegram_bridge/main.py --self-test` -> `self-test: ok`
+    - `bash src/telegram_bridge/smoke_test.sh` -> `smoke-test: ok`
 - Repository scope cleanup completed on 2026-02-26:
   - Removed legacy media automation artifacts, docs, env templates, helper scripts, and change records from tracked repo content.
   - Updated shared summary/archive and docker target-state documents to match current project scope.

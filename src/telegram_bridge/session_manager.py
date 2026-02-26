@@ -637,8 +637,12 @@ def finalize_chat_work(
     chat_id: int,
 ) -> None:
     state_repo = StateRepository(state)
-    state_repo.clear_in_flight_request(chat_id)
-    clear_busy(state, chat_id)
+    try:
+        state_repo.clear_in_flight_request(chat_id)
+    except Exception:
+        logging.exception("Failed to clear in-flight request state for chat_id=%s", chat_id)
+    finally:
+        clear_busy(state, chat_id)
     emit_event(
         "bridge.chat_work_finalized",
         fields={"chat_id": chat_id},
