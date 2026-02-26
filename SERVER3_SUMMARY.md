@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-02-26 (AEST, +10:00)
+Last updated: 2026-02-27 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
@@ -9,6 +9,20 @@ Last updated: 2026-02-26 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Rolled out Telegram bridge memory retention env on Server3 (live) on 2026-02-27:
+  - Updated live `/etc/default/telegram-architect-bridge` with:
+    - `TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY=4000`
+    - `TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY=80`
+    - `TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS=300`
+  - Live backup created:
+    - `/etc/default/telegram-architect-bridge.bak.20260227071138.402921`
+  - Bridge restarted and verified healthy:
+    - `ExecMainStartTimestamp=Fri 2026-02-27 07:12:38 AEST`
+    - `ActiveState=active`, `SubState=running`
+    - journal confirms: retention config loaded at startup
+  - Updated traceability artifacts:
+    - `infra/env/telegram-architect-bridge.server3.redacted.env`
+    - `logs/changes/20260227-071319-telegram-bridge-memory-retention-rollout-live.md`
 - Memory hardening v1.2 applied on 2026-02-26 (repo-only):
   - Added configurable automatic retention pruning in `src/telegram_bridge/memory_engine.py`:
     - per-key message cap: `TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY` (default `4000`)
