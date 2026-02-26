@@ -9,6 +9,16 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Activated Telegram HA keyword routing live on 2026-02-27 (service rollout verification):
+  - Live service status:
+    - `telegram-architect-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 09:41:42 AEST`
+    - `MainPID=423709` at verification time
+  - Verification commands:
+    - `bash ops/telegram-bridge/status_service.sh`
+    - `systemctl show -p ActiveState -p SubState -p ExecMainStartTimestamp -p MainPID telegram-architect-bridge.service`
+  - Traceability artifact:
+    - `logs/changes/20260227-094636-telegram-ha-keyword-routing-live-verify.md`
 - Added explicit HA keyword routing in Telegram bridge on 2026-02-27 (repo-only):
   - New trigger prefixes:
     - `HA ...`
