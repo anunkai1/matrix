@@ -1,0 +1,11 @@
+[Unit]
+Description=Monthly Telegram Architect Memory Restore Drill Timer
+
+[Timer]
+OnCalendar=*-*-01 03:45:00
+RandomizedDelaySec=900
+Persistent=true
+Unit=telegram-architect-memory-restore-drill.service
+
+[Install]
+WantedBy=timers.target

@@ -29,6 +29,7 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Memory maintenance helper: `ops/telegram-bridge/memory_maintenance.sh`
 - Memory restore helper: `ops/telegram-bridge/memory_restore.sh`
 - Memory restore drill helper: `ops/telegram-bridge/memory_restore_drill.sh`
+- Memory alert helper: `ops/telegram-bridge/memory_alert.sh`
 - Memory timer installer: `ops/telegram-bridge/install_memory_timers.sh`
 - Memory maintenance systemd units:
   - `infra/systemd/telegram-architect-memory-maintenance.service`
@@ -36,6 +37,11 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Memory health systemd units:
   - `infra/systemd/telegram-architect-memory-health.service`
   - `infra/systemd/telegram-architect-memory-health.timer`
+- Memory restore drill systemd units:
+  - `infra/systemd/telegram-architect-memory-restore-drill.service`
+  - `infra/systemd/telegram-architect-memory-restore-drill.timer`
+- Memory alert systemd unit:
+  - `infra/systemd/telegram-architect-memory-alert@.service`
 - Voice runtime installer: `ops/telegram-voice/install_faster_whisper.sh`
 - Voice env updater: `ops/telegram-voice/configure_env.sh`
 - Voice command wrapper: `ops/telegram-voice/transcribe_voice.sh`
@@ -94,6 +100,7 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_MEMORY_HEALTH_LOOKBACK_MINUTES=60
 # TELEGRAM_MEMORY_HEALTH_MAX_LOCK_ERRORS=0
 # TELEGRAM_MEMORY_HEALTH_MAX_WRITE_FAILURES=0
+# TELEGRAM_MEMORY_ALERT_LOG_LINES=80
 ENV
 ```
 
@@ -292,10 +299,22 @@ bash ops/telegram-bridge/install_memory_timers.sh apply
 bash ops/telegram-bridge/install_memory_timers.sh status
 ```
 
+Monthly restore drill timer:
+
+```bash
+sudo systemctl --no-pager --full status telegram-architect-memory-restore-drill.timer
+```
+
 Memory health check (on-demand):
 
 ```bash
 bash ops/telegram-bridge/memory_health_check.sh
+```
+
+Memory alert logs:
+
+```bash
+sudo journalctl -u 'telegram-architect-memory-alert@*.service' -n 100 --no-pager
 ```
 
 ## Rollback

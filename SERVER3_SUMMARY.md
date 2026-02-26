@@ -9,6 +9,30 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Memory hardening phase 3 completed on 2026-02-27 (live + repo):
+  - Pinned explicit memory-health thresholds in live `/etc/default/telegram-architect-bridge`:
+    - `TELEGRAM_MEMORY_HEALTH_MAX_DB_BYTES=1073741824`
+    - `TELEGRAM_MEMORY_HEALTH_MAX_QUERY_MS=1500`
+    - `TELEGRAM_MEMORY_HEALTH_LOOKBACK_MINUTES=60`
+    - `TELEGRAM_MEMORY_HEALTH_MAX_LOCK_ERRORS=0`
+    - `TELEGRAM_MEMORY_HEALTH_MAX_WRITE_FAILURES=0`
+    - `TELEGRAM_MEMORY_ALERT_LOG_LINES=80`
+  - Added failure-alert routing for memory jobs using `OnFailure=telegram-architect-memory-alert@%n.service`:
+    - `infra/systemd/telegram-architect-memory-maintenance.service`
+    - `infra/systemd/telegram-architect-memory-health.service`
+    - new alert handler unit/script:
+      - `infra/systemd/telegram-architect-memory-alert@.service`
+      - `ops/telegram-bridge/memory_alert.sh`
+  - Added monthly restore-drill scheduler:
+    - `infra/systemd/telegram-architect-memory-restore-drill.service`
+    - `infra/systemd/telegram-architect-memory-restore-drill.timer`
+  - Updated timer installer to manage maintenance + health + restore-drill timers:
+    - `ops/telegram-bridge/install_memory_timers.sh`
+  - Live rollout verification:
+    - all three timers active (maintenance, health, restore-drill)
+    - one-shot health, maintenance, and restore-drill service runs succeeded
+  - Traceability artifact:
+    - `logs/changes/20260227-080102-telegram-memory-hardening-phase3-live.md`
 - Memory hardening phase 2 completed on 2026-02-27 (repo + live):
   - Repo hardening updates:
     - Added privacy guardrails in `src/telegram_bridge/memory_engine.py`:

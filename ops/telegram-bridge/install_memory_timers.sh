@@ -6,15 +6,19 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UNIT_DIR="/etc/systemd/system"
 
 UNITS=(
+  "telegram-architect-memory-alert@.service"
   "telegram-architect-memory-maintenance.service"
   "telegram-architect-memory-maintenance.timer"
   "telegram-architect-memory-health.service"
   "telegram-architect-memory-health.timer"
+  "telegram-architect-memory-restore-drill.service"
+  "telegram-architect-memory-restore-drill.timer"
 )
 
 TIMERS=(
   "telegram-architect-memory-maintenance.timer"
   "telegram-architect-memory-health.timer"
+  "telegram-architect-memory-restore-drill.timer"
 )
 
 run_privileged() {
