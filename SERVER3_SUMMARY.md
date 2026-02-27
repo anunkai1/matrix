@@ -6,9 +6,42 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Primary active component: `telegram-architect-bridge.service`
 - Runtime pattern: Telegram long polling + local `codex exec`
 - Major enabled capabilities: text/photo/voice/document input handling, per-chat context persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
+- On-demand local TV desktop capability: command-start Xfce + Brave profile (`server3-tv-start` / `server3-tv-stop`) with CLI default boot retained
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Added command-start TV desktop profile on 2026-02-27 (live + repo):
+  - Objective delivered:
+    - keep default boot as CLI while enabling on-demand HDMI TV browsing/streaming with Brave.
+  - Live desktop stack installed:
+    - `xorg`, `lightdm`, `lightdm-gtk-greeter`, `xfce4`, `xfce4-terminal`, `dbus-x11`
+    - `pipewire-audio`, `wireplumber`, `pulseaudio-utils`
+    - `brave-browser`
+  - Live runtime/config state:
+    - default target set to `multi-user.target`
+    - LightDM autologin profile for `tv`:
+      - `/etc/lightdm/lightdm.conf.d/50-server3-tv-autologin.conf`
+    - command wrappers installed:
+      - `/usr/local/bin/server3-tv-start`
+      - `/usr/local/bin/server3-tv-stop`
+    - tv session autostart assets installed:
+      - `/home/tv/.config/autostart/server3-tv-brave.desktop`
+      - `/home/tv/.local/bin/server3-tv-session-start.sh`
+      - `/home/tv/.local/bin/server3-tv-audio.sh`
+  - User/security model:
+    - local desktop user `tv` created
+    - password locked (`passwd -S tv` -> `L`)
+    - groups: `audio`, `video`; no `sudo`
+  - Verification outcomes:
+    - `systemctl get-default` -> `multi-user.target`
+    - `/usr/local/bin/server3-tv-start` set `lightdm` to active/running
+    - `/usr/local/bin/server3-tv-stop` returned `lightdm` to inactive/dead
+    - Brave version check passed (`Brave Browser 145.1.87.191`)
+  - Traceability artifacts:
+    - `docs/server3-tv-desktop.md`
+    - `infra/system/desktop/server3-tv-desktop.target-state.md`
+    - `infra/system/users/tv.user.target-state.md`
+    - `logs/changes/20260227-192732-server3-tv-desktop-brave-kiosk-live.md`
 - Expanded required-prefix separators to include comma and period on 2026-02-27 (repo update):
   - Root cause addressed:
     - Prefix-gated group messages like `tank, ...` and `tank. ...` were rejected because only whitespace, `:`, and `-` were accepted after prefix matches.

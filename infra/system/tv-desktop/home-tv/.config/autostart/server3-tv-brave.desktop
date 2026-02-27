@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Server3 TV Session
+Comment=Launch Brave fullscreen and prefer HDMI audio
+Exec=/home/tv/.local/bin/server3-tv-session-start.sh
+Terminal=false
+X-GNOME-Autostart-enabled=true
