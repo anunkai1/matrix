@@ -9,6 +9,35 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Completed Tank runtime workspace isolation on 2026-02-27 (live + repo):
+  - Root cause addressed:
+    - Tank bridge still executed from matrix repo root and could inherit matrix policy context (`AGENTS.md` references).
+  - Live runtime migration:
+    - created code-only Tank workspace:
+      - `/home/tank/tankbot`
+      - `src` symlink pinned to `/home/architect/matrix/src`
+    - updated `telegram-tank-bridge.service` to Tank workspace paths:
+      - `WorkingDirectory=/home/tank/tankbot`
+      - `ExecStart=/usr/bin/python3 /home/tank/tankbot/src/telegram_bridge/main.py`
+      - `TELEGRAM_EXECUTOR_CMD=/home/tank/tankbot/src/telegram_bridge/executor.sh`
+    - set `TELEGRAM_POLICY_WATCH_MODE=none` in `/etc/default/telegram-tank-bridge`
+    - reset Tank state dir for clean start:
+      - `/home/tank/.local/state/telegram-tank-bridge`
+  - Verification outcomes:
+    - `telegram-tank-bridge.service` active/running from Tank workspace
+    - startup log confirms executor path under `/home/tank/tankbot/...`
+    - workspace `/home/tank/tankbot` contains no markdown files (`*.md`)
+  - HA integration status:
+    - intentionally kept enabled:
+      - `/etc/default/ha-ops-tank`
+      - `/etc/sudoers.d/tank-telegram-ha`
+  - Repo architecture update:
+    - `src/telegram_bridge/main.py` now supports:
+      - `TELEGRAM_POLICY_WATCH_MODE`
+      - `TELEGRAM_POLICY_WATCH_FILES`
+    - `src/telegram_bridge/session_manager.py` worker-user messages no longer hardcode "Architect".
+  - Traceability artifact:
+    - `logs/changes/20260227-153546-telegram-tank-runtime-workspace-isolation-live.md`
 - Added Tank group allowlist entry on 2026-02-27 (live + repo mirror):
   - Root cause addressed:
     - Tank bot returned `Access denied for this chat.` for new group because the group `chat_id` was not in Tank allowlist.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Telegram long-poll bridge to local Architect/Codex CLI."""
+"""Telegram long-poll bridge to local Codex CLI."""
 
 import argparse
 import logging
@@ -208,6 +208,14 @@ def build_repo_root() -> str:
 
 
 def build_policy_watch_files() -> List[str]:
+    raw_override = os.getenv("TELEGRAM_POLICY_WATCH_FILES")
+    if raw_override is not None:
+        return [item.strip() for item in raw_override.split(",") if item.strip()]
+
+    mode = os.getenv("TELEGRAM_POLICY_WATCH_MODE", "").strip().lower()
+    if mode in ("none", "off", "disabled", "empty"):
+        return []
+
     repo_root = build_repo_root()
     return [
         os.path.join(repo_root, "AGENTS.md"),

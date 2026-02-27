@@ -7,12 +7,12 @@ Wants=network-online.target
 Type=simple
 User=tank
 Group=tank
-WorkingDirectory=/home/architect/matrix
+WorkingDirectory=/home/tank/tankbot
 Environment=PYTHONUNBUFFERED=1
 Environment=UNIT_NAME=telegram-tank-bridge.service
-Environment=TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
+Environment=TELEGRAM_EXECUTOR_CMD=/home/tank/tankbot/src/telegram_bridge/executor.sh
 EnvironmentFile=-/etc/default/telegram-tank-bridge
-ExecStart=/usr/bin/python3 /home/architect/matrix/src/telegram_bridge/main.py
+ExecStart=/usr/bin/python3 /home/tank/tankbot/src/telegram_bridge/main.py
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=false

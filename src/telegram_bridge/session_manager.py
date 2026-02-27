@@ -96,14 +96,14 @@ def _has_active_worker(session: Optional[CanonicalSession]) -> bool:
 
 
 WORKER_EVICTED_MESSAGE = (
-    "Your Architect session was closed to free worker capacity. "
+    "Your session was closed to free worker capacity. "
     "Send a new message to start a fresh context."
 )
 WORKER_POLICY_REFRESH_MESSAGE = (
     "Policy/context files changed. Your previous session was reset and this request "
     "will continue in a new session."
 )
-WORKER_CAPACITY_REJECTED_MESSAGE = "All Architect workers are currently in use. Please wait and retry."
+WORKER_CAPACITY_REJECTED_MESSAGE = "All workers are currently in use. Please wait and retry."
 
 
 @dataclass
@@ -426,7 +426,7 @@ def expire_idle_worker_sessions(
             try:
                 client.send_message(
                     chat_id,
-                    f"Your Architect session expired after {timeout_mins} minutes of inactivity. "
+                    f"Your session expired after {timeout_mins} minutes of inactivity. "
                     "Context was cleared.",
                 )
             except Exception:
@@ -475,7 +475,7 @@ def expire_idle_worker_sessions(
         try:
             client.send_message(
                 chat_id,
-                f"Your Architect session expired after {timeout_mins} minutes of inactivity. "
+                f"Your session expired after {timeout_mins} minutes of inactivity. "
                 "Context was cleared.",
             )
         except Exception:

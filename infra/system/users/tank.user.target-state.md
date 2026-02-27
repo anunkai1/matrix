@@ -10,6 +10,7 @@ Track the intended baseline for the `tank` Linux user on Server3.
 - UID/GID: `1002:1002`
 - Home: `/home/tank`
 - Shell: `/bin/bash`
+- Telegram runtime workspace: `/home/tank/tankbot` (code-only)
 - Primary group: `tank`
 - Supplementary groups: none
 - Sudo privileges: scoped allowlist via `/etc/sudoers.d/tank-telegram-ha`
