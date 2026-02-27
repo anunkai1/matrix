@@ -9,6 +9,21 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Removed HelperBot runtime completely from Server3 on 2026-02-27 (live + repo):
+  - Live removals completed:
+    - stopped and disabled `telegram-helper-bridge.service`
+    - removed `/etc/systemd/system/telegram-helper-bridge.service`
+    - removed `/etc/default/telegram-helper-bridge`
+    - removed `/etc/default/ha-ops-helper`
+    - removed `/etc/sudoers.d/helperbot-telegram-ha`
+    - removed Linux user/group `helperbot` and `/home/helperbot`
+  - Verification outcomes:
+    - `id helperbot` -> user not found
+    - `telegram-helper-bridge.service` -> unit not found/inactive
+  - Repo mirror cleanup:
+    - removed helper-specific source-of-truth artifacts under `infra/`, `ops/`, and `src/`
+  - Traceability artifact:
+    - `logs/changes/20260227-141954-helperbot-complete-removal-live.md`
 - Isolated helper bot into dedicated helper workspace on 2026-02-27 (live + repo):
   - New helper runtime code root:
     - `/home/helperbot/helperbot`

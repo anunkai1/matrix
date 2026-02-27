@@ -1,3 +1,0 @@
-# Mirror of /etc/sudoers.d/helperbot-telegram-ha on Server3.
-Defaults:helperbot !requiretty
-helperbot ALL=(root) NOPASSWD: /home/helperbot/helperbot/ops/ha/schedule_entity_power.sh *, /home/helperbot/helperbot/ops/ha/schedule_climate_temperature.sh *, /home/helperbot/helperbot/ops/ha/schedule_climate_mode.sh *, /home/helperbot/helperbot/ops/telegram-bridge/restart_and_verify.sh
