@@ -9,6 +9,26 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Isolated helper bot into dedicated helper workspace on 2026-02-27 (live + repo):
+  - New helper runtime code root:
+    - `/home/helperbot/helperbot`
+  - Helper identity is now workspace-local:
+    - `/home/helperbot/helperbot/AGENTS.md`
+    - `/home/helperbot/helperbot/HELPER_INSTRUCTION.md`
+    - assistant label set via env:
+      - `TELEGRAM_ASSISTANT_NAME=HelperBot`
+  - Helper service now runs from helper workspace:
+    - `WorkingDirectory=/home/helperbot/helperbot`
+    - `ExecStart=/usr/bin/python3 /home/helperbot/helperbot/src/telegram_bridge/main.py`
+    - `TELEGRAM_EXECUTOR_CMD=/home/helperbot/helperbot/src/telegram_bridge/executor_helper.sh`
+  - Helper sudo allowlist migrated to helper-workspace script paths.
+  - Verification outcomes:
+    - `telegram-helper-bridge.service` active/running
+    - startup log shows:
+      - `HelperBot-only routing active for all allowlisted chats.`
+      - helper executor path under `/home/helperbot/helperbot/...`
+  - Traceability artifact:
+    - `logs/changes/20260227-134659-helper-workspace-isolation-live.md`
 - Disabled helper prefix requirement on 2026-02-27 (live + repo mirror):
   - Root cause addressed:
     - helper bot received allowlisted-group updates but ignored them with `reason=prefix_required`.

@@ -54,3 +54,8 @@ Use one section per lesson:
 - Mistake pattern: I iterated on parser strictness while user remained blocked in production chat flow.
 - Prevention rule: When allowlisted updates are received but repeatedly ignored by prefix-gating, apply immediate fallback (`TELEGRAM_REQUIRED_PREFIXES=`) to restore service, then refine parser afterward if needed.
 - Where/when applied: Helper bot production incidents where `bridge.request_ignored` reason is `prefix_required`.
+
+### 2026-02-27T13:46:59+10:00 - Separate Identity Requires Separate Workspace Root
+- Mistake pattern: I split Linux runtime user but still ran helper bot from Architect workspace, so helper inherited Architect persona/instruction context.
+- Prevention rule: For any separate bot persona, isolate both runtime user and workspace root (own `AGENTS.md` + instruction file) and point systemd `WorkingDirectory` + executor path to that workspace.
+- Where/when applied: New Telegram bot deployments that need distinct identity/rules on Server3.
