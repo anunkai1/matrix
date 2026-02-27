@@ -10,6 +10,24 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Applied Tank sudoers restart restriction live on 2026-02-28 (live + repo mirror):
+  - Root cause addressed:
+    - previous H3 hardening was committed in repo, but live `/etc/sudoers.d/tank-telegram-ha` still had wildcard restart argument.
+  - Live apply details:
+    - backup created:
+      - `/etc/sudoers.d/tank-telegram-ha.bak.20260228-085645`
+    - applied mirror from:
+      - `infra/system/sudoers/tank-telegram-ha`
+    - live destination:
+      - `/etc/sudoers.d/tank-telegram-ha`
+    - effective restart permission now restricted to:
+      - `/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-tank-bridge.service`
+  - Verification outcomes:
+    - `sudo -n visudo -cf /etc/sudoers.d/tank-telegram-ha` -> parsed OK
+    - `sudo -n cat /etc/sudoers.d/tank-telegram-ha` -> contents match repo restriction
+    - `sudo -n -l -U tank` -> restart allowlist shows restricted unit form only
+  - Traceability artifact:
+    - `logs/changes/20260228-085645-tank-sudoers-live-restart-restriction.md`
 - Hardened direct HA scripts to block token CLI arguments on 2026-02-28 (repo-only):
   - Root cause addressed:
     - direct HA scripts accepted `--token`, which could expose credentials in shell history and process metadata.
