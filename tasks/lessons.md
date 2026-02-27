@@ -49,3 +49,8 @@ Use one section per lesson:
 - Mistake pattern: I assumed ASCII-only separators after Telegram mention prefixes, causing valid mobile-formatted messages to be ignored.
 - Prevention rule: Treat any Unicode whitespace as a valid delimiter in prefix/command parsers and add regression tests for NBSP-style inputs.
 - Where/when applied: Telegram message routing and prefix gating in `src/telegram_bridge/handlers.py`.
+
+### 2026-02-27T12:22:44+10:00 - Prefer Operational Fallback When Prefix Gating Blocks Users
+- Mistake pattern: I iterated on parser strictness while user remained blocked in production chat flow.
+- Prevention rule: When allowlisted updates are received but repeatedly ignored by prefix-gating, apply immediate fallback (`TELEGRAM_REQUIRED_PREFIXES=`) to restore service, then refine parser afterward if needed.
+- Where/when applied: Helper bot production incidents where `bridge.request_ignored` reason is `prefix_required`.

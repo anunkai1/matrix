@@ -9,6 +9,19 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Disabled helper prefix requirement on 2026-02-27 (live + repo mirror):
+  - Root cause addressed:
+    - helper bot received allowlisted-group updates but ignored them with `reason=prefix_required`.
+  - Live env update:
+    - `/etc/default/telegram-helper-bridge`
+    - `TELEGRAM_REQUIRED_PREFIXES=` (empty)
+  - Bridge restart/verification:
+    - `telegram-helper-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 12:22:24 AEST`
+    - `MainPID=446167` at verification time
+    - journal confirms startup allowlist remains intact
+  - Traceability artifact:
+    - `logs/changes/20260227-122244-telegram-helper-disable-prefix-requirement-live.md`
 - Fixed helper prefix parsing for Unicode whitespace on 2026-02-27 (live + repo):
   - Root cause addressed:
     - helper bot received messages but ignored them as `prefix_required` when mobile clients sent non-breaking whitespace after prefixes.
