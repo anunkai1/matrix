@@ -129,6 +129,7 @@ class Config:
     memory_prune_interval_seconds: int
     required_prefixes: List[str]
     required_prefix_ignore_case: bool
+    assistant_name: str
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -262,6 +263,7 @@ def load_config() -> Config:
         memory_sqlite_path = os.path.join(state_dir, "memory.sqlite3")
 
     allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids)
+    assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
 
     return Config(
         token=token,
@@ -336,6 +338,8 @@ def load_config() -> Config:
             "TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE",
             True,
         ),
+        assistant_name=assistant_name,
+        empty_output_message=f"(No output from {assistant_name})",
     )
 
 
@@ -724,7 +728,7 @@ def run_bridge(config: Config) -> int:
         offset = 0
 
     logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
-    logging.info("Architect-only routing active for all allowlisted chats.")
+    logging.info("%s-only routing active for all allowlisted chats.", config.assistant_name)
     logging.info("Executor command=%s", config.executor_cmd)
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
     logging.info(

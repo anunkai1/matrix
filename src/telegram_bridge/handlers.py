@@ -53,10 +53,8 @@ PROGRESS_EDIT_MIN_INTERVAL_SECONDS = 6
 PROGRESS_HEARTBEAT_EDIT_SECONDS = 30
 
 HELP_COMMAND_ALIASES = ("/help", "/h")
-START_COMMAND_MESSAGE = "Telegram Architect bridge is online. Send a prompt to begin."
 RATE_LIMIT_MESSAGE = "Rate limit exceeded. Please wait a minute and retry."
 RETRY_WITH_NEW_SESSION_PHASE = "Execution failed. Retrying once with a new session."
-RESUME_RETRY_PHASE = "Retrying as a new Architect session."
 RETRY_FAILED_MESSAGE = "Execution failed after an automatic retry. Please resend your request."
 HA_KEYWORD_HELP_MESSAGE = (
     "HA mode needs an action. Example: `HA turn on masters AC to dry mode at 9:25am`."
@@ -64,16 +62,6 @@ HA_KEYWORD_HELP_MESSAGE = (
 PREFIX_HELP_MESSAGE = (
     "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
 )
-HA_ROUTING_SCRIPT_ALLOWLIST = (
-    "/home/architect/matrix/ops/ha/turn_entity_power.sh",
-    "/home/architect/matrix/ops/ha/schedule_entity_power.sh",
-    "/home/architect/matrix/ops/ha/set_climate_temperature.sh",
-    "/home/architect/matrix/ops/ha/schedule_climate_temperature.sh",
-    "/home/architect/matrix/ops/ha/set_climate_mode.sh",
-    "/home/architect/matrix/ops/ha/schedule_climate_mode.sh",
-)
-
-
 @dataclass
 class DocumentPayload:
     file_id: str
@@ -86,6 +74,35 @@ class PreparedPromptInput:
     prompt_text: str
     image_path: Optional[str] = None
     document_path: Optional[str] = None
+
+
+def build_repo_root() -> str:
+    return str(Path(__file__).resolve().parents[2])
+
+
+def build_ha_routing_script_allowlist() -> List[str]:
+    repo_root = build_repo_root()
+    return [
+        os.path.join(repo_root, "ops", "ha", "turn_entity_power.sh"),
+        os.path.join(repo_root, "ops", "ha", "schedule_entity_power.sh"),
+        os.path.join(repo_root, "ops", "ha", "set_climate_temperature.sh"),
+        os.path.join(repo_root, "ops", "ha", "schedule_climate_temperature.sh"),
+        os.path.join(repo_root, "ops", "ha", "set_climate_mode.sh"),
+        os.path.join(repo_root, "ops", "ha", "schedule_climate_mode.sh"),
+    ]
+
+
+def assistant_label(config) -> str:
+    value = getattr(config, "assistant_name", "").strip()
+    return value or "Architect"
+
+
+def start_command_message(config) -> str:
+    return f"Telegram {assistant_label(config)} bridge is online. Send a prompt to begin."
+
+
+def resume_retry_phase(config) -> str:
+    return f"Retrying as a new {assistant_label(config)} session."
 
 
 def normalize_command(text: str) -> Optional[str]:
@@ -149,7 +166,7 @@ def strip_required_prefix(
 
 
 def build_ha_keyword_prompt(user_request: str) -> str:
-    scripts = "\n".join(f"- {path}" for path in HA_ROUTING_SCRIPT_ALLOWLIST)
+    scripts = "\n".join(f"- {path}" for path in build_ha_routing_script_allowlist())
     return (
         "Home Assistant priority mode is active.\n"
         "Treat this as a Home Assistant action request.\n"
@@ -238,10 +255,12 @@ class ProgressReporter:
         client: TelegramClient,
         chat_id: int,
         reply_to_message_id: Optional[int],
+        assistant_name: str,
     ) -> None:
         self.client = client
         self.chat_id = chat_id
         self.reply_to_message_id = reply_to_message_id
+        self.assistant_name = assistant_name
         self.started_at = time.time()
         self.progress_message_id: Optional[int] = None
         self.phase = "Starting request."
@@ -292,14 +311,18 @@ class ProgressReporter:
 
     def handle_executor_event(self, event: ExecutorProgressEvent) -> None:
         if event.kind == "turn_started":
-            self.set_phase("Architect started reasoning.", immediate=False)
+            self.set_phase(f"{self.assistant_name} started reasoning.", immediate=False)
             return
         if event.kind == "reasoning":
-            detail = compact_progress_text(event.detail) if event.detail else "Architect is reasoning."
+            detail = (
+                compact_progress_text(event.detail)
+                if event.detail
+                else f"{self.assistant_name} is reasoning."
+            )
             self.set_phase(detail, immediate=False)
             return
         if event.kind == "agent_message":
-            self.set_phase("Architect is preparing the reply.", immediate=False)
+            self.set_phase(f"{self.assistant_name} is preparing the reply.", immediate=False)
             return
         if event.kind == "command_started":
             with self._lock:
@@ -346,7 +369,7 @@ class ProgressReporter:
             phase = self.phase
             started = self.commands_started
             completed = self.commands_completed
-        text = f"Architect is working... {elapsed}s elapsed.\n{phase}"
+        text = f"{self.assistant_name} is working... {elapsed}s elapsed.\n{phase}"
         if started > 0:
             text += f"\nCommands done: {completed}/{started}"
         return trim_output(text, TELEGRAM_LIMIT)
@@ -665,7 +688,8 @@ def transcribe_voice_for_chat(
                 logging.warning("Failed to remove temp voice file: %s", voice_path)
 
 
-def build_help_text() -> str:
+def build_help_text(config) -> str:
+    name = assistant_label(config)
     base = (
         "Available commands:\n"
         "/start - verify bridge connectivity\n"
@@ -673,7 +697,7 @@ def build_help_text() -> str:
         "/status - show bridge status and context\n"
         "/reset - clear saved context for this chat\n"
         "/restart - queue a safe bridge restart\n\n"
-        "Send text, images, voice notes, or files and Architect will process them.\n"
+        f"Send text, images, voice notes, or files and {name} will process them.\n"
         "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing."
     )
     return base + "\n\n" + "\n".join(build_memory_help_lines())
@@ -960,7 +984,7 @@ def execute_prompt_with_retry(
                 (result.stderr or "")[-1000:],
             )
             reset_and_retry_new = True
-            progress.set_phase(RESUME_RETRY_PHASE)
+            progress.set_phase(resume_retry_phase(config))
             emit_event(
                 "bridge.request_retry_scheduled",
                 level=logging.WARNING,
@@ -1076,7 +1100,7 @@ def process_prompt(
     turn_context: Optional[TurnContext] = None
     image_path: Optional[str] = None
     document_path: Optional[str] = None
-    progress = ProgressReporter(client, chat_id, message_id)
+    progress = ProgressReporter(client, chat_id, message_id, assistant_label(config))
     try:
         progress.start()
         prepared = prepare_prompt_input(
@@ -1124,7 +1148,7 @@ def process_prompt(
                 "has_previous_thread": bool(previous_thread_id),
             },
         )
-        progress.set_phase("Sending request to Architect.")
+        progress.set_phase(f"Sending request to {assistant_label(config)}.")
         result = execute_prompt_with_retry(
             state_repo=state_repo,
             config=config,
@@ -1312,14 +1336,14 @@ def handle_known_command(
     if command == "/start":
         client.send_message(
             chat_id,
-            START_COMMAND_MESSAGE,
+            start_command_message(config),
             reply_to_message_id=message_id,
         )
         return True
     if command in HELP_COMMAND_ALIASES:
         client.send_message(
             chat_id,
-            build_help_text(),
+            build_help_text(config),
             reply_to_message_id=message_id,
         )
         return True

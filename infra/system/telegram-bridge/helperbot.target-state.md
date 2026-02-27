@@ -11,8 +11,11 @@ This document mirrors the intended live state for the dedicated helper Telegram 
 
 ## Access Prerequisites
 
-- `/home/architect` requires execute traversal for `helperbot` to reach repo paths.
-  - Current live fallback: mode includes `o+x` (set when ACL tooling is unavailable).
+- Helper workspace root:
+  - `/home/helperbot/helperbot`
+- Helper identity files in workspace root:
+  - `AGENTS.md`
+  - `HELPER_INSTRUCTION.md`
 
 ## Live Environment Files
 
@@ -33,10 +36,12 @@ This document mirrors the intended live state for the dedicated helper Telegram 
     - `ops/ha/schedule_climate_temperature.sh`
     - `ops/ha/schedule_climate_mode.sh`
     - `ops/telegram-bridge/restart_and_verify.sh`
+  - command paths are pinned to helper workspace under `/home/helperbot/helperbot`.
 
 ## Service
 
 - Unit: `telegram-helper-bridge.service`
 - Source-of-truth unit file: `infra/systemd/telegram-helper-bridge.service`
 - Runtime user/group: `helperbot:helperbot`
+- Runtime code root: `/home/helperbot/helperbot`
 - State root: `/home/helperbot/.local/state/telegram-helper-bridge`

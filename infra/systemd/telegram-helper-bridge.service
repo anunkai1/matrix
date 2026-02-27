@@ -7,12 +7,12 @@ Wants=network-online.target
 Type=simple
 User=helperbot
 Group=helperbot
-WorkingDirectory=/home/architect/matrix
+WorkingDirectory=/home/helperbot/helperbot
 Environment=PYTHONUNBUFFERED=1
 Environment=UNIT_NAME=telegram-helper-bridge.service
-Environment=TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor_helper.sh
+Environment=TELEGRAM_EXECUTOR_CMD=/home/helperbot/helperbot/src/telegram_bridge/executor_helper.sh
 EnvironmentFile=-/etc/default/telegram-helper-bridge
-ExecStart=/usr/bin/python3 /home/architect/matrix/src/telegram_bridge/main.py
+ExecStart=/usr/bin/python3 /home/helperbot/helperbot/src/telegram_bridge/main.py
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

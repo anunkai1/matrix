@@ -80,6 +80,7 @@ def make_config(**overrides):
         "memory_prune_interval_seconds": 300,
         "required_prefixes": [],
         "required_prefix_ignore_case": True,
+        "assistant_name": "Architect",
     }
     base.update(overrides)
     return bridge.Config(**base)
@@ -139,6 +140,11 @@ class BridgeCoreTests(unittest.TestCase):
         trimmed = bridge_handlers.trim_output("x" * 40, 20)
         self.assertTrue(trimmed.endswith("[output truncated]"))
         self.assertLessEqual(len(trimmed), 20)
+
+    def test_helper_text_uses_configured_assistant_name(self):
+        cfg = make_config(assistant_name="HelperBot")
+        self.assertIn("HelperBot", bridge_handlers.start_command_message(cfg))
+        self.assertIn("HelperBot", bridge_handlers.build_help_text(cfg))
 
     def test_extract_ha_keyword_request_variants(self):
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("HA open garage"), (True, "open garage"))

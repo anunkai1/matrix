@@ -84,6 +84,7 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_VOICE_WHISPER_LANGUAGE=
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
+# TELEGRAM_ASSISTANT_NAME=Architect
 # TELEGRAM_REQUIRED_PREFIXES=@helper,@helperbot,helper:
 # TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE=true
 # TELEGRAM_PERSISTENT_WORKERS_ENABLED=false
@@ -119,12 +120,19 @@ bash ops/telegram-bridge/status_service.sh
 Install/start the helper service profile:
 
 ```bash
+bash ops/telegram-bridge/deploy_helper_workspace.sh apply
 sudo cp infra/env/telegram-helper-bridge.env.example /etc/default/telegram-helper-bridge
 sudo nano /etc/default/telegram-helper-bridge
 UNIT_NAME=telegram-helper-bridge.service bash ops/telegram-bridge/install_systemd.sh apply
 UNIT_NAME=telegram-helper-bridge.service bash ops/telegram-bridge/restart_and_verify.sh
 UNIT_NAME=telegram-helper-bridge.service bash ops/telegram-bridge/status_service.sh
 ```
+
+Helper profile note:
+- Runtime code path is `/home/helperbot/helperbot`.
+- Helper identity files are managed from:
+  - `infra/helperbot/AGENTS.md`
+  - `infra/helperbot/HELPER_INSTRUCTION.md`
 
 ## Voice Runtime Setup (Required for Voice Notes)
 
