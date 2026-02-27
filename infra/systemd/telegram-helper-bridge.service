@@ -1,0 +1,25 @@
+[Unit]
+Description=Telegram Helper Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=helperbot
+Group=helperbot
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+Environment=UNIT_NAME=telegram-helper-bridge.service
+Environment=TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor_helper.sh
+EnvironmentFile=-/etc/default/telegram-helper-bridge
+ExecStart=/usr/bin/python3 /home/architect/matrix/src/telegram_bridge/main.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/helperbot
+
+[Install]
+WantedBy=multi-user.target

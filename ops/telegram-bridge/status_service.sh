@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-UNIT_NAME="telegram-architect-bridge.service"
+UNIT_NAME="${UNIT_NAME:-telegram-architect-bridge.service}"
 
 run_privileged() {
   if [[ "$(id -u)" -eq 0 ]]; then

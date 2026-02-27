@@ -3,17 +3,31 @@ set -euo pipefail
 
 UNIT_NAME="${UNIT_NAME:-telegram-architect-bridge.service}"
 
-run_privileged() {
-  if [[ "$(id -u)" -eq 0 ]]; then
-    "$@"
-  else
-    sudo -n "$@"
-  fi
-}
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --unit)
+      UNIT_NAME="${2:-}"
+      shift 2
+      ;;
+    *)
+      echo "Usage: $0 [--unit UNIT_NAME]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "${UNIT_NAME}" ]]; then
+  echo "UNIT_NAME cannot be empty" >&2
+  exit 1
+fi
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  exec sudo -n "$0" --unit "${UNIT_NAME}"
+fi
 
 show_prop() {
   local key="$1"
-  run_privileged systemctl show -p "${key}" --value "${UNIT_NAME}"
+  systemctl show -p "${key}" --value "${UNIT_NAME}"
 }
 
 timestamp_utc() {
@@ -29,7 +43,7 @@ echo "[restart_and_verify] before_main_pid=${before_pid}"
 echo "[restart_and_verify] before_start_timestamp=${before_start}"
 echo "[restart_and_verify] before_start_monotonic=${before_mono}"
 
-run_privileged systemctl restart "${UNIT_NAME}"
+systemctl restart "${UNIT_NAME}"
 
 after_pid="$(show_prop MainPID)"
 after_start="$(show_prop ExecMainStartTimestamp)"
@@ -45,7 +59,7 @@ echo "[restart_and_verify] sub_state=${sub_state}"
 
 if [[ "${active_state}" != "active" || "${sub_state}" != "running" ]]; then
   echo "[restart_and_verify] verification=failed reason=service_not_running"
-  run_privileged systemctl --no-pager --full status "${UNIT_NAME}"
+  systemctl --no-pager --full status "${UNIT_NAME}"
   exit 1
 fi
 
@@ -58,9 +72,9 @@ fi
 
 if [[ "${changed_marker}" != "yes" ]]; then
   echo "[restart_and_verify] verification=failed reason=no_restart_marker_change"
-  run_privileged systemctl --no-pager --full status "${UNIT_NAME}"
+  systemctl --no-pager --full status "${UNIT_NAME}"
   exit 2
 fi
 
 echo "[restart_and_verify] verification=pass"
-run_privileged systemctl --no-pager --full status "${UNIT_NAME}"
+systemctl --no-pager --full status "${UNIT_NAME}"

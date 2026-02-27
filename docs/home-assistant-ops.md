@@ -2,7 +2,7 @@
 
 This runbook provides reliable script-based Home Assistant operations without inline `systemd-run` shell expansion issues.
 
-Default credential source for HA ops scripts: `/etc/default/ha-ops`
+Default credential source for HA ops scripts: `${HA_OPS_ENV_FILE:-/etc/default/ha-ops}`
 
 ## Power Scripts (Any HA Entity)
 
@@ -143,5 +143,6 @@ sudo journalctl -u <service-unit-name>.service -n 50 --no-pager
 
 Notes:
 - Keep tokens in live env files only; do not commit them to git.
-- If `/etc/default/ha-ops` is unavailable, pass an explicit `--env-file` with HA keys.
+- For profile-specific credentials, set `HA_OPS_ENV_FILE` before running scripts (or pass `--env-file` explicitly).
+- Scheduler scripts self-elevate via `sudo -n` when run as non-root users.
 - If the timer already fired and started execution, stop the service with `sudo systemctl stop <service-unit-name>.service`.

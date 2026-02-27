@@ -3,7 +3,7 @@ set -euo pipefail
 
 MODE="${1:-apply}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-UNIT_NAME="telegram-architect-bridge.service"
+UNIT_NAME="${UNIT_NAME:-telegram-architect-bridge.service}"
 SOURCE_UNIT="${REPO_ROOT}/infra/systemd/${UNIT_NAME}"
 TARGET_UNIT="/etc/systemd/system/${UNIT_NAME}"
 

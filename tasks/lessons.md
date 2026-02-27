@@ -39,3 +39,8 @@ Use one section per lesson:
 - Mistake pattern: Free-form chat requests could still flow into generic execution paths even after HA scripts were hardened.
 - Prevention rule: Reserve `HA` / `Home Assistant` as explicit routing triggers and force those requests into stateless HA-script-only policy mode.
 - Where/when applied: Telegram bridge message routing before memory/command handling in `src/telegram_bridge/handlers.py`.
+
+### 2026-02-27T11:39:12+10:00 - Confirm Bot Purpose Before Recommending Security Model
+- Mistake pattern: I assumed a narrowly scoped HA bot design before confirming the user wanted a general helper bot with mixed advice/file + HA use.
+- Prevention rule: For new bot/service requests, confirm intended capability scope first (general assistant vs single-domain ops) before proposing privilege boundaries and routing model.
+- Where/when applied: Initial design step for any new Telegram bot/service rollout on Server3, before drafting implementation plan.

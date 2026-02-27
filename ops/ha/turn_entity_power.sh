@@ -48,7 +48,7 @@ preflight_ha_api() {
 
 action=""
 entity=""
-env_file="/etc/default/ha-ops"
+env_file="${HA_OPS_ENV_FILE:-/etc/default/ha-ops}"
 base_url="${HA_BASE_URL:-}"
 token="${HA_TOKEN:-}"
 dry_run="false"

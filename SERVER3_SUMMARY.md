@@ -9,6 +9,34 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Deployed a dedicated family helper Telegram bot service on 2026-02-27 (live + repo):
+  - Added helper-specific service/env artifacts:
+    - `infra/systemd/telegram-helper-bridge.service`
+    - `infra/env/telegram-helper-bridge.env.example`
+  - Added bridge prefix-gating support:
+    - env keys: `TELEGRAM_REQUIRED_PREFIXES`, `TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE`
+    - behavior: when configured, only prefixed messages are processed; others are ignored.
+  - Added helper executor profile:
+    - `src/telegram_bridge/executor_helper.sh`
+  - Added live helper runtime and isolation:
+    - Linux user: `helperbot`
+    - live env: `/etc/default/telegram-helper-bridge`
+    - helper state root: `/home/helperbot/.local/state/telegram-helper-bridge`
+    - helper service: `telegram-helper-bridge.service` active/running
+  - Added helper HA credential and narrow elevation path:
+    - live HA env: `/etc/default/ha-ops-helper`
+    - live sudoers: `/etc/sudoers.d/helperbot-telegram-ha`
+    - scheduler scripts now self-elevate and support `HA_OPS_ENV_FILE` default pinning.
+  - Added live mirror/traceability artifacts:
+    - `infra/env/telegram-helper-bridge.server3.redacted.env`
+    - `infra/env/ha-ops-helper.server3.redacted.env`
+    - `infra/system/sudoers/helperbot-telegram-ha`
+    - `logs/changes/20260227-113847-telegram-helper-bot-split-service-live.md`
+  - Verification outcomes:
+    - helper service restart/status checks passed
+    - helperbot `codex` execution succeeded
+    - helperbot HA dry-run immediate + scheduled paths succeeded against `/etc/default/ha-ops-helper`
+    - existing `telegram-architect-bridge.service` remained active/running
 - Pinned memory DB path explicitly in live bridge env on 2026-02-27 (live + repo mirror):
   - Live env update:
     - added `TELEGRAM_MEMORY_SQLITE_PATH=/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3` in `/etc/default/telegram-architect-bridge`

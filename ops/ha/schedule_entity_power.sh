@@ -3,6 +3,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POWER_SCRIPT="$SCRIPT_DIR/turn_entity_power.sh"
+DEFAULT_ENV_FILE="${HA_OPS_ENV_FILE:-/etc/default/ha-ops}"
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  has_env_file="false"
+  for arg in "$@"; do
+    if [[ "$arg" == "--env-file" ]]; then
+      has_env_file="true"
+      break
+    fi
+  done
+  if [[ "$has_env_file" == "true" ]]; then
+    exec sudo -n "$0" "$@"
+  fi
+  exec sudo -n "$0" --env-file "$DEFAULT_ENV_FILE" "$@"
+fi
 
 usage() {
   cat <<'HELP'
@@ -23,14 +38,6 @@ Options:
   --dry-run          Schedule a dry-run execution (no Home Assistant write)
   -h, --help         Show this help text
 HELP
-}
-
-run_privileged() {
-  if [[ "$(id -u)" -eq 0 ]]; then
-    "$@"
-  else
-    sudo -n "$@"
-  fi
 }
 
 trim_value() {
@@ -96,7 +103,7 @@ in_spec=""
 at_spec=""
 action=""
 entity=""
-env_file="/etc/default/ha-ops"
+env_file="$DEFAULT_ENV_FILE"
 base_url=""
 token=""
 unit_prefix="ha-entity-power"
@@ -206,7 +213,7 @@ fi
 if [[ -n "$token" ]]; then
   preflight_cmd+=(--token "$token")
 fi
-run_privileged "${preflight_cmd[@]}" >/dev/null
+"${preflight_cmd[@]}" >/dev/null
 echo "[schedule_entity_power] preflight=ok"
 
 if [[ -n "$in_spec" ]]; then
@@ -215,11 +222,11 @@ if [[ -n "$in_spec" ]]; then
     echo "[schedule_entity_power] --in resolved to empty duration" >&2
     exit 2
   fi
-  run_output="$(run_privileged systemd-run --unit "$unit" --on-active="$in_spec" "${cmd[@]}")"
+  run_output="$(systemd-run --unit "$unit" --on-active="$in_spec" "${cmd[@]}")"
   trigger_desc="in=$in_spec"
 else
   on_calendar="$(resolve_at_spec "$at_spec")"
-  run_output="$(run_privileged systemd-run --unit "$unit" --on-calendar="$on_calendar" "${cmd[@]}")"
+  run_output="$(systemd-run --unit "$unit" --on-calendar="$on_calendar" "${cmd[@]}")"
   trigger_desc="at=$on_calendar"
 fi
 
@@ -228,4 +235,4 @@ printf '%s\n' "$run_output"
 echo "[schedule_entity_power] trigger=$trigger_desc"
 echo "[schedule_entity_power] timer_unit=${unit}.timer"
 echo "[schedule_entity_power] service_unit=${unit}.service"
-run_privileged systemctl status "${unit}.timer" --no-pager | sed -n '1,12p'
+systemctl status "${unit}.timer" --no-pager | sed -n '1,12p'

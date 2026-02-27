@@ -78,6 +78,8 @@ def make_config(**overrides):
         "memory_max_messages_per_key": 4000,
         "memory_max_summaries_per_key": 80,
         "memory_prune_interval_seconds": 300,
+        "required_prefixes": [],
+        "required_prefix_ignore_case": True,
     }
     base.update(overrides)
     return bridge.Config(**base)
@@ -146,6 +148,21 @@ class BridgeCoreTests(unittest.TestCase):
         )
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("ha"), (True, ""))
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("happy path"), (False, ""))
+
+    def test_strip_required_prefix_variants(self):
+        prefixes = ["@helper", "helper:"]
+        self.assertEqual(
+            bridge_handlers.strip_required_prefix("@helper summarize this", prefixes, True),
+            (True, "summarize this"),
+        )
+        self.assertEqual(
+            bridge_handlers.strip_required_prefix("HELPER: summarize this", prefixes, True),
+            (True, "summarize this"),
+        )
+        self.assertEqual(
+            bridge_handlers.strip_required_prefix("@helperbot should not match", prefixes, True),
+            (False, "@helperbot should not match"),
+        )
 
     def test_json_log_formatter_includes_event_and_fields(self):
         record = logging.LogRecord(
@@ -273,6 +290,61 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Available commands:", client.messages[-1][1])
         self.assertIn("/memory mode", client.messages[-1][1])
         self.assertIn("/ask <prompt>", client.messages[-1][1])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_ignores_non_prefixed_when_required(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(required_prefixes=["@helper"])
+        update = {
+            "update_id": 100,
+            "message": {
+                "message_id": 200,
+                "chat": {"id": 1},
+                "text": "hello there",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertFalse(start_message_worker.called)
+        self.assertEqual(client.messages, [])
+
+    def test_handle_update_accepts_prefixed_status_command_when_required(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(required_prefixes=["@helper"])
+        update = {
+            "update_id": 101,
+            "message": {
+                "message_id": 201,
+                "chat": {"id": 1},
+                "text": "@helper /status",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(client.messages)
+        self.assertIn("Bridge status: online", client.messages[-1][1])
+
+    def test_handle_update_rejects_prefix_without_action(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(required_prefixes=["@helper"])
+        update = {
+            "update_id": 102,
+            "message": {
+                "message_id": 202,
+                "chat": {"id": 1},
+                "text": "@helper",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertEqual(len(client.messages), 1)
+        self.assertIn("Helper mode needs a prefixed prompt.", client.messages[0][1])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_ha_keyword_prompt_stateless(self, start_message_worker):

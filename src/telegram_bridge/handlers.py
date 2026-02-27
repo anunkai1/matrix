@@ -61,6 +61,9 @@ RETRY_FAILED_MESSAGE = "Execution failed after an automatic retry. Please resend
 HA_KEYWORD_HELP_MESSAGE = (
     "HA mode needs an action. Example: `HA turn on masters AC to dry mode at 9:25am`."
 )
+PREFIX_HELP_MESSAGE = (
+    "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
+)
 HA_ROUTING_SCRIPT_ALLOWLIST = (
     "/home/architect/matrix/ops/ha/turn_entity_power.sh",
     "/home/architect/matrix/ops/ha/schedule_entity_power.sh",
@@ -108,6 +111,31 @@ def extract_ha_keyword_request(text: str) -> tuple[bool, str]:
                 continue
             return True, remainder.lstrip(" :-\t")
     return False, ""
+
+
+def strip_required_prefix(
+    text: str,
+    prefixes: List[str],
+    ignore_case: bool,
+) -> tuple[bool, str]:
+    stripped = text.strip()
+    if not stripped:
+        return False, ""
+    probe = stripped.casefold() if ignore_case else stripped
+    for prefix in prefixes:
+        normalized_prefix = prefix.strip()
+        if not normalized_prefix:
+            continue
+        normalized_probe = normalized_prefix.casefold() if ignore_case else normalized_prefix
+        if probe == normalized_probe:
+            return True, ""
+        if not probe.startswith(normalized_probe):
+            continue
+        remainder = stripped[len(normalized_prefix):]
+        if remainder and remainder[0] not in (" ", ":", "-"):
+            continue
+        return True, remainder.lstrip(" :-\t")
+    return False, stripped
 
 
 def build_ha_keyword_prompt(user_request: str) -> str:
@@ -674,6 +702,7 @@ def build_status_text(state: State, config, chat_id: Optional[int] = None) -> st
     lines = [
         "Bridge status: online",
         f"Allowed chats: {len(config.allowed_chat_ids)}",
+        f"Required prefixes: {', '.join(config.required_prefixes) if config.required_prefixes else '(none)'}",
         f"Busy chats: {busy_count}",
         f"Saved contexts: {thread_count}",
         (
@@ -1366,6 +1395,32 @@ def handle_update(
     prompt_input, photo_file_id, voice_file_id, document = extract_prompt_and_media(message)
     if prompt_input is None and voice_file_id is None and document is None:
         return
+
+    if prompt_input and config.required_prefixes:
+        has_required_prefix, stripped_prompt = strip_required_prefix(
+            prompt_input,
+            config.required_prefixes,
+            config.required_prefix_ignore_case,
+        )
+        if not has_required_prefix:
+            emit_event(
+                "bridge.request_ignored",
+                fields={"chat_id": chat_id, "message_id": message_id, "reason": "prefix_required"},
+            )
+            return
+        prompt_input = stripped_prompt
+        if not prompt_input and voice_file_id is None and document is None:
+            emit_event(
+                "bridge.request_rejected",
+                level=logging.WARNING,
+                fields={"chat_id": chat_id, "message_id": message_id, "reason": "prefix_missing_action"},
+            )
+            client.send_message(
+                chat_id,
+                PREFIX_HELP_MESSAGE,
+                reply_to_message_id=message_id,
+            )
+            return
 
     sender_name = extract_sender_name(message)
     stateless = False

@@ -22,6 +22,8 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Voice transcription runner: `src/telegram_bridge/voice_transcribe.py`
 - Local smoke test: `src/telegram_bridge/smoke_test.sh`
 - Systemd source-of-truth unit: `infra/systemd/telegram-architect-bridge.service`
+- Helper profile unit: `infra/systemd/telegram-helper-bridge.service`
+- Helper env template: `infra/env/telegram-helper-bridge.env.example`
 - Install/rollback unit: `ops/telegram-bridge/install_systemd.sh`
 - Restart + verification helper: `ops/telegram-bridge/restart_and_verify.sh`
 - Restart helper: `ops/telegram-bridge/restart_service.sh`
@@ -82,6 +84,8 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_VOICE_WHISPER_LANGUAGE=
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
+# TELEGRAM_REQUIRED_PREFIXES=@helper,@helperbot,helper:
+# TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE=true
 # TELEGRAM_PERSISTENT_WORKERS_ENABLED=false
 # TELEGRAM_PERSISTENT_WORKERS_MAX=4
 # TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS=2700
@@ -110,6 +114,16 @@ ENV
 bash ops/telegram-bridge/install_systemd.sh apply
 bash ops/telegram-bridge/restart_and_verify.sh
 bash ops/telegram-bridge/status_service.sh
+```
+
+Install/start the helper service profile:
+
+```bash
+sudo cp infra/env/telegram-helper-bridge.env.example /etc/default/telegram-helper-bridge
+sudo nano /etc/default/telegram-helper-bridge
+UNIT_NAME=telegram-helper-bridge.service bash ops/telegram-bridge/install_systemd.sh apply
+UNIT_NAME=telegram-helper-bridge.service bash ops/telegram-bridge/restart_and_verify.sh
+UNIT_NAME=telegram-helper-bridge.service bash ops/telegram-bridge/status_service.sh
 ```
 
 ## Voice Runtime Setup (Required for Voice Notes)
@@ -151,6 +165,10 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 Message handling:
 
 - All allowlisted chats route to Architect.
+- Optional prefix gate:
+  - set `TELEGRAM_REQUIRED_PREFIXES` (comma-separated) to only process matching messages.
+  - example: `TELEGRAM_REQUIRED_PREFIXES=@helper,@helperbot,helper:`
+  - non-matching messages are ignored.
 - Messages starting with `HA` or `Home Assistant` are forced into Home Assistant mode:
   - the bridge wraps the request with strict policy to use only `ops/ha/*.sh` scripts
   - HA-keyword requests run stateless (no memory/session carryover)
@@ -234,6 +252,7 @@ Message handling:
 ## Safety Controls
 
 - Chat ID allowlist (`TELEGRAM_ALLOWED_CHAT_IDS`)
+- Optional prefix allowlist (`TELEGRAM_REQUIRED_PREFIXES`)
 - Per-chat single in-flight request (`busy` response on overlap)
 - Built-in safe `/restart` command that bypasses busy rejection by queuing restart until active work completes
 - Request timeout guard (`TELEGRAM_EXEC_TIMEOUT_SECONDS`)
@@ -268,8 +287,9 @@ Structured diagnostics:
 Common checks:
 
 - Missing bot token or allowlist in `/etc/default/telegram-architect-bridge`
+- Missing/incorrect prefix list (`TELEGRAM_REQUIRED_PREFIXES`) when messages appear ignored
 - Invalid `TELEGRAM_EXECUTOR_CMD`
-- Missing `codex login` for user `architect`
+- Missing `codex login` for the service user (`architect` or `helperbot`)
 - Voice pipeline issues in `TELEGRAM_VOICE_TRANSCRIBE_CMD`
 
 Memory maintenance:

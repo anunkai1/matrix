@@ -3,6 +3,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SET_SCRIPT="$SCRIPT_DIR/set_climate_temperature.sh"
+DEFAULT_ENV_FILE="${HA_OPS_ENV_FILE:-/etc/default/ha-ops}"
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  has_env_file="false"
+  for arg in "$@"; do
+    if [[ "$arg" == "--env-file" ]]; then
+      has_env_file="true"
+      break
+    fi
+  done
+  if [[ "$has_env_file" == "true" ]]; then
+    exec sudo -n "$0" "$@"
+  fi
+  exec sudo -n "$0" --env-file "$DEFAULT_ENV_FILE" "$@"
+fi
 
 usage() {
   cat <<'EOF'
@@ -19,18 +34,10 @@ Options:
 EOF
 }
 
-run_privileged() {
-  if [[ "$(id -u)" -eq 0 ]]; then
-    "$@"
-  else
-    sudo -n "$@"
-  fi
-}
-
 delay=""
 entity=""
 temperature=""
-env_file="/etc/default/ha-ops"
+env_file="$DEFAULT_ENV_FILE"
 unit_prefix="ha-climate-temp"
 dry_run="false"
 
@@ -104,12 +111,12 @@ if [[ "$dry_run" == "true" ]]; then
 fi
 
 preflight_cmd=("$SET_SCRIPT" --entity "$entity" --temperature "$temperature" --env-file "$env_file" --dry-run)
-run_privileged "${preflight_cmd[@]}" >/dev/null
+"${preflight_cmd[@]}" >/dev/null
 echo "[schedule_climate_temperature] preflight=ok"
 
-run_output="$(run_privileged systemd-run --unit "$unit" --on-active="$delay" "${cmd[@]}")"
+run_output="$(systemd-run --unit "$unit" --on-active="$delay" "${cmd[@]}")"
 printf '%s\n' "$run_output"
 
 echo "[schedule_climate_temperature] timer_unit=${unit}.timer"
 echo "[schedule_climate_temperature] service_unit=${unit}.service"
-run_privileged systemctl status "${unit}.timer" --no-pager | sed -n '1,12p'
+systemctl status "${unit}.timer" --no-pager | sed -n '1,12p'

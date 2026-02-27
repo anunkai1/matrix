@@ -127,6 +127,8 @@ class Config:
     memory_max_messages_per_key: int
     memory_max_summaries_per_key: int
     memory_prune_interval_seconds: int
+    required_prefixes: List[str]
+    required_prefix_ignore_case: bool
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -181,6 +183,22 @@ def parse_allowed_chat_ids(raw: str) -> Set[int]:
             raise ValueError(
                 f"Invalid TELEGRAM_ALLOWED_CHAT_IDS value: {value!r}"
             ) from exc
+    return parsed
+
+
+def parse_prefixes_env(name: str) -> List[str]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    seen: Set[str] = set()
+    parsed: List[str] = []
+    for value in values:
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        parsed.append(value)
     return parsed
 
 
@@ -312,6 +330,11 @@ def load_config() -> Config:
             "TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS",
             300,
             minimum=0,
+        ),
+        required_prefixes=parse_prefixes_env("TELEGRAM_REQUIRED_PREFIXES"),
+        required_prefix_ignore_case=parse_bool_env(
+            "TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE",
+            True,
         ),
     )
 
