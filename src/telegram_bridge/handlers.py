@@ -135,11 +135,13 @@ def strip_required_prefix(
     prefixes: List[str],
     ignore_case: bool,
 ) -> tuple[bool, str]:
+    allowed_punctuation_separators = (":", "-", ",", ".")
+
     def strip_prefix_separators(value: str) -> str:
         index = 0
         while index < len(value):
             current = value[index]
-            if current.isspace() or current in (":", "-"):
+            if current.isspace() or current in allowed_punctuation_separators:
                 index += 1
                 continue
             break
@@ -159,7 +161,9 @@ def strip_required_prefix(
         if not probe.startswith(normalized_probe):
             continue
         remainder = stripped[len(normalized_prefix):]
-        if remainder and not (remainder[0].isspace() or remainder[0] in (":", "-")):
+        if remainder and not (
+            remainder[0].isspace() or remainder[0] in allowed_punctuation_separators
+        ):
             continue
         return True, strip_prefix_separators(remainder)
     return False, stripped

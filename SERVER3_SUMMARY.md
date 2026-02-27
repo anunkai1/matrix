@@ -9,6 +9,19 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Expanded required-prefix separators to include comma and period on 2026-02-27 (repo update):
+  - Root cause addressed:
+    - Prefix-gated group messages like `tank, ...` and `tank. ...` were rejected because only whitespace, `:`, and `-` were accepted after prefix matches.
+  - Code/test/docs updates:
+    - `src/telegram_bridge/handlers.py`
+    - `tests/telegram_bridge/test_bridge_core.py`
+    - `docs/telegram-architect-bridge.md`
+  - Verification outcomes:
+    - targeted bridge parser tests pass with new `,` and `.` separator cases.
+  - Rollout note:
+    - this takes effect in running services after bridge restart/redeploy.
+  - Traceability artifact:
+    - `logs/changes/20260227-183728-telegram-prefix-separator-comma-period.md`
 - Set Tank default Codex model to `gpt-5.3-codex` high on 2026-02-27 (live + repo mirror):
   - Live config update:
     - `/home/tank/.codex/config.toml`

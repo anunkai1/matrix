@@ -176,6 +176,7 @@ Message handling:
 - Optional prefix gate:
   - set `TELEGRAM_REQUIRED_PREFIXES` (comma-separated) to only process matching messages.
   - example: `TELEGRAM_REQUIRED_PREFIXES=@helper,@helperbot,helper:`
+  - after a matched prefix, accepted separators are Unicode whitespace, `:`, `-`, `,`, and `.`
   - non-matching messages are ignored.
 - Messages starting with `HA` or `Home Assistant` are forced into Home Assistant mode:
   - the bridge wraps the request with strict policy to use only `ops/ha/*.sh` scripts
