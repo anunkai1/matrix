@@ -9,6 +9,21 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Added helper bot group allowlist entry on 2026-02-27 (live + repo mirror):
+  - Root cause addressed:
+    - helper bot returned `Access denied for this chat.` for new group because its `chat_id` was not in helper allowlist.
+  - Captured denied group ID from live journal:
+    - `chat_id=-1003665594447`
+  - Live env update:
+    - `/etc/default/telegram-helper-bridge`
+    - `TELEGRAM_ALLOWED_CHAT_IDS=211761499,-5144577688,-1003665594447`
+  - Bridge restart/verification:
+    - `telegram-helper-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 11:49:29 AEST`
+    - `MainPID=442227` at verification time
+    - journal confirms startup allowlist includes `-1003665594447`
+  - Traceability artifact:
+    - `logs/changes/20260227-115000-telegram-helper-allowlist-group-add-live.md`
 - Deployed a dedicated family helper Telegram bot service on 2026-02-27 (live + repo):
   - Added helper-specific service/env artifacts:
     - `infra/systemd/telegram-helper-bridge.service`
