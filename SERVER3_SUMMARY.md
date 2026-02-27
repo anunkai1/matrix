@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: moved lessons log to `docs/instructions/lessons.md`, updated authoritative instruction references, and kept `tasks/lessons.md` as compatibility stub.
 - 2026-02-28: recorded owner risk decisions (`H5/H6/H7/H9`) and delivered H8 hardening by rejecting `--base-url` in direct HA scripts; docs and lessons updated.
 - 2026-02-28: applied live Tank sudoers mirror so restart permission is restricted to `telegram-tank-bridge.service` only.
 - 2026-02-28: hardened direct HA scripts to reject `--token` CLI arguments (credential safety).
