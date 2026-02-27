@@ -32,7 +32,6 @@ Options:
   --env-file PATH    Env file consumed by set_climate_mode.sh
                      (default: /etc/default/ha-ops)
   --base-url URL     Home Assistant base URL (overrides env-file value)
-  --token TOKEN      Home Assistant token (overrides env-file value)
   --unit-prefix NAME Prefix for transient systemd unit names
                      (default: ha-climate-mode)
   --dry-run          Schedule a dry-run execution (no Home Assistant write)
@@ -105,7 +104,6 @@ entity=""
 mode=""
 env_file="$DEFAULT_ENV_FILE"
 base_url=""
-token=""
 unit_prefix="ha-climate-mode"
 dry_run="false"
 
@@ -136,8 +134,8 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --token)
-      token="${2:-}"
-      shift 2
+      echo "[schedule_climate_mode] --token is not allowed for scheduled actions. Use --env-file or HA_OPS_ENV_FILE." >&2
+      exit 2
       ;;
     --unit-prefix)
       unit_prefix="${2:-}"
@@ -194,9 +192,6 @@ cmd=("$SET_SCRIPT" --entity "$entity" --mode "$mode" --env-file "$env_file")
 if [[ -n "$base_url" ]]; then
   cmd+=(--base-url "$base_url")
 fi
-if [[ -n "$token" ]]; then
-  cmd+=(--token "$token")
-fi
 if [[ "$dry_run" == "true" ]]; then
   cmd+=(--dry-run)
 fi
@@ -204,9 +199,6 @@ fi
 preflight_cmd=("$SET_SCRIPT" --entity "$entity" --mode "$mode" --env-file "$env_file" --dry-run)
 if [[ -n "$base_url" ]]; then
   preflight_cmd+=(--base-url "$base_url")
-fi
-if [[ -n "$token" ]]; then
-  preflight_cmd+=(--token "$token")
 fi
 "${preflight_cmd[@]}" >/dev/null
 echo "[schedule_climate_mode] preflight=ok"

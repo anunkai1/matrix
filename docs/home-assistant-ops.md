@@ -55,6 +55,7 @@ Notes:
 - `--in` accepts values like `5 minutes`, `2h`, `30s`, and `in 5 minutes`.
 - `--at "HH:MM"` schedules the next occurrence of that local time (today if future, otherwise tomorrow).
 - `--at` with a full datetime must resolve to a future timestamp.
+- Scheduler scripts do not accept `--token`; scheduled credentials must come from `--env-file` or `HA_OPS_ENV_FILE`.
 - Scheduler scripts run a preflight check before creating timers; if credentials or HA API access is broken, they fail immediately.
 
 ## Climate Temperature Scripts
@@ -144,5 +145,6 @@ sudo journalctl -u <service-unit-name>.service -n 50 --no-pager
 Notes:
 - Keep tokens in live env files only; do not commit them to git.
 - For profile-specific credentials, set `HA_OPS_ENV_FILE` before running scripts (or pass `--env-file` explicitly).
+- For scheduled actions, do not pass tokens on the command line; scheduler scripts enforce env-file based token loading.
 - Scheduler scripts self-elevate via `sudo -n` when run as non-root users.
 - If the timer already fired and started execution, stop the service with `sudo systemctl stop <service-unit-name>.service`.

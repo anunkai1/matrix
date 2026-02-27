@@ -10,6 +10,21 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Hardened HA scheduler token handling on 2026-02-28 (repo-only):
+  - Root cause addressed:
+    - scheduler scripts accepted `--token` and forwarded it into command arguments, which risks exposing credentials in process/unit metadata.
+  - Code/docs updates:
+    - `ops/ha/schedule_entity_power.sh`
+      - removed token forwarding and added explicit `--token` rejection (`use --env-file / HA_OPS_ENV_FILE`).
+    - `ops/ha/schedule_climate_mode.sh`
+      - removed token forwarding and added explicit `--token` rejection (`use --env-file / HA_OPS_ENV_FILE`).
+    - `docs/home-assistant-ops.md`
+      - added scheduler guidance: no `--token`; scheduled credentials must come from env-file sources.
+  - Verification outcomes:
+    - `bash -n ops/ha/schedule_entity_power.sh ops/ha/schedule_climate_mode.sh` -> pass
+    - `python3 -m unittest discover -s tests -v` -> `52 tests`, `OK`
+  - Traceability artifact:
+    - `logs/changes/20260228-083310-ha-scheduler-token-cli-hardening.md`
 - Fixed required-prefix enforcement gap for voice/media requests on 2026-02-28 (repo-only):
   - Root cause addressed:
     - prefix gating in `handle_update` only ran when `prompt_input` was truthy, allowing voice-without-caption messages (`prompt_input == ""`) to bypass required-prefix checks.
