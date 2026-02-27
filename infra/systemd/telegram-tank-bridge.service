@@ -1,0 +1,22 @@
+[Unit]
+Description=Telegram Tank Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tank
+Group=tank
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+Environment=UNIT_NAME=telegram-tank-bridge.service
+Environment=TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
+EnvironmentFile=-/etc/default/telegram-tank-bridge
+ExecStart=/usr/bin/python3 /home/architect/matrix/src/telegram_bridge/main.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

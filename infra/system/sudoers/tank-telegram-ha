@@ -1,0 +1,3 @@
+# Mirror of /etc/sudoers.d/tank-telegram-ha on Server3.
+Defaults:tank !requiretty
+tank ALL=(root) NOPASSWD: /home/architect/matrix/ops/ha/schedule_entity_power.sh *, /home/architect/matrix/ops/ha/schedule_climate_temperature.sh *, /home/architect/matrix/ops/ha/schedule_climate_mode.sh *, /home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh *

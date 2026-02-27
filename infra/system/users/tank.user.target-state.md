@@ -12,7 +12,7 @@ Track the intended baseline for the `tank` Linux user on Server3.
 - Shell: `/bin/bash`
 - Primary group: `tank`
 - Supplementary groups: none
-- Sudo privileges: none
+- Sudo privileges: scoped allowlist via `/etc/sudoers.d/tank-telegram-ha`
 
 ## Validation Commands
 - `id tank`

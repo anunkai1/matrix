@@ -3,10 +3,11 @@ set -euo pipefail
 
 MODE="${1:-apply}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SNIPPET="${REPO_ROOT}/infra/bash/home/architect/.bashrc"
-TARGET="${TARGET_BASHRC:-/home/architect/.bashrc}"
-START="# >>> matrix-managed architect launcher >>>"
-END="# <<< matrix-managed architect launcher <<<"
+BASHRC_PROFILE="${BASHRC_PROFILE:-architect}"
+SNIPPET="${SNIPPET_PATH:-${REPO_ROOT}/infra/bash/home/${BASHRC_PROFILE}/.bashrc}"
+TARGET="${TARGET_BASHRC:-/home/${BASHRC_PROFILE}/.bashrc}"
+START="# >>> matrix-managed ${BASHRC_PROFILE} launcher >>>"
+END="# <<< matrix-managed ${BASHRC_PROFILE} launcher <<<"
 
 if [[ ! -f "${SNIPPET}" ]]; then
   echo "Snippet not found: ${SNIPPET}" >&2
@@ -36,15 +37,15 @@ case "${MODE}" in
       cat "${SNIPPET}"
       printf "%s\n" "${END}"
     } > "${TARGET}"
-    echo "Applied architect launcher to ${TARGET}"
+    echo "Applied ${BASHRC_PROFILE} launcher to ${TARGET}"
     ;;
   rollback)
     cat "${tmp}" > "${TARGET}"
-    echo "Removed managed architect launcher block from ${TARGET}"
+    echo "Removed managed ${BASHRC_PROFILE} launcher block from ${TARGET}"
     ;;
   *)
     echo "Usage: $0 [apply|rollback]" >&2
-    echo "Optional override: TARGET_BASHRC=/custom/path/.bashrc" >&2
+    echo "Optional overrides: BASHRC_PROFILE=architect|tank TARGET_BASHRC=/custom/path/.bashrc SNIPPET_PATH=/custom/snippet" >&2
     rm -f "${tmp}"
     exit 1
     ;;

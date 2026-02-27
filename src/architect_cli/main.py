@@ -18,12 +18,30 @@ from memory_engine import MemoryEngine, build_memory_help_lines, handle_memory_c
 
 
 DEFAULT_STATE_DIR = "/home/architect/.local/state/telegram-architect-bridge"
+DEFAULT_LAUNCHER_NAME = os.getenv("CLI_LAUNCHER_NAME", "architect").strip() or "architect"
+DEFAULT_ASSISTANT_NAME = os.getenv("CLI_ASSISTANT_NAME", "Architect").strip() or "Architect"
+DEFAULT_MEMORY_NAMESPACE = os.getenv("CLI_MEMORY_NAMESPACE", "architect").strip() or "architect"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Architect CLI with shared memory")
+    parser = argparse.ArgumentParser(description="CLI with shared memory")
     parser.add_argument("prompt", nargs="*", help="Prompt text or memory command")
     parser.add_argument("--profile", default="default", help="CLI memory profile name")
+    parser.add_argument(
+        "--launcher-name",
+        default=DEFAULT_LAUNCHER_NAME,
+        help="Launcher command name used in help text",
+    )
+    parser.add_argument(
+        "--assistant-name",
+        default=DEFAULT_ASSISTANT_NAME,
+        help="Assistant name used in fallback output text",
+    )
+    parser.add_argument(
+        "--memory-namespace",
+        default=DEFAULT_MEMORY_NAMESPACE,
+        help="CLI memory namespace (default: architect)",
+    )
     parser.add_argument(
         "--state-dir",
         default=os.getenv("TELEGRAM_BRIDGE_STATE_DIR", DEFAULT_STATE_DIR),
@@ -91,12 +109,12 @@ def run_codex(codex_bin: str, prompt: str, thread_id: Optional[str], timeout_sec
     )
 
 
-def print_cli_help() -> None:
-    print("Architect CLI memory mode")
-    print("Usage: architect <prompt>")
-    print("Usage: architect --profile work <prompt>")
-    print("Usage: architect /memory status")
-    print("Usage: architect /ask <prompt>")
+def print_cli_help(launcher_name: str, assistant_name: str) -> None:
+    print(f"{assistant_name} CLI memory mode")
+    print(f"Usage: {launcher_name} <prompt>")
+    print(f"Usage: {launcher_name} --profile work <prompt>")
+    print(f"Usage: {launcher_name} /memory status")
+    print(f"Usage: {launcher_name} /ask <prompt>")
     print("")
     for line in build_memory_help_lines():
         print(line)
@@ -106,16 +124,16 @@ def main() -> int:
     args = parse_args()
     raw_input = resolve_input(args)
     if not raw_input:
-        print_cli_help()
+        print_cli_help(args.launcher_name, args.assistant_name)
         return 1
 
     if raw_input.strip().split(maxsplit=1)[0].split("@", maxsplit=1)[0] in {"/h", "/help"}:
-        print_cli_help()
+        print_cli_help(args.launcher_name, args.assistant_name)
         return 0
 
     memory_db = build_memory_db_path(args)
     engine = MemoryEngine(memory_db)
-    conversation_key = MemoryEngine.cli_key(args.profile)
+    conversation_key = MemoryEngine.cli_key(args.profile, namespace=args.memory_namespace)
 
     cmd_result = handle_memory_command(engine, conversation_key, raw_input)
     if cmd_result.handled:
@@ -161,7 +179,7 @@ def main() -> int:
 
     new_thread_id, output = parse_executor_output(result.stdout or "")
     if not output:
-        output = "(No output from Architect)"
+        output = f"(No output from {args.assistant_name})"
     print(output)
 
     try:

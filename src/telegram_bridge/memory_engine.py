@@ -106,9 +106,10 @@ class MemoryEngine:
         return f"tg:{chat_id}"
 
     @staticmethod
-    def cli_key(profile_name: str = "default") -> str:
+    def cli_key(profile_name: str = "default", namespace: str = "architect") -> str:
         profile = (profile_name or "default").strip() or "default"
-        return f"cli:architect:{profile}"
+        scope = (namespace or "architect").strip() or "architect"
+        return f"cli:{scope}:{profile}"
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30)

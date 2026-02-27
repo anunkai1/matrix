@@ -9,6 +9,42 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Deployed dedicated Tank Telegram bridge on 2026-02-27 (live + repo):
+  - New service/runtime:
+    - unit: `telegram-tank-bridge.service`
+    - user/group: `tank:tank`
+    - code root: `/home/architect/matrix`
+    - live env: `/etc/default/telegram-tank-bridge`
+  - Behavior/config chosen for Tank:
+    - assistant label: `TANK`
+    - allowlist: `211761499,-5144577688` (private + group)
+    - required prefixes: `@tankhas_bot,tank:`
+    - HA ops enabled via dedicated env: `/etc/default/ha-ops-tank`
+    - voice/document support enabled with tank-local whisper venv:
+      - `/home/tank/.local/share/telegram-voice/venv`
+  - Privilege model:
+    - added narrow sudo allowlist:
+      - `/etc/sudoers.d/tank-telegram-ha`
+    - allowed commands pinned to:
+      - `ops/ha/schedule_entity_power.sh`
+      - `ops/ha/schedule_climate_temperature.sh`
+      - `ops/ha/schedule_climate_mode.sh`
+      - `ops/telegram-bridge/restart_and_verify.sh`
+  - Launcher model:
+    - tank-specific shell launcher added in `/home/tank/.bashrc`
+    - command: `tank` (no `architect` command needed for tank user)
+  - Isolation fix applied during rollout:
+    - set `TELEGRAM_BRIDGE_STATE_DIR=/home/tank/.local/state/telegram-tank-bridge`
+    - restarted service to ensure thread/in-flight/canonical JSON paths no longer pointed at architect state dir.
+  - Verification outcomes:
+    - `telegram-tank-bridge.service` active/running
+    - startup logs confirm:
+      - `TANK-only routing active for all allowlisted chats.`
+      - state/memory/canonical paths under `/home/tank/.local/state/telegram-tank-bridge`
+    - `tank` launcher resolves and returns Tank-branded help output
+    - `sudo -l -U tank` shows only the intended allowlist
+  - Traceability artifact:
+    - `logs/changes/20260227-150715-telegram-tank-bridge-live.md`
 - Created Linux user `tank` on Server3 on 2026-02-27 (live + repo):
   - Live changes:
     - created user with home and shell:
