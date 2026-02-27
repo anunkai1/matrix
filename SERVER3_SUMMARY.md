@@ -32,6 +32,19 @@ Last updated: 2026-02-27 (AEST, +10:00)
       - `Bridge started. Allowed chats=[-1003665594447, -5144577688, 211761499]`
   - Traceability artifact:
     - `logs/changes/20260227-155001-telegram-tank-disable-prefix-requirement-live.md`
+- Re-enabled Tank prefix gating on 2026-02-27 (live + repo mirror):
+  - Root cause addressed:
+    - Group privacy only lets `@tankhas_bot` mentions (or replies) reach the bot.
+  - Live env update:
+    - `/etc/default/telegram-tank-bridge`
+    - `TELEGRAM_REQUIRED_PREFIXES=@tankhas_bot,tank`
+  - Bridge restart/verification:
+    - `telegram-tank-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 16:37:56 AEST`
+    - `MainPID=491289` at verification time
+    - startup log confirms prefix gating is reapplied
+  - Traceability artifact:
+    - `logs/changes/20260227-163756-telegram-tank-require-prefix-live.md`
 - Completed Tank runtime workspace isolation on 2026-02-27 (live + repo):
   - Root cause addressed:
     - Tank bridge still executed from matrix repo root and could inherit matrix policy context (`AGENTS.md` references).
