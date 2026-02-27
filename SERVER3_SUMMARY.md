@@ -9,6 +9,17 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Created Linux user `tank` on Server3 on 2026-02-27 (live + repo):
+  - Live changes:
+    - created user with home and shell:
+      - `useradd -m -s /bin/bash tank`
+  - Verification outcomes:
+    - `id tank` -> `uid=1002(tank) gid=1002(tank) groups=1002(tank)`
+    - `/home/tank` exists and is owned by `tank:tank`
+    - `sudo -l -U tank` confirms no sudo access
+  - Traceability artifacts:
+    - `infra/system/users/tank.user.target-state.md`
+    - `logs/changes/20260227-142537-create-user-tank-live.md`
 - Removed HelperBot runtime completely from Server3 on 2026-02-27 (live + repo):
   - Live removals completed:
     - stopped and disabled `telegram-helper-bridge.service`
