@@ -15,5 +15,5 @@ fi
 exec "${BROWSER_BIN}" \
   --no-default-browser-check \
   --no-first-run \
-  --start-fullscreen \
+  --start-maximized \
   --new-window "https://www.youtube.com"

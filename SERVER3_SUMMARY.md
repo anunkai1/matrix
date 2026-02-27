@@ -10,6 +10,20 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Changed TV startup browser mode to maximized on 2026-02-27 (live + repo):
+  - Objective delivered:
+    - `server3-tv-start` sessions now open Brave in maximized mode instead of fullscreen.
+  - Change applied:
+    - `infra/system/tv-desktop/home-tv/.local/bin/server3-tv-session-start.sh`
+    - flag update: `--start-fullscreen` -> `--start-maximized`
+  - Live mirror/deploy:
+    - `/home/tv/.local/bin/server3-tv-session-start.sh` updated from repo template
+    - ownership confirmed `tv:tv`
+  - Verification outcomes:
+    - live script contains `--start-maximized`
+    - live script no longer contains `--start-fullscreen`
+  - Traceability artifact:
+    - `logs/changes/20260227-223409-server3-tv-browser-maximized-live.md`
 - Restarted Architect bridge to activate `/help` TV command updates on 2026-02-27 (live):
   - Rollout objective:
     - make newly-added `/help` and `/h` TV command lines live (`server3-tv-start`, `server3-tv-stop`).
