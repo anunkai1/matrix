@@ -9,6 +9,19 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Pinned memory DB path explicitly in live bridge env on 2026-02-27 (live + repo mirror):
+  - Live env update:
+    - added `TELEGRAM_MEMORY_SQLITE_PATH=/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3` in `/etc/default/telegram-architect-bridge`
+  - Live safety backup:
+    - `/etc/default/telegram-architect-bridge.bak.20260227103949`
+  - Bridge restart/verification:
+    - `telegram-architect-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 10:39:54 AEST`
+    - `MainPID=431538` at verification time
+    - journal confirms pinned memory path at startup
+  - Traceability artifacts:
+    - `infra/env/telegram-architect-bridge.server3.redacted.env`
+    - `logs/changes/20260227-104113-telegram-memory-sqlite-path-pin-live.md`
 - Activated Telegram HA keyword routing live on 2026-02-27 (service rollout verification):
   - Live service status:
     - `telegram-architect-bridge.service` active/running
