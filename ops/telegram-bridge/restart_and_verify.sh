@@ -2,6 +2,20 @@
 set -euo pipefail
 
 UNIT_NAME="${UNIT_NAME:-telegram-architect-bridge.service}"
+ALLOWED_UNITS=(
+  "telegram-architect-bridge.service"
+  "telegram-tank-bridge.service"
+)
+
+is_allowed_unit() {
+  local candidate="$1"
+  for allowed in "${ALLOWED_UNITS[@]}"; do
+    if [[ "${candidate}" == "${allowed}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -18,6 +32,12 @@ done
 
 if [[ -z "${UNIT_NAME}" ]]; then
   echo "UNIT_NAME cannot be empty" >&2
+  exit 1
+fi
+
+if ! is_allowed_unit "${UNIT_NAME}"; then
+  echo "[restart_and_verify] UNIT_NAME is not allowed: ${UNIT_NAME}" >&2
+  echo "[restart_and_verify] allowed units: ${ALLOWED_UNITS[*]}" >&2
   exit 1
 fi
 

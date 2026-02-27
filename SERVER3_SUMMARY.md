@@ -10,6 +10,24 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Restricted restart privileges to approved bridge units on 2026-02-28 (repo-only):
+  - Root cause addressed:
+    - restart helper accepted arbitrary unit names and tank sudoers mirror allowed wildcard restart invocation.
+  - Code/policy updates:
+    - `ops/telegram-bridge/restart_and_verify.sh`
+      - added explicit restart allowlist:
+        - `telegram-architect-bridge.service`
+        - `telegram-tank-bridge.service`
+      - rejects non-allowlisted `UNIT_NAME` values before sudo/systemctl execution.
+    - `infra/system/sudoers/tank-telegram-ha`
+      - narrowed restart permission from wildcard to exact command:
+        - `/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-tank-bridge.service`
+  - Verification outcomes:
+    - `bash -n ops/telegram-bridge/restart_and_verify.sh` -> pass
+    - `bash ops/telegram-bridge/restart_and_verify.sh --unit ssh.service` -> rejected, exit `1`
+    - `python3 -m unittest discover -s tests -v` -> `52 tests`, `OK`
+  - Traceability artifact:
+    - `logs/changes/20260228-084228-restart-privilege-unit-allowlist-hardening.md`
 - Hardened HA scheduler token handling on 2026-02-28 (repo-only):
   - Root cause addressed:
     - scheduler scripts accepted `--token` and forwarded it into command arguments, which risks exposing credentials in process/unit metadata.
