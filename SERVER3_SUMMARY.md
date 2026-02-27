@@ -10,6 +10,26 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Optimized TV ownership apply path and worker policy fingerprint checks on 2026-02-27 (repo-only):
+  - Objective delivered:
+    - item 1: avoid expensive recursive ownership resets during TV apply.
+    - item 2: avoid repeated policy fingerprint hashing bursts when many messages arrive at once.
+  - Optimization details:
+    - `ops/tv-desktop/apply_server3.sh`
+      - replaced `chown -R /home/tv/.local /home/tv/.config` with targeted `chown` on managed directories/files only.
+    - `src/telegram_bridge/session_manager.py`
+      - added short TTL cache for policy fingerprint computation:
+        - `POLICY_FINGERPRINT_CACHE_TTL_SECONDS = 10.0`
+        - `get_cached_policy_fingerprint(...)`
+      - worker session checks now use cached fingerprint values within TTL.
+    - `tests/telegram_bridge/test_bridge_core.py`
+      - added cache behavior test:
+        - `test_policy_fingerprint_cache_reuses_value_within_ttl`
+  - Verification outcomes:
+    - `python3 -m unittest tests/telegram_bridge/test_bridge_core.py` -> `38 tests`, `OK`
+    - `bash -n ops/tv-desktop/apply_server3.sh` -> pass
+  - Traceability artifact:
+    - `logs/changes/20260227-232557-optimization-tv-ownership-and-policy-fingerprint-cache.md`
 - Optimized memory prune reconciliation and synced TV startup wording on 2026-02-27 (repo-only):
   - Optimization delivered:
     - memory retention prune now reconciles memory state once per prune pass instead of potentially twice when both messages and summaries are pruned.

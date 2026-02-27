@@ -115,6 +115,7 @@ run_privileged install -m 755 \
 
 run_privileged install -d -m 755 /home/tv/.local/bin
 run_privileged install -d -m 755 /home/tv/.config/autostart
+run_privileged chown tv:tv /home/tv/.local /home/tv/.local/bin /home/tv/.config /home/tv/.config/autostart
 
 run_privileged install -m 755 \
   "${TEMPLATE_ROOT}/home-tv/.local/bin/server3-tv-audio.sh" \
@@ -126,7 +127,10 @@ run_privileged install -m 644 \
   "${TEMPLATE_ROOT}/home-tv/.config/autostart/server3-tv-brave.desktop" \
   /home/tv/.config/autostart/server3-tv-brave.desktop
 
-run_privileged chown -R tv:tv /home/tv/.local /home/tv/.config
+run_privileged chown tv:tv \
+  /home/tv/.local/bin/server3-tv-audio.sh \
+  /home/tv/.local/bin/server3-tv-session-start.sh \
+  /home/tv/.config/autostart/server3-tv-brave.desktop
 
 run_privileged systemctl set-default multi-user.target
 run_privileged systemctl disable lightdm >/dev/null 2>&1 || true

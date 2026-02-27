@@ -277,6 +277,30 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(client.messages)
         self.assertIn("workers are currently in use", client.messages[-1][1])
 
+    def test_policy_fingerprint_cache_reuses_value_within_ttl(self):
+        bridge_session_manager._policy_fingerprint_cache.clear()
+        with mock.patch.object(
+            bridge_session_manager,
+            "compute_policy_fingerprint",
+            side_effect=["fp-a", "fp-b"],
+        ) as compute:
+            first = bridge_session_manager.get_cached_policy_fingerprint(
+                ["/tmp/policy-a"],
+                now=100.0,
+            )
+            second = bridge_session_manager.get_cached_policy_fingerprint(
+                ["/tmp/policy-a"],
+                now=105.0,
+            )
+            third = bridge_session_manager.get_cached_policy_fingerprint(
+                ["/tmp/policy-a"],
+                now=111.0,
+            )
+        self.assertEqual(first, "fp-a")
+        self.assertEqual(second, "fp-a")
+        self.assertEqual(third, "fp-b")
+        self.assertEqual(compute.call_count, 2)
+
     def test_handle_update_routes_status_command(self):
         state = bridge.State()
         client = FakeTelegramClient()

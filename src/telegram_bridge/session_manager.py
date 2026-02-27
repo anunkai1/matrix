@@ -104,6 +104,10 @@ WORKER_POLICY_REFRESH_MESSAGE = (
     "will continue in a new session."
 )
 WORKER_CAPACITY_REJECTED_MESSAGE = "All workers are currently in use. Please wait and retry."
+POLICY_FINGERPRINT_CACHE_TTL_SECONDS = 10.0
+
+_policy_fingerprint_cache_lock = threading.Lock()
+_policy_fingerprint_cache: dict[tuple[str, ...], tuple[float, str]] = {}
 
 
 @dataclass
@@ -129,6 +133,28 @@ def _send_policy_refresh_notice(client, chat_id: int, message_id: Optional[int])
         )
     except Exception:
         logging.exception("Failed to send policy-refresh notice for chat_id=%s", chat_id)
+
+
+def get_cached_policy_fingerprint(paths: List[str], now: Optional[float] = None) -> str:
+    if not paths:
+        return compute_policy_fingerprint(paths)
+
+    key = tuple(paths)
+    current = time.time() if now is None else now
+    with _policy_fingerprint_cache_lock:
+        cached = _policy_fingerprint_cache.get(key)
+        if cached is not None:
+            expires_at, value = cached
+            if current < expires_at:
+                return value
+
+    value = compute_policy_fingerprint(paths)
+    with _policy_fingerprint_cache_lock:
+        _policy_fingerprint_cache[key] = (
+            current + POLICY_FINGERPRINT_CACHE_TTL_SECONDS,
+            value,
+        )
+    return value
 
 
 def _ensure_chat_worker_session_canonical(
@@ -316,7 +342,10 @@ def ensure_chat_worker_session(
         return True
 
     now = time.time()
-    current_policy_fingerprint = compute_policy_fingerprint(config.persistent_workers_policy_files)
+    current_policy_fingerprint = get_cached_policy_fingerprint(
+        config.persistent_workers_policy_files,
+        now=now,
+    )
 
     if state.canonical_sessions_enabled:
         outcome = _ensure_chat_worker_session_canonical(
