@@ -9,6 +9,16 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Set Tank default Codex model to `gpt-5.3-codex` high on 2026-02-27 (live + repo mirror):
+  - Live config update:
+    - `/home/tank/.codex/config.toml`
+    - `model = "gpt-5.3-codex"` (was `gpt-5.1-codex-mini`)
+    - `model_reasoning_effort = "high"` (was `medium`)
+  - Verification outcomes:
+    - live config confirms Tank default is now `gpt-5.3-codex` with high reasoning.
+  - Traceability artifacts:
+    - `infra/codex/home/tank/.codex/config.toml`
+    - `logs/changes/20260227-173200-tank-codex-model-high-live.md`
 - Set Architect default Codex model to Spark on 2026-02-27 (live + repo mirror):
   - Live config update:
     - `/home/architect/.codex/config.toml`

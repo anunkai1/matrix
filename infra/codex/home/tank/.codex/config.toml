@@ -1,0 +1,10 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "high"
+[projects."/home/tank"]
+trust_level = "trusted"
+
+[projects."/home/tank/tankbot"]
+trust_level = "trusted"
+
+[notice.model_migrations]
+"gpt-5.1-codex-mini" = "gpt-5.3-codex"
