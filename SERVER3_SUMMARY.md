@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-02-27 (AEST, +10:00)
+Last updated: 2026-02-28 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
@@ -10,6 +10,20 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Fixed required-prefix enforcement gap for voice/media requests on 2026-02-28 (repo-only):
+  - Root cause addressed:
+    - prefix gating in `handle_update` only ran when `prompt_input` was truthy, allowing voice-without-caption messages (`prompt_input == ""`) to bypass required-prefix checks.
+  - Code/test updates:
+    - `src/telegram_bridge/handlers.py`
+      - updated condition from `if prompt_input and config.required_prefixes:` to `if prompt_input is not None and config.required_prefixes:`
+    - `tests/telegram_bridge/test_bridge_core.py`
+      - added `test_handle_update_ignores_voice_without_prefix_when_required`
+      - added `test_handle_update_accepts_prefixed_voice_caption_when_required`
+  - Verification outcomes:
+    - `python3 -m unittest tests/telegram_bridge/test_bridge_core.py -v` -> `40 tests`, `OK`
+    - `python3 -m unittest discover -s tests -v` -> `52 tests`, `OK`
+  - Traceability artifact:
+    - `logs/changes/20260228-082727-telegram-prefix-enforcement-voice-media.md`
 - Optimized TV ownership apply path and worker policy fingerprint checks on 2026-02-27 (repo-only):
   - Objective delivered:
     - item 1: avoid expensive recursive ownership resets during TV apply.

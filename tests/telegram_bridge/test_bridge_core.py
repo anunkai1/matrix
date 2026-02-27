@@ -395,6 +395,47 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Helper mode needs a prefixed prompt.", client.messages[0][1])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_ignores_voice_without_prefix_when_required(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(required_prefixes=["@helper"])
+        update = {
+            "update_id": 103,
+            "message": {
+                "message_id": 203,
+                "chat": {"id": 1},
+                "voice": {"file_id": "voice-1"},
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertFalse(start_message_worker.called)
+        self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_accepts_prefixed_voice_caption_when_required(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(required_prefixes=["@helper"])
+        update = {
+            "update_id": 104,
+            "message": {
+                "message_id": 204,
+                "chat": {"id": 1},
+                "voice": {"file_id": "voice-2"},
+                "caption": "@helper transcribe this",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertEqual(kwargs["prompt"], "transcribe this")
+        self.assertEqual(kwargs["voice_file_id"], "voice-2")
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_ha_keyword_prompt_stateless(self, start_message_worker):
         state = bridge.State()
         client = FakeTelegramClient()

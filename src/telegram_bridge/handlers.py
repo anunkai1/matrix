@@ -1436,7 +1436,7 @@ def handle_update(
     if prompt_input is None and voice_file_id is None and document is None:
         return
 
-    if prompt_input and config.required_prefixes:
+    if prompt_input is not None and config.required_prefixes:
         has_required_prefix, stripped_prompt = strip_required_prefix(
             prompt_input,
             config.required_prefixes,
