@@ -10,6 +10,24 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Hardened direct HA scripts to block token CLI arguments on 2026-02-28 (repo-only):
+  - Root cause addressed:
+    - direct HA scripts accepted `--token`, which could expose credentials in shell history and process metadata.
+  - Code/docs updates:
+    - `ops/ha/turn_entity_power.sh`
+      - removed `--token` usage from help text and added explicit `--token` rejection.
+    - `ops/ha/set_climate_mode.sh`
+      - removed `--token` usage from help text and added explicit `--token` rejection.
+    - `ops/ha/set_climate_temperature.sh`
+      - removed `--token` usage from help text and added explicit `--token` rejection.
+    - `docs/home-assistant-ops.md`
+      - added guidance that immediate HA scripts require env-file/env credentials and do not accept `--token`.
+  - Verification outcomes:
+    - `bash -n ops/ha/turn_entity_power.sh ops/ha/set_climate_mode.sh ops/ha/set_climate_temperature.sh` -> pass
+    - token guard checks confirm `--token` is rejected in all three direct scripts.
+    - `python3 -m unittest discover -s tests -v` -> `52 tests`, `OK`
+  - Traceability artifact:
+    - `logs/changes/20260228-084910-ha-direct-token-cli-hardening.md`
 - Restricted restart privileges to approved bridge units on 2026-02-28 (repo-only):
   - Root cause addressed:
     - restart helper accepted arbitrary unit names and tank sudoers mirror allowed wildcard restart invocation.

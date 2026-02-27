@@ -10,7 +10,6 @@ Options:
   --env-file PATH   Environment file containing TELEGRAM_HA_BASE_URL/TELEGRAM_HA_TOKEN
                     (default: /etc/default/ha-ops)
   --base-url URL    Home Assistant base URL (overrides env-file value)
-  --token TOKEN     Home Assistant token (overrides env-file value)
   --dry-run         Validate inputs and print target action without calling Home Assistant
   -h, --help        Show this help text
 EOF
@@ -50,7 +49,7 @@ entity=""
 temperature=""
 env_file="${HA_OPS_ENV_FILE:-/etc/default/ha-ops}"
 base_url="${HA_BASE_URL:-}"
-token="${HA_TOKEN:-}"
+token="${TELEGRAM_HA_TOKEN:-${HA_TOKEN:-}}"
 dry_run="false"
 
 while [[ $# -gt 0 ]]; do
@@ -72,8 +71,8 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --token)
-      token="${2:-}"
-      shift 2
+      echo "[set_climate_temperature] --token is not allowed. Use --env-file or HA_OPS_ENV_FILE." >&2
+      exit 2
       ;;
     --dry-run)
       dry_run="true"
