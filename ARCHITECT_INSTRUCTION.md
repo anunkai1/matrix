@@ -80,12 +80,17 @@ SESSION START RULE (MANDATORY)
 
 - At the start of every new Codex session on Server3, read `SERVER3_SUMMARY.md` before planning or editing.
 - Read `SERVER3_ARCHIVE.md` only when the current task needs deeper historical detail than the summary provides.
-- Treat `SERVER3_SUMMARY.md` as the default running context and `SERVER3_ARCHIVE.md` as the detailed archive.
+- Treat `SERVER3_SUMMARY.md` as a short rolling context and `SERVER3_ARCHIVE.md` as the canonical detailed history.
+- Target shape:
+  - `SERVER3_SUMMARY.md`: current snapshot + recent change sets only (rolling, concise).
+  - `SERVER3_ARCHIVE.md`: detailed historical entries, rollout notes, incidents, diagnostics, and migrated older summary entries.
 
 SESSION END RULE (MANDATORY)
 
 - After each completed non-exempt task/change set, Codex must update `SERVER3_SUMMARY.md` with high-level current state (what changed, current status, and notable next step/risk if any).
-- Add/update `SERVER3_ARCHIVE.md` only when detailed archival context is needed (for example: live rollout steps, incidents, rollback trails, or multi-step technical diagnostics).
+- Keep `SERVER3_SUMMARY.md` bounded as a rolling log (target: roughly latest 10-15 change sets, and avoid unbounded growth).
+- When adding a new summary entry would push the summary beyond the rolling bound, move oldest detailed entries from `SERVER3_SUMMARY.md` into `SERVER3_ARCHIVE.md` in the same session (preserve content; do not discard history).
+- Add/update `SERVER3_ARCHIVE.md` when detailed archival context is needed (for example: live rollout steps, incidents, rollback trails, or multi-step technical diagnostics), and during summary roll-forward migrations.
 - Required summary/archive updates must be committed and pushed to GitHub in the same session for non-exempt changes.
 - Routine HA quick-ops follow the `HA QUICK-OPS EXCEPTION` section.
 

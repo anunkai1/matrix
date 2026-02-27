@@ -64,3 +64,8 @@ Use one section per lesson:
 - Mistake pattern: I split Linux runtime user but still ran helper bot from Architect workspace, so helper inherited Architect persona/instruction context.
 - Prevention rule: For any separate bot persona, isolate both runtime user and workspace root (own `AGENTS.md` + instruction file) and point systemd `WorkingDirectory` + executor path to that workspace.
 - Where/when applied: New Telegram bot deployments that need distinct identity/rules on Server3.
+
+### 2026-02-28T09:47:50+10:00 - Never Leave Approval Turn Without Visible Response
+- Mistake pattern: After the user approval turn, I emitted an empty assistant response instead of a visible next-step or execution update.
+- Prevention rule: Every user turn must produce visible output; after approval, immediately emit a short execution status update and continue with commands.
+- Where/when applied: Approval boundary turns and long-running execution turns in this repo workflow.

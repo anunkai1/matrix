@@ -93,14 +93,16 @@ bash src/telegram_bridge/smoke_test.sh
 - This repo is the single source of truth.
 - Default path: every non-exempt change set is GitHub-traceable through commit + push.
 - For non-exempt live edits outside repo paths, mirror intended/final state under `infra/`, use `ops/` for apply/rollback, document in `docs/`, and record applied changes under `logs/` in the same session.
-- For non-exempt change sets, update `SERVER3_SUMMARY.md`; update `SERVER3_ARCHIVE.md` only when detailed archival context is needed; then push in the same session.
+- For non-exempt change sets, update `SERVER3_SUMMARY.md` as a short rolling log; move older detailed entries into `SERVER3_ARCHIVE.md` as needed to keep summary bounded; then push in the same session.
 - Exception boundaries and operational exemptions are defined in `ARCHITECT_INSTRUCTION.md`.
 
 ## Summary and Archive Tracking
 
 Use `SERVER3_SUMMARY.md` as the default session-to-session status log and read it first.
 Open `SERVER3_ARCHIVE.md` only when more detail is needed for the current task.
-For non-exempt changes, update `SERVER3_SUMMARY.md` each time; update `SERVER3_ARCHIVE.md` only when detailed archival context is useful.
+Keep `SERVER3_SUMMARY.md` concise (current snapshot + recent change sets only, target roughly latest 10-15 entries).
+Use `SERVER3_ARCHIVE.md` as the canonical long-term detailed history.
+When summary grows past the rolling bound, migrate oldest summary entries into archive in the same session (preserve details; do not delete history).
 
 ## Security Notes
 

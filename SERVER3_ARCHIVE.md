@@ -22,3 +22,739 @@ Summary:
 
 Traceability:
 - `logs/changes/20260226-200802-bashrc-launcher-apply-and-bridge-restart-live.md`
+
+
+## 2026-02-28 (Summary/Archive Rebalance Migration)
+
+Summary:
+- Rebalanced tracking so summary remains short rolling context and archive carries detailed long-term history.
+- Migrated pre-rebalance detailed summary content into archive verbatim to avoid data loss.
+- Updated policy wording in ARCHITECT_INSTRUCTION.md and README.md to enforce bounded summary growth.
+
+Traceability:
+- Source migrated content: pre-rebalance `SERVER3_SUMMARY.md` state captured and moved in this change set.
+
+### Migrated Historical Summary Content (verbatim from previous SERVER3_SUMMARY.md)
+
+# Server3 Summary
+
+Last updated: 2026-02-28 (AEST, +10:00)
+
+## Current Snapshot
+- Primary active component: `telegram-architect-bridge.service`
+- Runtime pattern: Telegram long polling + local `codex exec`
+- Major enabled capabilities: text/photo/voice/document input handling, per-chat context persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
+- On-demand local TV desktop capability: command-start Xfce + Brave profile (`server3-tv-start` / `server3-tv-stop`) with CLI default boot retained
+- Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
+
+## Most Recent Changes
+- Recorded owner risk decisions (`H5/H6/H7/H9`) and hardened H8 base-url handling on 2026-02-28 (repo-only):
+  - Owner decisions captured (as designed / accepted risk):
+    - `H5`: keep Architect Telegram execution in full-power mode (`--dangerously-bypass-approvals-and-sandbox`) to preserve full capability.
+    - `H6`: chat-level allowlist model is intentional; no per-user allowlist added.
+    - `H7`: broad execution capability for allowlisted Architect chat is intentional by design.
+    - `H9`: privileged operations model is intentional by design (convenience over strict least-privilege isolation).
+  - H8 hardening delivered:
+    - `ops/ha/turn_entity_power.sh`
+      - removed `--base-url` help usage and added explicit `--base-url` rejection.
+    - `ops/ha/set_climate_mode.sh`
+      - removed `--base-url` help usage and added explicit `--base-url` rejection.
+    - `ops/ha/set_climate_temperature.sh`
+      - removed `--base-url` help usage and added explicit `--base-url` rejection.
+    - `docs/home-assistant-ops.md`
+      - updated guidance: direct HA scripts now require env-file/env endpoint config; no `--token` and no `--base-url`.
+    - `tasks/lessons.md`
+      - added prevention rule to avoid re-proposing owner-accepted risk items unless explicitly requested.
+  - Verification outcomes:
+    - `bash -n ops/ha/turn_entity_power.sh ops/ha/set_climate_mode.sh ops/ha/set_climate_temperature.sh` -> pass
+    - `--base-url` guard checks reject in all three direct scripts (exit `2`)
+    - `python3 -m unittest discover -s tests -v` -> `52 tests`, `OK`
+  - Traceability artifact:
+    - `logs/changes/20260228-092538-h8-base-url-hardening-and-owner-risk-decisions.md`
+- Applied Tank sudoers restart restriction live on 2026-02-28 (live + repo mirror):
+  - Root cause addressed:
+    - previous H3 hardening was committed in repo, but live `/etc/sudoers.d/tank-telegram-ha` still had wildcard restart argument.
+  - Live apply details:
+    - backup created:
+      - `/etc/sudoers.d/tank-telegram-ha.bak.20260228-085645`
+    - applied mirror from:
+      - `infra/system/sudoers/tank-telegram-ha`
+    - live destination:
+      - `/etc/sudoers.d/tank-telegram-ha`
+    - effective restart permission now restricted to:
+      - `/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-tank-bridge.service`
+  - Verification outcomes:
+    - `sudo -n visudo -cf /etc/sudoers.d/tank-telegram-ha` -> parsed OK
+    - `sudo -n cat /etc/sudoers.d/tank-telegram-ha` -> contents match repo restriction
+    - `sudo -n -l -U tank` -> restart allowlist shows restricted unit form only
+  - Traceability artifact:
+    - `logs/changes/20260228-085645-tank-sudoers-live-restart-restriction.md`
+- Hardened direct HA scripts to block token CLI arguments on 2026-02-28 (repo-only):
+  - Root cause addressed:
+    - direct HA scripts accepted `--token`, which could expose credentials in shell history and process metadata.
+  - Code/docs updates:
+    - `ops/ha/turn_entity_power.sh`
+      - removed `--token` usage from help text and added explicit `--token` rejection.
+    - `ops/ha/set_climate_mode.sh`
+      - removed `--token` usage from help text and added explicit `--token` rejection.
+    - `ops/ha/set_climate_temperature.sh`
+      - removed `--token` usage from help text and added explicit `--token` rejection.
+    - `docs/home-assistant-ops.md`
+      - added guidance that immediate HA scripts require env-file/env credentials and do not accept `--token`.
+  - Verification outcomes:
+    - `bash -n ops/ha/turn_entity_power.sh ops/ha/set_climate_mode.sh ops/ha/set_climate_temperature.sh` -> pass
+    - token guard checks confirm `--token` is rejected in all three direct scripts.
+    - `python3 -m unittest discover -s tests -v` -> `52 tests`, `OK`
+  - Traceability artifact:
+    - `logs/changes/20260228-084910-ha-direct-token-cli-hardening.md`
+- Restricted restart privileges to approved bridge units on 2026-02-28 (repo-only):
+  - Root cause addressed:
+    - restart helper accepted arbitrary unit names and tank sudoers mirror allowed wildcard restart invocation.
+  - Code/policy updates:
+    - `ops/telegram-bridge/restart_and_verify.sh`
+      - added explicit restart allowlist:
+        - `telegram-architect-bridge.service`
+        - `telegram-tank-bridge.service`
+      - rejects non-allowlisted `UNIT_NAME` values before sudo/systemctl execution.
+    - `infra/system/sudoers/tank-telegram-ha`
+      - narrowed restart permission from wildcard to exact command:
+        - `/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-tank-bridge.service`
+  - Verification outcomes:
+    - `bash -n ops/telegram-bridge/restart_and_verify.sh` -> pass
+    - `bash ops/telegram-bridge/restart_and_verify.sh --unit ssh.service` -> rejected, exit `1`
+    - `python3 -m unittest discover -s tests -v` -> `52 tests`, `OK`
+  - Traceability artifact:
+    - `logs/changes/20260228-084228-restart-privilege-unit-allowlist-hardening.md`
+- Hardened HA scheduler token handling on 2026-02-28 (repo-only):
+  - Root cause addressed:
+    - scheduler scripts accepted `--token` and forwarded it into command arguments, which risks exposing credentials in process/unit metadata.
+  - Code/docs updates:
+    - `ops/ha/schedule_entity_power.sh`
+      - removed token forwarding and added explicit `--token` rejection (`use --env-file / HA_OPS_ENV_FILE`).
+    - `ops/ha/schedule_climate_mode.sh`
+      - removed token forwarding and added explicit `--token` rejection (`use --env-file / HA_OPS_ENV_FILE`).
+    - `docs/home-assistant-ops.md`
+      - added scheduler guidance: no `--token`; scheduled credentials must come from env-file sources.
+  - Verification outcomes:
+    - `bash -n ops/ha/schedule_entity_power.sh ops/ha/schedule_climate_mode.sh` -> pass
+    - `python3 -m unittest discover -s tests -v` -> `52 tests`, `OK`
+  - Traceability artifact:
+    - `logs/changes/20260228-083310-ha-scheduler-token-cli-hardening.md`
+- Fixed required-prefix enforcement gap for voice/media requests on 2026-02-28 (repo-only):
+  - Root cause addressed:
+    - prefix gating in `handle_update` only ran when `prompt_input` was truthy, allowing voice-without-caption messages (`prompt_input == ""`) to bypass required-prefix checks.
+  - Code/test updates:
+    - `src/telegram_bridge/handlers.py`
+      - updated condition from `if prompt_input and config.required_prefixes:` to `if prompt_input is not None and config.required_prefixes:`
+    - `tests/telegram_bridge/test_bridge_core.py`
+      - added `test_handle_update_ignores_voice_without_prefix_when_required`
+      - added `test_handle_update_accepts_prefixed_voice_caption_when_required`
+  - Verification outcomes:
+    - `python3 -m unittest tests/telegram_bridge/test_bridge_core.py -v` -> `40 tests`, `OK`
+    - `python3 -m unittest discover -s tests -v` -> `52 tests`, `OK`
+  - Traceability artifact:
+    - `logs/changes/20260228-082727-telegram-prefix-enforcement-voice-media.md`
+- Optimized TV ownership apply path and worker policy fingerprint checks on 2026-02-27 (repo-only):
+  - Objective delivered:
+    - item 1: avoid expensive recursive ownership resets during TV apply.
+    - item 2: avoid repeated policy fingerprint hashing bursts when many messages arrive at once.
+  - Optimization details:
+    - `ops/tv-desktop/apply_server3.sh`
+      - replaced `chown -R /home/tv/.local /home/tv/.config` with targeted `chown` on managed directories/files only.
+    - `src/telegram_bridge/session_manager.py`
+      - added short TTL cache for policy fingerprint computation:
+        - `POLICY_FINGERPRINT_CACHE_TTL_SECONDS = 10.0`
+        - `get_cached_policy_fingerprint(...)`
+      - worker session checks now use cached fingerprint values within TTL.
+    - `tests/telegram_bridge/test_bridge_core.py`
+      - added cache behavior test:
+        - `test_policy_fingerprint_cache_reuses_value_within_ttl`
+  - Verification outcomes:
+    - `python3 -m unittest tests/telegram_bridge/test_bridge_core.py` -> `38 tests`, `OK`
+    - `bash -n ops/tv-desktop/apply_server3.sh` -> pass
+  - Traceability artifact:
+    - `logs/changes/20260227-232557-optimization-tv-ownership-and-policy-fingerprint-cache.md`
+- Optimized memory prune reconciliation and synced TV startup wording on 2026-02-27 (repo-only):
+  - Optimization delivered:
+    - memory retention prune now reconciles memory state once per prune pass instead of potentially twice when both messages and summaries are pruned.
+  - Code/test/docs updates:
+    - `src/telegram_bridge/memory_engine.py`
+    - `tests/telegram_bridge/test_memory_engine.py`
+    - `docs/server3-tv-desktop.md`
+    - `ops/tv-desktop/apply_server3.sh`
+  - Verification outcomes:
+    - `python3 -m unittest tests/telegram_bridge/test_memory_engine.py` -> `12 tests`, `OK`
+    - `bash -n ops/tv-desktop/apply_server3.sh` -> pass
+  - Traceability artifact:
+    - `logs/changes/20260227-232108-optimization-memory-prune-and-tv-doc-sync.md`
+- Changed TV startup browser mode to maximized on 2026-02-27 (live + repo):
+  - Objective delivered:
+    - `server3-tv-start` sessions now open Brave in maximized mode instead of fullscreen.
+  - Change applied:
+    - `infra/system/tv-desktop/home-tv/.local/bin/server3-tv-session-start.sh`
+    - flag update: `--start-fullscreen` -> `--start-maximized`
+  - Live mirror/deploy:
+    - `/home/tv/.local/bin/server3-tv-session-start.sh` updated from repo template
+    - ownership confirmed `tv:tv`
+  - Verification outcomes:
+    - live script contains `--start-maximized`
+    - live script no longer contains `--start-fullscreen`
+  - Traceability artifact:
+    - `logs/changes/20260227-223409-server3-tv-browser-maximized-live.md`
+- Restarted Architect bridge to activate `/help` TV command updates on 2026-02-27 (live):
+  - Rollout objective:
+    - make newly-added `/help` and `/h` TV command lines live (`server3-tv-start`, `server3-tv-stop`).
+  - Live restart evidence:
+    - journal shows `sudo systemctl restart telegram-architect-bridge.service`
+    - systemd stop/start sequence completed successfully
+  - Verification outcomes:
+    - `telegram-architect-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 21:40:26 AEST`
+    - startup/processing logs continue normally after restart
+  - Traceability artifact:
+    - `logs/changes/20260227-214026-telegram-architect-bridge-restart-help-tv-live.md`
+- Added TV desktop shell commands to Telegram `/help` and `/h` on 2026-02-27 (repo-only):
+  - Command list update:
+    - `/help` and `/h` now include:
+      - `server3-tv-start`
+      - `server3-tv-stop`
+  - Code/test/docs updates:
+    - `src/telegram_bridge/handlers.py`
+    - `tests/telegram_bridge/test_bridge_core.py`
+    - `docs/telegram-architect-bridge.md`
+  - Verification outcomes:
+    - targeted bridge tests pass with help output assertions for both TV commands.
+  - Traceability artifact:
+    - `logs/changes/20260227-212245-telegram-help-tv-commands.md`
+- Added command-start TV desktop profile on 2026-02-27 (live + repo):
+  - Objective delivered:
+    - keep default boot as CLI while enabling on-demand HDMI TV browsing/streaming with Brave.
+  - Live desktop stack installed:
+    - `xorg`, `lightdm`, `lightdm-gtk-greeter`, `xfce4`, `xfce4-terminal`, `dbus-x11`
+    - `pipewire-audio`, `wireplumber`, `pulseaudio-utils`
+    - `brave-browser`
+  - Live runtime/config state:
+    - default target set to `multi-user.target`
+    - LightDM autologin profile for `tv`:
+      - `/etc/lightdm/lightdm.conf.d/50-server3-tv-autologin.conf`
+    - command wrappers installed:
+      - `/usr/local/bin/server3-tv-start`
+      - `/usr/local/bin/server3-tv-stop`
+    - tv session autostart assets installed:
+      - `/home/tv/.config/autostart/server3-tv-brave.desktop`
+      - `/home/tv/.local/bin/server3-tv-session-start.sh`
+      - `/home/tv/.local/bin/server3-tv-audio.sh`
+  - User/security model:
+    - local desktop user `tv` created
+    - password locked (`passwd -S tv` -> `L`)
+    - groups: `audio`, `video`; no `sudo`
+  - Verification outcomes:
+    - `systemctl get-default` -> `multi-user.target`
+    - `/usr/local/bin/server3-tv-start` set `lightdm` to active/running
+    - `/usr/local/bin/server3-tv-stop` returned `lightdm` to inactive/dead
+    - Brave version check passed (`Brave Browser 145.1.87.191`)
+  - Traceability artifacts:
+    - `docs/server3-tv-desktop.md`
+    - `infra/system/desktop/server3-tv-desktop.target-state.md`
+    - `infra/system/users/tv.user.target-state.md`
+    - `logs/changes/20260227-192732-server3-tv-desktop-brave-kiosk-live.md`
+- Expanded required-prefix separators to include comma and period on 2026-02-27 (repo update):
+  - Root cause addressed:
+    - Prefix-gated group messages like `tank, ...` and `tank. ...` were rejected because only whitespace, `:`, and `-` were accepted after prefix matches.
+  - Code/test/docs updates:
+    - `src/telegram_bridge/handlers.py`
+    - `tests/telegram_bridge/test_bridge_core.py`
+    - `docs/telegram-architect-bridge.md`
+  - Verification outcomes:
+    - targeted bridge parser tests pass with new `,` and `.` separator cases.
+  - Rollout note:
+    - this takes effect in running services after bridge restart/redeploy.
+  - Traceability artifact:
+    - `logs/changes/20260227-183728-telegram-prefix-separator-comma-period.md`
+- Set Tank default Codex model to `gpt-5.3-codex` high on 2026-02-27 (live + repo mirror):
+  - Live config update:
+    - `/home/tank/.codex/config.toml`
+    - `model = "gpt-5.3-codex"` (was `gpt-5.1-codex-mini`)
+    - `model_reasoning_effort = "high"` (was `medium`)
+  - Verification outcomes:
+    - live config confirms Tank default is now `gpt-5.3-codex` with high reasoning.
+  - Traceability artifacts:
+    - `infra/codex/home/tank/.codex/config.toml`
+    - `logs/changes/20260227-173200-tank-codex-model-high-live.md`
+- Set Architect default Codex model to Spark on 2026-02-27 (live + repo mirror):
+  - Live config update:
+    - `/home/architect/.codex/config.toml`
+    - `model = "gpt-5.3-codex-spark"` (was `gpt-5.3-codex`)
+  - Verification outcomes:
+    - live config confirms Spark model is now default.
+  - Traceability artifacts:
+    - `infra/codex/home/architect/.codex/config.toml`
+    - `logs/changes/20260227-162500-codex-default-model-spark-live.md`
+- Disabled Tank required prefix gating on 2026-02-27 (live + repo mirror):
+  - Root cause addressed:
+    - Tank replied only to prefixed messages because `TELEGRAM_REQUIRED_PREFIXES` was set.
+  - Live env update:
+    - `/etc/default/telegram-tank-bridge`
+    - `TELEGRAM_REQUIRED_PREFIXES=` (empty)
+  - Bridge restart/verification:
+    - `telegram-tank-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 15:50:01 AEST`
+    - `MainPID=481489` at verification time
+    - startup log confirms allowlist remains:
+      - `Bridge started. Allowed chats=[-1003665594447, -5144577688, 211761499]`
+  - Traceability artifact:
+    - `logs/changes/20260227-155001-telegram-tank-disable-prefix-requirement-live.md`
+- Re-enabled Tank prefix gating on 2026-02-27 (live + repo mirror):
+  - Root cause addressed:
+    - Group privacy only lets `@tankhas_bot` mentions (or replies) reach the bot.
+  - Live env update:
+    - `/etc/default/telegram-tank-bridge`
+    - `TELEGRAM_REQUIRED_PREFIXES=@tankhas_bot,tank`
+  - Bridge restart/verification:
+    - `telegram-tank-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 16:37:56 AEST`
+    - `MainPID=491289` at verification time
+    - startup log confirms prefix gating is reapplied
+  - Traceability artifact:
+    - `logs/changes/20260227-163756-telegram-tank-require-prefix-live.md`
+- Completed Tank runtime workspace isolation on 2026-02-27 (live + repo):
+  - Root cause addressed:
+    - Tank bridge still executed from matrix repo root and could inherit matrix policy context (`AGENTS.md` references).
+  - Live runtime migration:
+    - created code-only Tank workspace:
+      - `/home/tank/tankbot`
+      - `src` symlink pinned to `/home/architect/matrix/src`
+    - updated `telegram-tank-bridge.service` to Tank workspace paths:
+      - `WorkingDirectory=/home/tank/tankbot`
+      - `ExecStart=/usr/bin/python3 /home/tank/tankbot/src/telegram_bridge/main.py`
+      - `TELEGRAM_EXECUTOR_CMD=/home/tank/tankbot/src/telegram_bridge/executor.sh`
+    - set `TELEGRAM_POLICY_WATCH_MODE=none` in `/etc/default/telegram-tank-bridge`
+    - reset Tank state dir for clean start:
+      - `/home/tank/.local/state/telegram-tank-bridge`
+  - Verification outcomes:
+    - `telegram-tank-bridge.service` active/running from Tank workspace
+    - startup log confirms executor path under `/home/tank/tankbot/...`
+    - workspace `/home/tank/tankbot` contains no markdown files (`*.md`)
+  - HA integration status:
+    - intentionally kept enabled:
+      - `/etc/default/ha-ops-tank`
+      - `/etc/sudoers.d/tank-telegram-ha`
+  - Repo architecture update:
+    - `src/telegram_bridge/main.py` now supports:
+      - `TELEGRAM_POLICY_WATCH_MODE`
+      - `TELEGRAM_POLICY_WATCH_FILES`
+    - `src/telegram_bridge/session_manager.py` worker-user messages no longer hardcode "Architect".
+  - Traceability artifact:
+    - `logs/changes/20260227-153546-telegram-tank-runtime-workspace-isolation-live.md`
+- Added Tank group allowlist entry on 2026-02-27 (live + repo mirror):
+  - Root cause addressed:
+    - Tank bot returned `Access denied for this chat.` for new group because the group `chat_id` was not in Tank allowlist.
+  - Captured denied group ID from live journal:
+    - `chat_id=-1003665594447`
+  - Live env update:
+    - `/etc/default/telegram-tank-bridge`
+    - `TELEGRAM_ALLOWED_CHAT_IDS=211761499,-5144577688,-1003665594447`
+  - Bridge restart/verification:
+    - `telegram-tank-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 15:17:28 AEST`
+    - `MainPID=473873` at verification time
+    - startup log confirms allowlist includes `-1003665594447`
+  - Traceability artifact:
+    - `logs/changes/20260227-151744-telegram-tank-allowlist-group-add-live.md`
+- Deployed dedicated Tank Telegram bridge on 2026-02-27 (live + repo):
+  - New service/runtime:
+    - unit: `telegram-tank-bridge.service`
+    - user/group: `tank:tank`
+    - code root: `/home/architect/matrix`
+    - live env: `/etc/default/telegram-tank-bridge`
+  - Behavior/config chosen for Tank:
+    - assistant label: `TANK`
+    - allowlist: `211761499,-5144577688` (private + group)
+    - required prefixes: `@tankhas_bot,tank:`
+    - HA ops enabled via dedicated env: `/etc/default/ha-ops-tank`
+    - voice/document support enabled with tank-local whisper venv:
+      - `/home/tank/.local/share/telegram-voice/venv`
+  - Privilege model:
+    - added narrow sudo allowlist:
+      - `/etc/sudoers.d/tank-telegram-ha`
+    - allowed commands pinned to:
+      - `ops/ha/schedule_entity_power.sh`
+      - `ops/ha/schedule_climate_temperature.sh`
+      - `ops/ha/schedule_climate_mode.sh`
+      - `ops/telegram-bridge/restart_and_verify.sh`
+  - Launcher model:
+    - tank-specific shell launcher added in `/home/tank/.bashrc`
+    - command: `tank` (no `architect` command needed for tank user)
+  - Isolation fix applied during rollout:
+    - set `TELEGRAM_BRIDGE_STATE_DIR=/home/tank/.local/state/telegram-tank-bridge`
+    - restarted service to ensure thread/in-flight/canonical JSON paths no longer pointed at architect state dir.
+  - Verification outcomes:
+    - `telegram-tank-bridge.service` active/running
+    - startup logs confirm:
+      - `TANK-only routing active for all allowlisted chats.`
+      - state/memory/canonical paths under `/home/tank/.local/state/telegram-tank-bridge`
+    - `tank` launcher resolves and returns Tank-branded help output
+    - `sudo -l -U tank` shows only the intended allowlist
+  - Traceability artifact:
+    - `logs/changes/20260227-150715-telegram-tank-bridge-live.md`
+- Created Linux user `tank` on Server3 on 2026-02-27 (live + repo):
+  - Live changes:
+    - created user with home and shell:
+      - `useradd -m -s /bin/bash tank`
+  - Verification outcomes:
+    - `id tank` -> `uid=1002(tank) gid=1002(tank) groups=1002(tank)`
+    - `/home/tank` exists and is owned by `tank:tank`
+    - `sudo -l -U tank` confirms no sudo access
+  - Traceability artifacts:
+    - `infra/system/users/tank.user.target-state.md`
+    - `logs/changes/20260227-142537-create-user-tank-live.md`
+- Removed HelperBot runtime completely from Server3 on 2026-02-27 (live + repo):
+  - Live removals completed:
+    - stopped and disabled `telegram-helper-bridge.service`
+    - removed `/etc/systemd/system/telegram-helper-bridge.service`
+    - removed `/etc/default/telegram-helper-bridge`
+    - removed `/etc/default/ha-ops-helper`
+    - removed `/etc/sudoers.d/helperbot-telegram-ha`
+    - removed Linux user/group `helperbot` and `/home/helperbot`
+  - Verification outcomes:
+    - `id helperbot` -> user not found
+    - `telegram-helper-bridge.service` -> unit not found/inactive
+  - Repo mirror cleanup:
+    - removed helper-specific source-of-truth artifacts under `infra/`, `ops/`, and `src/`
+  - Traceability artifact:
+    - `logs/changes/20260227-141954-helperbot-complete-removal-live.md`
+- Isolated helper bot into dedicated helper workspace on 2026-02-27 (live + repo):
+  - New helper runtime code root:
+    - `/home/helperbot/helperbot`
+  - Helper identity is now workspace-local:
+    - `/home/helperbot/helperbot/AGENTS.md`
+    - `/home/helperbot/helperbot/HELPER_INSTRUCTION.md`
+    - assistant label set via env:
+      - `TELEGRAM_ASSISTANT_NAME=HelperBot`
+  - Helper service now runs from helper workspace:
+    - `WorkingDirectory=/home/helperbot/helperbot`
+    - `ExecStart=/usr/bin/python3 /home/helperbot/helperbot/src/telegram_bridge/main.py`
+    - `TELEGRAM_EXECUTOR_CMD=/home/helperbot/helperbot/src/telegram_bridge/executor_helper.sh`
+  - Helper sudo allowlist migrated to helper-workspace script paths.
+  - Verification outcomes:
+    - `telegram-helper-bridge.service` active/running
+    - startup log shows:
+      - `HelperBot-only routing active for all allowlisted chats.`
+      - helper executor path under `/home/helperbot/helperbot/...`
+  - Traceability artifact:
+    - `logs/changes/20260227-134659-helper-workspace-isolation-live.md`
+- Disabled helper prefix requirement on 2026-02-27 (live + repo mirror):
+  - Root cause addressed:
+    - helper bot received allowlisted-group updates but ignored them with `reason=prefix_required`.
+  - Live env update:
+    - `/etc/default/telegram-helper-bridge`
+    - `TELEGRAM_REQUIRED_PREFIXES=` (empty)
+  - Bridge restart/verification:
+    - `telegram-helper-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 12:22:24 AEST`
+    - `MainPID=446167` at verification time
+    - journal confirms startup allowlist remains intact
+  - Traceability artifact:
+    - `logs/changes/20260227-122244-telegram-helper-disable-prefix-requirement-live.md`
+- Fixed helper prefix parsing for Unicode whitespace on 2026-02-27 (live + repo):
+  - Root cause addressed:
+    - helper bot received messages but ignored them as `prefix_required` when mobile clients sent non-breaking whitespace after prefixes.
+  - Code fix:
+    - `src/telegram_bridge/handlers.py` now accepts Unicode whitespace delimiters after required prefixes.
+  - Regression coverage:
+    - `tests/telegram_bridge/test_bridge_core.py` includes NBSP prefix cases.
+  - Live rollout:
+    - restarted `telegram-helper-bridge.service`
+    - verified active/running with:
+      - `ExecMainStartTimestamp=Fri 2026-02-27 12:03:18 AEST`
+      - `MainPID=444019` at verification time
+  - Traceability artifact:
+    - `logs/changes/20260227-120338-telegram-helper-prefix-unicode-whitespace-fix-live.md`
+- Added helper bot group allowlist entry on 2026-02-27 (live + repo mirror):
+  - Root cause addressed:
+    - helper bot returned `Access denied for this chat.` for new group because its `chat_id` was not in helper allowlist.
+  - Captured denied group ID from live journal:
+    - `chat_id=-1003665594447`
+  - Live env update:
+    - `/etc/default/telegram-helper-bridge`
+    - `TELEGRAM_ALLOWED_CHAT_IDS=211761499,-5144577688,-1003665594447`
+  - Bridge restart/verification:
+    - `telegram-helper-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 11:49:29 AEST`
+    - `MainPID=442227` at verification time
+    - journal confirms startup allowlist includes `-1003665594447`
+  - Traceability artifact:
+    - `logs/changes/20260227-115000-telegram-helper-allowlist-group-add-live.md`
+- Deployed a dedicated family helper Telegram bot service on 2026-02-27 (live + repo):
+  - Added helper-specific service/env artifacts:
+    - `infra/systemd/telegram-helper-bridge.service`
+    - `infra/env/telegram-helper-bridge.env.example`
+  - Added bridge prefix-gating support:
+    - env keys: `TELEGRAM_REQUIRED_PREFIXES`, `TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE`
+    - behavior: when configured, only prefixed messages are processed; others are ignored.
+  - Added helper executor profile:
+    - `src/telegram_bridge/executor_helper.sh`
+  - Added live helper runtime and isolation:
+    - Linux user: `helperbot`
+    - live env: `/etc/default/telegram-helper-bridge`
+    - helper state root: `/home/helperbot/.local/state/telegram-helper-bridge`
+    - helper service: `telegram-helper-bridge.service` active/running
+  - Added helper HA credential and narrow elevation path:
+    - live HA env: `/etc/default/ha-ops-helper`
+    - live sudoers: `/etc/sudoers.d/helperbot-telegram-ha`
+    - scheduler scripts now self-elevate and support `HA_OPS_ENV_FILE` default pinning.
+  - Added live mirror/traceability artifacts:
+    - `infra/env/telegram-helper-bridge.server3.redacted.env`
+    - `infra/env/ha-ops-helper.server3.redacted.env`
+    - `infra/system/sudoers/helperbot-telegram-ha`
+    - `logs/changes/20260227-113847-telegram-helper-bot-split-service-live.md`
+  - Verification outcomes:
+    - helper service restart/status checks passed
+    - helperbot `codex` execution succeeded
+    - helperbot HA dry-run immediate + scheduled paths succeeded against `/etc/default/ha-ops-helper`
+    - existing `telegram-architect-bridge.service` remained active/running
+- Pinned memory DB path explicitly in live bridge env on 2026-02-27 (live + repo mirror):
+  - Live env update:
+    - added `TELEGRAM_MEMORY_SQLITE_PATH=/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3` in `/etc/default/telegram-architect-bridge`
+  - Live safety backup:
+    - `/etc/default/telegram-architect-bridge.bak.20260227103949`
+  - Bridge restart/verification:
+    - `telegram-architect-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 10:39:54 AEST`
+    - `MainPID=431538` at verification time
+    - journal confirms pinned memory path at startup
+  - Traceability artifacts:
+    - `infra/env/telegram-architect-bridge.server3.redacted.env`
+    - `logs/changes/20260227-104113-telegram-memory-sqlite-path-pin-live.md`
+- Activated Telegram HA keyword routing live on 2026-02-27 (service rollout verification):
+  - Live service status:
+    - `telegram-architect-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 09:41:42 AEST`
+    - `MainPID=423709` at verification time
+  - Verification commands:
+    - `bash ops/telegram-bridge/status_service.sh`
+    - `systemctl show -p ActiveState -p SubState -p ExecMainStartTimestamp -p MainPID telegram-architect-bridge.service`
+  - Traceability artifact:
+    - `logs/changes/20260227-094636-telegram-ha-keyword-routing-live-verify.md`
+- Added explicit HA keyword routing in Telegram bridge on 2026-02-27 (repo-only):
+  - New trigger prefixes:
+    - `HA ...`
+    - `Home Assistant ...`
+  - Routing behavior:
+    - keyword-triggered prompts are wrapped in strict HA execution policy
+    - policy requires use of `ops/ha/*.sh` scripts and blocks inline HA shell/curl paths
+    - keyword-triggered requests run stateless to avoid context carryover
+    - empty keyword-only requests are rejected with usage hint
+  - Code/docs updates:
+    - `src/telegram_bridge/handlers.py`
+    - `tests/telegram_bridge/test_bridge_core.py`
+    - `docs/telegram-architect-bridge.md`
+  - Validation outcomes:
+    - targeted bridge tests passed for keyword parsing + routing
+- Added dedicated HA climate mode set/schedule path on 2026-02-27 (repo + live validation):
+  - Root cause addressed:
+    - ad-hoc `systemd-run` command for 08:23 dry-mode scheduling failed due transient shell/env interpolation issues.
+  - New scripts:
+    - `ops/ha/set_climate_mode.sh`
+      - immediate HVAC mode set for climate entities
+      - validates requested mode against HA-reported `hvac_modes`
+      - defaults to `/etc/default/ha-ops` and runs API preflight
+    - `ops/ha/schedule_climate_mode.sh`
+      - supports both `--in` and `--at`
+      - runs preflight before creating timer to fail fast
+  - Docs update:
+    - `docs/home-assistant-ops.md` now includes climate mode examples + dry-run canary command.
+  - Validation outcomes:
+    - script syntax checks pass (`bash -n`)
+    - immediate dry-run returns `preflight=ok`
+    - 20-second scheduled dry-run fired and completed successfully with `preflight=ok`
+  - Traceability artifact:
+    - `logs/changes/20260227-084722-ha-climate-mode-scheduler-add-live.md`
+- Hardened HA ops fast-path on 2026-02-27 (live + repo):
+  - Root cause addressed:
+    - HA ops scripts were defaulting to `/etc/default/telegram-architect-bridge`, which no longer carries HA keys; scheduled actions could fail late at trigger time.
+  - Live credentials baseline:
+    - created dedicated HA ops env file:
+      - `/etc/default/ha-ops`
+    - source used:
+      - `/etc/default/telegram-architect-bridge.bak.20260218-114545`
+    - permissions:
+      - owner/group `root:architect`, mode `640`
+  - Script reliability hardening:
+    - defaults switched to `/etc/default/ha-ops`:
+      - `ops/ha/turn_entity_power.sh`
+      - `ops/ha/set_climate_temperature.sh`
+      - `ops/ha/schedule_entity_power.sh`
+      - `ops/ha/schedule_climate_temperature.sh`
+    - added Home Assistant API preflight in immediate action scripts.
+    - added preflight-before-schedule in timer scripts so failures happen immediately (before timer creation).
+  - Repo traceability and docs:
+    - `infra/env/ha-ops.env.example`
+    - `infra/env/ha-ops.server3.redacted.env`
+    - `docs/home-assistant-ops.md`
+    - `README.md`
+    - `logs/changes/20260227-080640-ha-ops-fast-path-hardening-live.md`
+  - Validation outcomes:
+    - immediate dry-runs returned `preflight=ok` for power + temperature scripts.
+    - 30-second scheduled dry-runs for both power + temperature fired and completed successfully with `preflight=ok`.
+- Memory hardening phase 3 completed on 2026-02-27 (live + repo):
+  - Pinned explicit memory-health thresholds in live `/etc/default/telegram-architect-bridge`:
+    - `TELEGRAM_MEMORY_HEALTH_MAX_DB_BYTES=1073741824`
+    - `TELEGRAM_MEMORY_HEALTH_MAX_QUERY_MS=1500`
+    - `TELEGRAM_MEMORY_HEALTH_LOOKBACK_MINUTES=60`
+    - `TELEGRAM_MEMORY_HEALTH_MAX_LOCK_ERRORS=0`
+    - `TELEGRAM_MEMORY_HEALTH_MAX_WRITE_FAILURES=0`
+    - `TELEGRAM_MEMORY_ALERT_LOG_LINES=80`
+  - Added failure-alert routing for memory jobs using `OnFailure=telegram-architect-memory-alert@%n.service`:
+    - `infra/systemd/telegram-architect-memory-maintenance.service`
+    - `infra/systemd/telegram-architect-memory-health.service`
+    - new alert handler unit/script:
+      - `infra/systemd/telegram-architect-memory-alert@.service`
+      - `ops/telegram-bridge/memory_alert.sh`
+  - Added monthly restore-drill scheduler:
+    - `infra/systemd/telegram-architect-memory-restore-drill.service`
+    - `infra/systemd/telegram-architect-memory-restore-drill.timer`
+  - Updated timer installer to manage maintenance + health + restore-drill timers:
+    - `ops/telegram-bridge/install_memory_timers.sh`
+  - Live rollout verification:
+    - all three timers active (maintenance, health, restore-drill)
+    - one-shot health, maintenance, and restore-drill service runs succeeded
+  - Traceability artifact:
+    - `logs/changes/20260227-080102-telegram-memory-hardening-phase3-live.md`
+- Memory hardening phase 2 completed on 2026-02-27 (repo + live):
+  - Repo hardening updates:
+    - Added privacy guardrails in `src/telegram_bridge/memory_engine.py`:
+      - `/remember` now auto-redacts obvious secret-like values before storage.
+      - `/memory export` is redacted by default; `/memory export raw` is explicit opt-in.
+    - Added memory monitoring and drill tooling:
+      - `ops/telegram-bridge/memory_health_check.sh`
+      - `ops/telegram-bridge/memory_restore_drill.sh`
+    - Added memory timer install helper:
+      - `ops/telegram-bridge/install_memory_timers.sh`
+    - Added systemd source-of-truth units:
+      - `infra/systemd/telegram-architect-memory-maintenance.service`
+      - `infra/systemd/telegram-architect-memory-maintenance.timer`
+      - `infra/systemd/telegram-architect-memory-health.service`
+      - `infra/systemd/telegram-architect-memory-health.timer`
+    - Maintenance script enhanced with backup retention pruning:
+      - `ops/telegram-bridge/memory_maintenance.sh`
+    - Docs/env updates:
+      - `docs/telegram-architect-bridge.md`
+      - `infra/env/telegram-architect-bridge.env.example`
+    - Validation outcomes:
+      - `python3 -m unittest discover -s tests -p 'test_*.py'` -> `40 passed`
+      - `python3 src/telegram_bridge/main.py --self-test` -> `self-test: ok`
+      - `bash src/telegram_bridge/smoke_test.sh` -> `smoke-test: ok`
+  - Live rollout on Server3:
+    - Applied timers with `bash ops/telegram-bridge/install_memory_timers.sh apply`
+    - Active timers:
+      - `telegram-architect-memory-maintenance.timer`
+      - `telegram-architect-memory-health.timer`
+    - Verified one-shot runs:
+      - health service emitted `memory-health: ok ...`
+      - maintenance service created backup + prune + checkpoint/vacuum success
+    - Verified restore drill pass:
+      - `bash ops/telegram-bridge/memory_restore_drill.sh`
+    - Updated traceability artifact:
+      - `logs/changes/20260227-073037-telegram-memory-hardening-phase2-live.md`
+- Rolled out Telegram bridge memory retention env on Server3 (live) on 2026-02-27:
+  - Updated live `/etc/default/telegram-architect-bridge` with:
+    - `TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY=4000`
+    - `TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY=80`
+    - `TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS=300`
+  - Live backup created:
+    - `/etc/default/telegram-architect-bridge.bak.20260227071138.402921`
+  - Bridge restarted and verified healthy:
+    - `ExecMainStartTimestamp=Fri 2026-02-27 07:12:38 AEST`
+    - `ActiveState=active`, `SubState=running`
+    - journal confirms: retention config loaded at startup
+  - Updated traceability artifacts:
+    - `infra/env/telegram-architect-bridge.server3.redacted.env`
+    - `logs/changes/20260227-071319-telegram-bridge-memory-retention-rollout-live.md`
+- Memory hardening v1.2 applied on 2026-02-26 (repo-only):
+  - Added configurable automatic retention pruning in `src/telegram_bridge/memory_engine.py`:
+    - per-key message cap: `TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY` (default `4000`)
+    - per-key summary cap: `TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY` (default `80`)
+    - prune cadence: `TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS` (default `300`)
+  - Wired retention config through bridge runtime in `src/telegram_bridge/main.py` and startup telemetry/logging.
+  - Added memory maintenance/recovery scripts:
+    - `ops/telegram-bridge/memory_maintenance.sh` (backup + forced prune + optional vacuum)
+    - `ops/telegram-bridge/memory_restore.sh` (restore backup with integrity checks + pre-restore snapshot)
+  - Added retention regression tests in `tests/telegram_bridge/test_memory_engine.py` and updated bridge config test fixtures in `tests/telegram_bridge/test_bridge_core.py`.
+  - Updated operator docs/env template:
+    - `docs/telegram-architect-bridge.md`
+    - `infra/env/telegram-architect-bridge.env.example`
+  - Validation outcomes:
+    - `python3 -m unittest discover -s tests -p 'test_*.py'` -> `38 passed`
+    - `python3 src/telegram_bridge/main.py --self-test` -> `self-test: ok`
+    - `bash src/telegram_bridge/smoke_test.sh` -> `smoke-test: ok`
+- Bridge reliability fixes applied on 2026-02-26 (repo-only):
+  - Fixed concurrent state persistence race in `src/telegram_bridge/state_store.py` by switching to unique atomic temp writes per operation.
+  - Hardened worker finalization in `src/telegram_bridge/session_manager.py` to always clear busy state even if in-flight persistence cleanup fails.
+  - Fixed Telegram multipart message prefix formatting in `src/telegram_bridge/transport.py` to use a real newline instead of literal `\n`.
+  - Corrected request-start telemetry in `src/telegram_bridge/handlers.py` so `has_previous_thread` reflects actual continuity state.
+  - Added regression coverage in `tests/telegram_bridge/test_bridge_core.py` for chunk prefix formatting, concurrent in-flight persistence safety, and busy-clear behavior on cleanup failure.
+  - Validation outcomes:
+    - `python3 -m unittest discover -s tests -p 'test_*.py'` -> `36 passed`
+    - `python3 src/telegram_bridge/main.py --self-test` -> `self-test: ok`
+    - `bash src/telegram_bridge/smoke_test.sh` -> `smoke-test: ok`
+- Repository scope cleanup completed on 2026-02-26:
+  - Removed legacy media automation artifacts, docs, env templates, helper scripts, and change records from tracked repo content.
+  - Updated shared summary/archive and docker target-state documents to match current project scope.
+- Applied managed Architect launcher to live shell profile and restarted Telegram bridge (live):
+  - Live launcher apply:
+    - command: `bash ops/bash/deploy-bashrc.sh apply`
+    - target: `/home/architect/.bashrc`
+    - backup created: `/home/architect/.bashrc.bak.20260226200618.346165`
+  - Verification:
+    - `bash -ic 'type architect; declare -f architect'` confirms `architect` now routes prompt usage through:
+      - `/home/architect/matrix/src/architect_cli/main.py`
+    - codex subcommand passthrough remains available in launcher function.
+  - Bridge restart/verify:
+    - command: `bash ops/telegram-bridge/restart_and_verify.sh`
+    - verification: `pass`
+    - service active after restart with new PID/start:
+      - PID: `346400`
+      - start: `Thu 2026-02-26 20:07:33 AEST`
+  - Post-restart status confirms shared memory runtime logging:
+    - `Memory SQLite path=/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3`
+    - `bridge.started` event present.
+  - Updated traceability artifacts:
+    - `logs/changes/20260226-200802-bashrc-launcher-apply-and-bridge-restart-live.md`
+- Added Memory v1.1 shared SQLite engine for Telegram + Architect CLI (repo-only):
+  - New shared memory module:
+    - `src/telegram_bridge/memory_engine.py`
+    - canonical tables:
+      - `messages`, `sessions`, `memory_facts`, `chat_summaries`, `memory_state`, `memory_config`
+    - per-conversation-key model:
+      - Telegram: `tg:<chat_id>`
+      - CLI default: `cli:architect:default`
+      - CLI named profile: `cli:architect:<profile_name>`
+    - modes:
+      - `full` (default for new keys)
+      - `session_only`
+    - no persistent `off` mode
+  - Telegram bridge integration:
+    - `src/telegram_bridge/main.py` now initializes shared memory DB (env: `TELEGRAM_MEMORY_SQLITE_PATH`, default `<state_dir>/memory.sqlite3`)
+    - `src/telegram_bridge/handlers.py` now supports memory commands + `/ask` stateless one-turn path:
+      - `/memory mode`, `/memory mode full`, `/memory mode session_only`, `/memory status`, `/memory export`
+      - `/remember`, `/forget`, `/forget-all`, `/reset-session`, `/hard-reset-memory`
+      - `/ask <prompt>`
+    - `/help` and `/h` now include memory command section
+  - Architect CLI integration:
+    - new script: `src/architect_cli/main.py`
+    - launcher update: `infra/bash/home/architect/.bashrc`
+      - non-subcommand `architect ...` usage now routes through shared-memory CLI wrapper
+      - preserves direct codex passthrough for codex subcommands
+  - QA and docs:
+    - new test suite: `tests/telegram_bridge/test_memory_engine.py`
+    - extended bridge tests: `tests/telegram_bridge/test_bridge_core.py`
+    - smoke compile list updated: `src/telegram_bridge/smoke_test.sh`
+    - docs/env updates:
+      - `README.md`
+      - `docs/telegram-architect-bridge.md`
+      - `infra/env/telegram-architect-bridge.env.example`
+  - Validation outcomes:
+    - `python3 -m unittest discover -s tests -p 'test_*.py'` -> `33 passed`
+    - `python3 src/telegram_bridge/main.py --self-test` -> `self-test: ok`
+    - `bash src/telegram_bridge/smoke_test.sh` -> `smoke-test: ok`
