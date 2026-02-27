@@ -310,6 +310,8 @@ class BridgeCoreTests(unittest.TestCase):
         bridge.handle_update(state, config, client, update)
         self.assertTrue(client.messages)
         self.assertIn("Available commands:", client.messages[-1][1])
+        self.assertIn("server3-tv-start", client.messages[-1][1])
+        self.assertIn("server3-tv-stop", client.messages[-1][1])
         self.assertIn("/memory mode", client.messages[-1][1])
         self.assertIn("/ask <prompt>", client.messages[-1][1])
 

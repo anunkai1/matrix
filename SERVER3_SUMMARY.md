@@ -10,6 +10,19 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Added TV desktop shell commands to Telegram `/help` and `/h` on 2026-02-27 (repo-only):
+  - Command list update:
+    - `/help` and `/h` now include:
+      - `server3-tv-start`
+      - `server3-tv-stop`
+  - Code/test/docs updates:
+    - `src/telegram_bridge/handlers.py`
+    - `tests/telegram_bridge/test_bridge_core.py`
+    - `docs/telegram-architect-bridge.md`
+  - Verification outcomes:
+    - targeted bridge tests pass with help output assertions for both TV commands.
+  - Traceability artifact:
+    - `logs/changes/20260227-212245-telegram-help-tv-commands.md`
 - Added command-start TV desktop profile on 2026-02-27 (live + repo):
   - Objective delivered:
     - keep default boot as CLI while enabling on-demand HDMI TV browsing/streaming with Brave.

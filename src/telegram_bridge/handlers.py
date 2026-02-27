@@ -700,7 +700,9 @@ def build_help_text(config) -> str:
         "/help or /h - show this message\n"
         "/status - show bridge status and context\n"
         "/reset - clear saved context for this chat\n"
-        "/restart - queue a safe bridge restart\n\n"
+        "/restart - queue a safe bridge restart\n"
+        "server3-tv-start - start TV desktop mode (local shell command)\n"
+        "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
         "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing."
     )

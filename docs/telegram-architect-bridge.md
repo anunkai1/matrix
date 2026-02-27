@@ -157,6 +157,8 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/status` bridge health and uptime
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
+- `server3-tv-start` start TV desktop mode from shell
+- `server3-tv-stop` stop TV desktop mode and return to CLI from shell
 - `/memory mode` show memory mode for this conversation key
 - `/memory mode full` use summary + durable facts + recent messages
 - `/memory mode session_only` use recent messages + session continuity only
