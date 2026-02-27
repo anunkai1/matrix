@@ -9,6 +9,21 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Added Tank group allowlist entry on 2026-02-27 (live + repo mirror):
+  - Root cause addressed:
+    - Tank bot returned `Access denied for this chat.` for new group because the group `chat_id` was not in Tank allowlist.
+  - Captured denied group ID from live journal:
+    - `chat_id=-1003665594447`
+  - Live env update:
+    - `/etc/default/telegram-tank-bridge`
+    - `TELEGRAM_ALLOWED_CHAT_IDS=211761499,-5144577688,-1003665594447`
+  - Bridge restart/verification:
+    - `telegram-tank-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 15:17:28 AEST`
+    - `MainPID=473873` at verification time
+    - startup log confirms allowlist includes `-1003665594447`
+  - Traceability artifact:
+    - `logs/changes/20260227-151744-telegram-tank-allowlist-group-add-live.md`
 - Deployed dedicated Tank Telegram bridge on 2026-02-27 (live + repo):
   - New service/runtime:
     - unit: `telegram-tank-bridge.service`
