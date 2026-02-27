@@ -163,6 +163,14 @@ class BridgeCoreTests(unittest.TestCase):
             bridge_handlers.strip_required_prefix("@helperbot should not match", prefixes, True),
             (False, "@helperbot should not match"),
         )
+        self.assertEqual(
+            bridge_handlers.strip_required_prefix("@helper\u00a0summarize this", prefixes, True),
+            (True, "summarize this"),
+        )
+        self.assertEqual(
+            bridge_handlers.strip_required_prefix("@helper\u00a0", prefixes, True),
+            (True, ""),
+        )
 
     def test_json_log_formatter_includes_event_and_fields(self):
         record = logging.LogRecord(

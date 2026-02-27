@@ -9,6 +9,20 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Fixed helper prefix parsing for Unicode whitespace on 2026-02-27 (live + repo):
+  - Root cause addressed:
+    - helper bot received messages but ignored them as `prefix_required` when mobile clients sent non-breaking whitespace after prefixes.
+  - Code fix:
+    - `src/telegram_bridge/handlers.py` now accepts Unicode whitespace delimiters after required prefixes.
+  - Regression coverage:
+    - `tests/telegram_bridge/test_bridge_core.py` includes NBSP prefix cases.
+  - Live rollout:
+    - restarted `telegram-helper-bridge.service`
+    - verified active/running with:
+      - `ExecMainStartTimestamp=Fri 2026-02-27 12:03:18 AEST`
+      - `MainPID=444019` at verification time
+  - Traceability artifact:
+    - `logs/changes/20260227-120338-telegram-helper-prefix-unicode-whitespace-fix-live.md`
 - Added helper bot group allowlist entry on 2026-02-27 (live + repo mirror):
   - Root cause addressed:
     - helper bot returned `Access denied for this chat.` for new group because its `chat_id` was not in helper allowlist.

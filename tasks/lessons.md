@@ -44,3 +44,8 @@ Use one section per lesson:
 - Mistake pattern: I assumed a narrowly scoped HA bot design before confirming the user wanted a general helper bot with mixed advice/file + HA use.
 - Prevention rule: For new bot/service requests, confirm intended capability scope first (general assistant vs single-domain ops) before proposing privilege boundaries and routing model.
 - Where/when applied: Initial design step for any new Telegram bot/service rollout on Server3, before drafting implementation plan.
+
+### 2026-02-27T12:03:38+10:00 - Prefix Parsers Must Handle Unicode Whitespace
+- Mistake pattern: I assumed ASCII-only separators after Telegram mention prefixes, causing valid mobile-formatted messages to be ignored.
+- Prevention rule: Treat any Unicode whitespace as a valid delimiter in prefix/command parsers and add regression tests for NBSP-style inputs.
+- Where/when applied: Telegram message routing and prefix gating in `src/telegram_bridge/handlers.py`.
