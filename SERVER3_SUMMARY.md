@@ -9,6 +9,15 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Set Architect default Codex model to Spark on 2026-02-27 (live + repo mirror):
+  - Live config update:
+    - `/home/architect/.codex/config.toml`
+    - `model = "gpt-5.3-codex-spark"` (was `gpt-5.3-codex`)
+  - Verification outcomes:
+    - live config confirms Spark model is now default.
+  - Traceability artifacts:
+    - `infra/codex/home/architect/.codex/config.toml`
+    - `logs/changes/20260227-162500-codex-default-model-spark-live.md`
 - Disabled Tank required prefix gating on 2026-02-27 (live + repo mirror):
   - Root cause addressed:
     - Tank replied only to prefixed messages because `TELEGRAM_REQUIRED_PREFIXES` was set.

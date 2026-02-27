@@ -1,0 +1,19 @@
+model = "gpt-5.3-codex-spark"
+model_reasoning_effort = "high"
+[projects."/home/codex"]
+trust_level = "trusted"
+
+[projects."/home/codex/octopuslive"]
+trust_level = "trusted"
+
+[projects."/home/architect"]
+trust_level = "trusted"
+
+[projects."/home/architect/matrix"]
+trust_level = "trusted"
+
+[notice]
+hide_full_access_warning = true
+
+[notice.model_migrations]
+"gpt-5.2-codex" = "gpt-5.3-codex"
