@@ -3,6 +3,7 @@ import re
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -310,6 +311,66 @@ class MemoryEngineTests(unittest.TestCase):
                     (key,),
                 ).fetchone()
             self.assertEqual(int(state["last_summary_msg_id"]), 30)
+
+    def test_force_retention_reconciles_once_when_messages_and_summaries_pruned(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.cli_key("reconcile-once")
+            engine = memory.MemoryEngine(
+                db_path,
+                max_messages_per_key=2,
+                max_summaries_per_key=1,
+                prune_interval_seconds=0,
+            )
+            with engine._lock, engine._connect() as conn:
+                engine._ensure_memory_rows(conn, key)
+                now = time.time()
+                conn.executemany(
+                    """
+                    INSERT INTO messages (
+                        conversation_key,
+                        channel,
+                        sender_role,
+                        sender_name,
+                        text,
+                        ts,
+                        token_estimate,
+                        is_bot
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (key, "telegram", "user", "User", "m1", now + 1, 1, 0),
+                        (key, "telegram", "assistant", "Architect", "m2", now + 2, 1, 1),
+                        (key, "telegram", "user", "User", "m3", now + 3, 1, 0),
+                        (key, "telegram", "assistant", "Architect", "m4", now + 4, 1, 1),
+                    ],
+                )
+                conn.executemany(
+                    """
+                    INSERT INTO chat_summaries (
+                        conversation_key,
+                        start_msg_id,
+                        end_msg_id,
+                        summary_text,
+                        key_points_json,
+                        open_loops_json,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (key, 1, 2, "s1", "[]", "[]", now + 10),
+                        (key, 3, 4, "s2", "[]", "[]", now + 11),
+                    ],
+                )
+            with mock.patch.object(
+                engine,
+                "_reconcile_memory_state",
+                wraps=engine._reconcile_memory_state,
+            ) as reconcile:
+                result = engine.run_retention_prune(conversation_key=key, force=True)
+            self.assertGreater(result.pruned_messages, 0)
+            self.assertGreater(result.pruned_summaries, 0)
+            self.assertEqual(reconcile.call_count, 1)
 
 
 if __name__ == "__main__":

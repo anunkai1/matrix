@@ -14,7 +14,7 @@ Applies the Server3 TV desktop target state:
 - installs start/stop commands:
   - /usr/local/bin/server3-tv-start
   - /usr/local/bin/server3-tv-stop
-- configures tv session autostart for Brave fullscreen + HDMI audio preference
+- configures tv session autostart for Brave maximized window + HDMI audio preference
 HELP
 }
 

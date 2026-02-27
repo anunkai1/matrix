@@ -516,10 +516,7 @@ class MemoryEngine:
             "DELETE FROM messages WHERE conversation_key = ? AND id < ?",
             (conversation_key, cutoff_id),
         )
-        deleted = int(delete_row.rowcount or 0)
-        if deleted > 0:
-            self._reconcile_memory_state(conn, conversation_key)
-        return deleted
+        return int(delete_row.rowcount or 0)
 
     def _prune_summaries_for_key(self, conn: sqlite3.Connection, conversation_key: str) -> int:
         if self.max_summaries_per_key <= 0:
@@ -542,10 +539,7 @@ class MemoryEngine:
             "DELETE FROM chat_summaries WHERE conversation_key = ? AND id < ?",
             (conversation_key, cutoff_id),
         )
-        deleted = int(delete_row.rowcount or 0)
-        if deleted > 0:
-            self._reconcile_memory_state(conn, conversation_key)
-        return deleted
+        return int(delete_row.rowcount or 0)
 
     def _prune_conversation(
         self,
@@ -568,6 +562,8 @@ class MemoryEngine:
 
         deleted_messages = self._prune_messages_for_key(conn, conversation_key)
         deleted_summaries = self._prune_summaries_for_key(conn, conversation_key)
+        if deleted_messages > 0 or deleted_summaries > 0:
+            self._reconcile_memory_state(conn, conversation_key)
         return deleted_messages, deleted_summaries
 
     def run_retention_prune(

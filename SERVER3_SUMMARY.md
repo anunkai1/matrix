@@ -10,6 +10,19 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Optimized memory prune reconciliation and synced TV startup wording on 2026-02-27 (repo-only):
+  - Optimization delivered:
+    - memory retention prune now reconciles memory state once per prune pass instead of potentially twice when both messages and summaries are pruned.
+  - Code/test/docs updates:
+    - `src/telegram_bridge/memory_engine.py`
+    - `tests/telegram_bridge/test_memory_engine.py`
+    - `docs/server3-tv-desktop.md`
+    - `ops/tv-desktop/apply_server3.sh`
+  - Verification outcomes:
+    - `python3 -m unittest tests/telegram_bridge/test_memory_engine.py` -> `12 tests`, `OK`
+    - `bash -n ops/tv-desktop/apply_server3.sh` -> pass
+  - Traceability artifact:
+    - `logs/changes/20260227-232108-optimization-memory-prune-and-tv-doc-sync.md`
 - Changed TV startup browser mode to maximized on 2026-02-27 (live + repo):
   - Objective delivered:
     - `server3-tv-start` sessions now open Brave in maximized mode instead of fullscreen.

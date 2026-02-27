@@ -9,7 +9,7 @@ This runbook configures Server3 for HDMI TV usage while keeping default boot in 
 - Adds on-demand desktop commands:
   - `server3-tv-start`
   - `server3-tv-stop`
-- Auto-opens Brave fullscreen at login (`https://www.youtube.com`).
+- Auto-opens Brave maximized at login (`https://www.youtube.com`).
 - Prefers HDMI audio sink in the `tv` session.
 
 ## Apply
@@ -32,8 +32,8 @@ server3-tv-stop
 ## TV Session Behavior
 - LightDM autologins `tv` only when desktop is started.
 - Xfce autostarts `server3-tv-session-start.sh`.
-- Brave launches fullscreen (soft kiosk, not hard-locked).
-- You can press `F11` to toggle fullscreen and browse any websites.
+- Brave launches maximized (not forced fullscreen).
+- You can still press `F11` if you want fullscreen temporarily.
 
 ## Audio Routing
 At session start, `server3-tv-audio.sh`:
