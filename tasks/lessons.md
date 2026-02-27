@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-02-28T09:25:38+10:00 - Respect Owner-Accepted Risk Decisions in Future Plans
+- Mistake pattern: I kept re-proposing fixes for risks the owner had explicitly accepted as-designed (notably H5, later H6/H7/H9).
+- Prevention rule: When owner marks an item as accepted risk/as-designed, record it in repo context and treat it as deferred by default; do not propose or implement unless owner explicitly asks to revisit.
+- Where/when applied: Audit follow-up planning and priority lists before drafting any new AI Prompt for Action.
+
 ### 2026-02-26T08:58:28+10:00 - Approval Gate Must Include Approval Target
 - Mistake pattern: I repeated approval-gate messaging issues by logging similar lessons more than once without enforcing one strict paused-state output format.
 - Prevention rule: At any approval pause, output `Status`, `Approval for` (one-sentence objective + exact scope/files), `Next action` with the exact approval phrase, and `No commands will run` line before stopping.

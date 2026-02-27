@@ -145,7 +145,7 @@ sudo journalctl -u <service-unit-name>.service -n 50 --no-pager
 Notes:
 - Keep tokens in live env files only; do not commit them to git.
 - For profile-specific credentials, set `HA_OPS_ENV_FILE` before running scripts (or pass `--env-file` explicitly).
-- Immediate HA scripts (`turn_entity_power.sh`, `set_climate_mode.sh`, `set_climate_temperature.sh`) do not accept `--token`; use env-file based credentials.
+- Immediate HA scripts (`turn_entity_power.sh`, `set_climate_mode.sh`, `set_climate_temperature.sh`) do not accept `--token` or `--base-url`; use env-file based credentials/endpoints.
 - For scheduled actions, do not pass tokens on the command line; scheduler scripts enforce env-file based token loading.
 - Scheduler scripts self-elevate via `sudo -n` when run as non-root users.
 - If the timer already fired and started execution, stop the service with `sudo systemctl stop <service-unit-name>.service`.

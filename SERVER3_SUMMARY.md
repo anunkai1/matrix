@@ -10,6 +10,29 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Recorded owner risk decisions (`H5/H6/H7/H9`) and hardened H8 base-url handling on 2026-02-28 (repo-only):
+  - Owner decisions captured (as designed / accepted risk):
+    - `H5`: keep Architect Telegram execution in full-power mode (`--dangerously-bypass-approvals-and-sandbox`) to preserve full capability.
+    - `H6`: chat-level allowlist model is intentional; no per-user allowlist added.
+    - `H7`: broad execution capability for allowlisted Architect chat is intentional by design.
+    - `H9`: privileged operations model is intentional by design (convenience over strict least-privilege isolation).
+  - H8 hardening delivered:
+    - `ops/ha/turn_entity_power.sh`
+      - removed `--base-url` help usage and added explicit `--base-url` rejection.
+    - `ops/ha/set_climate_mode.sh`
+      - removed `--base-url` help usage and added explicit `--base-url` rejection.
+    - `ops/ha/set_climate_temperature.sh`
+      - removed `--base-url` help usage and added explicit `--base-url` rejection.
+    - `docs/home-assistant-ops.md`
+      - updated guidance: direct HA scripts now require env-file/env endpoint config; no `--token` and no `--base-url`.
+    - `tasks/lessons.md`
+      - added prevention rule to avoid re-proposing owner-accepted risk items unless explicitly requested.
+  - Verification outcomes:
+    - `bash -n ops/ha/turn_entity_power.sh ops/ha/set_climate_mode.sh ops/ha/set_climate_temperature.sh` -> pass
+    - `--base-url` guard checks reject in all three direct scripts (exit `2`)
+    - `python3 -m unittest discover -s tests -v` -> `52 tests`, `OK`
+  - Traceability artifact:
+    - `logs/changes/20260228-092538-h8-base-url-hardening-and-owner-risk-decisions.md`
 - Applied Tank sudoers restart restriction live on 2026-02-28 (live + repo mirror):
   - Root cause addressed:
     - previous H3 hardening was committed in repo, but live `/etc/sudoers.d/tank-telegram-ha` still had wildcard restart argument.

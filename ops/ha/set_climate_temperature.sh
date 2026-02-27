@@ -9,7 +9,6 @@ Usage:
 Options:
   --env-file PATH   Environment file containing TELEGRAM_HA_BASE_URL/TELEGRAM_HA_TOKEN
                     (default: /etc/default/ha-ops)
-  --base-url URL    Home Assistant base URL (overrides env-file value)
   --dry-run         Validate inputs and print target action without calling Home Assistant
   -h, --help        Show this help text
 EOF
@@ -67,8 +66,8 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --base-url)
-      base_url="${2:-}"
-      shift 2
+      echo "[set_climate_temperature] --base-url is not allowed. Configure base URL in --env-file or HA_OPS_ENV_FILE." >&2
+      exit 2
       ;;
     --token)
       echo "[set_climate_temperature] --token is not allowed. Use --env-file or HA_OPS_ENV_FILE." >&2
