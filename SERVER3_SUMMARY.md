@@ -10,6 +10,18 @@ Last updated: 2026-02-27 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Most Recent Changes
+- Restarted Architect bridge to activate `/help` TV command updates on 2026-02-27 (live):
+  - Rollout objective:
+    - make newly-added `/help` and `/h` TV command lines live (`server3-tv-start`, `server3-tv-stop`).
+  - Live restart evidence:
+    - journal shows `sudo systemctl restart telegram-architect-bridge.service`
+    - systemd stop/start sequence completed successfully
+  - Verification outcomes:
+    - `telegram-architect-bridge.service` active/running
+    - `ExecMainStartTimestamp=Fri 2026-02-27 21:40:26 AEST`
+    - startup/processing logs continue normally after restart
+  - Traceability artifact:
+    - `logs/changes/20260227-214026-telegram-architect-bridge-restart-help-tv-live.md`
 - Added TV desktop shell commands to Telegram `/help` and `/h` on 2026-02-27 (repo-only):
   - Command list update:
     - `/help` and `/h` now include:
