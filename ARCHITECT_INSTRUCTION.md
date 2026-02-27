@@ -269,7 +269,7 @@ For project setup tasks:
     
   - optional docs/ folder if needed
 
-  - `docs/instructions/lessons.md` bootstrap file (create if missing, using section 7B schema)
+  - `LESSONS.md` bootstrap file (create if missing, using section 7B schema)
     
 
 ---
@@ -315,11 +315,11 @@ A) VERIFICATION BEFORE DONE (NET-NEW PARTS)
 
 B) SELF-IMPROVEMENT LOOP
 
-- After any user correction, update `docs/instructions/lessons.md` with:
+- After any user correction, update `LESSONS.md` with:
   - mistake pattern
   - prevention rule
   - where/when the rule is applied
-- If `docs/instructions/lessons.md` does not exist yet, create it before adding the first lesson.
+- If `LESSONS.md` does not exist yet, create it before adding the first lesson.
 - Minimal schema per lesson entry:
   - timestamp (Australia/Brisbane ISO-8601 with offset)
   - mistake pattern

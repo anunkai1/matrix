@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: moved lessons to root-level `LESSONS.md` (with `docs/instructions/lessons.md` redirect stub) so it sits with main repo docs.
 - 2026-02-28: removed legacy `tasks/lessons.md` compatibility stub and deleted empty `tasks/` folder after lessons migration to `docs/instructions/lessons.md`.
 - 2026-02-28: moved lessons log to `docs/instructions/lessons.md`, updated authoritative instruction references, and kept `tasks/lessons.md` as compatibility stub.
 - 2026-02-28: recorded owner risk decisions (`H5/H6/H7/H9`) and delivered H8 hardening by rejecting `--base-url` in direct HA scripts; docs and lessons updated.
