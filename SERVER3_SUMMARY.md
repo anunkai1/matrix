@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: wired private local `private/SOUL.md` into session-start guidance (`read if present, never commit`) and simplified shortcut policy to the single current shortcut `mansplain:`.
 - 2026-02-28: aligned TV desktop target-state wording with current behavior by changing fullscreen wording to maximized and updated the TV autostart desktop-entry comment to match.
 - 2026-02-28: applied voice-improvement stack on Tank live (`/etc/default/telegram-tank-bridge`): model `small`, decode tuning, low-confidence gate, and alias-learning keys; restarted `telegram-tank-bridge.service` and synced Tank env mirror/template.
 - 2026-02-28: added persistent `mansplain:` shortcut rule in `ARCHITECT_INSTRUCTION.md` so that requests with this trigger get beginner-friendly, low-jargon, logical explanations.

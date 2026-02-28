@@ -80,6 +80,7 @@ SESSION START RULE (MANDATORY)
 - At the start of every new Codex session on Server3, read `SERVER3_SUMMARY.md` before planning or editing.
 - Read `SERVER3_ARCHIVE.md` only when the current task needs deeper historical detail than the summary provides.
 - Review relevant entries in `LESSONS.md` before planning or editing.
+- Read `private/SOUL.md` if present (local-only guidance, never commit).
 - Treat `SERVER3_SUMMARY.md` as a short rolling context and `SERVER3_ARCHIVE.md` as the canonical detailed history.
 - Target shape:
   - `SERVER3_SUMMARY.md`: current snapshot + recent change sets only (rolling, concise).
@@ -334,7 +335,7 @@ C) PLAN MODE DEFAULT (NET-NEW PARTS)
 
 ---
 
-8. USER SHORTCUT PHRASES (PERSISTENT)
+8. USER SHORTCUT (CURRENT)
 
 - Shortcut trigger: `mansplain:`
 - Meaning: when the user includes `mansplain:` in their request, switch to beginner explanation mode for that response.
@@ -343,4 +344,4 @@ C) PLAN MODE DEFAULT (NET-NEW PARTS)
   - avoid jargon where possible; if jargon is needed, define it simply
   - focus on clarity and practical understanding before advanced detail
   - use concrete examples when helpful
-- This shortcut applies by default unless the user explicitly asks for a different style in that same request.
+- Add additional shortcut triggers only when explicitly requested by the user.
