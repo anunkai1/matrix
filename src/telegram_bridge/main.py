@@ -239,6 +239,7 @@ def default_voice_alias_replacements() -> List[Tuple[str, str]]:
         ("master room", "master bedroom"),
         ("air con", "aircon"),
         ("air conditioner", "aircon"),
+        ("clode code", "claude code"),
         ("hall way", "hallway"),
     ]
 

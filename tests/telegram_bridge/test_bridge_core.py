@@ -208,6 +208,10 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(transcript, "turn off master bedroom aircon")
 
+    def test_default_voice_alias_replacements_includes_claude_spelling_fix(self):
+        defaults = bridge.default_voice_alias_replacements()
+        self.assertIn(("clode code", "claude code"), defaults)
+
     @mock.patch.object(bridge_handlers, "transcribe_voice")
     @mock.patch.object(bridge_handlers, "download_voice_to_temp")
     def test_transcribe_voice_for_chat_blocks_low_confidence(self, download_voice_to_temp, transcribe_voice):

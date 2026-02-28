@@ -93,7 +93,7 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_VOICE_WHISPER_LOG_PATH=/tmp/telegram-voice-whisper.log
 # TELEGRAM_VOICE_LOW_CONFIDENCE_CONFIRMATION_ENABLED=true
 # TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD=0.45
-# TELEGRAM_VOICE_ALIAS_REPLACEMENTS=master broom=>master bedroom;air con=>aircon
+# TELEGRAM_VOICE_ALIAS_REPLACEMENTS=master broom=>master bedroom;air con=>aircon;clode code=>claude code
 # TELEGRAM_VOICE_ALIAS_LEARNING_ENABLED=true
 # TELEGRAM_VOICE_ALIAS_LEARNING_PATH=/home/architect/.local/state/telegram-architect-bridge/voice_alias_learning.json
 # TELEGRAM_VOICE_ALIAS_LEARNING_MIN_EXAMPLES=2
@@ -160,7 +160,7 @@ Voice runtime behavior:
 - Primary profile is GPU (`cuda/float16`) with CPU (`cpu/int8`) fallback for reliability.
 - Decoding defaults use `beam_size=5`, `best_of=5`, and `temperature=0.0` (tunable with env vars).
 - Fixed preprocessing runs before transcription when `ffmpeg` is available (mono 16k + high/low-pass filter chain).
-- Transcript cleanup applies phrase aliases before execution (defaults include `master broom -> master bedroom` and `air con -> aircon`; extend via `TELEGRAM_VOICE_ALIAS_REPLACEMENTS`).
+- Transcript cleanup applies phrase aliases before execution (defaults include `master broom -> master bedroom`, `air con -> aircon`, and `clode code -> claude code`; extend via `TELEGRAM_VOICE_ALIAS_REPLACEMENTS`).
 - If transcript confidence is below `TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD` (default `0.45`), bridge asks for text confirmation instead of executing automatically.
 - Learning mode can propose new alias corrections after repeated low-confidence confirmation pairs; suggestions require explicit approval before activation.
 

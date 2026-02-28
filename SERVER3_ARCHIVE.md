@@ -89,6 +89,16 @@ Summary:
 Migrated out of summary during this trim:
 - 2026-02-28: removed `docs/instructions/lessons.md` redirect stub; `LESSONS.md` is now the only active lessons path.
 
+## 2026-02-28 (Summary Roll-Forward Trim for Claude Code Alias Default)
+
+Summary:
+- Added a new rolling-summary entry for default voice alias correction `clode code -> claude code` with docs/env/test updates.
+- Re-trimmed summary back to rolling bound by migrating two oldest entries into archive.
+
+Migrated out of summary during this trim:
+- 2026-02-28: upgraded chat summarization to structured sections (objective/decisions/state/open items/preferences/risks), added summary-regeneration helper, and regenerated all 6 existing live summaries in `/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3`.
+- 2026-02-28: renamed memory mode label from `full` to `all_context` across runtime/help/docs, while keeping `full` as a backward-compatible alias.
+
 ### Migrated Historical Summary Content (verbatim from previous SERVER3_SUMMARY.md)
 
 # Server3 Summary
