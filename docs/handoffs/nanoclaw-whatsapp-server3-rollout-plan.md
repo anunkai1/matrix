@@ -1,124 +1,136 @@
-# NanoClaw WhatsApp Rollout Plan (Server3)
+# WhatsApp + Codex Rollout Plan (Server3)
 
 Status: planned (not started)
 Owner: anunakii
-Created: 2026-02-28 (AEST)
+Last updated: 2026-02-28 (AEST)
 
 ## Goal (Plain English)
-Set up NanoClaw on Server3 so WhatsApp messages can trigger AI replies, safely and reliably.
+Set up a WhatsApp-connected assistant on Server3 that routes approved messages to Codex and returns replies safely.
 
 ## How it works (simple)
-1. Your WhatsApp account is linked to NanoClaw once (QR or pairing code), like WhatsApp Web.
-2. NanoClaw listens for new messages.
-3. Trigger words decide when NanoClaw should respond.
-4. NanoClaw sends the request to the AI runner.
-5. NanoClaw sends the AI reply back into WhatsApp.
+1. Your WhatsApp account is linked once (QR or pairing code), similar to WhatsApp Web.
+2. A local service on Server3 watches for new messages.
+3. Trigger rules decide which messages should run the assistant.
+4. The service sends approved prompts to Codex.
+5. The service posts the assistant reply back to WhatsApp.
+
+## Server3 preflight snapshot (current)
+- Host: `server3`
+- Existing bot services: `telegram-architect-bridge.service`, `telegram-tank-bridge.service`
+- Docker: installed
+- Node.js: currently `v18.x` (must be upgraded to `v20+` before rollout)
 
 ## Scope for this rollout
 - In scope:
-  - Dedicated Linux runtime user and isolated workspace.
-  - NanoClaw install and first auth.
-  - Background service setup.
-  - Basic safety and backup checks.
+  - Isolated runtime user and workspace
+  - Runtime/tooling install and validation
+  - WhatsApp link/auth
+  - Trigger and chat registration
+  - systemd user service + restart policy
+  - Backup and rollback baseline
 - Out of scope:
-  - Major custom feature development.
-  - Multi-channel expansion beyond initial WhatsApp setup.
+  - Major feature development
+  - Multi-channel expansion beyond WhatsApp
 
-## Phase-by-phase plan
+## Phase-by-phase execution plan
 
-### Phase 1: Design choices (before touching server)
-- Choose identity model:
-  - Option A: use your existing WhatsApp number (same account, linked device model).
-  - Option B: dedicated WhatsApp number for bot-only identity.
-- Choose trigger format for groups (example: `@Andy` or custom).
-- Decide initial groups/DMs to enable first.
-
-Exit criteria:
-- Identity model and trigger style are confirmed.
-
-### Phase 2: Prepare isolated runtime on Server3
-- Create isolated runtime user (example `nanoclaw`).
-- Create isolated workspace (example `/home/nanoclaw/nanoclaw`).
-- Ensure this does not overlap `architect`/`tank` Telegram services.
+### Phase 0: Decisions and guardrails
+- Decide identity model:
+  - Option A: existing WhatsApp number (linked-device mode)
+  - Option B: dedicated WhatsApp number
+- Decide strict trigger format for group chats (recommended: require prefix in groups).
+- Decide first rollout targets: 1 DM + 1 low-risk group only.
 
 Exit criteria:
-- Separate user and workspace exist.
+- Identity model, trigger policy, and first target chats confirmed.
 
-### Phase 3: Install prerequisites
-- Install Node.js 20+.
-- Install Docker runtime.
-- Log in Claude Code as runtime user.
+### Phase 1: Isolated runtime on Server3
+- Create dedicated runtime user (example: `wa-codex`).
+- Create workspace (example: `/home/wa-codex/whatsapp-codex`).
+- Ensure runtime is isolated from existing Telegram runtimes and files.
 
 Exit criteria:
-- `node`, `npm`, `docker`, and `claude` commands work under runtime user.
+- Dedicated user and isolated workspace exist.
 
-### Phase 4: Deploy NanoClaw code
-- Clone NanoClaw repo in runtime workspace.
+### Phase 2: Runtime prerequisites
+- Install/upgrade Node.js to `v20+` (recommended: Node 22 LTS).
+- Confirm `npm` works under runtime user.
+- Confirm Docker access under runtime user.
+- Confirm Codex runner access for runtime user.
+
+Exit criteria:
+- `node`, `npm`, `docker`, and codex runner are functional for runtime user.
+
+### Phase 3: Deploy WhatsApp bridge code
+- Clone the WhatsApp bridge project into the isolated workspace.
 - Install dependencies.
-- Build once.
+- Build once and run a local dry start.
 
 Exit criteria:
-- Build completes and app can start locally.
+- Build succeeds and process can start without immediate crash.
 
-### Phase 5: First-time WhatsApp auth
-- Run NanoClaw setup flow.
-- Complete QR/pairing auth from phone.
-- Confirm auth state saved for reconnects.
-
-Exit criteria:
-- NanoClaw connects without repeated auth prompts.
-
-### Phase 6: Configure triggers and group registration
-- Register only intended chats/groups.
-- Set strict trigger behavior first.
-- Test one DM and one group path.
+### Phase 4: WhatsApp link/auth
+- Run auth flow (QR browser, pairing code, or terminal QR as needed).
+- Link from your phone.
+- Confirm auth state persists and reconnect works without relinking.
 
 Exit criteria:
-- Messages only trigger where expected.
+- Service reconnects cleanly with saved auth state.
 
-### Phase 7: Service + persistence
-- Create systemd service for NanoClaw.
-- Enable auto-start on reboot.
-- Set restart on failure.
-
-Exit criteria:
-- Service is stable after restart/reboot.
-
-### Phase 8: Validation tests
-- DM test: prompt -> reply.
-- Group trigger test: trigger required -> reply.
-- Recovery test: service restart -> reconnect -> continue.
+### Phase 5: Trigger and chat registration
+- Register only approved chats/groups for initial rollout.
+- Use strict trigger requirement for groups (default secure posture).
+- Keep DM behavior explicit (decide prefix-required or always-on in DM).
 
 Exit criteria:
-- All three tests pass.
+- Unregistered chats are ignored; registered chats behave exactly as intended.
 
-### Phase 9: Backup and operations baseline
-- Back up:
-  - `store/auth`
+### Phase 6: Service and persistence
+- Create/enable user-level systemd service for the runtime user.
+- Set restart policy (`always` or equivalent).
+- Verify service survives reboot and reconnects WhatsApp.
+
+Exit criteria:
+- Service starts automatically and stays healthy after reboot.
+
+### Phase 7: Validation tests
+- DM test: send prompt -> receive reply.
+- Group test (with trigger): send prefixed prompt -> receive reply.
+- Group test (without trigger): send non-prefixed text -> no reply.
+- Recovery test: restart service -> reconnect -> continue replying.
+
+Exit criteria:
+- All tests pass with expected trigger behavior.
+
+### Phase 8: Backup and operations baseline
+- Back up critical runtime data:
+  - `store/auth/`
   - `store/messages.db`
   - `groups/`
   - `data/`
-- Add log review checklist and retention policy.
+  - user config under `~/.config/` for this runtime
+- Document restore drill once.
+- Add routine log review checklist.
 
 Exit criteria:
-- Backup + restore process documented and tested once.
+- Backup + restore path is documented and tested once.
 
-## Safety rules for rollout
-- Keep NanoClaw isolated from existing Telegram bot runtime users.
-- Do not store secrets in this repo.
-- Test in one safe chat first before adding more groups.
-- Keep rollback path ready (service stop + unlink device).
+## Safety rules
+- Keep this runtime isolated from existing bot users and services.
+- Never commit secrets/tokens/auth artifacts into this repo.
+- Roll out to one safe chat first, then expand gradually.
+- Keep rollback path ready before enabling broad chat access.
 
 ## Rollback (if needed)
-1. Stop and disable NanoClaw service.
-2. Unlink NanoClaw device from WhatsApp Linked Devices.
+1. Stop and disable the WhatsApp service.
+2. Unlink the linked device from WhatsApp.
 3. Restore last known-good backup if required.
 
 ## Resume checklist (quick start later)
 1. Re-read this file.
-2. Confirm identity model decision (same number vs dedicated number).
-3. Start at Phase 2 if no server work was done.
-4. Record each phase completion in `logs/changes/` as it happens.
+2. Confirm Phase 0 decisions still apply.
+3. Start from the first incomplete phase.
+4. Record completed phases in `logs/changes/` during execution.
 
 ## Notes
-- This file is a plan only; it does not represent completed deployment.
+- This file is a deployment plan only; no rollout is completed yet.

@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: rewrote the WhatsApp Server3 rollout handoff into a Codex-first, Server3-specific execution plan with explicit preflight gap closure (Node 20+), phased checks, and trigger/validation/rollback steps; removed legacy product/model references from the plan content.
 - 2026-02-28: removed the `mansplain:` shortcut from active policy files (`ARCHITECT_INSTRUCTION.md` and local `private/SOUL.md`); no shortcut is currently configured.
 - 2026-02-28: added default voice alias correction `clode code -> claude code` for transcription reliability, plus test coverage and env/docs example updates.
 - 2026-02-28: wired private local `private/SOUL.md` into session-start guidance (`read if present, never commit`) and simplified shortcut policy to the single current shortcut `mansplain:`.
