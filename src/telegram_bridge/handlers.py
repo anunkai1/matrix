@@ -1,11 +1,12 @@
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 try:
     from .executor import (
@@ -580,7 +581,58 @@ def build_voice_transcribe_command(cmd_template: List[str], voice_path: str) -> 
     return cmd
 
 
-def transcribe_voice(config, voice_path: str) -> str:
+def parse_voice_confidence(stderr_text: str) -> Optional[float]:
+    matches = re.findall(r"VOICE_CONFIDENCE=([0-9]*\.?[0-9]+)", stderr_text or "")
+    if not matches:
+        return None
+    try:
+        value = float(matches[-1])
+    except ValueError:
+        return None
+    return max(0.0, min(1.0, value))
+
+
+def apply_voice_alias_replacements(
+    transcript: str,
+    replacements: List[Tuple[str, str]],
+) -> Tuple[str, bool]:
+    if not replacements:
+        return transcript, False
+
+    updated = transcript
+    changed = False
+    for source, target in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
+        source_value = source.strip()
+        target_value = target.strip()
+        if not source_value or not target_value:
+            continue
+        pattern = rf"(?<!\w){re.escape(source_value)}(?!\w)"
+        replaced = re.sub(pattern, target_value, updated, flags=re.IGNORECASE)
+        if replaced != updated:
+            updated = replaced
+            changed = True
+    return updated, changed
+
+
+def build_low_confidence_voice_message(
+    config,
+    transcript: str,
+    confidence: float,
+) -> str:
+    confirm_example = transcript
+    required_prefixes = getattr(config, "required_prefixes", [])
+    if required_prefixes:
+        confirm_example = f"{required_prefixes[0]} {transcript}".strip()
+    return (
+        f"Voice transcript confidence is low ({confidence:.2f}).\n"
+        f"I heard:\n{transcript}\n\n"
+        "If this is correct, send it as text so I execute exactly this command:\n"
+        f"{confirm_example}\n\n"
+        "Or resend a clearer voice note."
+    )
+
+
+def transcribe_voice(config, voice_path: str) -> Tuple[str, Optional[float]]:
     if not config.voice_transcribe_cmd:
         raise RuntimeError("Voice transcription is not configured")
 
@@ -604,7 +656,7 @@ def transcribe_voice(config, voice_path: str) -> str:
     transcript = (result.stdout or "").strip()
     if not transcript:
         raise ValueError("Voice transcription output was empty")
-    return transcript
+    return transcript, parse_voice_confidence(result.stderr or "")
 
 
 def transcribe_voice_for_chat(
@@ -641,7 +693,7 @@ def transcribe_voice_for_chat(
             return None
 
         try:
-            transcript = transcribe_voice(config, voice_path)
+            transcript, confidence = transcribe_voice(config, voice_path)
         except subprocess.TimeoutExpired:
             logging.warning("Voice transcription timeout for chat_id=%s", chat_id)
             client.send_message(
@@ -674,11 +726,33 @@ def transcribe_voice_for_chat(
             )
             return None
 
+        transcript, aliases_applied = apply_voice_alias_replacements(
+            transcript,
+            getattr(config, "voice_alias_replacements", []),
+        )
+        if aliases_applied:
+            logging.info("Applied voice alias corrections chat_id=%s", chat_id)
+
+        if (
+            getattr(config, "voice_low_confidence_confirmation_enabled", False)
+            and confidence is not None
+            and confidence < float(getattr(config, "voice_low_confidence_threshold", 0.0))
+        ):
+            client.send_message(
+                chat_id,
+                build_low_confidence_voice_message(config, transcript, confidence),
+                reply_to_message_id=message_id,
+            )
+            return None
+
         if echo_transcript:
             try:
+                heading = "Voice transcript:"
+                if confidence is not None:
+                    heading = f"Voice transcript (confidence {confidence:.2f}):"
                 client.send_message(
                     chat_id,
-                    f"Voice transcript:\n{transcript}",
+                    f"{heading}\n{transcript}",
                     reply_to_message_id=message_id,
                 )
             except Exception:

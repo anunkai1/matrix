@@ -64,6 +64,9 @@ def make_config(**overrides):
         "executor_cmd": ["/bin/echo"],
         "voice_transcribe_cmd": [],
         "voice_transcribe_timeout_seconds": 10,
+        "voice_alias_replacements": [],
+        "voice_low_confidence_confirmation_enabled": True,
+        "voice_low_confidence_threshold": 0.45,
         "state_dir": "/tmp",
         "persistent_workers_enabled": False,
         "persistent_workers_max": 2,
@@ -185,6 +188,86 @@ class BridgeCoreTests(unittest.TestCase):
             bridge_handlers.strip_required_prefix("@helper. summarize this", prefixes, True),
             (True, "summarize this"),
         )
+
+    def test_parse_voice_confidence(self):
+        self.assertEqual(
+            bridge_handlers.parse_voice_confidence("VOICE_CONFIDENCE=0.723\n"),
+            0.723,
+        )
+        self.assertIsNone(bridge_handlers.parse_voice_confidence("no marker"))
+
+    def test_apply_voice_alias_replacements(self):
+        transcript, changed = bridge_handlers.apply_voice_alias_replacements(
+            "turn off master broom air con",
+            [("master broom", "master bedroom"), ("air con", "aircon")],
+        )
+        self.assertTrue(changed)
+        self.assertEqual(transcript, "turn off master bedroom aircon")
+
+    @mock.patch.object(bridge_handlers, "transcribe_voice")
+    @mock.patch.object(bridge_handlers, "download_voice_to_temp")
+    def test_transcribe_voice_for_chat_blocks_low_confidence(self, download_voice_to_temp, transcribe_voice):
+        with tempfile.NamedTemporaryFile(suffix=".oga", delete=False) as handle:
+            voice_path = handle.name
+        download_voice_to_temp.return_value = voice_path
+        transcribe_voice.return_value = ("turn off master broom air con", 0.20)
+
+        client = FakeTelegramClient()
+        config = make_config(
+            voice_transcribe_cmd=["/bin/echo"],
+            voice_alias_replacements=[("master broom", "master bedroom"), ("air con", "aircon")],
+            voice_low_confidence_confirmation_enabled=True,
+            voice_low_confidence_threshold=0.45,
+        )
+        try:
+            transcript = bridge_handlers.transcribe_voice_for_chat(
+                config=config,
+                client=client,
+                chat_id=1,
+                message_id=99,
+                voice_file_id="voice-1",
+                echo_transcript=True,
+            )
+        finally:
+            Path(voice_path).unlink(missing_ok=True)
+
+        self.assertIsNone(transcript)
+        self.assertEqual(len(client.messages), 1)
+        self.assertIn("confidence is low", client.messages[0][1])
+        self.assertIn("master bedroom", client.messages[0][1])
+        self.assertIn("aircon", client.messages[0][1])
+
+    @mock.patch.object(bridge_handlers, "transcribe_voice")
+    @mock.patch.object(bridge_handlers, "download_voice_to_temp")
+    def test_transcribe_voice_for_chat_applies_aliases_on_success(self, download_voice_to_temp, transcribe_voice):
+        with tempfile.NamedTemporaryFile(suffix=".oga", delete=False) as handle:
+            voice_path = handle.name
+        download_voice_to_temp.return_value = voice_path
+        transcribe_voice.return_value = ("turn on master broom air con", 0.91)
+
+        client = FakeTelegramClient()
+        config = make_config(
+            voice_transcribe_cmd=["/bin/echo"],
+            voice_alias_replacements=[("master broom", "master bedroom"), ("air con", "aircon")],
+            voice_low_confidence_confirmation_enabled=True,
+            voice_low_confidence_threshold=0.45,
+        )
+        try:
+            transcript = bridge_handlers.transcribe_voice_for_chat(
+                config=config,
+                client=client,
+                chat_id=1,
+                message_id=100,
+                voice_file_id="voice-2",
+                echo_transcript=True,
+            )
+        finally:
+            Path(voice_path).unlink(missing_ok=True)
+
+        self.assertEqual(transcript, "turn on master bedroom aircon")
+        self.assertEqual(len(client.messages), 1)
+        self.assertIn("confidence 0.91", client.messages[0][1])
+        self.assertIn("master bedroom aircon", client.messages[0][1])
 
     @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="turn on the light")
     def test_prepare_prompt_input_rejects_voice_transcript_without_required_prefix(

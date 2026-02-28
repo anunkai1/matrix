@@ -27,6 +27,9 @@ def _run_transcription(
     device: str,
     compute_type: str,
     model_dir: str | None,
+    beam_size: int,
+    best_of: int,
+    temperature: float,
 ) -> str:
     model_kwargs = {
         "device": device,
@@ -36,7 +39,14 @@ def _run_transcription(
         model_kwargs["download_root"] = model_dir
 
     model = WhisperModel(model_name, **model_kwargs)
-    segments, _info = model.transcribe(audio_path, language=language, vad_filter=True)
+    segments, _info = model.transcribe(
+        audio_path,
+        language=language,
+        vad_filter=True,
+        beam_size=beam_size,
+        best_of=best_of,
+        temperature=temperature,
+    )
     return _collect_transcript(segments)
 
 
@@ -50,11 +60,14 @@ def main() -> int:
         print(f"voice file not found: {audio_path}", file=sys.stderr)
         return 2
 
-    model_name = os.getenv("TELEGRAM_VOICE_WHISPER_MODEL", "base")
+    model_name = os.getenv("TELEGRAM_VOICE_WHISPER_MODEL", "small")
     device = os.getenv("TELEGRAM_VOICE_WHISPER_DEVICE", "cpu")
     compute_type = os.getenv("TELEGRAM_VOICE_WHISPER_COMPUTE_TYPE", "int8")
-    language = os.getenv("TELEGRAM_VOICE_WHISPER_LANGUAGE", "") or None
+    language = os.getenv("TELEGRAM_VOICE_WHISPER_LANGUAGE", "en") or None
     model_dir = os.getenv("TELEGRAM_VOICE_WHISPER_MODEL_DIR", "") or None
+    beam_size = int(os.getenv("TELEGRAM_VOICE_WHISPER_BEAM_SIZE", "5") or "5")
+    best_of = int(os.getenv("TELEGRAM_VOICE_WHISPER_BEST_OF", "5") or "5")
+    temperature = float(os.getenv("TELEGRAM_VOICE_WHISPER_TEMPERATURE", "0.0") or "0.0")
 
     try:
         transcript = _run_transcription(
@@ -64,6 +77,9 @@ def main() -> int:
             device=device,
             compute_type=compute_type,
             model_dir=model_dir,
+            beam_size=beam_size,
+            best_of=best_of,
+            temperature=temperature,
         )
     except Exception as exc:  # pragma: no cover - runtime integration path
         # If CUDA is unavailable at runtime, retry on CPU so voice flow keeps working.
@@ -87,6 +103,9 @@ def main() -> int:
                 device=fallback_device,
                 compute_type=fallback_compute_type,
                 model_dir=model_dir,
+                beam_size=beam_size,
+                best_of=best_of,
+                temperature=temperature,
             )
         except Exception as fallback_exc:  # pragma: no cover - runtime integration path
             print(f"transcription backend error: {fallback_exc}", file=sys.stderr)

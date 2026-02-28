@@ -78,15 +78,21 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_VOICE_TRANSCRIBE_CMD=/home/architect/matrix/ops/telegram-voice/transcribe_voice.sh {file}
 # TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS=180
 # TELEGRAM_VOICE_WHISPER_VENV=/home/architect/.local/share/telegram-voice/venv
-# TELEGRAM_VOICE_WHISPER_MODEL=base
+# TELEGRAM_VOICE_WHISPER_MODEL=small
 # TELEGRAM_VOICE_WHISPER_DEVICE=cuda
 # TELEGRAM_VOICE_WHISPER_COMPUTE_TYPE=float16
 # TELEGRAM_VOICE_WHISPER_FALLBACK_DEVICE=cpu
 # TELEGRAM_VOICE_WHISPER_FALLBACK_COMPUTE_TYPE=int8
+# TELEGRAM_VOICE_WHISPER_LANGUAGE=en
+# TELEGRAM_VOICE_WHISPER_BEAM_SIZE=5
+# TELEGRAM_VOICE_WHISPER_BEST_OF=5
+# TELEGRAM_VOICE_WHISPER_TEMPERATURE=0.0
 # TELEGRAM_VOICE_WHISPER_IDLE_TIMEOUT_SECONDS=3600
 # TELEGRAM_VOICE_WHISPER_SOCKET_PATH=/tmp/telegram-voice-whisper.sock
 # TELEGRAM_VOICE_WHISPER_LOG_PATH=/tmp/telegram-voice-whisper.log
-# TELEGRAM_VOICE_WHISPER_LANGUAGE=
+# TELEGRAM_VOICE_LOW_CONFIDENCE_CONFIRMATION_ENABLED=true
+# TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD=0.45
+# TELEGRAM_VOICE_ALIAS_REPLACEMENTS=master broom=>master bedroom;air con=>aircon
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
 # TELEGRAM_ASSISTANT_NAME=Architect
@@ -147,7 +153,10 @@ Voice runtime behavior:
 - First voice note starts a persistent transcribe service in the voice venv.
 - Whisper model loads on first request, stays warm for low-latency follow-up requests, and unloads after idle timeout (`TELEGRAM_VOICE_WHISPER_IDLE_TIMEOUT_SECONDS`, default `3600`).
 - Primary profile is GPU (`cuda/float16`) with CPU (`cpu/int8`) fallback for reliability.
+- Decoding defaults use `beam_size=5`, `best_of=5`, and `temperature=0.0` (tunable with env vars).
 - Fixed preprocessing runs before transcription when `ffmpeg` is available (mono 16k + high/low-pass filter chain).
+- Transcript cleanup applies phrase aliases before execution (defaults include `master broom -> master bedroom` and `air con -> aircon`; extend via `TELEGRAM_VOICE_ALIAS_REPLACEMENTS`).
+- If transcript confidence is below `TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD` (default `0.45`), bridge asks for text confirmation instead of executing automatically.
 
 Verification:
 
@@ -196,7 +205,8 @@ Message handling:
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`
 - File without caption uses: `Please analyze this file.`
-- Voice transcription is echoed as `Voice transcript:` before Architect output.
+- Voice transcription is echoed before Architect output, including confidence when available.
+- Low-confidence transcripts are not executed automatically when confirmation gating is enabled.
 - On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
 - While Architect is running, the bridge sends:
   - Telegram typing actions (`typing`)

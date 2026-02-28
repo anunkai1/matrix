@@ -34,6 +34,9 @@ class VoiceTranscribeServiceTests(unittest.TestCase):
             fallback_device="cpu",
             fallback_compute_type="int8",
             idle_timeout_seconds=3600,
+            beam_size=5,
+            best_of=5,
+            temperature=0.0,
         )
         runtime._model = object()
         runtime._loaded_profile = ("cuda", "float16")
@@ -55,6 +58,9 @@ class VoiceTranscribeServiceTests(unittest.TestCase):
             fallback_device="cpu",
             fallback_compute_type="int8",
             idle_timeout_seconds=3600,
+            beam_size=5,
+            best_of=5,
+            temperature=0.0,
         )
 
         calls = []
@@ -83,6 +89,9 @@ class VoiceTranscribeServiceTests(unittest.TestCase):
             fallback_device="cpu",
             fallback_compute_type="int8",
             idle_timeout_seconds=3600,
+            beam_size=5,
+            best_of=5,
+            temperature=0.0,
         )
         runtime._primary_failed = True
 

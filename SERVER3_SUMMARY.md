@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: improved voice transcription accuracy and safety by adding decode tuning defaults (`small`, `en`, `beam_size=5`, `best_of=5`, `temperature=0.0`), transcript alias correction, and low-confidence confirmation gating before execution; updated env/docs/test coverage accordingly.
 - 2026-02-28: expanded Tank required prefixes to `@tankhas_bot,tank,hey tank,t-a-n-k`, synced live env mirror, and restarted `telegram-tank-bridge.service` to apply.
 - 2026-02-28: fixed required-prefix handling for voice-only requests by enforcing prefix after transcription (transcript gate), added regression tests, and restarted `telegram-tank-bridge.service` to load the updated handler.
 - 2026-02-28: completed voice rollout traceability by syncing missing live voice env mirror keys (idle-timeout/socket/log path) and verifying live Telegram voice requests after restart with warm transcriber process/socket active.
@@ -24,15 +25,6 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - 2026-02-28: removed legacy `tasks/lessons.md` compatibility stub and deleted empty `tasks/` folder after lessons migration to `docs/instructions/lessons.md`.
 - 2026-02-28: recorded owner risk decisions (`H5/H6/H7/H9`) and delivered H8 hardening by rejecting `--base-url` in direct HA scripts; docs and lessons updated.
 - 2026-02-28: applied live Tank sudoers mirror so restart permission is restricted to `telegram-tank-bridge.service` only.
-- 2026-02-28: hardened direct HA scripts to reject `--token` CLI arguments (credential safety).
-- 2026-02-28: restricted bridge restart helper to explicit allowlisted units.
-- 2026-02-28: hardened HA scheduler scripts to reject token CLI forwarding.
-- 2026-02-28: fixed required-prefix enforcement gap for voice/media requests without captions.
-- 2026-02-27: optimized TV apply ownership updates and added policy fingerprint TTL cache in worker checks.
-- 2026-02-27: optimized memory prune reconciliation and synced TV startup wording.
-- 2026-02-27: changed TV startup browser mode to maximized (not fullscreen).
-- 2026-02-27: added TV shell commands to Telegram `/help` and `/h`, then restarted bridge to activate.
-- 2026-02-27: deployed command-start TV desktop profile while keeping default boot target as CLI.
 
 ## Archive Pointer
 - `SERVER3_ARCHIVE.md` is the canonical long-term detailed history.

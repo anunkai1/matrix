@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import gc
 import json
+import math
 import os
 import socket
 import sys
@@ -22,6 +23,36 @@ def collect_transcript(segments: Iterable[object]) -> str:
     return " ".join(parts).strip()
 
 
+def collect_transcript_and_confidence(
+    segments: Iterable[object],
+) -> Tuple[str, Optional[float]]:
+    parts: list[str] = []
+    confidence_parts: list[float] = []
+    for segment in segments:
+        text = (getattr(segment, "text", "") or "").strip()
+        if text:
+            parts.append(text)
+        avg_logprob = getattr(segment, "avg_logprob", None)
+        if avg_logprob is None:
+            continue
+        try:
+            score = math.exp(float(avg_logprob))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        no_speech_prob = getattr(segment, "no_speech_prob", None)
+        if no_speech_prob is not None:
+            try:
+                score *= max(0.0, min(1.0, 1.0 - float(no_speech_prob)))
+            except (TypeError, ValueError):
+                pass
+        confidence_parts.append(max(0.0, min(1.0, score)))
+
+    transcript = " ".join(parts).strip()
+    if not confidence_parts:
+        return transcript, None
+    return transcript, sum(confidence_parts) / len(confidence_parts)
+
+
 class WhisperRuntime:
     def __init__(
         self,
@@ -34,6 +65,9 @@ class WhisperRuntime:
         fallback_device: str,
         fallback_compute_type: str,
         idle_timeout_seconds: int,
+        beam_size: int,
+        best_of: int,
+        temperature: float,
     ) -> None:
         self.model_name = model_name
         self.language = language
@@ -43,24 +77,34 @@ class WhisperRuntime:
         self.fallback_device = fallback_device
         self.fallback_compute_type = fallback_compute_type
         self.idle_timeout_seconds = max(1, int(idle_timeout_seconds))
+        self.beam_size = max(1, int(beam_size))
+        self.best_of = max(1, int(best_of))
+        self.temperature = float(temperature)
 
         self._model = None
         self._loaded_profile: Optional[Tuple[str, str]] = None
         self._last_used_monotonic = 0.0
         self._primary_failed = False
+        self.last_confidence: Optional[float] = None
 
     @classmethod
     def from_env(cls, *, idle_timeout_seconds: Optional[int] = None) -> "WhisperRuntime":
         configured_idle = int(os.getenv("TELEGRAM_VOICE_WHISPER_IDLE_TIMEOUT_SECONDS", "3600") or "3600")
+        beam_size = int(os.getenv("TELEGRAM_VOICE_WHISPER_BEAM_SIZE", "5") or "5")
+        best_of = int(os.getenv("TELEGRAM_VOICE_WHISPER_BEST_OF", "5") or "5")
+        temperature = float(os.getenv("TELEGRAM_VOICE_WHISPER_TEMPERATURE", "0.0") or "0.0")
         return cls(
-            model_name=os.getenv("TELEGRAM_VOICE_WHISPER_MODEL", "base"),
-            language=(os.getenv("TELEGRAM_VOICE_WHISPER_LANGUAGE", "") or None),
+            model_name=os.getenv("TELEGRAM_VOICE_WHISPER_MODEL", "small"),
+            language=(os.getenv("TELEGRAM_VOICE_WHISPER_LANGUAGE", "en") or None),
             model_dir=(os.getenv("TELEGRAM_VOICE_WHISPER_MODEL_DIR", "") or None),
             device=os.getenv("TELEGRAM_VOICE_WHISPER_DEVICE", "cuda"),
             compute_type=os.getenv("TELEGRAM_VOICE_WHISPER_COMPUTE_TYPE", "float16"),
             fallback_device=os.getenv("TELEGRAM_VOICE_WHISPER_FALLBACK_DEVICE", "cpu"),
             fallback_compute_type=os.getenv("TELEGRAM_VOICE_WHISPER_FALLBACK_COMPUTE_TYPE", "int8"),
             idle_timeout_seconds=idle_timeout_seconds if idle_timeout_seconds is not None else configured_idle,
+            beam_size=beam_size,
+            best_of=best_of,
+            temperature=temperature,
         )
 
     def _build_model(self, device: str, compute_type: str):
@@ -104,10 +148,23 @@ class WhisperRuntime:
             self._loaded_profile = profile
         return self._model
 
-    def _transcribe_with_profile(self, audio_path: str, *, device: str, compute_type: str) -> str:
+    def _transcribe_with_profile(
+        self,
+        audio_path: str,
+        *,
+        device: str,
+        compute_type: str,
+    ) -> Tuple[str, Optional[float]]:
         model = self._get_model(device=device, compute_type=compute_type)
-        segments, _info = model.transcribe(audio_path, language=self.language, vad_filter=True)
-        return collect_transcript(segments)
+        segments, _info = model.transcribe(
+            audio_path,
+            language=self.language,
+            vad_filter=True,
+            beam_size=self.beam_size,
+            best_of=self.best_of,
+            temperature=self.temperature,
+        )
+        return collect_transcript_and_confidence(segments)
 
     def transcribe(self, audio_path: str) -> str:
         if not os.path.isfile(audio_path):
@@ -119,7 +176,7 @@ class WhisperRuntime:
         primary_compute = self.fallback_compute_type if self._primary_failed else self.compute_type
 
         try:
-            transcript = self._transcribe_with_profile(
+            transcript_result = self._transcribe_with_profile(
                 audio_path,
                 device=primary_device,
                 compute_type=primary_compute,
@@ -129,17 +186,24 @@ class WhisperRuntime:
                 raise RuntimeError(f"transcription backend error: {exc}") from exc
             self._primary_failed = True
             self._drop_model()
-            transcript = self._transcribe_with_profile(
+            transcript_result = self._transcribe_with_profile(
                 audio_path,
                 device=self.fallback_device,
                 compute_type=self.fallback_compute_type,
             )
+
+        if isinstance(transcript_result, tuple):
+            transcript, confidence = transcript_result
+        else:
+            transcript = str(transcript_result)
+            confidence = None
 
         transcript = transcript.strip()
         if not transcript:
             raise ValueError("Voice transcription output was empty")
 
         self._last_used_monotonic = time.monotonic()
+        self.last_confidence = confidence
         return transcript
 
 
@@ -206,7 +270,14 @@ def run_server(*, socket_path: str, idle_timeout_seconds: int) -> int:
 
                     audio_path = str(request.get("audio_path", "")).strip()
                     transcript = runtime.transcribe(audio_path)
-                    _send_json_line(conn, {"ok": True, "text": transcript})
+                    _send_json_line(
+                        conn,
+                        {
+                            "ok": True,
+                            "text": transcript,
+                            "confidence": runtime.last_confidence,
+                        },
+                    )
                 except Exception as exc:
                     _send_json_line(conn, {"ok": False, "error": str(exc)})
     finally:
@@ -258,6 +329,10 @@ def run_client_transcribe(*, socket_path: str, audio_path: str, timeout_seconds:
     if not response.get("ok"):
         print(response.get("error", "transcription failed"), file=sys.stderr)
         return 1
+
+    confidence = response.get("confidence")
+    if isinstance(confidence, (int, float)):
+        print(f"VOICE_CONFIDENCE={float(confidence):.3f}", file=sys.stderr)
 
     transcript = str(response.get("text", "")).strip()
     if transcript:

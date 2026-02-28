@@ -7,7 +7,7 @@ import os
 import shlex
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 from urllib.error import HTTPError, URLError
 
 try:
@@ -113,6 +113,9 @@ class Config:
     executor_cmd: List[str]
     voice_transcribe_cmd: List[str]
     voice_transcribe_timeout_seconds: int
+    voice_alias_replacements: List[Tuple[str, str]]
+    voice_low_confidence_confirmation_enabled: bool
+    voice_low_confidence_threshold: float
     state_dir: str
     persistent_workers_enabled: bool
     persistent_workers_max: int
@@ -172,6 +175,27 @@ def parse_bool_env(name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be a boolean value")
 
 
+def parse_float_env(
+    name: str,
+    default: float,
+    *,
+    minimum: Optional[float] = None,
+    maximum: Optional[float] = None,
+) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a float") from exc
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f"{name} must be <= {maximum}")
+    return parsed
+
+
 def parse_allowed_chat_ids(raw: str) -> Set[int]:
     values = [item.strip() for item in raw.split(",") if item.strip()]
     if not values:
@@ -201,6 +225,50 @@ def parse_prefixes_env(name: str) -> List[str]:
         seen.add(key)
         parsed.append(value)
     return parsed
+
+
+def default_voice_alias_replacements() -> List[Tuple[str, str]]:
+    return [
+        ("master broom", "master bedroom"),
+        ("master room", "master bedroom"),
+        ("air con", "aircon"),
+        ("air conditioner", "aircon"),
+        ("hall way", "hallway"),
+    ]
+
+
+def parse_voice_alias_replacements_env(name: str) -> List[Tuple[str, str]]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    parsed: List[Tuple[str, str]] = []
+    entries = [item.strip() for item in raw.split(";") if item.strip()]
+    for entry in entries:
+        if "=>" not in entry:
+            raise ValueError(
+                f"{name} entry must use 'source=>target' format: {entry!r}"
+            )
+        source, target = entry.split("=>", 1)
+        source = source.strip()
+        target = target.strip()
+        if not source or not target:
+            raise ValueError(
+                f"{name} entry must include non-empty source and target: {entry!r}"
+            )
+        parsed.append((source, target))
+    return parsed
+
+
+def build_voice_alias_replacements() -> List[Tuple[str, str]]:
+    # Start with defaults, then allow env entries to override by source phrase.
+    merged: Dict[str, Tuple[str, str]] = {}
+    for source, target in default_voice_alias_replacements():
+        merged[source.casefold()] = (source, target)
+    for source, target in parse_voice_alias_replacements_env(
+        "TELEGRAM_VOICE_ALIAS_REPLACEMENTS"
+    ):
+        merged[source.casefold()] = (source, target)
+    return list(merged.values())
 
 
 def build_repo_root() -> str:
@@ -291,6 +359,17 @@ def load_config() -> Config:
         voice_transcribe_timeout_seconds=parse_int_env(
             "TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS",
             120,
+        ),
+        voice_alias_replacements=build_voice_alias_replacements(),
+        voice_low_confidence_confirmation_enabled=parse_bool_env(
+            "TELEGRAM_VOICE_LOW_CONFIDENCE_CONFIRMATION_ENABLED",
+            True,
+        ),
+        voice_low_confidence_threshold=parse_float_env(
+            "TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD",
+            0.45,
+            minimum=0.0,
+            maximum=1.0,
         ),
         state_dir=state_dir,
         persistent_workers_enabled=parse_bool_env(

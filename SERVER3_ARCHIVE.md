@@ -34,6 +34,23 @@ Summary:
 Traceability:
 - Source migrated content: pre-rebalance `SERVER3_SUMMARY.md` state captured and moved in this change set.
 
+## 2026-02-28 (Summary Roll-Forward Trim for Voice Accuracy Rollout)
+
+Summary:
+- Added a new rolling-summary entry for the voice transcription accuracy rollout (decode tuning, alias correction, low-confidence confirmation gate).
+- Re-trimmed `SERVER3_SUMMARY.md` back to rolling bounds by migrating oldest entries into archive.
+
+Migrated out of summary during this trim:
+- 2026-02-28: hardened direct HA scripts to reject `--token` CLI arguments (credential safety).
+- 2026-02-28: restricted bridge restart helper to explicit allowlisted units.
+- 2026-02-28: hardened HA scheduler scripts to reject token CLI forwarding.
+- 2026-02-28: fixed required-prefix enforcement gap for voice/media requests without captions.
+- 2026-02-27: optimized TV apply ownership updates and added policy fingerprint TTL cache in worker checks.
+- 2026-02-27: optimized memory prune reconciliation and synced TV startup wording.
+- 2026-02-27: changed TV startup browser mode to maximized (not fullscreen).
+- 2026-02-27: added TV shell commands to Telegram `/help` and `/h`, then restarted bridge to activate.
+- 2026-02-27: deployed command-start TV desktop profile while keeping default boot target as CLI.
+
 ### Migrated Historical Summary Content (verbatim from previous SERVER3_SUMMARY.md)
 
 # Server3 Summary
