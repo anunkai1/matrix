@@ -1,4 +1,5 @@
 import logging
+import json
 import os
 import re
 import subprocess
@@ -223,6 +224,62 @@ def parse_outbound_media_directive(output: str) -> tuple[str, Optional[OutboundM
     return without_directive, OutboundMediaDirective(media_ref=media_ref, as_voice=as_voice)
 
 
+def parse_structured_outbound_payload(
+    output: str,
+) -> tuple[Optional[tuple[str, Optional[OutboundMediaDirective]]], Optional[str]]:
+    text = (output or "").strip()
+    if not text or '"telegram_outbound"' not in text:
+        return None, None
+
+    try:
+        decoded = json.loads(text)
+    except Exception as exc:
+        return None, f"invalid_json:{type(exc).__name__}"
+
+    if not isinstance(decoded, dict) or "telegram_outbound" not in decoded:
+        return None, None
+
+    payload = decoded.get("telegram_outbound")
+    if not isinstance(payload, dict):
+        return None, "invalid_schema:telegram_outbound_not_object"
+
+    payload_text = payload.get("text", "")
+    if payload_text is None:
+        payload_text = ""
+    if not isinstance(payload_text, str):
+        return None, "invalid_schema:text_not_string"
+
+    media_ref = payload.get("media_ref", "")
+    if media_ref is None:
+        media_ref = ""
+    if not isinstance(media_ref, str):
+        return None, "invalid_schema:media_ref_not_string"
+    media_ref = media_ref.strip()
+
+    as_voice = payload.get("as_voice", False)
+    if not isinstance(as_voice, bool):
+        return None, "invalid_schema:as_voice_not_bool"
+
+    if not payload_text.strip() and not media_ref:
+        return None, "invalid_schema:empty_payload"
+
+    directive = None
+    if media_ref:
+        directive = OutboundMediaDirective(media_ref=media_ref, as_voice=as_voice)
+    return (payload_text.strip(), directive), None
+
+
+def output_contains_control_directive(output: str) -> bool:
+    text = output or ""
+    if not text:
+        return False
+    return (
+        bool(MEDIA_DIRECTIVE_TAG_RE.search(text))
+        or bool(MEDIA_DIRECTIVE_LINE_RE.search(text))
+        or '"telegram_outbound"' in text
+    )
+
+
 def media_extension(media_ref: str) -> str:
     ref = media_ref.strip()
     if not ref:
@@ -263,7 +320,40 @@ def send_executor_output(
     message_id: Optional[int],
     output: str,
 ) -> str:
-    rendered_text, directive = parse_outbound_media_directive(output)
+    payload_format = "plain_text"
+    structured_payload, parse_error = parse_structured_outbound_payload(output)
+    if parse_error is not None:
+        emit_event(
+            "bridge.outbound_payload_parse_failed",
+            level=logging.WARNING,
+            fields={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "reason": parse_error,
+            },
+        )
+        fallback_text = output or ""
+        client.send_message(chat_id, fallback_text, reply_to_message_id=message_id)
+        return fallback_text
+
+    if structured_payload is not None:
+        rendered_text, directive = structured_payload
+        payload_format = "json_envelope"
+    else:
+        rendered_text, directive = parse_outbound_media_directive(output)
+        if directive is not None:
+            payload_format = "legacy_directive"
+
+    emit_event(
+        "bridge.outbound_payload_parsed",
+        fields={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "payload_format": payload_format,
+            "has_media_directive": directive is not None,
+        },
+    )
+
     if directive is None:
         client.send_message(chat_id, rendered_text, reply_to_message_id=message_id)
         return rendered_text
@@ -1484,7 +1574,8 @@ def finalize_prompt_success(
         state_repo.set_thread_id(chat_id, new_thread_id)
     if not output:
         output = config.empty_output_message
-    output = trim_output(output, config.max_output_chars)
+    if not output_contains_control_directive(output):
+        output = trim_output(output, config.max_output_chars)
     progress.mark_success()
     delivered_output = send_executor_output(
         client=client,

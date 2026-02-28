@@ -187,6 +187,78 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(directive.media_ref, "/tmp/note.ogg")
         self.assertTrue(directive.as_voice)
 
+    def test_parse_structured_outbound_payload_extracts_media_and_text(self):
+        parsed, error = bridge_handlers.parse_structured_outbound_payload(
+            json.dumps(
+                {
+                    "telegram_outbound": {
+                        "text": "caption one",
+                        "media_ref": "https://example.com/note.ogg",
+                        "as_voice": True,
+                    }
+                }
+            )
+        )
+        self.assertIsNone(error)
+        self.assertIsNotNone(parsed)
+        rendered_text, directive = parsed
+        self.assertEqual(rendered_text, "caption one")
+        self.assertIsNotNone(directive)
+        self.assertEqual(directive.media_ref, "https://example.com/note.ogg")
+        self.assertTrue(directive.as_voice)
+
+    def test_parse_structured_outbound_payload_reports_schema_error(self):
+        parsed, error = bridge_handlers.parse_structured_outbound_payload(
+            '{"telegram_outbound":"bad"}'
+        )
+        self.assertIsNone(parsed)
+        self.assertEqual(error, "invalid_schema:telegram_outbound_not_object")
+
+    def test_send_executor_output_supports_structured_envelope(self):
+        client = FakeTelegramClient()
+        rendered = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=1,
+            message_id=16,
+            output=json.dumps(
+                {
+                    "telegram_outbound": {
+                        "text": "photo caption",
+                        "media_ref": "https://example.com/pic.jpg",
+                    }
+                }
+            ),
+        )
+        self.assertEqual(rendered, "photo caption")
+        self.assertEqual(len(client.photos), 1)
+        self.assertEqual(client.photos[0][1], "https://example.com/pic.jpg")
+
+    def test_send_executor_output_invalid_structured_payload_falls_back_to_raw_text(self):
+        client = FakeTelegramClient()
+        output = '{"telegram_outbound":"bad"}'
+        rendered = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=1,
+            message_id=17,
+            output=output,
+        )
+        self.assertEqual(rendered, output)
+        self.assertEqual(client.messages[-1][1], output)
+        self.assertEqual(len(client.photos), 0)
+
+    def test_output_contains_control_directive_detects_structured_and_legacy(self):
+        self.assertTrue(
+            bridge_handlers.output_contains_control_directive(
+                json.dumps({"telegram_outbound": {"text": "hello"}})
+            )
+        )
+        self.assertTrue(
+            bridge_handlers.output_contains_control_directive(
+                "[[media:https://example.com/pic.jpg]] caption"
+            )
+        )
+        self.assertFalse(bridge_handlers.output_contains_control_directive("just plain text"))
+
     def test_send_executor_output_routes_audio_to_voice_when_requested(self):
         client = FakeTelegramClient()
         rendered = bridge_handlers.send_executor_output(
@@ -446,6 +518,68 @@ class BridgeCoreTests(unittest.TestCase):
         event_names = [call.args[0] for call in emit_mock.call_args_list]
         self.assertIn("bridge.telegram_api_retry_scheduled", event_names)
         self.assertIn("bridge.telegram_api_failed", event_names)
+
+    def test_finalize_prompt_success_skips_trim_when_control_directive_present(self):
+        config = make_config(max_output_chars=20)
+        config.empty_output_message = "(No output from Architect)"
+        state_repo = mock.Mock()
+        progress = mock.Mock()
+        client = FakeTelegramClient()
+        raw_output = "[[media:https://example.com/pic.jpg]] " + ("x" * 120)
+        result = bridge_handlers.subprocess.CompletedProcess(
+            args=["/bin/echo"],
+            returncode=0,
+            stdout=raw_output,
+            stderr="",
+        )
+
+        with (
+            mock.patch.object(bridge_handlers, "parse_executor_output", return_value=(None, raw_output)),
+            mock.patch.object(bridge_handlers, "send_executor_output", return_value="ok") as send_mock,
+        ):
+            bridge_handlers.finalize_prompt_success(
+                state_repo=state_repo,
+                config=config,
+                client=client,
+                chat_id=1,
+                message_id=18,
+                result=result,
+                progress=progress,
+            )
+
+        self.assertEqual(send_mock.call_args.kwargs["output"], raw_output)
+
+    def test_finalize_prompt_success_trims_plain_output(self):
+        config = make_config(max_output_chars=20)
+        config.empty_output_message = "(No output from Architect)"
+        state_repo = mock.Mock()
+        progress = mock.Mock()
+        client = FakeTelegramClient()
+        raw_output = "x" * 120
+        result = bridge_handlers.subprocess.CompletedProcess(
+            args=["/bin/echo"],
+            returncode=0,
+            stdout=raw_output,
+            stderr="",
+        )
+
+        with (
+            mock.patch.object(bridge_handlers, "parse_executor_output", return_value=(None, raw_output)),
+            mock.patch.object(bridge_handlers, "send_executor_output", return_value="ok") as send_mock,
+        ):
+            bridge_handlers.finalize_prompt_success(
+                state_repo=state_repo,
+                config=config,
+                client=client,
+                chat_id=1,
+                message_id=19,
+                result=result,
+                progress=progress,
+            )
+
+        sent_output = send_mock.call_args.kwargs["output"]
+        self.assertLessEqual(len(sent_output), config.max_output_chars)
+        self.assertIn("[output truncated]", sent_output)
 
     def test_extract_ha_keyword_request_variants(self):
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("HA open garage"), (True, "open garage"))
