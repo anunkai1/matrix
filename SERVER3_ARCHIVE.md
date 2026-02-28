@@ -51,6 +51,15 @@ Migrated out of summary during this trim:
 - 2026-02-27: added TV shell commands to Telegram `/help` and `/h`, then restarted bridge to activate.
 - 2026-02-27: deployed command-start TV desktop profile while keeping default boot target as CLI.
 
+## 2026-02-28 (Summary Roll-Forward Trim for Live Voice Env Apply)
+
+Summary:
+- Added a new rolling summary entry for live application of voice-accuracy env settings and bridge restart.
+- Kept rolling bound by migrating one oldest entry from summary into archive.
+
+Migrated out of summary during this trim:
+- 2026-02-28: applied live Tank sudoers mirror so restart permission is restricted to `telegram-tank-bridge.service` only.
+
 ### Migrated Historical Summary Content (verbatim from previous SERVER3_SUMMARY.md)
 
 # Server3 Summary
