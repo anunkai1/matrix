@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-02-28T11:04:38+10:00 - Prefer User-Clear Naming Over Internal Terms
+- Mistake pattern: I used the memory mode label `full`, which users can reasonably read as capacity-full instead of context-scope-full.
+- Prevention rule: For user-facing command labels, choose plain-language names first (for example `all_context`), keep old labels only as compatibility aliases, and update help/docs in the same change.
+- Where/when applied: Any command/config naming surfaced in Telegram help, CLI help, and docs before rollout.
+
 ### 2026-02-28T09:25:38+10:00 - Respect Owner-Accepted Risk Decisions in Future Plans
 - Mistake pattern: I kept re-proposing fixes for risks the owner had explicitly accepted as-designed (notably H5, later H6/H7/H9).
 - Prevention rule: When owner marks an item as accepted risk/as-designed, record it in repo context and treat it as deferred by default; do not propose or implement unless owner explicitly asks to revisit.

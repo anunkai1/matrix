@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-MODE_FULL = "full"
+MODE_FULL = "all_context"
+MODE_FULL_LEGACY_ALIAS = "full"
 MODE_SESSION_ONLY = "session_only"
 ALLOWED_MODES = (MODE_FULL, MODE_SESSION_ONLY)
 
@@ -118,6 +119,15 @@ class MemoryEngine:
         conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
+    @staticmethod
+    def _normalize_mode(mode: str) -> str:
+        normalized = (mode or "").strip().lower()
+        if normalized == MODE_FULL_LEGACY_ALIAS:
+            return MODE_FULL
+        if normalized in ALLOWED_MODES:
+            return normalized
+        return MODE_FULL
+
     def ensure_schema(self) -> None:
         with self._lock, self._connect() as conn:
             conn.executescript(
@@ -173,7 +183,7 @@ class MemoryEngine:
 
                 CREATE TABLE IF NOT EXISTS memory_config (
                     conversation_key TEXT PRIMARY KEY,
-                    mode TEXT NOT NULL DEFAULT 'full'
+                    mode TEXT NOT NULL DEFAULT 'all_context'
                 );
 
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_facts_key
@@ -187,6 +197,11 @@ class MemoryEngine:
                 CREATE INDEX IF NOT EXISTS idx_chat_summaries_lookup
                     ON chat_summaries (conversation_key, id);
                 """
+            )
+            # Normalize legacy mode label to the canonical mode name.
+            conn.execute(
+                "UPDATE memory_config SET mode = ? WHERE mode = ?",
+                (MODE_FULL, MODE_FULL_LEGACY_ALIAS),
             )
 
     @staticmethod
@@ -221,12 +236,13 @@ class MemoryEngine:
                 (conversation_key,),
             ).fetchone()
         mode = str(row["mode"] if row else MODE_FULL).strip().lower()
-        return mode if mode in ALLOWED_MODES else MODE_FULL
+        return self._normalize_mode(mode)
 
     def set_mode(self, conversation_key: str, mode: str) -> str:
-        normalized = (mode or "").strip().lower()
-        if normalized not in ALLOWED_MODES:
+        candidate = (mode or "").strip().lower()
+        if candidate not in ALLOWED_MODES and candidate != MODE_FULL_LEGACY_ALIAS:
             raise ValueError(f"Invalid mode: {mode}")
+        normalized = self._normalize_mode(candidate)
         with self._lock, self._connect() as conn:
             self._ensure_memory_rows(conn, conversation_key)
             conn.execute(
@@ -619,15 +635,13 @@ class MemoryEngine:
         with self._lock, self._connect() as conn:
             self._ensure_memory_rows(conn, conversation_key)
             if mode_override:
-                mode = mode_override
+                mode = self._normalize_mode(mode_override)
             else:
                 mode_row = conn.execute(
                     "SELECT mode FROM memory_config WHERE conversation_key = ?",
                     (conversation_key,),
                 ).fetchone()
-                mode = str(mode_row["mode"] if mode_row else MODE_FULL).strip().lower()
-            if mode not in ALLOWED_MODES:
-                mode = MODE_FULL
+                mode = self._normalize_mode(str(mode_row["mode"] if mode_row else MODE_FULL))
 
             recent_rows = self._load_recent_messages(conn, conversation_key, limit=RECENT_WINDOW)
             summary_row = self._load_latest_summary(conn, conversation_key) if mode == MODE_FULL else None
@@ -703,9 +717,7 @@ class MemoryEngine:
                 "SELECT mode FROM memory_config WHERE conversation_key = ?",
                 (conversation_key,),
             ).fetchone()
-            mode = str(row["mode"] if row else MODE_FULL).strip().lower()
-            if mode not in ALLOWED_MODES:
-                mode = MODE_FULL
+            mode = self._normalize_mode(str(row["mode"] if row else MODE_FULL))
             return self._maybe_summarize(conn, conversation_key, mode)
 
     def _maybe_summarize(self, conn: sqlite3.Connection, conversation_key: str, mode: str) -> bool:
@@ -1138,9 +1150,7 @@ class MemoryEngine:
                 "SELECT mode FROM memory_config WHERE conversation_key = ?",
                 (conversation_key,),
             ).fetchone()
-            mode = str(mode_row["mode"] if mode_row else MODE_FULL).strip().lower()
-            if mode not in ALLOWED_MODES:
-                mode = MODE_FULL
+            mode = self._normalize_mode(str(mode_row["mode"] if mode_row else MODE_FULL))
             session_row = conn.execute(
                 "SELECT thread_id FROM sessions WHERE conversation_key = ?",
                 (conversation_key,),
@@ -1187,7 +1197,7 @@ def handle_memory_command(engine: MemoryEngine, conversation_key: str, text: str
             mode = engine.get_mode(conversation_key)
             return CommandResult(handled=True, response=f"Memory mode: {mode}")
 
-        mode_match = re.fullmatch(r"mode\s+(full|session_only)", tail, flags=re.I)
+        mode_match = re.fullmatch(r"mode\s+(all_context|full|session_only)", tail, flags=re.I)
         if mode_match:
             mode = engine.set_mode(conversation_key, mode_match.group(1).lower())
             return CommandResult(handled=True, response=f"Memory mode set to {mode}.")
@@ -1234,7 +1244,8 @@ def handle_memory_command(engine: MemoryEngine, conversation_key: str, text: str
             response=(
                 "Usage:\n"
                 "/memory mode\n"
-                "/memory mode full\n"
+                "/memory mode all_context\n"
+                "/memory mode full (legacy alias)\n"
                 "/memory mode session_only\n"
                 "/memory status\n"
                 "/memory export\n"
@@ -1276,7 +1287,8 @@ def build_memory_help_lines() -> List[str]:
     return [
         "Memory commands:",
         "/memory mode - show mode for this conversation key",
-        "/memory mode full - use summary + facts + recent messages",
+        "/memory mode all_context - use summary + facts + recent messages",
+        "/memory mode full - legacy alias for all_context",
         "/memory mode session_only - keep session continuity and recent messages only",
         "/memory status - show memory/session counts for this key",
         "/memory export - list stored facts for this key (redacted)",

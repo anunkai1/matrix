@@ -17,11 +17,21 @@ spec.loader.exec_module(memory)
 
 
 class MemoryEngineTests(unittest.TestCase):
-    def test_default_mode_is_full(self):
+    def test_default_mode_is_all_context(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = str(Path(tmpdir) / "memory.sqlite3")
             engine = memory.MemoryEngine(db_path)
             self.assertEqual(engine.get_mode("tg:100"), memory.MODE_FULL)
+
+    def test_legacy_full_alias_maps_to_all_context(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            engine = memory.MemoryEngine(db_path)
+            key = memory.MemoryEngine.telegram_key(101)
+
+            mode = engine.set_mode(key, "full")
+            self.assertEqual(mode, memory.MODE_FULL)
+            self.assertEqual(engine.get_mode(key), memory.MODE_FULL)
 
     def test_per_key_isolation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -87,6 +97,10 @@ class MemoryEngineTests(unittest.TestCase):
             db_path = str(Path(tmpdir) / "memory.sqlite3")
             key = memory.MemoryEngine.cli_key("default")
             engine = memory.MemoryEngine(db_path)
+
+            mode_alias = memory.handle_memory_command(engine, key, "/memory mode full")
+            self.assertTrue(mode_alias.handled)
+            self.assertIn("all_context", mode_alias.response or "")
 
             remember = memory.handle_memory_command(engine, key, "/remember project: matrix")
             self.assertTrue(remember.handled)

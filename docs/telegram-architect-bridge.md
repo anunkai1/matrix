@@ -156,7 +156,8 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `server3-tv-start` start TV desktop mode from shell
 - `server3-tv-stop` stop TV desktop mode and return to CLI from shell
 - `/memory mode` show memory mode for this conversation key
-- `/memory mode full` use summary + durable facts + recent messages
+- `/memory mode all_context` use summary + durable facts + recent messages
+- `/memory mode full` legacy alias for `all_context`
 - `/memory mode session_only` use recent messages + session continuity only
 - `/memory status` show mode/session/fact/summary counts for this key
 - `/memory export` list stored facts for this key (sensitive values redacted)
@@ -202,16 +203,16 @@ Message handling:
   - CLI named profile: `cli:architect:<profile_name>`
   - keys are isolated by default (no cross-key memory sharing)
 - Memory modes:
-  - default mode for new keys: `full`
+  - default mode for new keys: `all_context`
   - optional mode: `session_only`
   - no persistent `off` mode
-- `full` mode prompt assembly uses:
+- `all_context` mode prompt assembly uses:
   - latest summary
   - active high-confidence facts
   - recent message window
   - current user input
 - `session_only` mode keeps session continuity and recent messages only.
-- Summarization trigger in `full` mode:
+- Summarization trigger in `all_context` mode:
   - unsummarized messages `>=100`, or
   - unsummarized estimated tokens `>=12000`
 - Retention defaults:

@@ -7,7 +7,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Active component: `telegram-architect-bridge.service`
 - Runtime mode: Telegram long polling + local `codex exec` executor
 - Input modes: text, photo (image + optional caption), voice snippets (transcribed to text and echoed back), and generic files/documents for analysis
-- Context behavior: shared SQLite memory engine (Telegram + CLI) with per-conversation-key isolation and default `full` memory mode
+- Context behavior: shared SQLite memory engine (Telegram + CLI) with per-conversation-key isolation and default `all_context` memory mode
 - Optional persistent worker-session manager via env flag (`TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`)
 - Optional canonical session-store mode via env flag (`TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`), with optional SQLite backend (`TELEGRAM_CANONICAL_SQLITE_ENABLED=true`) and optional rollback mirrors (`TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED=true`, `TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED=true`)
 - Memory commands: `/memory ...`, `/remember`, `/forget`, `/forget-all`, `/reset-session`, `/hard-reset-memory`, `/ask` (stateless one-turn)
