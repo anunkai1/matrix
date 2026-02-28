@@ -12,8 +12,7 @@ GOLDEN RULE - CHANGE CONTROL (AUTHORITATIVE)
 - This Git repo is the SINGLE SOURCE OF TRUTH.
 - The canonical repo is: `https://github.com/anunkai1/matrix` (public).
   
-- All non-exempt changes MUST follow:  
-  edit in repo → git status → git add → git commit → git push
+- All non-exempt changes MUST follow the canonical Git workflow in section 2 (`GIT + GITHUB RULES`).
   
 - Goal: Open-source on GitHub (public). Everyone can read; only you can merge/ship.
   
@@ -80,6 +79,7 @@ SESSION START RULE (MANDATORY)
 
 - At the start of every new Codex session on Server3, read `SERVER3_SUMMARY.md` before planning or editing.
 - Read `SERVER3_ARCHIVE.md` only when the current task needs deeper historical detail than the summary provides.
+- Review relevant entries in `LESSONS.md` before planning or editing.
 - Treat `SERVER3_SUMMARY.md` as a short rolling context and `SERVER3_ARCHIVE.md` as the canonical detailed history.
 - Target shape:
   - `SERVER3_SUMMARY.md`: current snapshot + recent change sets only (rolling, concise).
@@ -172,7 +172,7 @@ When execution is blocked pending approval, Codex must output this exact paused-
   
 - Approval for: <one-sentence objective + exact scope/files to be changed>.
   
-- Next action: reply exactly "Proceed with these changes."
+- Next action: reply with explicit approval (recommended: "Proceed with these changes.")
   
 - No commands will run until approval is received.
 
@@ -232,7 +232,7 @@ If git push fails:
 
 3. PRIVILEGE / SUDO BOUNDARY (MANDATORY)
 
-We will create a dedicated Linux user for Codex with sudo access.
+Codex operates under a dedicated Linux user with sudo access on Server3.
 
 RULES (SUDO IS ALLOWED)
 
