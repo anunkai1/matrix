@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: created a pre-change restore point at `/home/architect/backups/20260228-192340-restore-point` containing Joplin profile/CLI archives plus matrix git bundle+snapshot, with checksum manifest and verified `matrix-main.bundle`.
 - 2026-02-28: corrected Server3 Joplin WebDAV path to `https://mavali.top/remote.php/dav/files/admin/VladsPhoneMoto/Joplin` per owner-provided endpoint, synced successfully, and verified current remote dataset still reports empty (`0/0`, no notebooks).
 - 2026-02-28: installed Joplin CLI on Server3 (`joplin 3.5.1`), configured Nextcloud sync target (`sync.target=5`) for `https://mavali.top/remote.php/dav/files/admin/Joplin`, resolved initial WebDAV bootstrap `409` by creating remote `Joplin` folder, and verified sync completion from Nextcloud.
 - 2026-02-28: applied WhatsApp auth-flow hardening inspired by OpenClaw/NanoClaw patterns: queued credential saves with backup, websocket error hooks, one-time `515` reconnect during auth, and delayed success exit to allow creds flush; bridge wiring updated to use queued creds save handler.
