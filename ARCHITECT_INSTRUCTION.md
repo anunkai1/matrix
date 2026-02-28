@@ -331,3 +331,16 @@ C) PLAN MODE DEFAULT (NET-NEW PARTS)
 
 - If execution goes sideways (deviation, broken assumption, or new risk), STOP and re-plan before continuing.
 - For non-trivial work, plans must include explicit verification steps, not only implementation steps.
+
+---
+
+8. USER SHORTCUT PHRASES (PERSISTENT)
+
+- Shortcut trigger: `mansplain:`
+- Meaning: when the user includes `mansplain:` in their request, switch to beginner explanation mode for that response.
+- Beginner explanation mode rules:
+  - explain logically in plain language
+  - avoid jargon where possible; if jargon is needed, define it simply
+  - focus on clarity and practical understanding before advanced detail
+  - use concrete examples when helpful
+- This shortcut applies by default unless the user explicitly asks for a different style in that same request.

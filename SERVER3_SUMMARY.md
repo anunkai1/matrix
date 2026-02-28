@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: added persistent `mansplain:` shortcut rule in `ARCHITECT_INSTRUCTION.md` so that requests with this trigger get beginner-friendly, low-jargon, logical explanations.
 - 2026-02-28: added controlled voice-alias self-learning with explicit approval workflow (`/voice-alias list|approve|reject|add`), using repeated low-confidence confirmations to suggest (not auto-apply) new corrections.
 - 2026-02-28: saved NanoClaw WhatsApp Server3 rollout handoff plan at `docs/handoffs/nanoclaw-whatsapp-server3-rollout-plan.md` for future resume.
 - 2026-02-28: applied voice-accuracy env keys live to `/etc/default/telegram-architect-bridge` (model `small`, language/decode tuning, low-confidence gate), restarted `telegram-architect-bridge.service`, and synced the redacted env mirror.
