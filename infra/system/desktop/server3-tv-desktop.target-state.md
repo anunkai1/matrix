@@ -21,7 +21,7 @@ Provide a command-start desktop mode for HDMI TV use while keeping Server3 defau
 - Default boot target: `multi-user.target` (CLI)
 - Desktop launch: on demand via `server3-tv-start`
 - Desktop stop: via `server3-tv-stop`
-- Browser: Brave, autostart fullscreen to YouTube
+- Browser: Brave, autostart maximized to YouTube
 - Audio preference: first detected HDMI sink set as default in tv session
 
 ## User Model

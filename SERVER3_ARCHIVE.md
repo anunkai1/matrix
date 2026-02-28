@@ -80,6 +80,15 @@ Migrated out of summary during this trim:
 - 2026-02-28: cleaned doc inconsistencies by removing obsolete helper-bot instructions from bridge docs, aligning voucher handoff summary/archive wording with rolling policy, and removing contradictory lessons-path history line.
 - 2026-02-28: moved lessons to root-level `LESSONS.md` (with `docs/instructions/lessons.md` redirect stub) so it sits with main repo docs.
 
+## 2026-02-28 (Summary Roll-Forward Trim for TV Startup Wording Correction)
+
+Summary:
+- Added a new rolling-summary entry for TV startup wording alignment (fullscreen -> maximized).
+- Re-trimmed summary back to rolling bound by migrating one oldest entry into archive.
+
+Migrated out of summary during this trim:
+- 2026-02-28: removed `docs/instructions/lessons.md` redirect stub; `LESSONS.md` is now the only active lessons path.
+
 ### Migrated Historical Summary Content (verbatim from previous SERVER3_SUMMARY.md)
 
 # Server3 Summary
