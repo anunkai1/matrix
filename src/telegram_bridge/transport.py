@@ -1,9 +1,23 @@
 import json
-from typing import Dict, List, Optional
+import mimetypes
+import os
+import uuid
+from typing import Dict, List, Optional, Tuple
+from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 TELEGRAM_LIMIT = 4096
+TELEGRAM_CAPTION_LIMIT = 1024
+
+
+class TelegramApiError(RuntimeError):
+    def __init__(self, method: str, description: str, error_code: Optional[int] = None) -> None:
+        self.method = method
+        self.description = description
+        self.error_code = error_code
+        code_text = f"{error_code} " if error_code is not None else ""
+        super().__init__(f"Telegram API {method} failed: {code_text}{description}")
 
 
 def split_for_limit(text: str, limit: int) -> List[str]:
@@ -48,12 +62,101 @@ class TelegramClient:
         endpoint = f"{self.config.api_base}/bot{self.config.token}/{method}"
         data = urlencode(payload).encode("utf-8")
         request = Request(endpoint, data=data, method="POST")
-        with urlopen(request, timeout=self.config.poll_timeout_seconds + 10) as response:
-            body = response.read().decode("utf-8")
+        try:
+            with urlopen(request, timeout=self.config.poll_timeout_seconds + 10) as response:
+                body = response.read().decode("utf-8")
+        except HTTPError as exc:
+            response_body = ""
+            try:
+                response_body = exc.read().decode("utf-8")
+            except Exception:
+                response_body = ""
+            description, code = self._extract_telegram_error(
+                response_body,
+                fallback=f"HTTP {exc.code}",
+            )
+            raise TelegramApiError(method, description, code or exc.code) from exc
         decoded = json.loads(body)
         if not decoded.get("ok"):
-            description = decoded.get("description", "unknown Telegram error")
-            raise RuntimeError(f"Telegram API {method} failed: {description}")
+            description = str(decoded.get("description", "unknown Telegram error"))
+            error_code = decoded.get("error_code")
+            parsed_code = int(error_code) if isinstance(error_code, int) else None
+            raise TelegramApiError(method, description, parsed_code)
+        return decoded
+
+    def _extract_telegram_error(self, body: str, fallback: str) -> Tuple[str, Optional[int]]:
+        if not body:
+            return fallback, None
+        try:
+            decoded = json.loads(body)
+        except Exception:
+            return fallback, None
+        if not isinstance(decoded, dict):
+            return fallback, None
+        description = str(decoded.get("description", fallback))
+        error_code = decoded.get("error_code")
+        parsed_code = int(error_code) if isinstance(error_code, int) else None
+        return description, parsed_code
+
+    def _request_multipart(
+        self,
+        method: str,
+        payload: Dict[str, object],
+        file_field: str,
+        file_name: str,
+        file_bytes: bytes,
+        content_type: str,
+    ) -> Dict[str, object]:
+        endpoint = f"{self.config.api_base}/bot{self.config.token}/{method}"
+        boundary = f"----telegram-bridge-{uuid.uuid4().hex}"
+        body_parts: List[bytes] = []
+
+        for key, value in payload.items():
+            body_parts.append(f"--{boundary}\r\n".encode("utf-8"))
+            body_parts.append(
+                f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8")
+            )
+            body_parts.append(str(value).encode("utf-8"))
+            body_parts.append(b"\r\n")
+
+        body_parts.append(f"--{boundary}\r\n".encode("utf-8"))
+        body_parts.append(
+            (
+                f'Content-Disposition: form-data; name="{file_field}"; '
+                f'filename="{file_name}"\r\n'
+            ).encode("utf-8")
+        )
+        body_parts.append(f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"))
+        body_parts.append(file_bytes)
+        body_parts.append(b"\r\n")
+        body_parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+        body = b"".join(body_parts)
+
+        request = Request(endpoint, data=body, method="POST")
+        request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        request.add_header("Content-Length", str(len(body)))
+
+        try:
+            with urlopen(request, timeout=self.config.poll_timeout_seconds + 10) as response:
+                response_body = response.read().decode("utf-8")
+        except HTTPError as exc:
+            error_body = ""
+            try:
+                error_body = exc.read().decode("utf-8")
+            except Exception:
+                error_body = ""
+            description, code = self._extract_telegram_error(
+                error_body,
+                fallback=f"HTTP {exc.code}",
+            )
+            raise TelegramApiError(method, description, code or exc.code) from exc
+
+        decoded = json.loads(response_body)
+        if not decoded.get("ok"):
+            description = str(decoded.get("description", "unknown Telegram error"))
+            error_code = decoded.get("error_code")
+            parsed_code = int(error_code) if isinstance(error_code, int) else None
+            raise TelegramApiError(method, description, parsed_code)
         return decoded
 
     def get_updates(
@@ -109,6 +212,105 @@ class TelegramClient:
             if isinstance(message_id, int):
                 return message_id
         return None
+
+    def _send_media(
+        self,
+        method: str,
+        media_field: str,
+        chat_id: int,
+        media: str,
+        caption: Optional[str],
+        reply_to_message_id: Optional[int],
+    ) -> Dict[str, object]:
+        payload: Dict[str, object] = {
+            "chat_id": str(chat_id),
+        }
+        if caption:
+            payload["caption"] = caption[:TELEGRAM_CAPTION_LIMIT]
+        if reply_to_message_id is not None:
+            payload["reply_to_message_id"] = str(reply_to_message_id)
+
+        if os.path.isfile(media):
+            with open(media, "rb") as handle:
+                file_bytes = handle.read()
+            guessed_type, _ = mimetypes.guess_type(media)
+            media_content_type = guessed_type or "application/octet-stream"
+            payload_without_media = dict(payload)
+            return self._request_multipart(
+                method=method,
+                payload=payload_without_media,
+                file_field=media_field,
+                file_name=os.path.basename(media) or "upload.bin",
+                file_bytes=file_bytes,
+                content_type=media_content_type,
+            )
+
+        payload[media_field] = media
+        return self._request(method, payload)
+
+    def send_photo(
+        self,
+        chat_id: int,
+        photo: str,
+        caption: Optional[str] = None,
+        reply_to_message_id: Optional[int] = None,
+    ) -> Dict[str, object]:
+        return self._send_media(
+            "sendPhoto",
+            "photo",
+            chat_id,
+            photo,
+            caption,
+            reply_to_message_id,
+        )
+
+    def send_document(
+        self,
+        chat_id: int,
+        document: str,
+        caption: Optional[str] = None,
+        reply_to_message_id: Optional[int] = None,
+    ) -> Dict[str, object]:
+        return self._send_media(
+            "sendDocument",
+            "document",
+            chat_id,
+            document,
+            caption,
+            reply_to_message_id,
+        )
+
+    def send_audio(
+        self,
+        chat_id: int,
+        audio: str,
+        caption: Optional[str] = None,
+        reply_to_message_id: Optional[int] = None,
+    ) -> Dict[str, object]:
+        return self._send_media(
+            "sendAudio",
+            "audio",
+            chat_id,
+            audio,
+            caption,
+            reply_to_message_id,
+        )
+
+    def send_voice(
+        self,
+        chat_id: int,
+        voice: str,
+        caption: Optional[str] = None,
+        reply_to_message_id: Optional[int] = None,
+    ) -> Dict[str, object]:
+        return self._send_media(
+            "sendVoice",
+            "voice",
+            chat_id,
+            voice,
+            caption,
+            reply_to_message_id,
+        )
 
     def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
         payload: Dict[str, object] = {

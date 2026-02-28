@@ -29,9 +29,32 @@ import structured_logging as bridge_structured_logging
 class FakeTelegramClient:
     def __init__(self) -> None:
         self.messages = []
+        self.photos = []
+        self.documents = []
+        self.audios = []
+        self.voices = []
+        self.chat_actions = []
+        self.raise_on_voice = None
 
     def send_message(self, chat_id, text, reply_to_message_id=None):
         self.messages.append((chat_id, text, reply_to_message_id))
+
+    def send_photo(self, chat_id, photo, caption=None, reply_to_message_id=None):
+        self.photos.append((chat_id, photo, caption, reply_to_message_id))
+
+    def send_document(self, chat_id, document, caption=None, reply_to_message_id=None):
+        self.documents.append((chat_id, document, caption, reply_to_message_id))
+
+    def send_audio(self, chat_id, audio, caption=None, reply_to_message_id=None):
+        self.audios.append((chat_id, audio, caption, reply_to_message_id))
+
+    def send_voice(self, chat_id, voice, caption=None, reply_to_message_id=None):
+        if self.raise_on_voice is not None:
+            raise self.raise_on_voice
+        self.voices.append((chat_id, voice, caption, reply_to_message_id))
+
+    def send_chat_action(self, chat_id, action="typing"):
+        self.chat_actions.append((chat_id, action))
 
 
 class FakeDownloadClient:
@@ -152,6 +175,102 @@ class BridgeCoreTests(unittest.TestCase):
         cfg = make_config(assistant_name="HelperBot")
         self.assertIn("HelperBot", bridge_handlers.start_command_message(cfg))
         self.assertIn("HelperBot", bridge_handlers.build_help_text(cfg))
+
+    def test_parse_outbound_media_directive_extracts_media_and_voice_flag(self):
+        text, directive = bridge_handlers.parse_outbound_media_directive(
+            "[[media:/tmp/note.ogg]] [[audio_as_voice]] hello there"
+        )
+        self.assertEqual(text, "hello there")
+        self.assertIsNotNone(directive)
+        self.assertEqual(directive.media_ref, "/tmp/note.ogg")
+        self.assertTrue(directive.as_voice)
+
+    def test_send_executor_output_routes_audio_to_voice_when_requested(self):
+        client = FakeTelegramClient()
+        rendered = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=1,
+            message_id=7,
+            output="[[media:/tmp/note.ogg]] [[audio_as_voice]] voice caption",
+        )
+        self.assertEqual(rendered, "voice caption")
+        self.assertEqual(len(client.voices), 1)
+        self.assertEqual(len(client.audios), 0)
+        self.assertEqual(client.chat_actions[-1], (1, "record_voice"))
+
+    def test_send_executor_output_falls_back_to_audio_when_voice_forbidden(self):
+        client = FakeTelegramClient()
+        client.raise_on_voice = RuntimeError(
+            "Telegram API sendVoice failed: 400 Bad Request: VOICE_MESSAGES_FORBIDDEN"
+        )
+        rendered = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=1,
+            message_id=8,
+            output="[[media:/tmp/note.ogg]] [[audio_as_voice]] fallback caption",
+        )
+        self.assertEqual(rendered, "fallback caption")
+        self.assertEqual(len(client.voices), 0)
+        self.assertEqual(len(client.audios), 1)
+        self.assertEqual(client.audios[0][2], "fallback caption")
+
+    def test_send_executor_output_routes_photo_and_document(self):
+        client = FakeTelegramClient()
+        rendered_photo = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=1,
+            message_id=9,
+            output="[[media:https://example.com/pic.jpg]] photo caption",
+        )
+        rendered_doc = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=1,
+            message_id=10,
+            output="[[media:https://example.com/file.pdf]] doc caption",
+        )
+        self.assertEqual(rendered_photo, "photo caption")
+        self.assertEqual(rendered_doc, "doc caption")
+        self.assertEqual(len(client.photos), 1)
+        self.assertEqual(len(client.documents), 1)
+
+    def test_transport_send_media_remote_uses_request_payload(self):
+        config = make_config()
+        client = bridge.TelegramClient(config)
+        with mock.patch.object(client, "_request", return_value={"ok": True}) as request_mock:
+            with mock.patch.object(client, "_request_multipart", return_value={"ok": True}) as multipart_mock:
+                client.send_voice(
+                    chat_id=1,
+                    voice="https://example.com/note.ogg",
+                    caption="c",
+                    reply_to_message_id=12,
+                )
+        self.assertTrue(request_mock.called)
+        self.assertFalse(multipart_mock.called)
+        method_name, payload = request_mock.call_args.args
+        self.assertEqual(method_name, "sendVoice")
+        self.assertEqual(payload["voice"], "https://example.com/note.ogg")
+
+    def test_transport_send_media_local_file_uses_multipart(self):
+        config = make_config()
+        client = bridge.TelegramClient(config)
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as handle:
+            handle.write(b"test")
+            voice_path = handle.name
+        try:
+            with mock.patch.object(client, "_request", return_value={"ok": True}) as request_mock:
+                with mock.patch.object(
+                    client,
+                    "_request_multipart",
+                    return_value={"ok": True},
+                ) as multipart_mock:
+                    client.send_voice(chat_id=1, voice=voice_path, caption="c", reply_to_message_id=2)
+            self.assertFalse(request_mock.called)
+            self.assertTrue(multipart_mock.called)
+            kwargs = multipart_mock.call_args.kwargs
+            self.assertEqual(kwargs["method"], "sendVoice")
+            self.assertEqual(kwargs["file_field"], "voice")
+        finally:
+            Path(voice_path).unlink(missing_ok=True)
 
     def test_extract_ha_keyword_request_variants(self):
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("HA open garage"), (True, "open garage"))

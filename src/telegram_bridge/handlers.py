@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 try:
     from .executor import (
@@ -27,7 +28,7 @@ try:
     )
     from .state_store import State, StateRepository
     from .structured_logging import emit_event
-    from .transport import TELEGRAM_LIMIT, TelegramClient
+    from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT, TelegramClient
 except ImportError:
     from executor import (
         ExecutorProgressEvent,
@@ -47,11 +48,17 @@ except ImportError:
     )
     from state_store import State, StateRepository
     from structured_logging import emit_event
-    from transport import TELEGRAM_LIMIT, TelegramClient
+    from transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT, TelegramClient
 
 PROGRESS_TYPING_INTERVAL_SECONDS = 4
 PROGRESS_EDIT_MIN_INTERVAL_SECONDS = 6
 PROGRESS_HEARTBEAT_EDIT_SECONDS = 30
+MEDIA_DIRECTIVE_TAG_RE = re.compile(r"\[\[\s*media\s*:\s*(?P<value>.+?)\s*\]\]", re.IGNORECASE)
+MEDIA_DIRECTIVE_LINE_RE = re.compile(r"(?im)^\s*media\s*:\s*(?P<value>.+?)\s*$")
+AUDIO_AS_VOICE_TAG_RE = re.compile(r"\[\[\s*audio_as_voice\s*\]\]", re.IGNORECASE)
+PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+AUDIO_EXTENSIONS = {".ogg", ".oga", ".opus", ".mp3", ".m4a", ".aac", ".wav", ".flac"}
+VOICE_COMPATIBLE_EXTENSIONS = {".ogg", ".oga", ".opus", ".mp3", ".m4a"}
 
 HELP_COMMAND_ALIASES = ("/help", "/h")
 RATE_LIMIT_MESSAGE = "Rate limit exceeded. Please wait a minute and retry."
@@ -75,6 +82,12 @@ class PreparedPromptInput:
     prompt_text: str
     image_path: Optional[str] = None
     document_path: Optional[str] = None
+
+
+@dataclass
+class OutboundMediaDirective:
+    media_ref: str
+    as_voice: bool
 
 
 def build_repo_root() -> str:
@@ -190,6 +203,134 @@ def trim_output(text: str, limit: int) -> str:
         return text
     marker = "\n\n[output truncated]"
     return text[: max(0, limit - len(marker))] + marker
+
+
+def parse_outbound_media_directive(output: str) -> tuple[str, Optional[OutboundMediaDirective]]:
+    text = output or ""
+    as_voice = bool(AUDIO_AS_VOICE_TAG_RE.search(text))
+    text = AUDIO_AS_VOICE_TAG_RE.sub("", text)
+
+    media_match = MEDIA_DIRECTIVE_TAG_RE.search(text)
+    if media_match is None:
+        media_match = MEDIA_DIRECTIVE_LINE_RE.search(text)
+    if media_match is None:
+        return text.strip(), None
+
+    media_ref = media_match.group("value").strip().strip('"').strip("'")
+    without_directive = f"{text[:media_match.start()]}{text[media_match.end():]}".strip()
+    if not media_ref:
+        return without_directive, None
+    return without_directive, OutboundMediaDirective(media_ref=media_ref, as_voice=as_voice)
+
+
+def media_extension(media_ref: str) -> str:
+    ref = media_ref.strip()
+    if not ref:
+        return ""
+    parsed = urlparse(ref)
+    if parsed.scheme and parsed.path:
+        return Path(parsed.path).suffix.lower()
+    return Path(ref).suffix.lower()
+
+
+def infer_media_kind(media_ref: str) -> str:
+    extension = media_extension(media_ref)
+    if extension in PHOTO_EXTENSIONS:
+        return "photo"
+    if extension in AUDIO_EXTENSIONS:
+        return "audio"
+    return "document"
+
+
+def is_voice_compatible_media(media_ref: str) -> bool:
+    return media_extension(media_ref) in VOICE_COMPATIBLE_EXTENSIONS
+
+
+def is_voice_messages_forbidden_error(exc: Exception) -> bool:
+    return "VOICE_MESSAGES_FORBIDDEN" in str(exc).upper()
+
+
+def send_executor_output(
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+    output: str,
+) -> str:
+    rendered_text, directive = parse_outbound_media_directive(output)
+    if directive is None:
+        client.send_message(chat_id, rendered_text, reply_to_message_id=message_id)
+        return rendered_text
+
+    caption = rendered_text if rendered_text else None
+    follow_up_text: Optional[str] = None
+    if caption and len(caption) > TELEGRAM_CAPTION_LIMIT:
+        follow_up_text = caption
+        caption = None
+
+    try:
+        media_kind = infer_media_kind(directive.media_ref)
+        if media_kind == "photo":
+            client.send_photo(
+                chat_id=chat_id,
+                photo=directive.media_ref,
+                caption=caption,
+                reply_to_message_id=message_id,
+            )
+        elif media_kind == "audio":
+            if directive.as_voice and is_voice_compatible_media(directive.media_ref):
+                try:
+                    client.send_chat_action(chat_id, action="record_voice")
+                except Exception:
+                    logging.debug("Failed to send record_voice action for chat_id=%s", chat_id)
+                try:
+                    client.send_voice(
+                        chat_id=chat_id,
+                        voice=directive.media_ref,
+                        caption=caption,
+                        reply_to_message_id=message_id,
+                    )
+                except Exception as exc:
+                    if not is_voice_messages_forbidden_error(exc):
+                        raise
+                    logging.warning(
+                        "sendVoice forbidden for chat_id=%s; falling back to sendAudio",
+                        chat_id,
+                    )
+                    client.send_audio(
+                        chat_id=chat_id,
+                        audio=directive.media_ref,
+                        caption=caption,
+                        reply_to_message_id=message_id,
+                    )
+            else:
+                client.send_audio(
+                    chat_id=chat_id,
+                    audio=directive.media_ref,
+                    caption=caption,
+                    reply_to_message_id=message_id,
+                )
+        else:
+            client.send_document(
+                chat_id=chat_id,
+                document=directive.media_ref,
+                caption=caption,
+                reply_to_message_id=message_id,
+            )
+    except Exception:
+        logging.exception(
+            "Failed to send outbound media for chat_id=%s; falling back to text",
+            chat_id,
+        )
+        fallback_text = rendered_text or output
+        client.send_message(chat_id, fallback_text, reply_to_message_id=message_id)
+        return fallback_text
+
+    if follow_up_text:
+        client.send_message(chat_id, follow_up_text, reply_to_message_id=message_id)
+
+    if rendered_text:
+        return rendered_text
+    return f"[media sent: {directive.media_ref}]"
 
 
 def compact_progress_text(text: str, max_chars: int = 120) -> str:
@@ -1254,17 +1395,22 @@ def finalize_prompt_success(
         output = config.empty_output_message
     output = trim_output(output, config.max_output_chars)
     progress.mark_success()
-    client.send_message(chat_id, output, reply_to_message_id=message_id)
+    delivered_output = send_executor_output(
+        client=client,
+        chat_id=chat_id,
+        message_id=message_id,
+        output=output,
+    )
     emit_event(
         "bridge.request_succeeded",
         fields={
             "chat_id": chat_id,
             "message_id": message_id,
             "new_thread_id": bool(new_thread_id),
-            "output_chars": len(output),
+            "output_chars": len(delivered_output),
         },
     )
-    return new_thread_id, output
+    return new_thread_id, delivered_output
 
 
 def process_prompt(
