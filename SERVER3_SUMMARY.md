@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: expanded Tank required prefixes to `@tankhas_bot,tank,hey tank,t-a-n-k`, synced live env mirror, and restarted `telegram-tank-bridge.service` to apply.
 - 2026-02-28: fixed required-prefix handling for voice-only requests by enforcing prefix after transcription (transcript gate), added regression tests, and restarted `telegram-tank-bridge.service` to load the updated handler.
 - 2026-02-28: completed voice rollout traceability by syncing missing live voice env mirror keys (idle-timeout/socket/log path) and verifying live Telegram voice requests after restart with warm transcriber process/socket active.
 - 2026-02-28: verified Tank memory parity with Architect; ran Tank summary regeneration (0 summary rows present to rewrite) and confirmed canonical mode rows are `all_context`.
