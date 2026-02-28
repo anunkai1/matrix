@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: saved NanoClaw WhatsApp Server3 rollout handoff plan at `docs/handoffs/nanoclaw-whatsapp-server3-rollout-plan.md` for future resume.
 - 2026-02-28: applied voice-accuracy env keys live to `/etc/default/telegram-architect-bridge` (model `small`, language/decode tuning, low-confidence gate), restarted `telegram-architect-bridge.service`, and synced the redacted env mirror.
 - 2026-02-28: improved voice transcription accuracy and safety by adding decode tuning defaults (`small`, `en`, `beam_size=5`, `best_of=5`, `temperature=0.0`), transcript alias correction, and low-confidence confirmation gating before execution; updated env/docs/test coverage accordingly.
 - 2026-02-28: expanded Tank required prefixes to `@tankhas_bot,tank,hey tank,t-a-n-k`, synced live env mirror, and restarted `telegram-tank-bridge.service` to apply.
