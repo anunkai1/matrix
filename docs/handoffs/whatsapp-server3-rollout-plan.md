@@ -2,7 +2,7 @@
 
 Status: blocked on WhatsApp auth handshake (`logging in...` -> `401`), cooldown pending
 Owner: anunakii
-Last updated: 2026-02-28 18:15 AEST
+Last updated: 2026-02-28 18:24 AEST
 
 ## Goal (Plain English)
 Set up a WhatsApp-connected assistant on Server3 that routes approved messages to Codex and returns replies safely.
@@ -28,6 +28,7 @@ Set up a WhatsApp-connected assistant on Server3 that routes approved messages t
   - User-level service installed/enabled: `whatsapp-govorun-bridge.service`
   - Codex runtime auth synced for `wa-govorun` and verified (`codex exec` works)
   - Backup flow validated (`ops/whatsapp_govorun/backup_state.sh`)
+  - Auth/session hardening pass applied (queued creds saves + one-time `515` reconnect + delayed auth success exit)
 - In progress:
   - WhatsApp auth/link recovery after repeated rejection
 - Pending:

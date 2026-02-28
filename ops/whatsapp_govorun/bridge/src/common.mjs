@@ -87,3 +87,47 @@ export function createConfig() {
     pairingCode
   };
 }
+
+export function createQueuedCredsSaver(authDir, saveCreds, logger) {
+  let queue = Promise.resolve();
+  const credsPath = path.join(authDir, 'creds.json');
+  const backupPath = path.join(authDir, 'creds.backup.json');
+
+  return function enqueueCredsSave() {
+    queue = queue
+      .then(async () => {
+        try {
+          if (fs.existsSync(credsPath)) {
+            const raw = fs.readFileSync(credsPath, 'utf-8');
+            try {
+              JSON.parse(raw);
+              fs.copyFileSync(credsPath, backupPath);
+              try {
+                fs.chmodSync(backupPath, 0o600);
+              } catch {
+                // Best-effort permission tightening.
+              }
+            } catch {
+              // Keep prior backup if current creds file is malformed.
+            }
+          }
+        } catch {
+          // Backup is best-effort.
+        }
+
+        try {
+          await Promise.resolve(saveCreds());
+          try {
+            fs.chmodSync(credsPath, 0o600);
+          } catch {
+            // Best-effort permission tightening.
+          }
+        } catch (err) {
+          logger?.warn?.({ err: String(err) }, 'failed saving whatsapp creds');
+        }
+      })
+      .catch((err) => {
+        logger?.warn?.({ err: String(err) }, 'whatsapp creds save queue error');
+      });
+  };
+}

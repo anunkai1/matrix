@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: applied WhatsApp auth-flow hardening inspired by OpenClaw/NanoClaw patterns: queued credential saves with backup, websocket error hooks, one-time `515` reconnect during auth, and delayed success exit to allow creds flush; bridge wiring updated to use queued creds save handler.
 - 2026-02-28: refreshed WhatsApp Server3 handoff with incident-backed auth blocker status (`logging in...` -> `401`), detailed next-day recovery runbook, and a copy/paste restart prompt for Codex; also captured scheduled 24h retry reminder context.
 - 2026-02-28: implemented WhatsApp Govorun runtime rollout phase-1 on Server3 (`wa-govorun` user, Node 22, bridge deploy, user systemd service, ops/runbook/infra mirrors), validated codex/no-sudo/backup/service lifecycle, and fixed auth handshake by fetching latest WA web version; auth now generates QR (`/home/wa-govorun/whatsapp-govorun/state/qr-auth.html`) and awaits phone scan for final live chat tests.
 - 2026-02-28: removed obsolete handoff file `docs/handoffs/voucher-automation-resume-handoff.md` per owner request.

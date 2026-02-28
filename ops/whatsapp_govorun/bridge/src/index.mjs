@@ -12,6 +12,7 @@ import makeWASocket, {
 import { runCodex } from './codex.mjs';
 import {
   createConfig,
+  createQueuedCredsSaver,
   ensureDir,
   extractTextFromBaileysMessage,
   readEnvFromFile
@@ -145,8 +146,15 @@ async function start() {
   if (waVersion) socketConfig.version = waVersion;
 
   const sock = makeWASocket(socketConfig);
+  const enqueueCredsSave = createQueuedCredsSaver(config.authDir, saveCreds, logger);
 
-  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on('creds.update', () => enqueueCredsSave());
+
+  if (sock.ws && typeof sock.ws.on === 'function') {
+    sock.ws.on('error', (err) => {
+      logger.error({ err: String(err) }, 'bridge websocket error');
+    });
+  }
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect } = update;

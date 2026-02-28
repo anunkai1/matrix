@@ -4,6 +4,7 @@ import { execSync } from 'child_process';
 
 import makeWASocket, {
   Browsers,
+  DisconnectReason,
   fetchLatestWaWebVersion,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState
@@ -11,7 +12,7 @@ import makeWASocket, {
 import QRCode from 'qrcode';
 import qrcodeTerminal from 'qrcode-terminal';
 
-import { createConfig, ensureDir, readEnvFromFile } from './common.mjs';
+import { createConfig, createQueuedCredsSaver, ensureDir, readEnvFromFile } from './common.mjs';
 import { createLogger } from './logger.mjs';
 
 const localEnv = readEnvFromFile(path.join(process.cwd(), '.env'));
@@ -41,7 +42,8 @@ function writeQrHtml(qr) {
   });
 }
 
-async function startAuth() {
+async function startAuth(options = {}) {
+  const { allow515Retry = true, requestPairing = true } = options;
   let waVersion;
   try {
     const latest = await fetchLatestWaWebVersion();
@@ -65,10 +67,18 @@ async function startAuth() {
 
   const sock = makeWASocket(socketConfig);
   let pairingRequested = false;
+  let closeHandled = false;
+  const enqueueCredsSave = createQueuedCredsSaver(config.authDir, saveCreds, logger);
 
-  sock.ev.on('creds.update', saveCreds);
+  sock.ev.on('creds.update', () => enqueueCredsSave());
 
-  if (!state.creds.registered && config.pairingPhone) {
+  if (sock.ws && typeof sock.ws.on === 'function') {
+    sock.ws.on('error', (err) => {
+      logger.error({ err: String(err) }, 'auth websocket error');
+    });
+  }
+
+  if (requestPairing && !state.creds.me && config.pairingPhone) {
     setTimeout(async () => {
       if (pairingRequested) return;
       pairingRequested = true;
@@ -106,11 +116,30 @@ async function startAuth() {
 
     if (update.connection === 'open') {
       logger.info('whatsapp auth successful');
-      process.exit(0);
+      // Delay exit to let final creds.update writes flush to disk.
+      setTimeout(() => process.exit(0), 1000);
+      return;
     }
 
-    if (update.connection === 'close') {
-      logger.warn('auth connection closed before success');
+    if (update.connection === 'close' && !closeHandled) {
+      closeHandled = true;
+      const statusCode = update?.lastDisconnect?.error?.output?.statusCode;
+      if (statusCode === 515 && allow515Retry) {
+        logger.info('stream error (515) after pairing; reconnecting auth once');
+        try {
+          sock.ws?.close();
+        } catch {
+          // Ignore close errors.
+        }
+        await startAuth({ allow515Retry: false, requestPairing: false });
+        return;
+      }
+      if (statusCode === DisconnectReason.loggedOut) {
+        logger.warn({ statusCode }, 'auth session logged out; relink required');
+      } else {
+        logger.warn({ statusCode }, 'auth connection closed before success');
+      }
+      process.exit(1);
     }
   });
 }
