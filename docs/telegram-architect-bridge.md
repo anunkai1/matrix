@@ -22,8 +22,8 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Voice transcription runner: `src/telegram_bridge/voice_transcribe.py`
 - Local smoke test: `src/telegram_bridge/smoke_test.sh`
 - Systemd source-of-truth unit: `infra/systemd/telegram-architect-bridge.service`
-- Helper profile unit: `infra/systemd/telegram-helper-bridge.service`
-- Helper env template: `infra/env/telegram-helper-bridge.env.example`
+- Tank profile unit: `infra/systemd/telegram-tank-bridge.service`
+- Tank env template: `infra/env/telegram-tank-bridge.env.example`
 - Install/rollback unit: `ops/telegram-bridge/install_systemd.sh`
 - Restart + verification helper: `ops/telegram-bridge/restart_and_verify.sh`
 - Restart helper: `ops/telegram-bridge/restart_service.sh`
@@ -85,7 +85,7 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
 # TELEGRAM_ASSISTANT_NAME=Architect
-# TELEGRAM_REQUIRED_PREFIXES=@helper,@helperbot,helper:
+# TELEGRAM_REQUIRED_PREFIXES=@architect,architect
 # TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE=true
 # TELEGRAM_PERSISTENT_WORKERS_ENABLED=false
 # TELEGRAM_PERSISTENT_WORKERS_MAX=4
@@ -117,22 +117,18 @@ bash ops/telegram-bridge/restart_and_verify.sh
 bash ops/telegram-bridge/status_service.sh
 ```
 
-Install/start the helper service profile:
+Install/start the tank service profile:
 
 ```bash
-bash ops/telegram-bridge/deploy_helper_workspace.sh apply
-sudo cp infra/env/telegram-helper-bridge.env.example /etc/default/telegram-helper-bridge
-sudo nano /etc/default/telegram-helper-bridge
-UNIT_NAME=telegram-helper-bridge.service bash ops/telegram-bridge/install_systemd.sh apply
-UNIT_NAME=telegram-helper-bridge.service bash ops/telegram-bridge/restart_and_verify.sh
-UNIT_NAME=telegram-helper-bridge.service bash ops/telegram-bridge/status_service.sh
+sudo cp infra/env/telegram-tank-bridge.env.example /etc/default/telegram-tank-bridge
+sudo nano /etc/default/telegram-tank-bridge
+UNIT_NAME=telegram-tank-bridge.service bash ops/telegram-bridge/install_systemd.sh apply
+UNIT_NAME=telegram-tank-bridge.service bash ops/telegram-bridge/restart_and_verify.sh
+UNIT_NAME=telegram-tank-bridge.service bash ops/telegram-bridge/status_service.sh
 ```
 
-Helper profile note:
-- Runtime code path is `/home/helperbot/helperbot`.
-- Helper identity files are managed from:
-  - `infra/helperbot/AGENTS.md`
-  - `infra/helperbot/HELPER_INSTRUCTION.md`
+Tank profile note:
+- Runtime code path is `/home/tank/tankbot`.
 
 ## Voice Runtime Setup (Required for Voice Notes)
 
@@ -177,7 +173,7 @@ Message handling:
 - All allowlisted chats route to Architect.
 - Optional prefix gate:
   - set `TELEGRAM_REQUIRED_PREFIXES` (comma-separated) to only process matching messages.
-  - example: `TELEGRAM_REQUIRED_PREFIXES=@helper,@helperbot,helper:`
+  - example: `TELEGRAM_REQUIRED_PREFIXES=@architect,architect`
   - after a matched prefix, accepted separators are Unicode whitespace, `:`, `-`, `,`, and `.`
   - non-matching messages are ignored.
 - Messages starting with `HA` or `Home Assistant` are forced into Home Assistant mode:
@@ -300,7 +296,7 @@ Common checks:
 - Missing bot token or allowlist in `/etc/default/telegram-architect-bridge`
 - Missing/incorrect prefix list (`TELEGRAM_REQUIRED_PREFIXES`) when messages appear ignored
 - Invalid `TELEGRAM_EXECUTOR_CMD`
-- Missing `codex login` for the service user (`architect` or `helperbot`)
+- Missing `codex login` for the service user (`architect` or `tank`)
 - Voice pipeline issues in `TELEGRAM_VOICE_TRANSCRIBE_CMD`
 
 Memory maintenance:

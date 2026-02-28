@@ -31,7 +31,7 @@ Mandatory process rules:
    - `git status`
    - `git show --stat --oneline -1`
    - `git log -1 --oneline`
-6. Update `SERVER3_SUMMARY.md` at end of non-exempt work; update `SERVER3_ARCHIVE.md` only for detailed archival context.
+6. Update `SERVER3_SUMMARY.md` at end of non-exempt work; keep summary as a short rolling log and migrate older detailed entries into `SERVER3_ARCHIVE.md` when needed to keep the summary bounded.
 7. Do not assume missing values. Ask user when required.
 8. Keep secrets out of git.
 9. Follow minimal-change principle.
@@ -123,7 +123,7 @@ Resume sequence requested:
 4. Implement ETH/USDT sender (chainId=1 only, USDT fixed address).
 5. Implement voucher storage/output and log redaction.
 6. Add tests/validations.
-7. Commit + push + update `SERVER3_SUMMARY.md` (and update `SERVER3_ARCHIVE.md` when detailed archival context is needed).
+7. Commit + push + update `SERVER3_SUMMARY.md` (and migrate/update `SERVER3_ARCHIVE.md` as needed to keep summary within rolling bound and preserve detailed history).
 
 Security reminders for public GitHub repo:
 - Never commit private keys, tokens, API secrets, voucher card/PIN, or full credential dumps.
