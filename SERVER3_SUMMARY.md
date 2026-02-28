@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: implemented WhatsApp Govorun runtime rollout phase-1 on Server3 (`wa-govorun` user, Node 22, bridge deploy, user systemd service, ops/runbook/infra mirrors), validated codex/no-sudo/backup/service lifecycle, and fixed auth handshake by fetching latest WA web version; auth now generates QR (`/home/wa-govorun/whatsapp-govorun/state/qr-auth.html`) and awaits phone scan for final live chat tests.
 - 2026-02-28: removed obsolete handoff file `docs/handoffs/voucher-automation-resume-handoff.md` per owner request.
 - 2026-02-28: renamed the WhatsApp rollout handoff file from `docs/handoffs/nanoclaw-whatsapp-server3-rollout-plan.md` to `docs/handoffs/whatsapp-server3-rollout-plan.md`.
 - 2026-02-28: rewrote the WhatsApp Server3 rollout handoff into a Codex-first, Server3-specific execution plan with explicit preflight gap closure (Node 20+), phased checks, and trigger/validation/rollback steps; removed legacy product/model references from the plan content.

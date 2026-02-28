@@ -1,6 +1,6 @@
 # WhatsApp + Codex Rollout Plan (Server3)
 
-Status: planned (not started)
+Status: in progress (phase 1-3 complete, auth pending)
 Owner: anunakii
 Last updated: 2026-02-28 (AEST)
 
@@ -18,7 +18,21 @@ Set up a WhatsApp-connected assistant on Server3 that routes approved messages t
 - Host: `server3`
 - Existing bot services: `telegram-architect-bridge.service`, `telegram-tank-bridge.service`
 - Docker: installed
-- Node.js: currently `v18.x` (must be upgraded to `v20+` before rollout)
+- Node.js: `v22.22.0` (upgraded and validated)
+
+## Execution progress (2026-02-28)
+- Completed:
+  - Dedicated runtime user created: `wa-govorun`
+  - Isolated runtime root prepared: `/home/wa-govorun/whatsapp-govorun`
+  - Bridge app deployed with runtime deps installed
+  - User-level service installed/enabled: `whatsapp-govorun-bridge.service`
+  - Codex runtime auth synced for `wa-govorun` and verified (`codex exec` works)
+  - Backup flow validated (`ops/whatsapp_govorun/backup_state.sh`)
+- In progress:
+  - WhatsApp auth/link step (QR generated; awaiting phone scan)
+- Pending:
+  - Post-auth live DM/group trigger tests
+  - Final service start and reboot persistence check
 
 ## Scope for this rollout
 - In scope:
