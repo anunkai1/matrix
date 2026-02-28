@@ -614,6 +614,35 @@ def apply_voice_alias_replacements(
     return updated, changed
 
 
+def build_active_voice_alias_replacements(
+    config,
+    state: Optional[State] = None,
+) -> List[Tuple[str, str]]:
+    merged: Dict[str, Tuple[str, str]] = {}
+    for source, target in getattr(config, "voice_alias_replacements", []):
+        source_value = source.strip()
+        target_value = target.strip()
+        if not source_value or not target_value:
+            continue
+        merged[source_value.casefold()] = (source_value, target_value)
+
+    if state is not None:
+        learning_store = getattr(state, "voice_alias_learning_store", None)
+        if learning_store is not None:
+            try:
+                approved = learning_store.get_approved_replacements()
+            except Exception:
+                logging.exception("Failed to load approved learned voice aliases")
+                approved = []
+            for source, target in approved:
+                source_value = source.strip()
+                target_value = target.strip()
+                if not source_value or not target_value:
+                    continue
+                merged[source_value.casefold()] = (source_value, target_value)
+    return list(merged.values())
+
+
 def build_low_confidence_voice_message(
     config,
     transcript: str,
@@ -630,6 +659,28 @@ def build_low_confidence_voice_message(
         f"{confirm_example}\n\n"
         "Or resend a clearer voice note."
     )
+
+
+def build_voice_alias_suggestions_message(suggestions: List[object]) -> Optional[str]:
+    if not suggestions:
+        return None
+    lines = [
+        "Voice correction learning suggestion(s):",
+    ]
+    for suggestion in suggestions:
+        suggestion_id = getattr(suggestion, "suggestion_id", None)
+        source = str(getattr(suggestion, "source", "")).strip()
+        target = str(getattr(suggestion, "target", "")).strip()
+        count = getattr(suggestion, "count", None)
+        if not isinstance(suggestion_id, int) or not source or not target:
+            continue
+        count_text = f" (seen {count}x)" if isinstance(count, int) else ""
+        lines.append(f"- #{suggestion_id}: `{source}` => `{target}`{count_text}")
+    if len(lines) == 1:
+        return None
+    lines.append("Approve with: `/voice-alias approve <id>`")
+    lines.append("Reject with: `/voice-alias reject <id>`")
+    return "\n".join(lines)
 
 
 def transcribe_voice(config, voice_path: str) -> Tuple[str, Optional[float]]:
@@ -660,6 +711,7 @@ def transcribe_voice(config, voice_path: str) -> Tuple[str, Optional[float]]:
 
 
 def transcribe_voice_for_chat(
+    state: State,
     config,
     client: TelegramClient,
     chat_id: int,
@@ -728,7 +780,7 @@ def transcribe_voice_for_chat(
 
         transcript, aliases_applied = apply_voice_alias_replacements(
             transcript,
-            getattr(config, "voice_alias_replacements", []),
+            build_active_voice_alias_replacements(config, state),
         )
         if aliases_applied:
             logging.info("Applied voice alias corrections chat_id=%s", chat_id)
@@ -738,6 +790,16 @@ def transcribe_voice_for_chat(
             and confidence is not None
             and confidence < float(getattr(config, "voice_low_confidence_threshold", 0.0))
         ):
+            learning_store = getattr(state, "voice_alias_learning_store", None)
+            if learning_store is not None:
+                try:
+                    learning_store.register_low_confidence_transcript(
+                        chat_id=chat_id,
+                        transcript=transcript,
+                        confidence=confidence,
+                    )
+                except Exception:
+                    logging.exception("Failed to register low-confidence transcript for learning")
             client.send_message(
                 chat_id,
                 build_low_confidence_voice_message(config, transcript, confidence),
@@ -775,6 +837,8 @@ def build_help_text(config) -> str:
         "/status - show bridge status and context\n"
         "/reset - clear saved context for this chat\n"
         "/restart - queue a safe bridge restart\n"
+        "/voice-alias list - show pending learned voice corrections\n"
+        "/voice-alias approve <id> - approve one learned correction\n"
         "server3-tv-start - start TV desktop mode (local shell command)\n"
         "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
@@ -848,6 +912,7 @@ def build_status_text(state: State, config, chat_id: Optional[int] = None) -> st
 
 
 def prepare_prompt_input(
+    state: State,
     config,
     client: TelegramClient,
     chat_id: int,
@@ -885,6 +950,7 @@ def prepare_prompt_input(
     if voice_file_id:
         progress.set_phase("Transcribing voice message.")
         transcript = transcribe_voice_for_chat(
+            state=state,
             config=config,
             client=client,
             chat_id=chat_id,
@@ -1226,6 +1292,7 @@ def process_prompt(
     try:
         progress.start()
         prepared = prepare_prompt_input(
+            state=state,
             config=config,
             client=client,
             chat_id=chat_id,
@@ -1450,6 +1517,201 @@ def handle_restart_command(
     trigger_restart_async(state, client, chat_id, message_id)
 
 
+def build_voice_alias_help_text() -> str:
+    return (
+        "Voice alias learning commands:\n"
+        "/voice-alias list - show pending learned corrections\n"
+        "/voice-alias approve <id> - approve one suggestion\n"
+        "/voice-alias reject <id> - reject one suggestion\n"
+        "/voice-alias add <source> => <target> - add approved alias manually"
+    )
+
+
+def parse_voice_alias_suggestion_id(tail: str, action: str) -> Optional[int]:
+    prefix = f"{action} "
+    if not tail.lower().startswith(prefix):
+        return None
+    value = tail[len(prefix):].strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def handle_voice_alias_command(
+    state: State,
+    config,
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+    raw_text: str,
+) -> bool:
+    learning_store = getattr(state, "voice_alias_learning_store", None)
+    if learning_store is None:
+        client.send_message(
+            chat_id,
+            "Voice alias learning is disabled.",
+            reply_to_message_id=message_id,
+        )
+        return True
+
+    pieces = raw_text.strip().split(maxsplit=1)
+    tail = pieces[1].strip() if len(pieces) > 1 else ""
+    if not tail or tail.lower() == "help":
+        client.send_message(
+            chat_id,
+            build_voice_alias_help_text(),
+            reply_to_message_id=message_id,
+        )
+        return True
+
+    if tail.lower() == "list":
+        pending = learning_store.list_pending()
+        if not pending:
+            client.send_message(
+                chat_id,
+                "No pending learned voice alias suggestions.",
+                reply_to_message_id=message_id,
+            )
+            return True
+        lines = ["Pending voice alias suggestions:"]
+        for suggestion in pending:
+            lines.append(
+                f"- #{suggestion.suggestion_id}: `{suggestion.source}` => `{suggestion.target}` (seen {suggestion.count}x)"
+            )
+        lines.append("Approve with: `/voice-alias approve <id>`")
+        lines.append("Reject with: `/voice-alias reject <id>`")
+        client.send_message(chat_id, "\n".join(lines), reply_to_message_id=message_id)
+        return True
+
+    approve_id = parse_voice_alias_suggestion_id(tail, "approve")
+    if approve_id is not None:
+        approved = learning_store.approve(approve_id)
+        if approved is None:
+            client.send_message(
+                chat_id,
+                f"No pending suggestion with id {approve_id}.",
+                reply_to_message_id=message_id,
+            )
+            return True
+        client.send_message(
+            chat_id,
+            f"Approved voice alias #{approve_id}: `{approved.source}` => `{approved.target}`",
+            reply_to_message_id=message_id,
+        )
+        return True
+
+    reject_id = parse_voice_alias_suggestion_id(tail, "reject")
+    if reject_id is not None:
+        rejected = learning_store.reject(reject_id)
+        if rejected is None:
+            client.send_message(
+                chat_id,
+                f"No pending suggestion with id {reject_id}.",
+                reply_to_message_id=message_id,
+            )
+            return True
+        client.send_message(
+            chat_id,
+            f"Rejected voice alias #{reject_id}: `{rejected.source}` => `{rejected.target}`",
+            reply_to_message_id=message_id,
+        )
+        return True
+
+    if tail.lower().startswith("add "):
+        payload = tail[4:].strip()
+        if "=>" not in payload:
+            client.send_message(
+                chat_id,
+                "Usage: /voice-alias add <source> => <target>",
+                reply_to_message_id=message_id,
+            )
+            return True
+        source, target = payload.split("=>", 1)
+        source = source.strip()
+        target = target.strip()
+        if not source or not target:
+            client.send_message(
+                chat_id,
+                "Usage: /voice-alias add <source> => <target>",
+                reply_to_message_id=message_id,
+            )
+            return True
+        try:
+            added_source, added_target = learning_store.add_manual(source, target)
+        except ValueError:
+            client.send_message(
+                chat_id,
+                "Usage: /voice-alias add <source> => <target>",
+                reply_to_message_id=message_id,
+            )
+            return True
+        client.send_message(
+            chat_id,
+            f"Added manual voice alias: `{added_source}` => `{added_target}`",
+            reply_to_message_id=message_id,
+        )
+        return True
+
+    client.send_message(
+        chat_id,
+        build_voice_alias_help_text(),
+        reply_to_message_id=message_id,
+    )
+    return True
+
+
+def maybe_process_voice_alias_learning_confirmation(
+    state: State,
+    config,
+    client: TelegramClient,
+    chat_id: int,
+    message_id: Optional[int],
+    prompt_input: str,
+    command: Optional[str],
+    ha_keyword_mode: bool,
+    photo_file_id: Optional[str],
+    voice_file_id: Optional[str],
+    document: Optional[DocumentPayload],
+) -> None:
+    if not prompt_input.strip():
+        return
+    if command is not None:
+        return
+    if ha_keyword_mode:
+        return
+    if photo_file_id or voice_file_id or document is not None:
+        return
+
+    learning_store = getattr(state, "voice_alias_learning_store", None)
+    if learning_store is None:
+        return
+
+    try:
+        result = learning_store.consume_confirmation(
+            chat_id=chat_id,
+            confirmed_text=prompt_input,
+            active_replacements=build_active_voice_alias_replacements(config, state),
+        )
+    except Exception:
+        logging.exception("Failed to process voice alias learning confirmation")
+        return
+
+    if not result.suggestion_created:
+        return
+
+    message = build_voice_alias_suggestions_message(result.suggestion_created)
+    if not message:
+        return
+    client.send_message(
+        chat_id,
+        message,
+        reply_to_message_id=message_id,
+    )
+
+
 def handle_known_command(
     state: State,
     config,
@@ -1457,6 +1719,7 @@ def handle_known_command(
     chat_id: int,
     message_id: Optional[int],
     command: Optional[str],
+    raw_text: str,
 ) -> bool:
     if command == "/start":
         client.send_message(
@@ -1485,6 +1748,15 @@ def handle_known_command(
     if command == "/reset":
         handle_reset_command(state, config, client, chat_id, message_id)
         return True
+    if command == "/voice-alias":
+        return handle_voice_alias_command(
+            state=state,
+            config=config,
+            client=client,
+            chat_id=chat_id,
+            message_id=message_id,
+            raw_text=raw_text,
+        )
     return False
 
 
@@ -1619,6 +1891,21 @@ def handle_update(
                 fields={"chat_id": chat_id, "message_id": message_id},
             )
 
+    if prompt_input:
+        maybe_process_voice_alias_learning_confirmation(
+            state=state,
+            config=config,
+            client=client,
+            chat_id=chat_id,
+            message_id=message_id,
+            prompt_input=prompt_input,
+            command=command,
+            ha_keyword_mode=ha_keyword_mode,
+            photo_file_id=photo_file_id,
+            voice_file_id=voice_file_id,
+            document=document,
+        )
+
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
     if memory_engine is not None and prompt_input and not ha_keyword_mode:
         cmd_result = handle_memory_command(
@@ -1643,7 +1930,15 @@ def handle_update(
             stateless = cmd_result.stateless
             command = None
 
-    if handle_known_command(state, config, client, chat_id, message_id, command):
+    if handle_known_command(
+        state,
+        config,
+        client,
+        chat_id,
+        message_id,
+        command,
+        prompt_input or "",
+    ):
         emit_event(
             "bridge.command_handled",
             fields={"chat_id": chat_id, "message_id": message_id, "command": command or ""},

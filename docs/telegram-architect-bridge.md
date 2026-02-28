@@ -21,6 +21,7 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Safe executor wrapper: `src/telegram_bridge/executor.sh`
 - Voice transcription runner: `src/telegram_bridge/voice_transcribe.py`
 - Voice transcription service (warm model + idle timeout): `src/telegram_bridge/voice_transcribe_service.py`
+- Voice alias learning store (suggestions + approvals): `src/telegram_bridge/voice_alias_learning.py`
 - Local smoke test: `src/telegram_bridge/smoke_test.sh`
 - Systemd source-of-truth unit: `infra/systemd/telegram-architect-bridge.service`
 - Tank profile unit: `infra/systemd/telegram-tank-bridge.service`
@@ -93,6 +94,10 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_VOICE_LOW_CONFIDENCE_CONFIRMATION_ENABLED=true
 # TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD=0.45
 # TELEGRAM_VOICE_ALIAS_REPLACEMENTS=master broom=>master bedroom;air con=>aircon
+# TELEGRAM_VOICE_ALIAS_LEARNING_ENABLED=true
+# TELEGRAM_VOICE_ALIAS_LEARNING_PATH=/home/architect/.local/state/telegram-architect-bridge/voice_alias_learning.json
+# TELEGRAM_VOICE_ALIAS_LEARNING_MIN_EXAMPLES=2
+# TELEGRAM_VOICE_ALIAS_LEARNING_CONFIRMATION_WINDOW_SECONDS=900
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
 # TELEGRAM_ASSISTANT_NAME=Architect
@@ -157,6 +162,7 @@ Voice runtime behavior:
 - Fixed preprocessing runs before transcription when `ffmpeg` is available (mono 16k + high/low-pass filter chain).
 - Transcript cleanup applies phrase aliases before execution (defaults include `master broom -> master bedroom` and `air con -> aircon`; extend via `TELEGRAM_VOICE_ALIAS_REPLACEMENTS`).
 - If transcript confidence is below `TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD` (default `0.45`), bridge asks for text confirmation instead of executing automatically.
+- Learning mode can propose new alias corrections after repeated low-confidence confirmation pairs; suggestions require explicit approval before activation.
 
 Verification:
 
@@ -174,6 +180,10 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/status` bridge health and uptime
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
+- `/voice-alias list` show pending learned voice corrections
+- `/voice-alias approve <id>` approve one learned correction
+- `/voice-alias reject <id>` reject one learned correction
+- `/voice-alias add <source> => <target>` add manual correction
 - `server3-tv-start` start TV desktop mode from shell
 - `server3-tv-stop` stop TV desktop mode and return to CLI from shell
 - `/memory mode` show memory mode for this conversation key

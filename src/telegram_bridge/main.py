@@ -52,6 +52,7 @@ try:
     from .stream_buffer import BoundedTextBuffer
     from .structured_logging import configure_bridge_logging, emit_event
     from .transport import TELEGRAM_LIMIT, TelegramClient, to_telegram_chunks
+    from .voice_alias_learning import VoiceAliasLearningStore
 except ImportError:
     from executor import (
         ExecutorProgressEvent,
@@ -94,6 +95,7 @@ except ImportError:
     from stream_buffer import BoundedTextBuffer
     from structured_logging import configure_bridge_logging, emit_event
     from transport import TELEGRAM_LIMIT, TelegramClient, to_telegram_chunks
+    from voice_alias_learning import VoiceAliasLearningStore
 
 
 @dataclass
@@ -114,6 +116,10 @@ class Config:
     voice_transcribe_cmd: List[str]
     voice_transcribe_timeout_seconds: int
     voice_alias_replacements: List[Tuple[str, str]]
+    voice_alias_learning_enabled: bool
+    voice_alias_learning_path: str
+    voice_alias_learning_min_examples: int
+    voice_alias_learning_confirmation_window_seconds: int
     voice_low_confidence_confirmation_enabled: bool
     voice_low_confidence_threshold: float
     state_dir: str
@@ -361,6 +367,25 @@ def load_config() -> Config:
             120,
         ),
         voice_alias_replacements=build_voice_alias_replacements(),
+        voice_alias_learning_enabled=parse_bool_env(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_ENABLED",
+            True,
+        ),
+        voice_alias_learning_path=os.getenv(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_PATH",
+            os.path.join(state_dir, "voice_alias_learning.json"),
+        ).strip()
+        or os.path.join(state_dir, "voice_alias_learning.json"),
+        voice_alias_learning_min_examples=parse_int_env(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_MIN_EXAMPLES",
+            2,
+            minimum=1,
+        ),
+        voice_alias_learning_confirmation_window_seconds=parse_int_env(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_CONFIRMATION_WINDOW_SECONDS",
+            900,
+            minimum=30,
+        ),
         voice_low_confidence_confirmation_enabled=parse_bool_env(
             "TELEGRAM_VOICE_LOW_CONFIDENCE_CONFIRMATION_ENABLED",
             True,
@@ -740,6 +765,21 @@ def run_bridge(config: Config) -> int:
             if session.thread_id:
                 loaded_threads[chat_id] = session.thread_id
 
+    voice_alias_learning_store = None
+    if config.voice_alias_learning_enabled:
+        try:
+            voice_alias_learning_store = VoiceAliasLearningStore(
+                path=config.voice_alias_learning_path,
+                min_examples=config.voice_alias_learning_min_examples,
+                confirmation_window_seconds=config.voice_alias_learning_confirmation_window_seconds,
+            )
+        except Exception:
+            logging.exception(
+                "Failed to initialize voice alias learning store at %s; continuing without learning.",
+                config.voice_alias_learning_path,
+            )
+            voice_alias_learning_store = None
+
     state = State(
         chat_threads=loaded_threads,
         chat_thread_path=chat_thread_path,
@@ -757,6 +797,7 @@ def run_bridge(config: Config) -> int:
         chat_sessions=loaded_canonical_sessions,
         chat_sessions_path=chat_sessions_path,
         memory_engine=memory_engine,
+        voice_alias_learning_store=voice_alias_learning_store,
     )
     state_repo = StateRepository(state)
     client = TelegramClient(config)
@@ -832,6 +873,13 @@ def run_bridge(config: Config) -> int:
         config.memory_max_messages_per_key,
         config.memory_max_summaries_per_key,
         config.memory_prune_interval_seconds,
+    )
+    logging.info(
+        "Voice alias learning enabled=%s path=%s min_examples=%s confirmation_window_seconds=%s",
+        bool(voice_alias_learning_store),
+        config.voice_alias_learning_path,
+        config.voice_alias_learning_min_examples,
+        config.voice_alias_learning_confirmation_window_seconds,
     )
     logging.info(
         "Canonical sessions enabled=%s count=%s backend=%s source=%s json_path=%s sqlite_path=%s",

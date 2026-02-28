@@ -65,6 +65,10 @@ def make_config(**overrides):
         "voice_transcribe_cmd": [],
         "voice_transcribe_timeout_seconds": 10,
         "voice_alias_replacements": [],
+        "voice_alias_learning_enabled": True,
+        "voice_alias_learning_path": "/tmp/voice_alias_learning.json",
+        "voice_alias_learning_min_examples": 2,
+        "voice_alias_learning_confirmation_window_seconds": 900,
         "voice_low_confidence_confirmation_enabled": True,
         "voice_low_confidence_threshold": 0.45,
         "state_dir": "/tmp",
@@ -221,6 +225,7 @@ class BridgeCoreTests(unittest.TestCase):
         )
         try:
             transcript = bridge_handlers.transcribe_voice_for_chat(
+                state=bridge.State(),
                 config=config,
                 client=client,
                 chat_id=1,
@@ -254,6 +259,7 @@ class BridgeCoreTests(unittest.TestCase):
         )
         try:
             transcript = bridge_handlers.transcribe_voice_for_chat(
+                state=bridge.State(),
                 config=config,
                 client=client,
                 chat_id=1,
@@ -278,6 +284,7 @@ class BridgeCoreTests(unittest.TestCase):
         progress = mock.Mock()
 
         prepared = bridge_handlers.prepare_prompt_input(
+            state=bridge.State(),
             config=config,
             client=client,
             chat_id=1,
@@ -304,6 +311,7 @@ class BridgeCoreTests(unittest.TestCase):
         progress = mock.Mock()
 
         prepared = bridge_handlers.prepare_prompt_input(
+            state=bridge.State(),
             config=config,
             client=client,
             chat_id=1,

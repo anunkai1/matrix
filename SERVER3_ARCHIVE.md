@@ -60,6 +60,16 @@ Summary:
 Migrated out of summary during this trim:
 - 2026-02-28: applied live Tank sudoers mirror so restart permission is restricted to `telegram-tank-bridge.service` only.
 
+## 2026-02-28 (Summary Roll-Forward Trim for Voice Alias Learning Rollout)
+
+Summary:
+- Added a new rolling summary entry for controlled voice-alias self-learning with explicit approval commands.
+- Re-trimmed summary back to rolling bounds by migrating two oldest entries into archive.
+
+Migrated out of summary during this trim:
+- 2026-02-28: removed legacy `tasks/lessons.md` compatibility stub and deleted empty `tasks/` folder after lessons migration to `docs/instructions/lessons.md`.
+- 2026-02-28: recorded owner risk decisions (`H5/H6/H7/H9`) and delivered H8 hardening by rejecting `--base-url` in direct HA scripts; docs and lessons updated.
+
 ### Migrated Historical Summary Content (verbatim from previous SERVER3_SUMMARY.md)
 
 # Server3 Summary
