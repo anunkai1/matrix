@@ -99,6 +99,18 @@ Migrated out of summary during this trim:
 - 2026-02-28: upgraded chat summarization to structured sections (objective/decisions/state/open items/preferences/risks), added summary-regeneration helper, and regenerated all 6 existing live summaries in `/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3`.
 - 2026-02-28: renamed memory mode label from `full` to `all_context` across runtime/help/docs, while keeping `full` as a backward-compatible alias.
 
+## 2026-02-28 (Summary Roll-Forward Trim for Voucher Handoff Removal)
+
+Summary:
+- Added a new rolling-summary entry for deletion of `docs/handoffs/voucher-automation-resume-handoff.md` per owner request.
+- Re-trimmed summary back to rolling bounds by migrating four oldest entries into archive.
+
+Migrated out of summary during this trim:
+- 2026-02-28: completed voice rollout traceability by syncing missing live voice env mirror keys (idle-timeout/socket/log path) and verifying live Telegram voice requests after restart with warm transcriber process/socket active.
+- 2026-02-28: verified Tank memory parity with Architect; ran Tank summary regeneration (0 summary rows present to rewrite) and confirmed canonical mode rows are `all_context`.
+- 2026-02-28: upgraded voice transcription runtime with a warm persistent service (`voice_transcribe_service.py`) that loads on first voice request, reuses the model, auto-unloads after idle timeout (default 1 hour), uses GPU-first with CPU fallback, and applies fixed ffmpeg preprocessing when available.
+- 2026-02-28: improved high-level policy clarity in `ARCHITECT_INSTRUCTION.md` (added `LESSONS.md` to session-start checklist, referenced canonical Git section to avoid duplicate workflow drift, relaxed paused-state next-action wording to accept explicit approval with a recommended phrase, and updated sudo-boundary wording to present tense).
+
 ### Migrated Historical Summary Content (verbatim from previous SERVER3_SUMMARY.md)
 
 # Server3 Summary

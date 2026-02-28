@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: removed obsolete handoff file `docs/handoffs/voucher-automation-resume-handoff.md` per owner request.
 - 2026-02-28: renamed the WhatsApp rollout handoff file from `docs/handoffs/nanoclaw-whatsapp-server3-rollout-plan.md` to `docs/handoffs/whatsapp-server3-rollout-plan.md`.
 - 2026-02-28: rewrote the WhatsApp Server3 rollout handoff into a Codex-first, Server3-specific execution plan with explicit preflight gap closure (Node 20+), phased checks, and trigger/validation/rollback steps; removed legacy product/model references from the plan content.
 - 2026-02-28: removed the `mansplain:` shortcut from active policy files (`ARCHITECT_INSTRUCTION.md` and local `private/SOUL.md`); no shortcut is currently configured.
@@ -24,10 +25,6 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - 2026-02-28: improved voice transcription accuracy and safety by adding decode tuning defaults (`small`, `en`, `beam_size=5`, `best_of=5`, `temperature=0.0`), transcript alias correction, and low-confidence confirmation gating before execution; updated env/docs/test coverage accordingly.
 - 2026-02-28: expanded Tank required prefixes to `@tankhas_bot,tank,hey tank,t-a-n-k`, synced live env mirror, and restarted `telegram-tank-bridge.service` to apply.
 - 2026-02-28: fixed required-prefix handling for voice-only requests by enforcing prefix after transcription (transcript gate), added regression tests, and restarted `telegram-tank-bridge.service` to load the updated handler.
-- 2026-02-28: completed voice rollout traceability by syncing missing live voice env mirror keys (idle-timeout/socket/log path) and verifying live Telegram voice requests after restart with warm transcriber process/socket active.
-- 2026-02-28: verified Tank memory parity with Architect; ran Tank summary regeneration (0 summary rows present to rewrite) and confirmed canonical mode rows are `all_context`.
-- 2026-02-28: upgraded voice transcription runtime with a warm persistent service (`voice_transcribe_service.py`) that loads on first voice request, reuses the model, auto-unloads after idle timeout (default 1 hour), uses GPU-first with CPU fallback, and applies fixed ffmpeg preprocessing when available.
-- 2026-02-28: improved high-level policy clarity in `ARCHITECT_INSTRUCTION.md` (added `LESSONS.md` to session-start checklist, referenced canonical Git section to avoid duplicate workflow drift, relaxed paused-state next-action wording to accept explicit approval with a recommended phrase, and updated sudo-boundary wording to present tense).
 
 ## Archive Pointer
 - `SERVER3_ARCHIVE.md` is the canonical long-term detailed history.
