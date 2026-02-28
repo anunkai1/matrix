@@ -31,6 +31,7 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Memory maintenance helper: `ops/telegram-bridge/memory_maintenance.sh`
 - Memory restore helper: `ops/telegram-bridge/memory_restore.sh`
 - Memory restore drill helper: `ops/telegram-bridge/memory_restore_drill.sh`
+- Summary regeneration helper: `ops/telegram-bridge/regenerate_summaries.py`
 - Memory alert helper: `ops/telegram-bridge/memory_alert.sh`
 - Memory timer installer: `ops/telegram-bridge/install_memory_timers.sh`
 - Memory maintenance systemd units:
@@ -322,6 +323,14 @@ Non-destructive restore drill:
 bash ops/telegram-bridge/memory_restore_drill.sh
 # optional:
 # bash ops/telegram-bridge/memory_restore_drill.sh --backup /path/to/memory-backup.sqlite3 --keep-temp
+```
+
+Summary regeneration (rebuild existing `chat_summaries` with current formatter):
+
+```bash
+python3 ops/telegram-bridge/regenerate_summaries.py
+# optional:
+# python3 ops/telegram-bridge/regenerate_summaries.py --conversation-key tg:211761499
 ```
 
 Scheduled memory timers:

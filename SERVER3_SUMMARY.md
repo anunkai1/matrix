@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: upgraded chat summarization to structured sections (objective/decisions/state/open items/preferences/risks), added summary-regeneration helper, and regenerated all 6 existing live summaries in `/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3`.
 - 2026-02-28: renamed memory mode label from `full` to `all_context` across runtime/help/docs, while keeping `full` as a backward-compatible alias.
 - 2026-02-28: removed `docs/instructions/lessons.md` redirect stub; `LESSONS.md` is now the only active lessons path.
 - 2026-02-28: cleaned doc inconsistencies by removing obsolete helper-bot instructions from bridge docs, aligning voucher handoff summary/archive wording with rolling policy, and removing contradictory lessons-path history line.

@@ -222,6 +222,25 @@ class MemoryEngineTests(unittest.TestCase):
 
             status = engine.get_status(key)
             self.assertGreaterEqual(status.summary_count, 1)
+            with engine._lock, engine._connect() as conn:
+                latest_summary = conn.execute(
+                    """
+                    SELECT summary_text
+                    FROM chat_summaries
+                    WHERE conversation_key = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (key,),
+                ).fetchone()
+            self.assertIsNotNone(latest_summary)
+            summary_text = str(latest_summary["summary_text"])
+            self.assertIn("Objective:", summary_text)
+            self.assertIn("Decisions Made:", summary_text)
+            self.assertIn("Current State:", summary_text)
+            self.assertIn("Open Items:", summary_text)
+            self.assertIn("User Preferences:", summary_text)
+            self.assertIn("Risks/Blockers:", summary_text)
 
             assembled = engine.begin_turn(
                 conversation_key=key,
@@ -385,6 +404,60 @@ class MemoryEngineTests(unittest.TestCase):
             self.assertGreater(result.pruned_messages, 0)
             self.assertGreater(result.pruned_summaries, 0)
             self.assertEqual(reconcile.call_count, 1)
+
+    def test_regenerate_summaries_rewrites_legacy_format(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.telegram_key(66)
+            engine = memory.MemoryEngine(db_path)
+            now = time.time()
+
+            with engine._lock, engine._connect() as conn:
+                conn.executemany(
+                    """
+                    INSERT INTO messages (
+                        conversation_key,
+                        channel,
+                        sender_role,
+                        sender_name,
+                        text,
+                        ts,
+                        token_estimate,
+                        is_bot
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (key, "telegram", "user", "User", "We need to rename mode for clarity.", now + 1, 8, 0),
+                        (key, "telegram", "assistant", "Architect", "Implemented and pushed.", now + 2, 5, 1),
+                    ],
+                )
+                conn.execute(
+                    """
+                    INSERT INTO chat_summaries (
+                        conversation_key,
+                        start_msg_id,
+                        end_msg_id,
+                        summary_text,
+                        key_points_json,
+                        open_loops_json,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (key, 1, 2, "User topics: old\nAssistant outcomes: old", "[]", "[]", now + 3),
+                )
+
+            updated = engine.regenerate_summaries(conversation_key=key)
+            self.assertEqual(updated, 1)
+
+            with engine._lock, engine._connect() as conn:
+                row = conn.execute(
+                    "SELECT summary_text FROM chat_summaries WHERE conversation_key = ? ORDER BY id DESC LIMIT 1",
+                    (key,),
+                ).fetchone()
+            self.assertIsNotNone(row)
+            summary_text = str(row["summary_text"])
+            self.assertIn("Objective:", summary_text)
+            self.assertIn("Current State:", summary_text)
 
 
 if __name__ == "__main__":

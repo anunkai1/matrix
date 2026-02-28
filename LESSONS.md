@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-02-28T11:41:46+10:00 - Regenerate Existing Data After Summary-Format Changes
+- Mistake pattern: Improving summarization logic alone leaves legacy summary rows in old/noisy format, so runtime behavior remains mixed and confusing.
+- Prevention rule: When summary format changes materially, provide and run a controlled regeneration path for existing `chat_summaries` rows in the same rollout.
+- Where/when applied: Memory-engine summarization upgrades and post-deploy validation against live SQLite memory state.
+
 ### 2026-02-28T11:04:38+10:00 - Prefer User-Clear Naming Over Internal Terms
 - Mistake pattern: I used the memory mode label `full`, which users can reasonably read as capacity-full instead of context-scope-full.
 - Prevention rule: For user-facing command labels, choose plain-language names first (for example `all_context`), keep old labels only as compatibility aliases, and update help/docs in the same change.
