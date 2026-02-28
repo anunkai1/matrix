@@ -186,6 +186,58 @@ class BridgeCoreTests(unittest.TestCase):
             (True, "summarize this"),
         )
 
+    @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="turn on the light")
+    def test_prepare_prompt_input_rejects_voice_transcript_without_required_prefix(
+        self, transcribe_voice_for_chat
+    ):
+        client = FakeTelegramClient()
+        config = make_config(required_prefixes=["@helper"])
+        progress = mock.Mock()
+
+        prepared = bridge_handlers.prepare_prompt_input(
+            config=config,
+            client=client,
+            chat_id=1,
+            message_id=11,
+            prompt="",
+            photo_file_id=None,
+            voice_file_id="voice-1",
+            document=None,
+            progress=progress,
+            enforce_voice_prefix_from_transcript=True,
+        )
+
+        self.assertIsNone(prepared)
+        self.assertEqual(len(client.messages), 1)
+        self.assertIn("Helper mode needs a prefixed prompt.", client.messages[0][1])
+        transcribe_voice_for_chat.assert_called_once()
+
+    @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="@helper turn on the light")
+    def test_prepare_prompt_input_accepts_voice_transcript_with_required_prefix(
+        self, transcribe_voice_for_chat
+    ):
+        client = FakeTelegramClient()
+        config = make_config(required_prefixes=["@helper"])
+        progress = mock.Mock()
+
+        prepared = bridge_handlers.prepare_prompt_input(
+            config=config,
+            client=client,
+            chat_id=1,
+            message_id=12,
+            prompt="",
+            photo_file_id=None,
+            voice_file_id="voice-2",
+            document=None,
+            progress=progress,
+            enforce_voice_prefix_from_transcript=True,
+        )
+
+        self.assertIsNotNone(prepared)
+        self.assertEqual(prepared.prompt_text, "turn on the light")
+        self.assertEqual(client.messages, [])
+        transcribe_voice_for_chat.assert_called_once()
+
     def test_json_log_formatter_includes_event_and_fields(self):
         record = logging.LogRecord(
             "telegram_bridge",
@@ -395,7 +447,9 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Helper mode needs a prefixed prompt.", client.messages[0][1])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_ignores_voice_without_prefix_when_required(self, start_message_worker):
+    def test_handle_update_defers_voice_prefix_check_to_transcript_when_required(
+        self, start_message_worker
+    ):
         state = bridge.State()
         client = FakeTelegramClient()
         config = make_config(required_prefixes=["@helper"])
@@ -410,7 +464,11 @@ class BridgeCoreTests(unittest.TestCase):
 
         bridge.handle_update(state, config, client, update)
 
-        self.assertFalse(start_message_worker.called)
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertEqual(kwargs["prompt"], "")
+        self.assertEqual(kwargs["voice_file_id"], "voice-1")
+        self.assertTrue(kwargs["enforce_voice_prefix_from_transcript"])
         self.assertEqual(client.messages, [])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
@@ -434,6 +492,7 @@ class BridgeCoreTests(unittest.TestCase):
         kwargs = start_message_worker.call_args.kwargs
         self.assertEqual(kwargs["prompt"], "transcribe this")
         self.assertEqual(kwargs["voice_file_id"], "voice-2")
+        self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_ha_keyword_prompt_stateless(self, start_message_worker):

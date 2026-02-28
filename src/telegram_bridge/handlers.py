@@ -783,6 +783,7 @@ def prepare_prompt_input(
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
     progress: ProgressReporter,
+    enforce_voice_prefix_from_transcript: bool = False,
 ) -> Optional[PreparedPromptInput]:
     prompt_text = prompt.strip()
     image_path: Optional[str] = None
@@ -820,6 +821,46 @@ def prepare_prompt_input(
         if transcript is None:
             progress.mark_failure("Voice transcription failed.")
             return None
+        if enforce_voice_prefix_from_transcript and config.required_prefixes:
+            has_required_prefix, stripped_transcript = strip_required_prefix(
+                transcript,
+                config.required_prefixes,
+                config.required_prefix_ignore_case,
+            )
+            if not has_required_prefix:
+                emit_event(
+                    "bridge.request_ignored",
+                    fields={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "reason": "prefix_required_transcript",
+                    },
+                )
+                progress.mark_failure("Voice transcript missing required prefix.")
+                client.send_message(
+                    chat_id,
+                    PREFIX_HELP_MESSAGE,
+                    reply_to_message_id=message_id,
+                )
+                return None
+            transcript = stripped_transcript
+            if not transcript.strip():
+                emit_event(
+                    "bridge.request_rejected",
+                    level=logging.WARNING,
+                    fields={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "reason": "prefix_missing_action",
+                    },
+                )
+                progress.mark_failure("Voice transcript prefix missing action.")
+                client.send_message(
+                    chat_id,
+                    PREFIX_HELP_MESSAGE,
+                    reply_to_message_id=message_id,
+                )
+                return None
         if prompt_text:
             prompt_text = f"{prompt_text}\n\nVoice transcript:\n{transcript}"
         else:
@@ -1098,6 +1139,7 @@ def process_prompt(
     document: Optional[DocumentPayload],
     stateless: bool = False,
     sender_name: str = "Telegram User",
+    enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     state_repo = StateRepository(state)
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
@@ -1119,6 +1161,7 @@ def process_prompt(
             voice_file_id=voice_file_id,
             document=document,
             progress=progress,
+            enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
         )
         if prepared is None:
             return
@@ -1223,6 +1266,7 @@ def process_message_worker(
     document: Optional[DocumentPayload],
     stateless: bool = False,
     sender_name: str = "Telegram User",
+    enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     try:
         process_prompt(
@@ -1237,6 +1281,7 @@ def process_message_worker(
             document,
             stateless=stateless,
             sender_name=sender_name,
+            enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
         )
     except Exception:
         logging.exception("Unexpected message worker error for chat_id=%s", chat_id)
@@ -1381,6 +1426,7 @@ def start_message_worker(
     document: Optional[DocumentPayload],
     stateless: bool = False,
     sender_name: str = "Telegram User",
+    enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     worker = threading.Thread(
         target=process_message_worker,
@@ -1396,6 +1442,7 @@ def start_message_worker(
             document,
             stateless,
             sender_name,
+            enforce_voice_prefix_from_transcript,
         ),
         daemon=True,
     )
@@ -1436,31 +1483,36 @@ def handle_update(
     if prompt_input is None and voice_file_id is None and document is None:
         return
 
+    enforce_voice_prefix_from_transcript = False
     if prompt_input is not None and config.required_prefixes:
-        has_required_prefix, stripped_prompt = strip_required_prefix(
-            prompt_input,
-            config.required_prefixes,
-            config.required_prefix_ignore_case,
-        )
-        if not has_required_prefix:
-            emit_event(
-                "bridge.request_ignored",
-                fields={"chat_id": chat_id, "message_id": message_id, "reason": "prefix_required"},
+        voice_without_caption = bool(voice_file_id) and not prompt_input.strip()
+        if voice_without_caption:
+            enforce_voice_prefix_from_transcript = True
+        else:
+            has_required_prefix, stripped_prompt = strip_required_prefix(
+                prompt_input,
+                config.required_prefixes,
+                config.required_prefix_ignore_case,
             )
-            return
-        prompt_input = stripped_prompt
-        if not prompt_input and voice_file_id is None and document is None:
-            emit_event(
-                "bridge.request_rejected",
-                level=logging.WARNING,
-                fields={"chat_id": chat_id, "message_id": message_id, "reason": "prefix_missing_action"},
-            )
-            client.send_message(
-                chat_id,
-                PREFIX_HELP_MESSAGE,
-                reply_to_message_id=message_id,
-            )
-            return
+            if not has_required_prefix:
+                emit_event(
+                    "bridge.request_ignored",
+                    fields={"chat_id": chat_id, "message_id": message_id, "reason": "prefix_required"},
+                )
+                return
+            prompt_input = stripped_prompt
+            if not prompt_input and voice_file_id is None and document is None:
+                emit_event(
+                    "bridge.request_rejected",
+                    level=logging.WARNING,
+                    fields={"chat_id": chat_id, "message_id": message_id, "reason": "prefix_missing_action"},
+                )
+                client.send_message(
+                    chat_id,
+                    PREFIX_HELP_MESSAGE,
+                    reply_to_message_id=message_id,
+                )
+                return
 
     sender_name = extract_sender_name(message)
     stateless = False
@@ -1602,6 +1654,7 @@ def handle_update(
         document=document,
         stateless=stateless,
         sender_name=sender_name,
+        enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
     )
     emit_event(
         "bridge.worker_started",
