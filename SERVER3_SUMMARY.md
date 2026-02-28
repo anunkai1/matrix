@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: renamed the WhatsApp rollout handoff file from `docs/handoffs/nanoclaw-whatsapp-server3-rollout-plan.md` to `docs/handoffs/whatsapp-server3-rollout-plan.md`.
 - 2026-02-28: rewrote the WhatsApp Server3 rollout handoff into a Codex-first, Server3-specific execution plan with explicit preflight gap closure (Node 20+), phased checks, and trigger/validation/rollback steps; removed legacy product/model references from the plan content.
 - 2026-02-28: removed the `mansplain:` shortcut from active policy files (`ARCHITECT_INSTRUCTION.md` and local `private/SOUL.md`); no shortcut is currently configured.
 - 2026-02-28: added default voice alias correction `clode code -> claude code` for transcription reliability, plus test coverage and env/docs example updates.
