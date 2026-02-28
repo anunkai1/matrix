@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import logging
 import tempfile
@@ -24,6 +25,7 @@ import executor as bridge_executor
 import handlers as bridge_handlers
 import session_manager as bridge_session_manager
 import structured_logging as bridge_structured_logging
+import transport as bridge_transport
 
 
 class FakeTelegramClient:
@@ -196,7 +198,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(rendered, "voice caption")
         self.assertEqual(len(client.voices), 1)
         self.assertEqual(len(client.audios), 0)
-        self.assertEqual(client.chat_actions[-1], (1, "record_voice"))
+        self.assertEqual(client.chat_actions, [(1, "record_voice"), (1, "upload_voice")])
 
     def test_send_executor_output_falls_back_to_audio_when_voice_forbidden(self):
         client = FakeTelegramClient()
@@ -213,6 +215,10 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(len(client.voices), 0)
         self.assertEqual(len(client.audios), 1)
         self.assertEqual(client.audios[0][2], "fallback caption")
+        self.assertEqual(
+            client.chat_actions,
+            [(1, "record_voice"), (1, "upload_voice"), (1, "upload_audio")],
+        )
 
     def test_send_executor_output_routes_photo_and_document(self):
         client = FakeTelegramClient()
@@ -232,6 +238,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(rendered_doc, "doc caption")
         self.assertEqual(len(client.photos), 1)
         self.assertEqual(len(client.documents), 1)
+        self.assertEqual(client.chat_actions, [(1, "upload_photo"), (1, "upload_document")])
 
     def test_transport_send_media_remote_uses_request_payload(self):
         config = make_config()
@@ -271,6 +278,68 @@ class BridgeCoreTests(unittest.TestCase):
             self.assertEqual(kwargs["file_field"], "voice")
         finally:
             Path(voice_path).unlink(missing_ok=True)
+
+    def test_transport_retries_transient_http_error_then_succeeds(self):
+        config = make_config()
+        config.retry_sleep_seconds = 0.0
+        setattr(config, "api_max_attempts", 3)
+        client = bridge.TelegramClient(config)
+
+        transient_body = json.dumps(
+            {
+                "ok": False,
+                "error_code": 503,
+                "description": "Service Unavailable",
+            }
+        ).encode("utf-8")
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"ok": true, "result": {"message_id": 1}}'
+
+        transient_error = bridge_transport.HTTPError(
+            url="https://api.telegram.org",
+            code=503,
+            msg="Service Unavailable",
+            hdrs=None,
+            fp=io.BytesIO(transient_body),
+        )
+        with mock.patch.object(bridge_transport, "urlopen", side_effect=[transient_error, Response()]) as mocked:
+            client.send_message(chat_id=1, text="hello")
+
+        self.assertEqual(mocked.call_count, 2)
+
+    def test_transport_does_not_retry_non_transient_http_error(self):
+        config = make_config()
+        config.retry_sleep_seconds = 0.0
+        setattr(config, "api_max_attempts", 3)
+        client = bridge.TelegramClient(config)
+
+        non_transient_body = json.dumps(
+            {
+                "ok": False,
+                "error_code": 400,
+                "description": "Bad Request",
+            }
+        ).encode("utf-8")
+        non_transient_error = bridge_transport.HTTPError(
+            url="https://api.telegram.org",
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=io.BytesIO(non_transient_body),
+        )
+        with mock.patch.object(bridge_transport, "urlopen", side_effect=[non_transient_error]) as mocked:
+            with self.assertRaises(bridge_transport.TelegramApiError):
+                client.send_message(chat_id=1, text="hello")
+
+        self.assertEqual(mocked.call_count, 1)
 
     def test_extract_ha_keyword_request_variants(self):
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("HA open garage"), (True, "open garage"))

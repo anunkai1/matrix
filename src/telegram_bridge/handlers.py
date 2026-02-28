@@ -250,6 +250,13 @@ def is_voice_messages_forbidden_error(exc: Exception) -> bool:
     return "VOICE_MESSAGES_FORBIDDEN" in str(exc).upper()
 
 
+def send_chat_action_safe(client: TelegramClient, chat_id: int, action: str) -> None:
+    try:
+        client.send_chat_action(chat_id, action=action)
+    except Exception:
+        logging.debug("Failed to send %s action for chat_id=%s", action, chat_id)
+
+
 def send_executor_output(
     client: TelegramClient,
     chat_id: int,
@@ -270,6 +277,7 @@ def send_executor_output(
     try:
         media_kind = infer_media_kind(directive.media_ref)
         if media_kind == "photo":
+            send_chat_action_safe(client, chat_id, "upload_photo")
             client.send_photo(
                 chat_id=chat_id,
                 photo=directive.media_ref,
@@ -278,10 +286,8 @@ def send_executor_output(
             )
         elif media_kind == "audio":
             if directive.as_voice and is_voice_compatible_media(directive.media_ref):
-                try:
-                    client.send_chat_action(chat_id, action="record_voice")
-                except Exception:
-                    logging.debug("Failed to send record_voice action for chat_id=%s", chat_id)
+                send_chat_action_safe(client, chat_id, "record_voice")
+                send_chat_action_safe(client, chat_id, "upload_voice")
                 try:
                     client.send_voice(
                         chat_id=chat_id,
@@ -296,6 +302,7 @@ def send_executor_output(
                         "sendVoice forbidden for chat_id=%s; falling back to sendAudio",
                         chat_id,
                     )
+                    send_chat_action_safe(client, chat_id, "upload_audio")
                     client.send_audio(
                         chat_id=chat_id,
                         audio=directive.media_ref,
@@ -303,6 +310,7 @@ def send_executor_output(
                         reply_to_message_id=message_id,
                     )
             else:
+                send_chat_action_safe(client, chat_id, "upload_audio")
                 client.send_audio(
                     chat_id=chat_id,
                     audio=directive.media_ref,
@@ -310,6 +318,7 @@ def send_executor_output(
                     reply_to_message_id=message_id,
                 )
         else:
+            send_chat_action_safe(client, chat_id, "upload_document")
             client.send_document(
                 chat_id=chat_id,
                 document=directive.media_ref,

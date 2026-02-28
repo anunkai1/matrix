@@ -1,21 +1,34 @@
 import json
+import logging
 import mimetypes
 import os
+import socket
+import time
 import uuid
 from typing import Dict, List, Optional, Tuple
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 TELEGRAM_LIMIT = 4096
 TELEGRAM_CAPTION_LIMIT = 1024
+TELEGRAM_API_DEFAULT_MAX_ATTEMPTS = 3
+TELEGRAM_API_MAX_BACKOFF_SECONDS = 10.0
+TELEGRAM_TRANSIENT_ERROR_CODES = {429, 500, 502, 503, 504}
 
 
 class TelegramApiError(RuntimeError):
-    def __init__(self, method: str, description: str, error_code: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        method: str,
+        description: str,
+        error_code: Optional[int] = None,
+        retry_after_seconds: Optional[float] = None,
+    ) -> None:
         self.method = method
         self.description = description
         self.error_code = error_code
+        self.retry_after_seconds = retry_after_seconds
         code_text = f"{error_code} " if error_code is not None else ""
         super().__init__(f"Telegram API {method} failed: {code_text}{description}")
 
@@ -58,45 +71,129 @@ class TelegramClient:
     def __init__(self, config) -> None:
         self.config = config
 
-    def _request(self, method: str, payload: Dict[str, object]) -> Dict[str, object]:
-        endpoint = f"{self.config.api_base}/bot{self.config.token}/{method}"
-        data = urlencode(payload).encode("utf-8")
-        request = Request(endpoint, data=data, method="POST")
+    def _api_max_attempts(self) -> int:
+        raw = getattr(self.config, "api_max_attempts", TELEGRAM_API_DEFAULT_MAX_ATTEMPTS)
         try:
-            with urlopen(request, timeout=self.config.poll_timeout_seconds + 10) as response:
-                body = response.read().decode("utf-8")
-        except HTTPError as exc:
-            response_body = ""
+            parsed = int(raw)
+        except Exception:
+            parsed = TELEGRAM_API_DEFAULT_MAX_ATTEMPTS
+        return max(1, parsed)
+
+    def _api_backoff_base_seconds(self) -> float:
+        raw = getattr(self.config, "retry_sleep_seconds", 1.0)
+        try:
+            parsed = float(raw)
+        except Exception:
+            parsed = 1.0
+        return max(0.05, min(parsed, TELEGRAM_API_MAX_BACKOFF_SECONDS))
+
+    def _is_transient_error(self, exc: Exception) -> bool:
+        if isinstance(exc, TelegramApiError):
+            return exc.error_code in TELEGRAM_TRANSIENT_ERROR_CODES
+        if isinstance(exc, (URLError, TimeoutError, socket.timeout)):
+            return True
+        return False
+
+    def _compute_backoff_seconds(self, exc: Exception, attempt_index: int) -> float:
+        if isinstance(exc, TelegramApiError) and exc.retry_after_seconds is not None:
+            return max(0.0, min(exc.retry_after_seconds, TELEGRAM_API_MAX_BACKOFF_SECONDS))
+        base = self._api_backoff_base_seconds()
+        return min(base * (2**attempt_index), TELEGRAM_API_MAX_BACKOFF_SECONDS)
+
+    def _execute_with_retry(
+        self,
+        method: str,
+        operation,
+    ) -> str:
+        max_attempts = self._api_max_attempts()
+        for attempt_index in range(max_attempts):
             try:
-                response_body = exc.read().decode("utf-8")
-            except Exception:
+                return operation()
+            except Exception as exc:
+                is_last_attempt = attempt_index >= (max_attempts - 1)
+                if is_last_attempt or not self._is_transient_error(exc):
+                    raise
+                delay_seconds = self._compute_backoff_seconds(exc, attempt_index)
+                logging.warning(
+                    "Telegram API %s transient failure (%s). Retrying in %.2fs (%s/%s).",
+                    method,
+                    exc,
+                    delay_seconds,
+                    attempt_index + 1,
+                    max_attempts,
+                )
+                if delay_seconds > 0:
+                    time.sleep(delay_seconds)
+
+        raise RuntimeError("unreachable retry state")
+
+    def _request(self, method: str, payload: Dict[str, object]) -> Dict[str, object]:
+        def request_once() -> str:
+            endpoint = f"{self.config.api_base}/bot{self.config.token}/{method}"
+            data = urlencode(payload).encode("utf-8")
+            request = Request(endpoint, data=data, method="POST")
+            try:
+                with urlopen(request, timeout=self.config.poll_timeout_seconds + 10) as response:
+                    return response.read().decode("utf-8")
+            except HTTPError as exc:
                 response_body = ""
-            description, code = self._extract_telegram_error(
-                response_body,
-                fallback=f"HTTP {exc.code}",
-            )
-            raise TelegramApiError(method, description, code or exc.code) from exc
+                try:
+                    response_body = exc.read().decode("utf-8")
+                except Exception:
+                    response_body = ""
+                description, code, retry_after = self._extract_telegram_error(
+                    response_body,
+                    fallback=f"HTTP {exc.code}",
+                )
+                raise TelegramApiError(
+                    method,
+                    description,
+                    code or exc.code,
+                    retry_after_seconds=retry_after,
+                ) from exc
+
+        body = self._execute_with_retry(method, request_once)
         decoded = json.loads(body)
         if not decoded.get("ok"):
             description = str(decoded.get("description", "unknown Telegram error"))
             error_code = decoded.get("error_code")
             parsed_code = int(error_code) if isinstance(error_code, int) else None
-            raise TelegramApiError(method, description, parsed_code)
+            retry_after = self._extract_retry_after(decoded)
+            raise TelegramApiError(
+                method,
+                description,
+                parsed_code,
+                retry_after_seconds=retry_after,
+            )
         return decoded
 
-    def _extract_telegram_error(self, body: str, fallback: str) -> Tuple[str, Optional[int]]:
+    def _extract_retry_after(self, decoded: Dict[str, object]) -> Optional[float]:
+        parameters = decoded.get("parameters")
+        if not isinstance(parameters, dict):
+            return None
+        retry_after = parameters.get("retry_after")
+        if isinstance(retry_after, (int, float)):
+            return float(retry_after)
+        return None
+
+    def _extract_telegram_error(
+        self,
+        body: str,
+        fallback: str,
+    ) -> Tuple[str, Optional[int], Optional[float]]:
         if not body:
-            return fallback, None
+            return fallback, None, None
         try:
             decoded = json.loads(body)
         except Exception:
-            return fallback, None
+            return fallback, None, None
         if not isinstance(decoded, dict):
-            return fallback, None
+            return fallback, None, None
         description = str(decoded.get("description", fallback))
         error_code = decoded.get("error_code")
         parsed_code = int(error_code) if isinstance(error_code, int) else None
-        return description, parsed_code
+        retry_after = self._extract_retry_after(decoded)
+        return description, parsed_code, retry_after
 
     def _request_multipart(
         self,
@@ -107,56 +204,70 @@ class TelegramClient:
         file_bytes: bytes,
         content_type: str,
     ) -> Dict[str, object]:
-        endpoint = f"{self.config.api_base}/bot{self.config.token}/{method}"
-        boundary = f"----telegram-bridge-{uuid.uuid4().hex}"
-        body_parts: List[bytes] = []
+        def request_once() -> str:
+            endpoint = f"{self.config.api_base}/bot{self.config.token}/{method}"
+            boundary = f"----telegram-bridge-{uuid.uuid4().hex}"
+            body_parts: List[bytes] = []
 
-        for key, value in payload.items():
+            for key, value in payload.items():
+                body_parts.append(f"--{boundary}\r\n".encode("utf-8"))
+                body_parts.append(
+                    f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8")
+                )
+                body_parts.append(str(value).encode("utf-8"))
+                body_parts.append(b"\r\n")
+
             body_parts.append(f"--{boundary}\r\n".encode("utf-8"))
             body_parts.append(
-                f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8")
+                (
+                    f'Content-Disposition: form-data; name="{file_field}"; '
+                    f'filename="{file_name}"\r\n'
+                ).encode("utf-8")
             )
-            body_parts.append(str(value).encode("utf-8"))
+            body_parts.append(f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"))
+            body_parts.append(file_bytes)
             body_parts.append(b"\r\n")
+            body_parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+            body = b"".join(body_parts)
 
-        body_parts.append(f"--{boundary}\r\n".encode("utf-8"))
-        body_parts.append(
-            (
-                f'Content-Disposition: form-data; name="{file_field}"; '
-                f'filename="{file_name}"\r\n'
-            ).encode("utf-8")
-        )
-        body_parts.append(f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"))
-        body_parts.append(file_bytes)
-        body_parts.append(b"\r\n")
-        body_parts.append(f"--{boundary}--\r\n".encode("utf-8"))
-        body = b"".join(body_parts)
+            request = Request(endpoint, data=body, method="POST")
+            request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+            request.add_header("Content-Length", str(len(body)))
 
-        request = Request(endpoint, data=body, method="POST")
-        request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
-        request.add_header("Content-Length", str(len(body)))
-
-        try:
-            with urlopen(request, timeout=self.config.poll_timeout_seconds + 10) as response:
-                response_body = response.read().decode("utf-8")
-        except HTTPError as exc:
-            error_body = ""
             try:
-                error_body = exc.read().decode("utf-8")
-            except Exception:
+                with urlopen(request, timeout=self.config.poll_timeout_seconds + 10) as response:
+                    return response.read().decode("utf-8")
+            except HTTPError as exc:
                 error_body = ""
-            description, code = self._extract_telegram_error(
-                error_body,
-                fallback=f"HTTP {exc.code}",
-            )
-            raise TelegramApiError(method, description, code or exc.code) from exc
+                try:
+                    error_body = exc.read().decode("utf-8")
+                except Exception:
+                    error_body = ""
+                description, code, retry_after = self._extract_telegram_error(
+                    error_body,
+                    fallback=f"HTTP {exc.code}",
+                )
+                raise TelegramApiError(
+                    method,
+                    description,
+                    code or exc.code,
+                    retry_after_seconds=retry_after,
+                ) from exc
+
+        response_body = self._execute_with_retry(method, request_once)
 
         decoded = json.loads(response_body)
         if not decoded.get("ok"):
             description = str(decoded.get("description", "unknown Telegram error"))
             error_code = decoded.get("error_code")
             parsed_code = int(error_code) if isinstance(error_code, int) else None
-            raise TelegramApiError(method, description, parsed_code)
+            retry_after = self._extract_retry_after(decoded)
+            raise TelegramApiError(
+                method,
+                description,
+                parsed_code,
+                retry_after_seconds=retry_after,
+            )
         return decoded
 
     def get_updates(
