@@ -10,6 +10,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+try:
+    from .structured_logging import emit_event
+except ImportError:
+    from structured_logging import emit_event
+
 TELEGRAM_LIMIT = 4096
 TELEGRAM_CAPTION_LIMIT = 1024
 TELEGRAM_API_DEFAULT_MAX_ATTEMPTS = 3
@@ -108,12 +113,49 @@ class TelegramClient:
         max_attempts = self._api_max_attempts()
         for attempt_index in range(max_attempts):
             try:
-                return operation()
+                response_body = operation()
+                if attempt_index > 0:
+                    emit_event(
+                        "bridge.telegram_api_retry_succeeded",
+                        fields={
+                            "method": method,
+                            "attempt": attempt_index + 1,
+                            "max_attempts": max_attempts,
+                        },
+                    )
+                return response_body
             except Exception as exc:
                 is_last_attempt = attempt_index >= (max_attempts - 1)
-                if is_last_attempt or not self._is_transient_error(exc):
+                is_transient = self._is_transient_error(exc)
+                if is_last_attempt or not is_transient:
+                    emit_event(
+                        "bridge.telegram_api_failed",
+                        level=logging.ERROR,
+                        fields={
+                            "method": method,
+                            "attempt": attempt_index + 1,
+                            "max_attempts": max_attempts,
+                            "transient": bool(is_transient),
+                            "error_type": type(exc).__name__,
+                            "error_code": getattr(exc, "error_code", None),
+                            "will_retry": False,
+                        },
+                    )
                     raise
                 delay_seconds = self._compute_backoff_seconds(exc, attempt_index)
+                emit_event(
+                    "bridge.telegram_api_retry_scheduled",
+                    level=logging.WARNING,
+                    fields={
+                        "method": method,
+                        "attempt": attempt_index + 1,
+                        "next_attempt": attempt_index + 2,
+                        "max_attempts": max_attempts,
+                        "error_type": type(exc).__name__,
+                        "error_code": getattr(exc, "error_code", None),
+                        "retry_delay_seconds": delay_seconds,
+                    },
+                )
                 logging.warning(
                     "Telegram API %s transient failure (%s). Retrying in %.2fs (%s/%s).",
                     method,

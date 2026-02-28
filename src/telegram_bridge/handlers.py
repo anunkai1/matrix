@@ -276,6 +276,15 @@ def send_executor_output(
 
     try:
         media_kind = infer_media_kind(directive.media_ref)
+        emit_event(
+            "bridge.outbound_delivery_attempt",
+            fields={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "media_kind": media_kind,
+                "as_voice_requested": directive.as_voice,
+            },
+        )
         if media_kind == "photo":
             send_chat_action_safe(client, chat_id, "upload_photo")
             client.send_photo(
@@ -283,6 +292,16 @@ def send_executor_output(
                 photo=directive.media_ref,
                 caption=caption,
                 reply_to_message_id=message_id,
+            )
+            emit_event(
+                "bridge.outbound_delivery_succeeded",
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "media_kind": media_kind,
+                    "send_method": "sendPhoto",
+                    "fallback_used": False,
+                },
             )
         elif media_kind == "audio":
             if directive.as_voice and is_voice_compatible_media(directive.media_ref):
@@ -295,6 +314,16 @@ def send_executor_output(
                         caption=caption,
                         reply_to_message_id=message_id,
                     )
+                    emit_event(
+                        "bridge.outbound_delivery_succeeded",
+                        fields={
+                            "chat_id": chat_id,
+                            "message_id": message_id,
+                            "media_kind": media_kind,
+                            "send_method": "sendVoice",
+                            "fallback_used": False,
+                        },
+                    )
                 except Exception as exc:
                     if not is_voice_messages_forbidden_error(exc):
                         raise
@@ -302,12 +331,34 @@ def send_executor_output(
                         "sendVoice forbidden for chat_id=%s; falling back to sendAudio",
                         chat_id,
                     )
+                    emit_event(
+                        "bridge.outbound_delivery_fallback",
+                        level=logging.WARNING,
+                        fields={
+                            "chat_id": chat_id,
+                            "message_id": message_id,
+                            "media_kind": media_kind,
+                            "from_method": "sendVoice",
+                            "to_method": "sendAudio",
+                            "reason": "VOICE_MESSAGES_FORBIDDEN",
+                        },
+                    )
                     send_chat_action_safe(client, chat_id, "upload_audio")
                     client.send_audio(
                         chat_id=chat_id,
                         audio=directive.media_ref,
                         caption=caption,
                         reply_to_message_id=message_id,
+                    )
+                    emit_event(
+                        "bridge.outbound_delivery_succeeded",
+                        fields={
+                            "chat_id": chat_id,
+                            "message_id": message_id,
+                            "media_kind": media_kind,
+                            "send_method": "sendAudio",
+                            "fallback_used": True,
+                        },
                     )
             else:
                 send_chat_action_safe(client, chat_id, "upload_audio")
@@ -317,6 +368,16 @@ def send_executor_output(
                     caption=caption,
                     reply_to_message_id=message_id,
                 )
+                emit_event(
+                    "bridge.outbound_delivery_succeeded",
+                    fields={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "media_kind": media_kind,
+                        "send_method": "sendAudio",
+                        "fallback_used": False,
+                    },
+                )
         else:
             send_chat_action_safe(client, chat_id, "upload_document")
             client.send_document(
@@ -325,10 +386,31 @@ def send_executor_output(
                 caption=caption,
                 reply_to_message_id=message_id,
             )
-    except Exception:
+            emit_event(
+                "bridge.outbound_delivery_succeeded",
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "media_kind": media_kind,
+                    "send_method": "sendDocument",
+                    "fallback_used": False,
+                },
+            )
+    except Exception as exc:
         logging.exception(
             "Failed to send outbound media for chat_id=%s; falling back to text",
             chat_id,
+        )
+        emit_event(
+            "bridge.outbound_delivery_failed",
+            level=logging.ERROR,
+            fields={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "media_kind": infer_media_kind(directive.media_ref),
+                "error_type": type(exc).__name__,
+                "fallback_to_text": True,
+            },
         )
         fallback_text = rendered_text or output
         client.send_message(chat_id, fallback_text, reply_to_message_id=message_id)

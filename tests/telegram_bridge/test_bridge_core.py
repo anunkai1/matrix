@@ -220,6 +220,40 @@ class BridgeCoreTests(unittest.TestCase):
             [(1, "record_voice"), (1, "upload_voice"), (1, "upload_audio")],
         )
 
+    def test_send_executor_output_emits_delivery_events_for_voice_fallback(self):
+        client = FakeTelegramClient()
+        client.raise_on_voice = RuntimeError(
+            "Telegram API sendVoice failed: 400 Bad Request: VOICE_MESSAGES_FORBIDDEN"
+        )
+        with mock.patch.object(bridge_handlers, "emit_event") as emit_mock:
+            bridge_handlers.send_executor_output(
+                client=client,
+                chat_id=1,
+                message_id=12,
+                output="[[media:/tmp/note.ogg]] [[audio_as_voice]] fallback caption",
+            )
+
+        event_names = [call.args[0] for call in emit_mock.call_args_list]
+        self.assertIn("bridge.outbound_delivery_attempt", event_names)
+        self.assertIn("bridge.outbound_delivery_fallback", event_names)
+        self.assertIn("bridge.outbound_delivery_succeeded", event_names)
+
+    def test_send_executor_output_emits_failed_event_when_media_send_crashes(self):
+        client = FakeTelegramClient()
+        client.send_document = mock.Mock(side_effect=RuntimeError("disk gone"))
+        with mock.patch.object(bridge_handlers, "emit_event") as emit_mock:
+            rendered = bridge_handlers.send_executor_output(
+                client=client,
+                chat_id=1,
+                message_id=13,
+                output="[[media:https://example.com/file.pdf]] doc caption",
+            )
+        self.assertEqual(rendered, "doc caption")
+        self.assertEqual(len(client.messages), 1)
+        self.assertEqual(client.messages[0][1], "doc caption")
+        event_names = [call.args[0] for call in emit_mock.call_args_list]
+        self.assertIn("bridge.outbound_delivery_failed", event_names)
+
     def test_send_executor_output_routes_photo_and_document(self):
         client = FakeTelegramClient()
         rendered_photo = bridge_handlers.send_executor_output(
@@ -340,6 +374,78 @@ class BridgeCoreTests(unittest.TestCase):
                 client.send_message(chat_id=1, text="hello")
 
         self.assertEqual(mocked.call_count, 1)
+
+    def test_transport_emits_retry_events_for_transient_error(self):
+        config = make_config()
+        config.retry_sleep_seconds = 0.0
+        setattr(config, "api_max_attempts", 3)
+        client = bridge.TelegramClient(config)
+
+        transient_body = json.dumps(
+            {
+                "ok": False,
+                "error_code": 503,
+                "description": "Service Unavailable",
+            }
+        ).encode("utf-8")
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"ok": true, "result": {"message_id": 9}}'
+
+        transient_error = bridge_transport.HTTPError(
+            url="https://api.telegram.org",
+            code=503,
+            msg="Service Unavailable",
+            hdrs=None,
+            fp=io.BytesIO(transient_body),
+        )
+        with (
+            mock.patch.object(bridge_transport, "urlopen", side_effect=[transient_error, Response()]),
+            mock.patch.object(bridge_transport, "emit_event") as emit_mock,
+        ):
+            client.send_message(chat_id=1, text="hello")
+
+        event_names = [call.args[0] for call in emit_mock.call_args_list]
+        self.assertIn("bridge.telegram_api_retry_scheduled", event_names)
+        self.assertIn("bridge.telegram_api_retry_succeeded", event_names)
+
+    def test_transport_emits_failed_event_when_retry_exhausted(self):
+        config = make_config()
+        config.retry_sleep_seconds = 0.0
+        setattr(config, "api_max_attempts", 2)
+        client = bridge.TelegramClient(config)
+
+        transient_body = json.dumps(
+            {
+                "ok": False,
+                "error_code": 503,
+                "description": "Service Unavailable",
+            }
+        ).encode("utf-8")
+        transient_error = bridge_transport.HTTPError(
+            url="https://api.telegram.org",
+            code=503,
+            msg="Service Unavailable",
+            hdrs=None,
+            fp=io.BytesIO(transient_body),
+        )
+        with (
+            mock.patch.object(bridge_transport, "urlopen", side_effect=[transient_error, transient_error]),
+            mock.patch.object(bridge_transport, "emit_event") as emit_mock,
+        ):
+            with self.assertRaises(bridge_transport.TelegramApiError):
+                client.send_message(chat_id=1, text="hello")
+
+        event_names = [call.args[0] for call in emit_mock.call_args_list]
+        self.assertIn("bridge.telegram_api_retry_scheduled", event_names)
+        self.assertIn("bridge.telegram_api_failed", event_names)
 
     def test_extract_ha_keyword_request_variants(self):
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("HA open garage"), (True, "open garage"))
