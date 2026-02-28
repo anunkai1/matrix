@@ -20,6 +20,7 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Media helpers: `src/telegram_bridge/media.py`
 - Safe executor wrapper: `src/telegram_bridge/executor.sh`
 - Voice transcription runner: `src/telegram_bridge/voice_transcribe.py`
+- Voice transcription service (warm model + idle timeout): `src/telegram_bridge/voice_transcribe_service.py`
 - Local smoke test: `src/telegram_bridge/smoke_test.sh`
 - Systemd source-of-truth unit: `infra/systemd/telegram-architect-bridge.service`
 - Tank profile unit: `infra/systemd/telegram-tank-bridge.service`
@@ -78,10 +79,13 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS=180
 # TELEGRAM_VOICE_WHISPER_VENV=/home/architect/.local/share/telegram-voice/venv
 # TELEGRAM_VOICE_WHISPER_MODEL=base
-# TELEGRAM_VOICE_WHISPER_DEVICE=cpu
-# TELEGRAM_VOICE_WHISPER_COMPUTE_TYPE=int8
+# TELEGRAM_VOICE_WHISPER_DEVICE=cuda
+# TELEGRAM_VOICE_WHISPER_COMPUTE_TYPE=float16
 # TELEGRAM_VOICE_WHISPER_FALLBACK_DEVICE=cpu
 # TELEGRAM_VOICE_WHISPER_FALLBACK_COMPUTE_TYPE=int8
+# TELEGRAM_VOICE_WHISPER_IDLE_TIMEOUT_SECONDS=3600
+# TELEGRAM_VOICE_WHISPER_SOCKET_PATH=/tmp/telegram-voice-whisper.sock
+# TELEGRAM_VOICE_WHISPER_LOG_PATH=/tmp/telegram-voice-whisper.log
 # TELEGRAM_VOICE_WHISPER_LANGUAGE=
 # TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
 # TELEGRAM_EXECUTOR_CMD=/home/architect/matrix/src/telegram_bridge/executor.sh
@@ -139,10 +143,17 @@ bash ops/telegram-voice/configure_env.sh
 bash ops/telegram-bridge/restart_and_verify.sh
 ```
 
+Voice runtime behavior:
+- First voice note starts a persistent transcribe service in the voice venv.
+- Whisper model loads on first request, stays warm for low-latency follow-up requests, and unloads after idle timeout (`TELEGRAM_VOICE_WHISPER_IDLE_TIMEOUT_SECONDS`, default `3600`).
+- Primary profile is GPU (`cuda/float16`) with CPU (`cpu/int8`) fallback for reliability.
+- Fixed preprocessing runs before transcription when `ffmpeg` is available (mono 16k + high/low-pass filter chain).
+
 Verification:
 
 ```bash
 bash ops/telegram-voice/transcribe_voice.sh /path/to/sample.ogg
+python3 src/telegram_bridge/voice_transcribe_service.py ping
 sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 ```
 
@@ -300,6 +311,8 @@ Common checks:
 - Invalid `TELEGRAM_EXECUTOR_CMD`
 - Missing `codex login` for the service user (`architect` or `tank`)
 - Voice pipeline issues in `TELEGRAM_VOICE_TRANSCRIBE_CMD`
+- Voice transcribe service status/health: `python3 src/telegram_bridge/voice_transcribe_service.py ping`
+- Voice transcribe service logs: check `TELEGRAM_VOICE_WHISPER_LOG_PATH` (default `/tmp/telegram-voice-whisper.log`)
 
 Memory maintenance:
 

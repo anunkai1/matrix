@@ -12,6 +12,7 @@ python3 -m py_compile \
   "${REPO_ROOT}/src/telegram_bridge/media.py" \
   "${REPO_ROOT}/src/telegram_bridge/session_manager.py" \
   "${REPO_ROOT}/src/telegram_bridge/state_store.py" \
+  "${REPO_ROOT}/src/telegram_bridge/voice_transcribe_service.py" \
   "${REPO_ROOT}/src/telegram_bridge/stream_buffer.py" \
   "${REPO_ROOT}/src/telegram_bridge/transport.py"
 python3 "${REPO_ROOT}/src/telegram_bridge/main.py" --self-test
