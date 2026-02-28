@@ -1,8 +1,8 @@
 # WhatsApp + Codex Rollout Plan (Server3)
 
-Status: in progress (phase 1-3 complete, auth pending)
+Status: blocked on WhatsApp auth handshake (`logging in...` -> `401`), cooldown pending
 Owner: anunakii
-Last updated: 2026-02-28 (AEST)
+Last updated: 2026-02-28 18:15 AEST
 
 ## Goal (Plain English)
 Set up a WhatsApp-connected assistant on Server3 that routes approved messages to Codex and returns replies safely.
@@ -29,10 +29,26 @@ Set up a WhatsApp-connected assistant on Server3 that routes approved messages t
   - Codex runtime auth synced for `wa-govorun` and verified (`codex exec` works)
   - Backup flow validated (`ops/whatsapp_govorun/backup_state.sh`)
 - In progress:
-  - WhatsApp auth/link step (QR generated; awaiting phone scan)
+  - WhatsApp auth/link recovery after repeated rejection
 - Pending:
   - Post-auth live DM/group trigger tests
   - Final service start and reboot persistence check
+
+## Auth incident summary (latest)
+- Verified facts:
+  - Phone number used in link flow is correct: `61488817223`.
+  - Bridge and auth runtimes can connect to WA edge, but final auth fails.
+  - Repeated runtime pattern during link attempts:
+    - `logging in...`
+    - connection closes with `statusCode: 401`
+  - QR and pairing-code flows were both attempted multiple times.
+- Operational state at pause:
+  - `whatsapp-govorun-bridge.service` is intentionally stopped.
+  - A 24-hour reminder timer was scheduled on Server3:
+    - `remind-wa-retry-20260228-181307.timer`
+    - due: `2026-03-01 18:13:07 AEST`
+- Working assumption:
+  - Most likely WA-side temporary risk/abuse lock from repeated attempts, not a local number-format bug.
 
 ## Scope for this rollout
 - In scope:
@@ -91,6 +107,41 @@ Exit criteria:
 Exit criteria:
 - Service reconnects cleanly with saved auth state.
 
+### Phase 4B: Recovery runbook for next attempt window (detailed)
+Use this exact sequence on the next retry window (recommended after at least 24 hours of no attempts).
+
+1. Pre-check on phone:
+   - Update WhatsApp app to latest version.
+   - Turn off phone VPN/proxy.
+   - In `Linked Devices`, remove stale/pending/unknown sessions if present.
+2. Pre-check on Server3:
+   - Keep service stopped before auth:
+     - `sudo -iu wa-govorun systemctl --user stop whatsapp-govorun-bridge.service`
+   - Keep auth attempts single-threaded (one at a time only).
+   - Recommended: temporarily disconnect VPN during the single link attempt:
+     - `nordvpn disconnect`
+3. Start one clean auth attempt:
+   - Remove only auth creds, keep backups:
+     - `mv /home/wa-govorun/whatsapp-govorun/state/auth/creds.json /home/wa-govorun/whatsapp-govorun/state/auth.bak-<timestamp>-creds.json` (if file exists)
+   - Run:
+     - `cd /home/wa-govorun/whatsapp-govorun/app`
+     - `WA_PAIRING_PHONE=61488817223 WA_PAIRING_CODE= npm run auth`
+4. Execute exactly one link attempt:
+   - Prefer QR (other device screen) for the first attempt.
+   - If QR is not practical, use one fresh pairing code only.
+5. Decision gate:
+   - If auth succeeds (`creds.json` shows `registered=true`):
+     - Start bridge service:
+       - `sudo -iu wa-govorun systemctl --user start whatsapp-govorun-bridge.service`
+     - Run live tests (DM, group with trigger, group without trigger).
+   - If auth fails with same `401` pattern:
+     - Stop immediately (no rapid retries).
+     - Record logs and pivot to official WhatsApp Cloud API fallback plan.
+6. Post-attempt:
+   - Re-enable VPN if desired:
+     - `nordvpn connect`
+   - Update `logs/changes/*`, `SERVER3_SUMMARY.md`, and this handoff file.
+
 ### Phase 5: Trigger and chat registration
 - Register only approved chats/groups for initial rollout.
 - Use strict trigger requirement for groups (default secure posture).
@@ -145,6 +196,33 @@ Exit criteria:
 2. Confirm Phase 0 decisions still apply.
 3. Start from the first incomplete phase.
 4. Record completed phases in `logs/changes/` during execution.
+
+## Copy/Paste Prompt For Tomorrow Restart
+Use this prompt directly with Codex when restarting this task:
+
+```text
+Resume WhatsApp Govorun auth recovery on Server3 from docs/handoffs/whatsapp-server3-rollout-plan.md.
+
+Requirements:
+- Read ARCHITECT_INSTRUCTION.md, SERVER3_SUMMARY.md, LESSONS.md first.
+- Do not run parallel auth attempts.
+- Keep whatsapp-govorun-bridge.service stopped until auth success is verified.
+- Use a single clean auth attempt only (prefer QR first, then one pairing-code fallback if needed).
+- During the single attempt, keep VPN off on phone and server.
+- If same pattern repeats (logging in -> 401), stop retries and prepare WhatsApp Cloud API fallback plan instead of spamming new codes.
+
+Execution steps:
+1) Verify current auth/service state.
+2) Backup and clear only auth creds file.
+3) Start auth and guide one link attempt.
+4) Verify registered=true in creds.json.
+5) If success, start service and run DM/group trigger tests.
+6) Update docs/handoffs, logs/changes, and SERVER3_SUMMARY; commit + push with proof.
+
+Output format:
+- Keep updates short and concrete.
+- Always show exact commands run and key log lines for go/no-go decisions.
+```
 
 ## Notes
 - This file is a deployment plan only; no rollout is completed yet.
