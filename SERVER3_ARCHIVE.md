@@ -70,6 +70,16 @@ Migrated out of summary during this trim:
 - 2026-02-28: removed legacy `tasks/lessons.md` compatibility stub and deleted empty `tasks/` folder after lessons migration to `docs/instructions/lessons.md`.
 - 2026-02-28: recorded owner risk decisions (`H5/H6/H7/H9`) and delivered H8 hardening by rejecting `--base-url` in direct HA scripts; docs and lessons updated.
 
+## 2026-02-28 (Summary Roll-Forward Trim for Tank Voice Live Apply)
+
+Summary:
+- Added a new rolling summary entry for Tank live application of voice improvements (decode/confidence/learning) and restart verification.
+- Re-trimmed summary to rolling bound by migrating two oldest entries into archive.
+
+Migrated out of summary during this trim:
+- 2026-02-28: cleaned doc inconsistencies by removing obsolete helper-bot instructions from bridge docs, aligning voucher handoff summary/archive wording with rolling policy, and removing contradictory lessons-path history line.
+- 2026-02-28: moved lessons to root-level `LESSONS.md` (with `docs/instructions/lessons.md` redirect stub) so it sits with main repo docs.
+
 ### Migrated Historical Summary Content (verbatim from previous SERVER3_SUMMARY.md)
 
 # Server3 Summary

@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-02-28: applied voice-improvement stack on Tank live (`/etc/default/telegram-tank-bridge`): model `small`, decode tuning, low-confidence gate, and alias-learning keys; restarted `telegram-tank-bridge.service` and synced Tank env mirror/template.
 - 2026-02-28: added persistent `mansplain:` shortcut rule in `ARCHITECT_INSTRUCTION.md` so that requests with this trigger get beginner-friendly, low-jargon, logical explanations.
 - 2026-02-28: added controlled voice-alias self-learning with explicit approval workflow (`/voice-alias list|approve|reject|add`), using repeated low-confidence confirmations to suggest (not auto-apply) new corrections.
 - 2026-02-28: saved NanoClaw WhatsApp Server3 rollout handoff plan at `docs/handoffs/nanoclaw-whatsapp-server3-rollout-plan.md` for future resume.
@@ -24,8 +25,6 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - 2026-02-28: upgraded chat summarization to structured sections (objective/decisions/state/open items/preferences/risks), added summary-regeneration helper, and regenerated all 6 existing live summaries in `/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3`.
 - 2026-02-28: renamed memory mode label from `full` to `all_context` across runtime/help/docs, while keeping `full` as a backward-compatible alias.
 - 2026-02-28: removed `docs/instructions/lessons.md` redirect stub; `LESSONS.md` is now the only active lessons path.
-- 2026-02-28: cleaned doc inconsistencies by removing obsolete helper-bot instructions from bridge docs, aligning voucher handoff summary/archive wording with rolling policy, and removing contradictory lessons-path history line.
-- 2026-02-28: moved lessons to root-level `LESSONS.md` (with `docs/instructions/lessons.md` redirect stub) so it sits with main repo docs.
 
 ## Archive Pointer
 - `SERVER3_ARCHIVE.md` is the canonical long-term detailed history.
