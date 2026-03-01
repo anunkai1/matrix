@@ -145,6 +145,8 @@ class Config:
     required_prefixes: List[str]
     required_prefix_ignore_case: bool
     assistant_name: str
+    channel_plugin: str
+    engine_plugin: str
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -237,6 +239,16 @@ def parse_prefixes_env(name: str) -> List[str]:
         seen.add(key)
         parsed.append(value)
     return parsed
+
+
+def parse_plugin_name_env(name: str, default: str) -> str:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if not value:
+        return default
+    return value
 
 
 def default_voice_alias_replacements() -> List[Tuple[str, str]]:
@@ -458,6 +470,8 @@ def load_config() -> Config:
             True,
         ),
         assistant_name=assistant_name,
+        channel_plugin=parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram"),
+        engine_plugin=parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
         empty_output_message=f"(No output from {assistant_name})",
     )
 
@@ -808,8 +822,33 @@ def run_bridge(config: Config) -> int:
     )
     state_repo = StateRepository(state)
     registry = build_default_plugin_registry()
-    client = registry.build_channel("telegram", config)
-    engine: EngineAdapter = registry.build_engine("codex")
+    try:
+        client = registry.build_channel(config.channel_plugin, config)
+        engine: EngineAdapter = registry.build_engine(config.engine_plugin)
+    except (KeyError, RuntimeError, ValueError) as exc:
+        logging.error(
+            "Plugin selection error: channel=%s engine=%s error=%s",
+            config.channel_plugin,
+            config.engine_plugin,
+            exc,
+        )
+        logging.error(
+            "Available plugins: channels=%s engines=%s",
+            registry.list_channels(),
+            registry.list_engines(),
+        )
+        emit_event(
+            "bridge.plugin_selection_failed",
+            level=logging.ERROR,
+            fields={
+                "channel_plugin": config.channel_plugin,
+                "engine_plugin": config.engine_plugin,
+                "available_channels": registry.list_channels(),
+                "available_engines": registry.list_engines(),
+                "error_type": type(exc).__name__,
+            },
+        )
+        return 1
 
     if config.persistent_workers_enabled and (
         not config.canonical_sessions_enabled or config.canonical_legacy_mirror_enabled
@@ -865,7 +904,8 @@ def run_bridge(config: Config) -> int:
         offset = 0
 
     logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
-    logging.info("%s-only routing active for all allowlisted chats.", config.assistant_name)
+    logging.info("Channel plugin active=%s", config.channel_plugin)
+    logging.info("Engine plugin active=%s", config.engine_plugin)
     logging.info("Executor command=%s", config.executor_cmd)
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
     logging.info(
@@ -925,6 +965,8 @@ def run_bridge(config: Config) -> int:
             "memory_max_messages_per_key": config.memory_max_messages_per_key,
             "memory_max_summaries_per_key": config.memory_max_summaries_per_key,
             "memory_prune_interval_seconds": config.memory_prune_interval_seconds,
+            "channel_plugin": config.channel_plugin,
+            "engine_plugin": config.engine_plugin,
         },
     )
 

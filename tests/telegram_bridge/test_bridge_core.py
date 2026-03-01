@@ -2,6 +2,7 @@ import importlib.util
 import io
 import json
 import logging
+import os
 import tempfile
 import threading
 import unittest
@@ -116,6 +117,8 @@ def make_config(**overrides):
         "required_prefixes": [],
         "required_prefix_ignore_case": True,
         "assistant_name": "Architect",
+        "channel_plugin": "telegram",
+        "engine_plugin": "codex",
     }
     base.update(overrides)
     return bridge.Config(**base)
@@ -183,7 +186,7 @@ class BridgeCoreTests(unittest.TestCase):
 
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
-        self.assertEqual(registry.list_channels(), ["telegram"])
+        self.assertEqual(registry.list_channels(), ["telegram", "whatsapp"])
         self.assertEqual(registry.list_engines(), ["codex"])
 
     def test_default_plugin_registry_builds_default_plugins(self):
@@ -193,6 +196,53 @@ class BridgeCoreTests(unittest.TestCase):
         engine = registry.build_engine("codex")
         self.assertIsInstance(channel, bridge_channel_adapter.TelegramChannelAdapter)
         self.assertIsInstance(engine, bridge_engine_adapter.CodexEngineAdapter)
+
+    def test_default_plugin_registry_whatsapp_stub_fails_fast(self):
+        registry = bridge_plugin_registry.build_default_plugin_registry()
+        with self.assertRaises(RuntimeError):
+            registry.build_channel("whatsapp", make_config())
+
+    def test_parse_plugin_name_env_uses_default_for_empty(self):
+        with mock.patch.dict(os.environ, {"PLUGIN_TEST": "   "}):
+            self.assertEqual(
+                bridge.parse_plugin_name_env("PLUGIN_TEST", "telegram"),
+                "telegram",
+            )
+
+    def test_parse_plugin_name_env_normalizes_case(self):
+        with mock.patch.dict(os.environ, {"PLUGIN_TEST": "  WhAtSaPp  "}):
+            self.assertEqual(
+                bridge.parse_plugin_name_env("PLUGIN_TEST", "telegram"),
+                "whatsapp",
+            )
+
+    def test_load_config_defaults_plugin_selection(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1,2",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertEqual(config.channel_plugin, "telegram")
+        self.assertEqual(config.engine_plugin, "codex")
+
+    def test_load_config_reads_plugin_selection_overrides(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1,2",
+                "TELEGRAM_CHANNEL_PLUGIN": "  whatsapp ",
+                "TELEGRAM_ENGINE_PLUGIN": "  codex ",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertEqual(config.channel_plugin, "whatsapp")
+        self.assertEqual(config.engine_plugin, "codex")
 
     def test_parse_outbound_media_directive_extracts_media_and_voice_flag(self):
         text, directive = bridge_handlers.parse_outbound_media_directive(
