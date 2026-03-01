@@ -9,8 +9,8 @@ SRC_DIR="/home/architect/matrix/ops/whatsapp_govorun/bridge"
 
 sudo mkdir -p "${APP_DIR}" "${RUNTIME_ROOT}/state" "${RUNTIME_ROOT}/state/logs"
 
-# Sync code
-sudo rsync -a --delete "${SRC_DIR}/" "${APP_DIR}/"
+# Sync code while preserving live runtime env.
+sudo rsync -a --delete --exclude ".env" "${SRC_DIR}/" "${APP_DIR}/"
 
 # Seed env file once
 if ! sudo test -f "${APP_DIR}/.env"; then
