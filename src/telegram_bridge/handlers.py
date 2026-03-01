@@ -77,6 +77,9 @@ RETRY_FAILED_MESSAGE = "Execution failed after an automatic retry. Please resend
 HA_KEYWORD_HELP_MESSAGE = (
     "HA mode needs an action. Example: `HA turn on masters AC to dry mode at 9:25am`."
 )
+GOOGLE_KEYWORD_HELP_MESSAGE = (
+    "Google mode needs an action. Example: `Google summarize last email`."
+)
 PREFIX_HELP_MESSAGE = (
     "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
 )
@@ -161,6 +164,57 @@ def extract_ha_keyword_request(text: str) -> tuple[bool, str]:
                 continue
             return True, remainder.lstrip(" :-\t")
     return False, ""
+
+
+def extract_google_keyword_request(text: str) -> tuple[bool, str]:
+    stripped = text.strip()
+    if not stripped:
+        return False, ""
+
+    lowered = stripped.lower()
+    keyword = "google"
+    if lowered == keyword:
+        return True, ""
+    if lowered.startswith(keyword):
+        remainder = stripped[len(keyword):]
+        if remainder and remainder[0] not in (" ", ":", "-"):
+            return False, ""
+        return True, remainder.lstrip(" :-\t")
+    return False, ""
+
+
+def canonicalize_google_tail(tail: str) -> str:
+    stripped = tail.strip()
+    if not stripped:
+        return "help"
+
+    normalized = " ".join(stripped.lower().split())
+    head = normalized.split(" ", maxsplit=1)[0]
+    if head in {"help", "gmail", "calendar", "confirm", "cancel"}:
+        return stripped
+
+    if re.fullmatch(r"(?:summari[sz]e|summary)\s+(?:the\s+)?(?:last|latest)\s+email", normalized):
+        return "gmail summarize last"
+
+    if normalized in {"unread email", "unread emails"} or re.fullmatch(
+        r"(?:show|list|get)\s+(?:my\s+)?unread\s+emails?",
+        normalized,
+    ):
+        return "gmail unread"
+
+    if normalized in {"agenda", "my agenda"} or re.fullmatch(
+        r"(?:show|list|get)\s+(?:my\s+)?(?:calendar\s+)?agenda",
+        normalized,
+    ):
+        return "calendar agenda"
+
+    if normalized in {"today calendar", "calendar today", "today schedule"} or re.fullmatch(
+        r"(?:show|list|get)\s+(?:my\s+)?(?:today'?s\s+)?(?:calendar|schedule)",
+        normalized,
+    ):
+        return "calendar today"
+
+    return stripped
 
 
 def strip_required_prefix(
@@ -860,6 +914,7 @@ def build_google_help_text(config) -> str:
         "- /google help\n"
         "- /google gmail unread [limit]\n"
         "- /google gmail read <message_id>\n"
+        "- /google gmail summarize [last email]\n"
         "- /google gmail send <to_email> | <subject> | <body>\n"
         "- /google calendar today [limit]\n"
         "- /google calendar agenda [days]\n"
@@ -867,6 +922,7 @@ def build_google_help_text(config) -> str:
         "- /google confirm <code>\n"
         "- /google cancel\n\n"
         "Notes:\n"
+        "- `Google ...` keyword routing is enabled (for example: `Google summarize last email`).\n"
         "- send/create actions are pending until confirmed.\n"
         "- datetime format: 2026-03-01T17:30 or 2026-03-01T17:30+10:00"
     )
@@ -1126,6 +1182,7 @@ def handle_google_command(
     tail = pieces[1].strip() if len(pieces) > 1 else "help"
     if not tail:
         tail = "help"
+    tail = canonicalize_google_tail(tail)
 
     try:
         tokens = shlex.split(tail)
@@ -1252,6 +1309,27 @@ def handle_google_command(
                             f"Confirm with: `{GOOGLE_CONFIRM_COMMAND} {code}`\n"
                             "Cancel with: `/google cancel`"
                         ),
+                        TELEGRAM_LIMIT,
+                    ),
+                    reply_to_message_id=message_id,
+                )
+                return True
+
+            if gmail_action in ("summarize", "summarise", "summary"):
+                target_tokens = [token.lower() for token in tokens[2:]]
+                allowed_targets = ([], ["last"], ["latest"], ["last", "email"], ["latest", "email"])
+                if target_tokens not in allowed_targets:
+                    client.send_message(
+                        chat_id,
+                        "Usage: /google gmail summarize [last email]",
+                        reply_to_message_id=message_id,
+                    )
+                    return True
+                message_summary = google_client.gmail_latest_message()
+                client.send_message(
+                    chat_id,
+                    trim_output(
+                        "Latest Gmail summary:\n" + render_gmail_summary(message_summary),
                         TELEGRAM_LIMIT,
                     ),
                     reply_to_message_id=message_id,
@@ -1738,7 +1816,8 @@ def build_help_text(config) -> str:
         "server3-tv-start - start TV desktop mode (local shell command)\n"
         "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
-        "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing."
+        "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
+        "Use `Google ...` for Google Gmail/Calendar free-text routing."
     )
     return base + "\n\n" + "\n".join(build_memory_help_lines())
 
@@ -2818,6 +2897,31 @@ def handle_update(
             stateless = True
             emit_event(
                 "bridge.ha_keyword_routed",
+                fields={"chat_id": chat_id, "message_id": message_id},
+            )
+    if prompt_input and command is None and not ha_keyword_mode:
+        google_keyword_mode, google_request = extract_google_keyword_request(prompt_input)
+        if google_keyword_mode:
+            if not google_request.strip():
+                emit_event(
+                    "bridge.request_rejected",
+                    level=logging.WARNING,
+                    fields={
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "reason": "google_keyword_missing_action",
+                    },
+                )
+                client.send_message(
+                    chat_id,
+                    GOOGLE_KEYWORD_HELP_MESSAGE,
+                    reply_to_message_id=message_id,
+                )
+                return
+            prompt_input = f"/google {canonicalize_google_tail(google_request)}"
+            command = "/google"
+            emit_event(
+                "bridge.google_keyword_routed",
                 fields={"chat_id": chat_id, "message_id": message_id},
             )
 

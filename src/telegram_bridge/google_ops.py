@@ -218,6 +218,36 @@ class GoogleOpsClient:
                 break
         return out
 
+    def gmail_list_recent(self, limit: int) -> List[GmailMessageSummary]:
+        clamped_limit = max(1, min(limit, 50))
+        access_token = self._refresh_access_token()
+        list_url = f"{GMAIL_MESSAGES_LIST_ENDPOINT}?maxResults={clamped_limit}"
+        status, payload = self._request_json("GET", list_url, access_token)
+        if status >= 400:
+            raise GoogleOpsError(f"Gmail recent list failed ({status}): {payload}")
+
+        messages = payload.get("messages")
+        if not isinstance(messages, list):
+            return []
+
+        out: List[GmailMessageSummary] = []
+        for item in messages:
+            if not isinstance(item, dict):
+                continue
+            message_id = str(item.get("id", "")).strip()
+            if not message_id:
+                continue
+            out.append(self.gmail_read_message(message_id))
+            if len(out) >= clamped_limit:
+                break
+        return out
+
+    def gmail_latest_message(self) -> GmailMessageSummary:
+        recent = self.gmail_list_recent(limit=1)
+        if not recent:
+            raise GoogleOpsError("No Gmail messages found.")
+        return recent[0]
+
     def gmail_read_message(self, message_id: str) -> GmailMessageSummary:
         normalized_id = message_id.strip()
         if not normalized_id:

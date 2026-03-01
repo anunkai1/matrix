@@ -183,6 +183,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/google help` show Google Gmail/Calendar command help
 - `/google gmail unread [limit]` list unread Gmail messages
 - `/google gmail read <message_id>` show one Gmail message metadata/snippet
+- `/google gmail summarize [last email]` summarize most recent email
 - `/google gmail send <to_email> | <subject> | <body>` prepare a pending email send action
 - `/google calendar today [limit]` list today’s calendar events
 - `/google calendar agenda [days]` list upcoming events for N days
@@ -220,6 +221,10 @@ Message handling:
 - Messages starting with `HA` or `Home Assistant` are forced into Home Assistant mode:
   - the bridge wraps the request with strict policy to use only `ops/ha/*.sh` scripts
   - HA-keyword requests run stateless (no memory/session carryover)
+  - empty keyword-only messages are rejected with a usage hint
+- Messages starting with `Google` are routed to Google command mode:
+  - supports direct command-style tails (`Google gmail unread 5`)
+  - supports free-text aliases (for example: `Google summarize last email`)
   - empty keyword-only messages are rejected with a usage hint
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`
