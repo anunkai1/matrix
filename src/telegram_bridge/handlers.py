@@ -2,7 +2,6 @@ import logging
 import json
 import os
 import re
-import secrets
 import shlex
 import subprocess
 import threading
@@ -68,9 +67,6 @@ AUDIO_EXTENSIONS = {".ogg", ".oga", ".opus", ".mp3", ".m4a", ".aac", ".wav", ".f
 VOICE_COMPATIBLE_EXTENSIONS = {".ogg", ".oga", ".opus", ".mp3", ".m4a"}
 
 HELP_COMMAND_ALIASES = ("/help", "/h")
-GOOGLE_CONFIRM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-GOOGLE_CONFIRM_CODE_LENGTH = 6
-GOOGLE_CONFIRM_COMMAND = "/google confirm"
 RATE_LIMIT_MESSAGE = "Rate limit exceeded. Please wait a minute and retry."
 RETRY_WITH_NEW_SESSION_PHASE = "Execution failed. Retrying once with a new session."
 RETRY_FAILED_MESSAGE = "Execution failed after an automatic retry. Please resend your request."
@@ -101,15 +97,6 @@ class PreparedPromptInput:
 class OutboundMediaDirective:
     media_ref: str
     as_voice: bool
-
-
-@dataclass
-class PendingGoogleAction:
-    code: str
-    kind: str
-    payload: Dict[str, str]
-    summary: str
-    created_at: float
 
 
 def build_repo_root() -> str:
@@ -245,7 +232,7 @@ def build_google_keyword_prompt(user_request: str) -> str:
         "Mandatory execution policy:\n"
         "- Use local Google credentials under /home/architect/.config/google/architect/.\n"
         "- For read operations (list/read/summarize), execute and return results.\n"
-        "- For write operations (send email/create event), require explicit user confirmation before execution.\n"
+        "- For write operations (send email/create event), execute directly.\n"
         "- If intent is unclear, ask one concise clarification question."
     )
 
@@ -898,11 +885,10 @@ def build_google_help_text(config) -> str:
         "- /google calendar today [limit]\n"
         "- /google calendar agenda [days]\n"
         "- /google calendar create <start_iso> | <end_iso> | <title> | [description]\n"
-        "- /google confirm <code>\n"
-        "- /google cancel\n\n"
+        "\n"
         "Notes:\n"
         "- `Google ...` keyword routing is enabled and handled in AI mode.\n"
-        "- send/create actions are pending until confirmed.\n"
+        "- send/create actions execute immediately.\n"
         "- datetime format: 2026-03-01T17:30 or 2026-03-01T17:30+10:00"
     )
 
@@ -948,42 +934,6 @@ def is_google_sender_allowed(config, sender_id: Optional[int]) -> bool:
     if sender_id is None:
         return False
     return sender_id in allowed
-
-
-def make_google_confirm_code() -> str:
-    return "".join(secrets.choice(GOOGLE_CONFIRM_ALPHABET) for _ in range(GOOGLE_CONFIRM_CODE_LENGTH))
-
-
-def get_or_init_google_pending_store(state: State) -> Dict[int, PendingGoogleAction]:
-    store = getattr(state, "google_pending_actions", None)
-    if not isinstance(store, dict):
-        store = {}
-        state.google_pending_actions = store
-    return store
-
-
-def set_pending_google_action(state: State, chat_id: int, action: PendingGoogleAction) -> None:
-    with state.lock:
-        store = get_or_init_google_pending_store(state)
-        store[chat_id] = action
-
-
-def get_pending_google_action(state: State, chat_id: int) -> Optional[PendingGoogleAction]:
-    with state.lock:
-        store = get_or_init_google_pending_store(state)
-        action = store.get(chat_id)
-        if isinstance(action, PendingGoogleAction):
-            return action
-        return None
-
-
-def clear_pending_google_action(state: State, chat_id: int) -> bool:
-    with state.lock:
-        store = get_or_init_google_pending_store(state)
-        if chat_id in store:
-            del store[chat_id]
-            return True
-    return False
 
 
 def render_gmail_summary(item: GmailMessageSummary) -> str:
@@ -1040,98 +990,6 @@ def build_gmail_list_response(messages: List[GmailMessageSummary], heading: str)
     return trim_output("\\n".join(lines), TELEGRAM_LIMIT)
 
 
-def _handle_google_confirm_command(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    chat_id: int,
-    message_id: Optional[int],
-    confirm_code: str,
-) -> bool:
-    pending = get_pending_google_action(state, chat_id)
-    if pending is None:
-        client.send_message(
-            chat_id,
-            "No pending Google action to confirm.",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    ttl_seconds = max(30, int(getattr(config, "google_pending_confirm_ttl_seconds", 600)))
-    age_seconds = time.time() - pending.created_at
-    if age_seconds > ttl_seconds:
-        clear_pending_google_action(state, chat_id)
-        client.send_message(
-            chat_id,
-            "Pending Google action expired. Please run the command again.",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    if pending.code.casefold() != confirm_code.casefold():
-        client.send_message(
-            chat_id,
-            "Confirmation code does not match pending action.",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    try:
-        google_client = build_google_client(config)
-        if pending.kind == "gmail_send":
-            payload = pending.payload
-            message_sent_id = google_client.gmail_send_message(
-                to_email=payload["to_email"],
-                subject=payload["subject"],
-                body_text=payload["body"],
-            )
-            response = f"Gmail sent successfully. Message id: `{message_sent_id}`"
-        elif pending.kind == "calendar_create":
-            payload = pending.payload
-            created = google_client.calendar_create_event(
-                title=payload["title"],
-                start_iso=payload["start_iso"],
-                end_iso=payload["end_iso"],
-                description=payload.get("description", ""),
-            )
-            response = (
-                "Calendar event created successfully.\n"
-                + render_calendar_summary(created)
-            )
-        else:
-            clear_pending_google_action(state, chat_id)
-            client.send_message(
-                chat_id,
-                "Pending Google action type is unknown. Cleared.",
-                reply_to_message_id=message_id,
-            )
-            return True
-    except GoogleOpsError as exc:
-        logging.warning("Google action confirm failed for chat_id=%s: %s", chat_id, exc)
-        client.send_message(
-            chat_id,
-            f"Google action failed: {exc}",
-            reply_to_message_id=message_id,
-        )
-        return True
-    except Exception:
-        logging.exception("Unexpected Google action confirm failure for chat_id=%s", chat_id)
-        client.send_message(
-            chat_id,
-            "Google action failed due to an unexpected error.",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    clear_pending_google_action(state, chat_id)
-    client.send_message(
-        chat_id,
-        trim_output(response, TELEGRAM_LIMIT),
-        reply_to_message_id=message_id,
-    )
-    return True
-
-
 def handle_google_command(
     state: State,
     config,
@@ -1182,29 +1040,6 @@ def handle_google_command(
             reply_to_message_id=message_id,
         )
         return True
-
-    if top == "cancel":
-        cleared = clear_pending_google_action(state, chat_id)
-        message = "Pending Google action canceled." if cleared else "No pending Google action."
-        client.send_message(chat_id, message, reply_to_message_id=message_id)
-        return True
-
-    if top == "confirm":
-        if len(tokens) < 2:
-            client.send_message(
-                chat_id,
-                f"Usage: {GOOGLE_CONFIRM_COMMAND} <code>",
-                reply_to_message_id=message_id,
-            )
-            return True
-        return _handle_google_confirm_command(
-            state=state,
-            config=config,
-            client=client,
-            chat_id=chat_id,
-            message_id=message_id,
-            confirm_code=tokens[1].strip(),
-        )
 
     try:
         google_client = build_google_client(config)
@@ -1266,26 +1101,19 @@ def handle_google_command(
                     )
                     return True
                 to_email, subject, body = parsed_fields
-                code = make_google_confirm_code()
-                pending = PendingGoogleAction(
-                    code=code,
-                    kind="gmail_send",
-                    payload={"to_email": to_email, "subject": subject, "body": body},
-                    summary=f"Send Gmail to {to_email} with subject '{subject}'",
-                    created_at=time.time(),
+                message_id_value = google_client.gmail_send_message(
+                    to_email=to_email,
+                    subject=subject,
+                    body_text=body,
                 )
-                set_pending_google_action(state, chat_id, pending)
-                preview_body = body if len(body) <= 240 else body[:237].rstrip() + "..."
                 client.send_message(
                     chat_id,
                     trim_output(
                         (
-                            "Pending Gmail send action:\n"
+                            "Gmail sent successfully.\n"
                             f"To: {to_email}\n"
                             f"Subject: {subject}\n"
-                            f"Body: {preview_body}\n\n"
-                            f"Confirm with: `{GOOGLE_CONFIRM_COMMAND} {code}`\n"
-                            "Cancel with: `/google cancel`"
+                            f"Message ID: `{message_id_value}`"
                         ),
                         TELEGRAM_LIMIT,
                     ),
@@ -1379,37 +1207,18 @@ def handle_google_command(
                 end_iso = parsed_fields[1]
                 title = parsed_fields[2]
                 description = parsed_fields[3] if len(parsed_fields) > 3 else ""
-
-                code = make_google_confirm_code()
-                pending = PendingGoogleAction(
-                    code=code,
-                    kind="calendar_create",
-                    payload={
-                        "start_iso": start_iso,
-                        "end_iso": end_iso,
-                        "title": title,
-                        "description": description,
-                    },
-                    summary=f"Create calendar event '{title}' from {start_iso} to {end_iso}",
-                    created_at=time.time(),
-                )
-                set_pending_google_action(state, chat_id, pending)
-
-                preview = (
-                    "Pending calendar create action:\n"
-                    f"Title: {title}\n"
-                    f"Start: {start_iso}\n"
-                    f"End: {end_iso}\n"
-                )
-                if description:
-                    preview += f"Description: {description}\n"
-                preview += (
-                    f"\nConfirm with: `{GOOGLE_CONFIRM_COMMAND} {code}`\n"
-                    "Cancel with: `/google cancel`"
+                created = google_client.calendar_create_event(
+                    title=title,
+                    start_iso=start_iso,
+                    end_iso=end_iso,
+                    description=description,
                 )
                 client.send_message(
                     chat_id,
-                    trim_output(preview, TELEGRAM_LIMIT),
+                    trim_output(
+                        "Calendar event created:\n" + render_calendar_summary(created),
+                        TELEGRAM_LIMIT,
+                    ),
                     reply_to_message_id=message_id,
                 )
                 return True

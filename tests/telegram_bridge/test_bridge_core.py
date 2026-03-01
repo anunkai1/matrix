@@ -3,7 +3,6 @@ import io
 import json
 import logging
 import os
-import re
 import tempfile
 import threading
 import unittest
@@ -1402,7 +1401,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(client.messages, [])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_google_send_requires_confirm_then_executes(self, start_message_worker):
+    def test_handle_update_google_send_executes_immediately(self, start_message_worker):
         sent_payload = {}
 
         class FakeGoogleOpsClient:
@@ -1434,27 +1433,11 @@ class BridgeCoreTests(unittest.TestCase):
 
             self.assertFalse(start_message_worker.called)
             self.assertTrue(client.messages)
-            pending_text = client.messages[-1][1]
-            self.assertIn("Pending Gmail send action", pending_text)
-            token_match = re.search(r"/google confirm ([A-Z0-9]{6})", pending_text)
-            self.assertIsNotNone(token_match)
-            confirm_code = token_match.group(1)
-
-            confirm_update = {
-                "update_id": 204,
-                "message": {
-                    "message_id": 304,
-                    "chat": {"id": 1, "type": "private"},
-                    "from": {"id": 55, "first_name": "V"},
-                    "text": f"/google confirm {confirm_code}",
-                },
-            }
-            bridge.handle_update(state, config, client, confirm_update)
+            self.assertIn("Gmail sent successfully", client.messages[-1][1])
 
         self.assertEqual(sent_payload["to_email"], "bob@example.com")
         self.assertEqual(sent_payload["subject"], "Subject A")
         self.assertEqual(sent_payload["body_text"], "Body B")
-        self.assertIn("Gmail sent successfully", client.messages[-1][1])
 
     def test_handle_update_rejects_too_long_input_before_worker_dispatch(self):
         state = bridge.State()
