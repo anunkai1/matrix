@@ -11,14 +11,17 @@ from typing import Dict, List, Optional, Set, Tuple
 from urllib.error import HTTPError, URLError
 
 try:
+    from .channel_adapter import ChannelAdapter
     from .executor import (
         ExecutorProgressEvent,
         extract_executor_progress_event,
         parse_executor_output,
     )
+    from .engine_adapter import EngineAdapter
     from .handlers import DocumentPayload, extract_prompt_and_media, handle_update
     from .media import TelegramFileDownloadSpec, download_telegram_file_to_temp
     from .memory_engine import MemoryEngine
+    from .plugin_registry import build_default_plugin_registry
     from .session_manager import (
         clear_busy,
         compute_policy_fingerprint,
@@ -54,14 +57,17 @@ try:
     from .transport import TELEGRAM_LIMIT, TelegramClient, to_telegram_chunks
     from .voice_alias_learning import VoiceAliasLearningStore
 except ImportError:
+    from channel_adapter import ChannelAdapter
     from executor import (
         ExecutorProgressEvent,
         extract_executor_progress_event,
         parse_executor_output,
     )
+    from engine_adapter import EngineAdapter
     from handlers import DocumentPayload, extract_prompt_and_media, handle_update
     from media import TelegramFileDownloadSpec, download_telegram_file_to_temp
     from memory_engine import MemoryEngine
+    from plugin_registry import build_default_plugin_registry
     from session_manager import (
         clear_busy,
         compute_policy_fingerprint,
@@ -516,7 +522,7 @@ def run_self_test() -> int:
     return 0
 
 
-def drop_pending_updates(client: TelegramClient) -> int:
+def drop_pending_updates(client: ChannelAdapter) -> int:
     offset = 0
     dropped = 0
 
@@ -801,7 +807,9 @@ def run_bridge(config: Config) -> int:
         voice_alias_learning_store=voice_alias_learning_store,
     )
     state_repo = StateRepository(state)
-    client = TelegramClient(config)
+    registry = build_default_plugin_registry()
+    client = registry.build_channel("telegram", config)
+    engine: EngineAdapter = registry.build_engine("codex")
 
     if config.persistent_workers_enabled and (
         not config.canonical_sessions_enabled or config.canonical_legacy_mirror_enabled
@@ -933,7 +941,7 @@ def run_bridge(config: Config) -> int:
                 update_id = update.get("update_id")
                 if isinstance(update_id, int):
                     offset = max(offset, update_id + 1)
-                handle_update(state, config, client, update)
+                handle_update(state, config, client, update, engine=engine)
         except (HTTPError, URLError, TimeoutError):
             logging.exception("Network/API error while polling Telegram")
             emit_event(

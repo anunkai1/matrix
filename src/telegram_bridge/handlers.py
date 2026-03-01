@@ -14,9 +14,10 @@ try:
     from .executor import (
         ExecutorProgressEvent,
         parse_executor_output,
-        run_executor,
         should_reset_thread_after_resume_failure,
     )
+    from .channel_adapter import ChannelAdapter
+    from .engine_adapter import CodexEngineAdapter, EngineAdapter
     from .media import TelegramFileDownloadSpec, download_telegram_file_to_temp
     from .memory_engine import MemoryEngine, TurnContext, build_memory_help_lines, handle_memory_command
     from .session_manager import (
@@ -29,14 +30,15 @@ try:
     )
     from .state_store import State, StateRepository
     from .structured_logging import emit_event
-    from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT, TelegramClient
+    from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 except ImportError:
     from executor import (
         ExecutorProgressEvent,
         parse_executor_output,
-        run_executor,
         should_reset_thread_after_resume_failure,
     )
+    from channel_adapter import ChannelAdapter
+    from engine_adapter import CodexEngineAdapter, EngineAdapter
     from media import TelegramFileDownloadSpec, download_telegram_file_to_temp
     from memory_engine import MemoryEngine, TurnContext, build_memory_help_lines, handle_memory_command
     from session_manager import (
@@ -49,7 +51,7 @@ except ImportError:
     )
     from state_store import State, StateRepository
     from structured_logging import emit_event
-    from transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT, TelegramClient
+    from transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 
 PROGRESS_TYPING_INTERVAL_SECONDS = 4
 PROGRESS_EDIT_MIN_INTERVAL_SECONDS = 6
@@ -307,7 +309,7 @@ def is_voice_messages_forbidden_error(exc: Exception) -> bool:
     return "VOICE_MESSAGES_FORBIDDEN" in str(exc).upper()
 
 
-def send_chat_action_safe(client: TelegramClient, chat_id: int, action: str) -> None:
+def send_chat_action_safe(client: ChannelAdapter, chat_id: int, action: str) -> None:
     try:
         client.send_chat_action(chat_id, action=action)
     except Exception:
@@ -315,7 +317,7 @@ def send_chat_action_safe(client: TelegramClient, chat_id: int, action: str) -> 
 
 
 def send_executor_output(
-    client: TelegramClient,
+    client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
     output: str,
@@ -523,7 +525,7 @@ def compact_progress_text(text: str, max_chars: int = 120) -> str:
 
 
 def send_input_too_long(
-    client: TelegramClient,
+    client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
     actual_length: int,
@@ -537,7 +539,7 @@ def send_input_too_long(
 
 
 def send_executor_failure_message(
-    client: TelegramClient,
+    client: ChannelAdapter,
     config,
     chat_id: int,
     message_id: Optional[int],
@@ -579,7 +581,7 @@ def extract_chat_context(update: Dict[str, object]) -> tuple[Optional[Dict[str, 
 class ProgressReporter:
     def __init__(
         self,
-        client: TelegramClient,
+        client: ChannelAdapter,
         chat_id: int,
         reply_to_message_id: Optional[int],
         assistant_name: str,
@@ -824,7 +826,7 @@ def extract_sender_name(message: Dict[str, object]) -> str:
 
 
 def download_photo_to_temp(
-    client: TelegramClient,
+    client: ChannelAdapter,
     config,
     photo_file_id: str,
 ) -> str:
@@ -841,7 +843,7 @@ def download_photo_to_temp(
 
 
 def download_voice_to_temp(
-    client: TelegramClient,
+    client: ChannelAdapter,
     config,
     voice_file_id: str,
 ) -> str:
@@ -858,7 +860,7 @@ def download_voice_to_temp(
 
 
 def download_document_to_temp(
-    client: TelegramClient,
+    client: ChannelAdapter,
     config,
     document: DocumentPayload,
 ) -> tuple[str, int]:
@@ -1035,7 +1037,7 @@ def transcribe_voice(config, voice_path: str) -> Tuple[str, Optional[float]]:
 def transcribe_voice_for_chat(
     state: State,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
     voice_file_id: str,
@@ -1236,7 +1238,7 @@ def build_status_text(state: State, config, chat_id: Optional[int] = None) -> st
 def prepare_prompt_input(
     state: State,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
     prompt: str,
@@ -1378,7 +1380,8 @@ def prepare_prompt_input(
 def execute_prompt_with_retry(
     state_repo: StateRepository,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
+    engine: EngineAdapter,
     chat_id: int,
     message_id: Optional[int],
     prompt_text: str,
@@ -1405,10 +1408,10 @@ def execute_prompt_with_retry(
             },
         )
         try:
-            result = run_executor(
-                config,
-                prompt_text,
-                attempt_thread_id,
+            result = engine.run(
+                config=config,
+                prompt=prompt_text,
+                thread_id=attempt_thread_id,
                 image_path=image_path,
                 progress_callback=progress.handle_executor_event,
             )
@@ -1563,7 +1566,7 @@ def execute_prompt_with_retry(
 def finalize_prompt_success(
     state_repo: StateRepository,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
     result: subprocess.CompletedProcess[str],
@@ -1598,7 +1601,8 @@ def finalize_prompt_success(
 def process_prompt(
     state: State,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
+    engine: Optional[EngineAdapter],
     chat_id: int,
     message_id: Optional[int],
     prompt: str,
@@ -1609,6 +1613,7 @@ def process_prompt(
     sender_name: str = "Telegram User",
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
+    active_engine = engine or CodexEngineAdapter()
     state_repo = StateRepository(state)
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
     conversation_key = MemoryEngine.telegram_key(chat_id)
@@ -1671,6 +1676,7 @@ def process_prompt(
             state_repo=state_repo,
             config=config,
             client=client,
+            engine=active_engine,
             chat_id=chat_id,
             message_id=message_id,
             prompt_text=prompt_text,
@@ -1726,7 +1732,8 @@ def process_prompt(
 def process_message_worker(
     state: State,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
+    engine: Optional[EngineAdapter],
     chat_id: int,
     message_id: Optional[int],
     prompt: str,
@@ -1742,6 +1749,7 @@ def process_message_worker(
             state,
             config,
             client,
+            engine,
             chat_id,
             message_id,
             prompt,
@@ -1772,7 +1780,7 @@ def process_message_worker(
 def handle_reset_command(
     state: State,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
 ) -> None:
@@ -1801,7 +1809,7 @@ def handle_reset_command(
 
 def handle_restart_command(
     state: State,
-    client: TelegramClient,
+    client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
 ) -> None:
@@ -1871,7 +1879,7 @@ def parse_voice_alias_suggestion_id(tail: str, action: str) -> Optional[int]:
 def handle_voice_alias_command(
     state: State,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
     raw_text: str,
@@ -1994,7 +2002,7 @@ def handle_voice_alias_command(
 def maybe_process_voice_alias_learning_confirmation(
     state: State,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
     prompt_input: str,
@@ -2043,7 +2051,7 @@ def maybe_process_voice_alias_learning_confirmation(
 def handle_known_command(
     state: State,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
     command: Optional[str],
@@ -2091,7 +2099,8 @@ def handle_known_command(
 def start_message_worker(
     state: State,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
+    engine: Optional[EngineAdapter],
     chat_id: int,
     message_id: Optional[int],
     prompt: str,
@@ -2108,6 +2117,7 @@ def start_message_worker(
             state,
             config,
             client,
+            engine,
             chat_id,
             message_id,
             prompt,
@@ -2126,8 +2136,9 @@ def start_message_worker(
 def handle_update(
     state: State,
     config,
-    client: TelegramClient,
+    client: ChannelAdapter,
     update: Dict[str, object],
+    engine: Optional[EngineAdapter] = None,
 ) -> None:
     message, chat_id, message_id = extract_chat_context(update)
     if message is None or chat_id is None:
@@ -2343,6 +2354,7 @@ def handle_update(
         state=state,
         config=config,
         client=client,
+        engine=engine,
         chat_id=chat_id,
         message_id=message_id,
         prompt=prompt,

@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-02-28 (AEST, +10:00)
+Last updated: 2026-03-01 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
@@ -10,6 +10,7 @@ Last updated: 2026-02-28 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-03-01: implemented Telegram Phase-A plugin seams (no behavior change): added channel adapter, engine adapter, and plugin registry modules; wired bridge startup to build default `telegram` channel + `codex` engine via registry; switched handler typing/executor path to adapter interfaces while preserving current Telegram + Codex runtime behavior; expanded tests for default registry wiring and re-validated smoke/unit passes.
 - 2026-02-28: implemented Telegram Phase-4 execution-path hardening: added structured outbound JSON envelope support (`telegram_outbound`) for media/text delivery, added payload-parse observability events and safe parse-failure fallback to raw text, and protected control outputs (legacy media directives + structured envelopes) from pre-send truncation so delivery directives are not corrupted by trim logic.
 - 2026-02-28: implemented Telegram Phase-3 observability and test hardening: added structured outbound delivery events (`attempt`, `succeeded`, `fallback`, `failed`) in media send flow, added structured Telegram API retry/failure events in transport retry logic, and expanded bridge tests to validate these new event paths plus retry-exhaustion behavior.
 - 2026-02-28: implemented Telegram Phase-2 outbound hardening: added transient Telegram API retry/backoff (`429`, `5xx`, timeout/network), honored `retry_after` when provided, introduced configurable attempt count, and improved media chat-action signaling (`upload_photo`, `upload_document`, `upload_audio`, `record_voice`, `upload_voice`); expanded bridge tests for retry behavior and verified full `test_bridge_core` pass.

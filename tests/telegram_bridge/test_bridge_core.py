@@ -23,6 +23,9 @@ if str(BRIDGE_DIR) not in sys.path:
 spec.loader.exec_module(bridge)
 import executor as bridge_executor
 import handlers as bridge_handlers
+import channel_adapter as bridge_channel_adapter
+import engine_adapter as bridge_engine_adapter
+import plugin_registry as bridge_plugin_registry
 import session_manager as bridge_session_manager
 import structured_logging as bridge_structured_logging
 import transport as bridge_transport
@@ -177,6 +180,19 @@ class BridgeCoreTests(unittest.TestCase):
         cfg = make_config(assistant_name="HelperBot")
         self.assertIn("HelperBot", bridge_handlers.start_command_message(cfg))
         self.assertIn("HelperBot", bridge_handlers.build_help_text(cfg))
+
+    def test_default_plugin_registry_exposes_telegram_and_codex(self):
+        registry = bridge_plugin_registry.build_default_plugin_registry()
+        self.assertEqual(registry.list_channels(), ["telegram"])
+        self.assertEqual(registry.list_engines(), ["codex"])
+
+    def test_default_plugin_registry_builds_default_plugins(self):
+        registry = bridge_plugin_registry.build_default_plugin_registry()
+        cfg = make_config()
+        channel = registry.build_channel("telegram", cfg)
+        engine = registry.build_engine("codex")
+        self.assertIsInstance(channel, bridge_channel_adapter.TelegramChannelAdapter)
+        self.assertIsInstance(engine, bridge_engine_adapter.CodexEngineAdapter)
 
     def test_parse_outbound_media_directive_extracts_media_and_voice_flag(self):
         text, directive = bridge_handlers.parse_outbound_media_directive(
