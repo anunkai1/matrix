@@ -35,3 +35,17 @@
 - Group trigger: `@govorun`
 - Group behavior: trigger required
 - DM behavior: always respond
+
+## Plugin API mode
+- Enable plugin-mode queueing for matrix channel plugin:
+  - `WA_PLUGIN_MODE=true`
+- API defaults:
+  - `WA_API_HOST=127.0.0.1`
+  - `WA_API_PORT=8787`
+- Optional auth:
+  - `WA_API_AUTH_TOKEN=<secret>`
+- Recommended limits:
+  - `WA_API_MAX_UPDATES_PER_POLL=100`
+  - `WA_API_MAX_QUEUE_SIZE=2000`
+  - `WA_API_MAX_LONG_POLL_SECONDS=30`
+  - `WA_FILE_MAX_BYTES=52428800`

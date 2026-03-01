@@ -1,9 +1,11 @@
 import fs from 'fs';
 import path from 'path';
+import { createServer } from 'http';
 
 import makeWASocket, {
   Browsers,
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestWaWebVersion,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState
@@ -15,6 +17,7 @@ import {
   createQueuedCredsSaver,
   ensureDir,
   extractTextFromBaileysMessage,
+  parseInteger,
   readEnvFromFile
 } from './common.mjs';
 import { createLogger } from './logger.mjs';
@@ -28,9 +31,21 @@ const config = createConfig();
 ensureDir(config.stateDir);
 ensureDir(config.authDir);
 ensureDir(config.logsDir);
+ensureDir(config.filesDir);
 
 const logger = createLogger();
 const perChatQueue = new Map();
+const jidToChatId = new Map();
+const chatIdToJid = new Map();
+const updateQueue = [];
+const updateWaiters = [];
+const storedFiles = new Map();
+const storedFileOrder = [];
+
+let nextInternalMessageId = 1;
+let nextUpdateId = 1;
+let activeSock = null;
+let apiServer = null;
 
 function shouldHandleChat(jid, isGroup) {
   if (isGroup && config.allowedGroups.length > 0 && !config.allowedGroups.includes(jid)) {
@@ -57,6 +72,471 @@ function stripTrigger(text) {
   return text.replace(config.triggerRegex, '').trim();
 }
 
+function nextMessageId() {
+  const value = nextInternalMessageId;
+  nextInternalMessageId += 1;
+  return value;
+}
+
+function stableBaseChatId(jid) {
+  let hash = 2166136261;
+  for (let i = 0; i < jid.length; i += 1) {
+    hash ^= jid.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  const positive = hash & 0x7fffffff;
+  return positive === 0 ? 1 : positive;
+}
+
+function getOrCreateChatId(chatJid) {
+  const existing = jidToChatId.get(chatJid);
+  if (existing) return existing;
+
+  let candidate = stableBaseChatId(chatJid);
+  while (true) {
+    const occupied = chatIdToJid.get(candidate);
+    if (!occupied || occupied === chatJid) break;
+    candidate = (candidate + 1) & 0x7fffffff;
+    if (candidate === 0) candidate = 1;
+  }
+  jidToChatId.set(chatJid, candidate);
+  chatIdToJid.set(candidate, chatJid);
+  return candidate;
+}
+
+function resolveChatJid(chatIdRaw, chatJidRaw = null) {
+  if (chatJidRaw && typeof chatJidRaw === 'string') {
+    return chatJidRaw.trim();
+  }
+  if (typeof chatIdRaw === 'string' && chatIdRaw.includes('@')) {
+    return chatIdRaw.trim();
+  }
+  const parsed = parseInteger(chatIdRaw, NaN, 1);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return '';
+  return chatIdToJid.get(parsed) || '';
+}
+
+function evictStoredFile(fileId) {
+  const existing = storedFiles.get(fileId);
+  if (!existing) return;
+  storedFiles.delete(fileId);
+  try {
+    fs.rmSync(existing.localPath, { force: true });
+  } catch {
+    // Best-effort cleanup.
+  }
+}
+
+function storeMediaBuffer(buffer, mimeType, fileName, prefix) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) return null;
+  if (buffer.length > config.bridgeFileMaxBytes) {
+    logger.warn(
+      { bytes: buffer.length, max: config.bridgeFileMaxBytes },
+      'incoming media skipped because it exceeds configured size limit'
+    );
+    return null;
+  }
+
+  const fileId = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+  const localPath = path.join(config.filesDir, `${fileId}.bin`);
+  fs.writeFileSync(localPath, buffer);
+  const metadata = {
+    fileId,
+    fileName,
+    mimeType,
+    fileSize: buffer.length,
+    localPath
+  };
+  storedFiles.set(fileId, metadata);
+  storedFileOrder.push(fileId);
+  while (storedFileOrder.length > config.bridgeApiMaxQueueSize) {
+    const victim = storedFileOrder.shift();
+    if (victim) evictStoredFile(victim);
+  }
+  return metadata;
+}
+
+function pushUpdate(messagePayload) {
+  const update = {
+    update_id: nextUpdateId,
+    message: messagePayload
+  };
+  nextUpdateId += 1;
+
+  updateQueue.push(update);
+  while (updateQueue.length > config.bridgeApiMaxQueueSize) {
+    updateQueue.shift();
+  }
+
+  for (let i = updateWaiters.length - 1; i >= 0; i -= 1) {
+    const waiter = updateWaiters[i];
+    if (update.update_id >= waiter.offset) {
+      updateWaiters.splice(i, 1);
+      waiter.resolve();
+    }
+  }
+}
+
+function collectUpdates(offset, limit) {
+  return updateQueue.filter((entry) => entry.update_id >= offset).slice(0, limit);
+}
+
+function waitForUpdates(offset, timeoutMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      const index = updateWaiters.findIndex((entry) => entry.resolve === resolve);
+      if (index >= 0) updateWaiters.splice(index, 1);
+      resolve();
+    }, timeoutMs);
+    updateWaiters.push({
+      offset,
+      resolve: () => {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+  });
+}
+
+async function downloadIncomingMedia(sock, msg) {
+  try {
+    const buffer = await downloadMediaMessage(
+      msg,
+      'buffer',
+      {},
+      {
+        logger,
+        reuploadRequest: sock.updateMediaMessage
+      }
+    );
+    if (!Buffer.isBuffer(buffer)) return null;
+    return buffer;
+  } catch (err) {
+    logger.warn({ err: String(err) }, 'failed to download incoming media');
+    return null;
+  }
+}
+
+async function buildIncomingMessagePayload(sock, msg, chatJid) {
+  const chatId = getOrCreateChatId(chatJid);
+  const payload = {
+    message_id: nextMessageId(),
+    chat: { id: chatId }
+  };
+  const sender = msg.key?.participant || msg.pushName || msg.key?.remoteJid || '';
+  if (sender) payload.from = { username: String(sender) };
+
+  const text = extractTextFromBaileysMessage(msg);
+  if (text) payload.text = text;
+
+  const message = msg.message || {};
+
+  if (message.imageMessage) {
+    const buffer = await downloadIncomingMedia(sock, msg);
+    if (buffer) {
+      const mimeType = message.imageMessage.mimetype || 'image/jpeg';
+      const metadata = storeMediaBuffer(
+        buffer,
+        mimeType,
+        `image-${payload.message_id}.jpg`,
+        'img'
+      );
+      if (metadata) {
+        payload.photo = [{ file_id: metadata.fileId, file_size: metadata.fileSize }];
+      }
+    }
+    if (message.imageMessage.caption) {
+      payload.caption = message.imageMessage.caption;
+    }
+  }
+
+  if (message.audioMessage) {
+    const buffer = await downloadIncomingMedia(sock, msg);
+    if (buffer) {
+      const mimeType = message.audioMessage.mimetype || 'audio/ogg';
+      const metadata = storeMediaBuffer(
+        buffer,
+        mimeType,
+        `audio-${payload.message_id}.ogg`,
+        message.audioMessage.ptt ? 'voice' : 'audio'
+      );
+      if (metadata) {
+        if (message.audioMessage.ptt) {
+          payload.voice = {
+            file_id: metadata.fileId,
+            file_size: metadata.fileSize,
+            mime_type: metadata.mimeType
+          };
+        } else {
+          payload.document = {
+            file_id: metadata.fileId,
+            file_name: metadata.fileName,
+            mime_type: metadata.mimeType
+          };
+        }
+      }
+    }
+  }
+
+  if (message.documentMessage) {
+    const buffer = await downloadIncomingMedia(sock, msg);
+    if (buffer) {
+      const mimeType = message.documentMessage.mimetype || 'application/octet-stream';
+      const fileName = message.documentMessage.fileName || `document-${payload.message_id}.bin`;
+      const metadata = storeMediaBuffer(buffer, mimeType, fileName, 'doc');
+      if (metadata) {
+        payload.document = {
+          file_id: metadata.fileId,
+          file_name: metadata.fileName,
+          mime_type: metadata.mimeType
+        };
+      }
+    }
+    if (message.documentMessage.caption) {
+      payload.caption = message.documentMessage.caption;
+    }
+  }
+
+  if (!payload.text && !payload.photo && !payload.voice && !payload.document) {
+    return null;
+  }
+  return payload;
+}
+
+async function enqueueIncomingUpdate(sock, msg, chatJid) {
+  const payload = await buildIncomingMessagePayload(sock, msg, chatJid);
+  if (!payload) return;
+  pushUpdate(payload);
+}
+
+function sendJson(res, status, payload) {
+  const body = JSON.stringify(payload);
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body)
+  });
+  res.end(body);
+}
+
+async function parseJsonBody(req, maxBytes = 1024 * 1024) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buffer.length;
+    if (total > maxBytes) {
+      throw new Error('request_too_large');
+    }
+    chunks.push(buffer);
+  }
+  if (chunks.length === 0) return {};
+  const raw = Buffer.concat(chunks).toString('utf-8');
+  if (!raw.trim()) return {};
+  return JSON.parse(raw);
+}
+
+function isAuthorized(req) {
+  if (!config.bridgeApiAuthToken) return true;
+  const auth = String(req.headers.authorization || '');
+  return auth === `Bearer ${config.bridgeApiAuthToken}`;
+}
+
+function requireSocket(res) {
+  if (!activeSock) {
+    sendJson(res, 503, { ok: false, description: 'whatsapp socket is not ready' });
+    return false;
+  }
+  return true;
+}
+
+async function handleApiRequest(req, res) {
+  if (!isAuthorized(req)) {
+    sendJson(res, 401, { ok: false, description: 'unauthorized' });
+    return;
+  }
+
+  const host = req.headers.host || `${config.bridgeApiHost}:${config.bridgeApiPort}`;
+  const url = new URL(req.url || '/', `http://${host}`);
+  const { pathname } = url;
+  const method = String(req.method || 'GET').toUpperCase();
+
+  if (method === 'GET' && pathname === '/health') {
+    sendJson(res, 200, { ok: true, result: { ready: Boolean(activeSock) } });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/updates') {
+    const offset = parseInteger(url.searchParams.get('offset'), 0, 0);
+    const requestedTimeout = parseInteger(url.searchParams.get('timeout'), 0, 0);
+    const timeoutSeconds = Math.min(requestedTimeout, config.bridgeApiMaxLongPollSeconds);
+    const limit = config.bridgeApiMaxUpdatesPerPoll;
+    let result = collectUpdates(offset, limit);
+    if (result.length === 0 && timeoutSeconds > 0) {
+      await waitForUpdates(offset, timeoutSeconds * 1000);
+      result = collectUpdates(offset, limit);
+    }
+    sendJson(res, 200, { ok: true, result });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/files/meta') {
+    const fileId = String(url.searchParams.get('file_id') || '').trim();
+    if (!fileId) {
+      sendJson(res, 400, { ok: false, description: 'file_id is required' });
+      return;
+    }
+    const metadata = storedFiles.get(fileId);
+    if (!metadata) {
+      sendJson(res, 404, { ok: false, description: 'file not found' });
+      return;
+    }
+    sendJson(res, 200, {
+      ok: true,
+      result: {
+        file_path: metadata.fileId,
+        file_size: metadata.fileSize,
+        mime_type: metadata.mimeType,
+        file_name: metadata.fileName
+      }
+    });
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/files/content') {
+    const filePathToken = String(url.searchParams.get('file_path') || '').trim();
+    if (!filePathToken) {
+      sendJson(res, 400, { ok: false, description: 'file_path is required' });
+      return;
+    }
+    const metadata = storedFiles.get(filePathToken);
+    if (!metadata || !fs.existsSync(metadata.localPath)) {
+      sendJson(res, 404, { ok: false, description: 'file content not found' });
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': metadata.mimeType || 'application/octet-stream',
+      'Content-Length': metadata.fileSize
+    });
+    const stream = fs.createReadStream(metadata.localPath);
+    stream.pipe(res);
+    stream.on('error', () => {
+      if (!res.headersSent) {
+        sendJson(res, 500, { ok: false, description: 'file stream failed' });
+      } else {
+        res.end();
+      }
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/messages') {
+    if (!requireSocket(res)) return;
+    const body = await parseJsonBody(req);
+    const text = String(body.text || '').trim();
+    const chatJid = resolveChatJid(body.chat_id, body.chat_jid);
+    if (!chatJid) {
+      sendJson(res, 404, { ok: false, description: 'chat not found' });
+      return;
+    }
+    if (!text) {
+      sendJson(res, 400, { ok: false, description: 'text is required' });
+      return;
+    }
+    const response = await activeSock.sendMessage(chatJid, { text });
+    sendJson(res, 200, {
+      ok: true,
+      result: {
+        message_id: nextMessageId(),
+        wa_message_id: response?.key?.id || null
+      }
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/media') {
+    if (!requireSocket(res)) return;
+    const body = await parseJsonBody(req);
+    const chatJid = resolveChatJid(body.chat_id, body.chat_jid);
+    if (!chatJid) {
+      sendJson(res, 404, { ok: false, description: 'chat not found' });
+      return;
+    }
+    const mediaRef = String(body.media_ref || '').trim();
+    if (!mediaRef) {
+      sendJson(res, 400, { ok: false, description: 'media_ref is required' });
+      return;
+    }
+    const mediaType = String(body.media_type || 'document').toLowerCase();
+    const caption = typeof body.caption === 'string' ? body.caption : undefined;
+    let payload;
+    if (mediaType === 'photo') {
+      payload = { image: { url: mediaRef }, caption };
+    } else if (mediaType === 'audio') {
+      payload = { audio: { url: mediaRef }, caption };
+    } else if (mediaType === 'voice') {
+      payload = { audio: { url: mediaRef }, ptt: true, caption };
+    } else {
+      const fileName = path.basename(mediaRef) || 'upload.bin';
+      payload = { document: { url: mediaRef }, fileName, caption };
+    }
+    const response = await activeSock.sendMessage(chatJid, payload);
+    sendJson(res, 200, {
+      ok: true,
+      result: {
+        message_id: nextMessageId(),
+        wa_message_id: response?.key?.id || null
+      }
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/messages/edit') {
+    const body = await parseJsonBody(req);
+    const chatJid = resolveChatJid(body.chat_id, body.chat_jid);
+    if (!chatJid) {
+      sendJson(res, 404, { ok: false, description: 'chat not found' });
+      return;
+    }
+    // WhatsApp message edit compatibility is intentionally a no-op in bridge API mode.
+    sendJson(res, 200, { ok: true, result: { edited: false } });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/chat-action') {
+    const body = await parseJsonBody(req);
+    const chatJid = resolveChatJid(body.chat_id, body.chat_jid);
+    if (!chatJid) {
+      sendJson(res, 404, { ok: false, description: 'chat not found' });
+      return;
+    }
+    // WhatsApp does not provide Telegram-equivalent chat actions through this bridge.
+    sendJson(res, 200, { ok: true, result: { accepted: false } });
+    return;
+  }
+
+  sendJson(res, 404, { ok: false, description: 'endpoint not found' });
+}
+
+function startApiServer() {
+  if (apiServer) return;
+  apiServer = createServer((req, res) => {
+    handleApiRequest(req, res).catch((err) => {
+      logger.error({ err: String(err) }, 'bridge API request failed');
+      sendJson(res, 500, { ok: false, description: 'internal_error' });
+    });
+  });
+  apiServer.listen(config.bridgeApiPort, config.bridgeApiHost, () => {
+    logger.info(
+      {
+        host: config.bridgeApiHost,
+        port: config.bridgeApiPort,
+        authRequired: Boolean(config.bridgeApiAuthToken)
+      },
+      'whatsapp bridge API server listening'
+    );
+  });
+}
+
 async function handleIncoming(sock, msg) {
   const chatJid = msg.key?.remoteJid;
   if (!chatJid) return;
@@ -67,6 +547,11 @@ async function handleIncoming(sock, msg) {
 
   if (!shouldHandleChat(chatJid, isGroup)) {
     logger.debug({ chatJid }, 'ignored: not in allowed chat list');
+    return;
+  }
+
+  if (config.pluginMode) {
+    await enqueueIncomingUpdate(sock, msg, chatJid);
     return;
   }
 
@@ -112,11 +597,13 @@ async function handleIncoming(sock, msg) {
 }
 
 async function start() {
+  startApiServer();
   logger.info(
     {
       trigger: config.trigger,
       dmAlwaysRespond: config.dmAlwaysRespond,
       groupTriggerRequired: config.groupTriggerRequired,
+      pluginMode: config.pluginMode,
       model: config.codexModel,
       reasoningEffort: config.codexReasoningEffort,
       fullAccess: config.codexFullAccess
@@ -159,10 +646,12 @@ async function start() {
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect } = update;
     if (connection === 'open') {
+      activeSock = sock;
       logger.info('whatsapp connection open');
       return;
     }
     if (connection === 'close') {
+      if (activeSock === sock) activeSock = null;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       logger.warn({ statusCode, shouldReconnect }, 'whatsapp connection closed');

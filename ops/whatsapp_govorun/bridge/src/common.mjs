@@ -7,6 +7,14 @@ export function parseBool(value, defaultValue = false) {
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 }
 
+export function parseInteger(value, defaultValue, minimum = 0) {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return defaultValue;
+  if (parsed < minimum) return minimum;
+  return parsed;
+}
+
 export function splitCsv(value) {
   if (!value) return [];
   return value
@@ -61,6 +69,7 @@ export function createConfig() {
   const stateDir = process.env.WA_STATE_DIR || path.join(home, 'whatsapp-govorun', 'state');
   const authDir = process.env.WA_AUTH_DIR || path.join(stateDir, 'auth');
   const logsDir = process.env.WA_LOGS_DIR || path.join(stateDir, 'logs');
+  const filesDir = process.env.WA_FILES_DIR || path.join(stateDir, 'files');
   const codexWorkdir = process.env.CODEX_WORKDIR || '/home/architect/matrix';
   const trigger = process.env.WA_TRIGGER || '@govorun';
   const pairingPhone = String(process.env.WA_PAIRING_PHONE || '').replace(/[^\d]/g, '');
@@ -76,13 +85,22 @@ export function createConfig() {
     authDir,
     stateDir,
     logsDir,
+    filesDir,
     codexWorkdir,
     codexModel: process.env.CODEX_MODEL || 'gpt-5-codex-mini',
     codexReasoningEffort: process.env.CODEX_REASONING_EFFORT || 'medium',
     codexFullAccess: parseBool(process.env.CODEX_FULL_ACCESS, true),
     codexBinary: process.env.CODEX_BIN || 'codex',
-    codexTimeoutMs: Number(process.env.CODEX_TIMEOUT_MS || 240000),
-    responseMaxChars: Number(process.env.WA_RESPONSE_MAX_CHARS || 3500),
+    codexTimeoutMs: parseInteger(process.env.CODEX_TIMEOUT_MS, 240000, 1000),
+    responseMaxChars: parseInteger(process.env.WA_RESPONSE_MAX_CHARS, 3500, 200),
+    pluginMode: parseBool(process.env.WA_PLUGIN_MODE, false),
+    bridgeApiHost: process.env.WA_API_HOST || '127.0.0.1',
+    bridgeApiPort: parseInteger(process.env.WA_API_PORT, 8787, 1),
+    bridgeApiAuthToken: String(process.env.WA_API_AUTH_TOKEN || '').trim(),
+    bridgeApiMaxUpdatesPerPoll: parseInteger(process.env.WA_API_MAX_UPDATES_PER_POLL, 100, 1),
+    bridgeApiMaxQueueSize: parseInteger(process.env.WA_API_MAX_QUEUE_SIZE, 2000, 10),
+    bridgeApiMaxLongPollSeconds: parseInteger(process.env.WA_API_MAX_LONG_POLL_SECONDS, 30, 1),
+    bridgeFileMaxBytes: parseInteger(process.env.WA_FILE_MAX_BYTES, 50 * 1024 * 1024, 1024),
     pairingPhone,
     pairingCode
   };
