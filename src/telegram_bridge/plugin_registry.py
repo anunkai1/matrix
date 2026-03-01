@@ -4,12 +4,12 @@ try:
     from .channel_adapter import ChannelAdapter, TelegramChannelAdapter
     from .engine_adapter import CodexEngineAdapter, EngineAdapter
     from .transport import TelegramClient
-    from .whatsapp_channel_stub import WhatsAppChannelStubAdapter
+    from .whatsapp_channel import WhatsAppChannelAdapter
 except ImportError:
     from channel_adapter import ChannelAdapter, TelegramChannelAdapter
     from engine_adapter import CodexEngineAdapter, EngineAdapter
     from transport import TelegramClient
-    from whatsapp_channel_stub import WhatsAppChannelStubAdapter
+    from whatsapp_channel import WhatsAppChannelAdapter
 
 ChannelFactory = Callable[[object], ChannelAdapter]
 EngineFactory = Callable[[], EngineAdapter]
@@ -61,7 +61,7 @@ def build_default_plugin_registry() -> PluginRegistry:
     )
     registry.register_channel(
         "whatsapp",
-        lambda config: WhatsAppChannelStubAdapter(config),
+        lambda config: WhatsAppChannelAdapter(config),
     )
     registry.register_engine("codex", lambda: CodexEngineAdapter())
     return registry

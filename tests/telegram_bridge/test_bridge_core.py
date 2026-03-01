@@ -27,6 +27,7 @@ import handlers as bridge_handlers
 import channel_adapter as bridge_channel_adapter
 import engine_adapter as bridge_engine_adapter
 import plugin_registry as bridge_plugin_registry
+import whatsapp_channel as bridge_whatsapp_channel
 import session_manager as bridge_session_manager
 import structured_logging as bridge_structured_logging
 import transport as bridge_transport
@@ -119,6 +120,10 @@ def make_config(**overrides):
         "assistant_name": "Architect",
         "channel_plugin": "telegram",
         "engine_plugin": "codex",
+        "whatsapp_plugin_enabled": False,
+        "whatsapp_bridge_api_base": "http://127.0.0.1:8787",
+        "whatsapp_bridge_auth_token": "",
+        "whatsapp_poll_timeout_seconds": 20,
     }
     base.update(overrides)
     return bridge.Config(**base)
@@ -197,10 +202,18 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIsInstance(channel, bridge_channel_adapter.TelegramChannelAdapter)
         self.assertIsInstance(engine, bridge_engine_adapter.CodexEngineAdapter)
 
-    def test_default_plugin_registry_whatsapp_stub_fails_fast(self):
+    def test_default_plugin_registry_whatsapp_disabled_fails_fast(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
         with self.assertRaises(RuntimeError):
             registry.build_channel("whatsapp", make_config())
+
+    def test_default_plugin_registry_builds_whatsapp_adapter_when_enabled(self):
+        registry = bridge_plugin_registry.build_default_plugin_registry()
+        channel = registry.build_channel(
+            "whatsapp",
+            make_config(whatsapp_plugin_enabled=True),
+        )
+        self.assertIsInstance(channel, bridge_whatsapp_channel.WhatsAppChannelAdapter)
 
     def test_parse_plugin_name_env_uses_default_for_empty(self):
         with mock.patch.dict(os.environ, {"PLUGIN_TEST": "   "}):
@@ -243,6 +256,59 @@ class BridgeCoreTests(unittest.TestCase):
             config = bridge.load_config()
         self.assertEqual(config.channel_plugin, "whatsapp")
         self.assertEqual(config.engine_plugin, "codex")
+
+    def test_load_config_reads_whatsapp_plugin_settings(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "WHATSAPP_PLUGIN_ENABLED": "true",
+                "WHATSAPP_BRIDGE_API_BASE": "http://localhost:9876",
+                "WHATSAPP_BRIDGE_AUTH_TOKEN": "secret",
+                "WHATSAPP_POLL_TIMEOUT_SECONDS": "33",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertTrue(config.whatsapp_plugin_enabled)
+        self.assertEqual(config.whatsapp_bridge_api_base, "http://localhost:9876")
+        self.assertEqual(config.whatsapp_bridge_auth_token, "secret")
+        self.assertEqual(config.whatsapp_poll_timeout_seconds, 33)
+
+    def test_whatsapp_adapter_send_message_get_id_posts_json(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"ok": true, "result": {"message_id": 321}}'
+
+        config = make_config(
+            whatsapp_plugin_enabled=True,
+            whatsapp_bridge_api_base="http://127.0.0.1:8787",
+            whatsapp_bridge_auth_token="token-1",
+        )
+        adapter = bridge_whatsapp_channel.WhatsAppChannelAdapter(config)
+        with mock.patch.object(bridge_whatsapp_channel, "urlopen", return_value=Response()) as mocked:
+            message_id = adapter.send_message_get_id(
+                chat_id=123,
+                text="hello",
+                reply_to_message_id=55,
+            )
+
+        self.assertEqual(message_id, 321)
+        request = mocked.call_args.args[0]
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.full_url, "http://127.0.0.1:8787/messages")
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(payload["chat_id"], "123")
+        self.assertEqual(payload["text"], "hello")
+        self.assertEqual(payload["reply_to_message_id"], "55")
+        self.assertEqual(request.get_header("Authorization"), "Bearer token-1")
 
     def test_parse_outbound_media_directive_extracts_media_and_voice_flag(self):
         text, directive = bridge_handlers.parse_outbound_media_directive(

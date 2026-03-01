@@ -147,6 +147,10 @@ class Config:
     assistant_name: str
     channel_plugin: str
     engine_plugin: str
+    whatsapp_plugin_enabled: bool
+    whatsapp_bridge_api_base: str
+    whatsapp_bridge_auth_token: str
+    whatsapp_poll_timeout_seconds: int
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -472,6 +476,17 @@ def load_config() -> Config:
         assistant_name=assistant_name,
         channel_plugin=parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram"),
         engine_plugin=parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
+        whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),
+        whatsapp_bridge_api_base=os.getenv(
+            "WHATSAPP_BRIDGE_API_BASE",
+            "http://127.0.0.1:8787",
+        ).strip(),
+        whatsapp_bridge_auth_token=os.getenv("WHATSAPP_BRIDGE_AUTH_TOKEN", "").strip(),
+        whatsapp_poll_timeout_seconds=parse_int_env(
+            "WHATSAPP_POLL_TIMEOUT_SECONDS",
+            20,
+            minimum=1,
+        ),
         empty_output_message=f"(No output from {assistant_name})",
     )
 
@@ -906,6 +921,12 @@ def run_bridge(config: Config) -> int:
     logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
     logging.info("Channel plugin active=%s", config.channel_plugin)
     logging.info("Engine plugin active=%s", config.engine_plugin)
+    logging.info(
+        "WhatsApp plugin enabled=%s api_base=%s poll_timeout_seconds=%s",
+        config.whatsapp_plugin_enabled,
+        config.whatsapp_bridge_api_base,
+        config.whatsapp_poll_timeout_seconds,
+    )
     logging.info("Executor command=%s", config.executor_cmd)
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
     logging.info(
@@ -967,6 +988,7 @@ def run_bridge(config: Config) -> int:
             "memory_prune_interval_seconds": config.memory_prune_interval_seconds,
             "channel_plugin": config.channel_plugin,
             "engine_plugin": config.engine_plugin,
+            "whatsapp_plugin_enabled": config.whatsapp_plugin_enabled,
         },
     )
 
