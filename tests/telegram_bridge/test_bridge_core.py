@@ -758,20 +758,6 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(bridge_handlers.extract_google_keyword_request("google"), (True, ""))
         self.assertEqual(bridge_handlers.extract_google_keyword_request("googler"), (False, ""))
 
-    def test_canonicalize_google_tail_variants(self):
-        self.assertEqual(
-            bridge_handlers.canonicalize_google_tail("summarise last email"),
-            "gmail summarize last",
-        )
-        self.assertEqual(
-            bridge_handlers.canonicalize_google_tail("show unread emails"),
-            "gmail unread",
-        )
-        self.assertEqual(
-            bridge_handlers.canonicalize_google_tail("calendar today"),
-            "calendar today",
-        )
-
     def test_strip_required_prefix_variants(self):
         prefixes = ["@helper", "helper:"]
         self.assertEqual(
@@ -1393,19 +1379,6 @@ class BridgeCoreTests(unittest.TestCase):
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_google_keyword_summarize_last_email(self, start_message_worker):
-        class FakeGoogleOpsClient:
-            def __init__(self, *args, **kwargs):
-                pass
-
-            def gmail_latest_message(self):
-                return bridge_handlers.GmailMessageSummary(
-                    message_id="latest123",
-                    from_value="alice@example.com",
-                    subject="Latest Subject",
-                    date="Sun, 1 Mar 2026 11:00:00 +1000",
-                    snippet="Latest snippet",
-                )
-
         state = bridge.State()
         client = FakeTelegramClient()
         config = make_config(google_enabled=True)
@@ -1418,13 +1391,15 @@ class BridgeCoreTests(unittest.TestCase):
                 "text": "Google summarise last email",
             },
         }
-        with mock.patch.object(bridge_handlers, "GoogleOpsClient", FakeGoogleOpsClient):
-            bridge.handle_update(state, config, client, update)
 
-        self.assertFalse(start_message_worker.called)
-        self.assertEqual(len(client.messages), 1)
-        self.assertIn("Latest Gmail summary", client.messages[0][1])
-        self.assertIn("latest123", client.messages[0][1])
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertTrue(kwargs["stateless"])
+        self.assertIn("Google operations priority mode is active.", kwargs["prompt"])
+        self.assertIn("User request: summarise last email", kwargs["prompt"])
+        self.assertEqual(client.messages, [])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_google_send_requires_confirm_then_executes(self, start_message_worker):

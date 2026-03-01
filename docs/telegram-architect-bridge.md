@@ -222,9 +222,8 @@ Message handling:
   - the bridge wraps the request with strict policy to use only `ops/ha/*.sh` scripts
   - HA-keyword requests run stateless (no memory/session carryover)
   - empty keyword-only messages are rejected with a usage hint
-- Messages starting with `Google` are routed to Google command mode:
-  - supports direct command-style tails (`Google gmail unread 5`)
-  - supports free-text aliases (for example: `Google summarize last email`)
+- Messages starting with `Google` are routed in Google priority AI mode:
+  - Google keyword requests run stateless (no memory/session carryover), like HA keyword mode
   - empty keyword-only messages are rejected with a usage hint
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`

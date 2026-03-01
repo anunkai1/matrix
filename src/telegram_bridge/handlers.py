@@ -183,40 +183,6 @@ def extract_google_keyword_request(text: str) -> tuple[bool, str]:
     return False, ""
 
 
-def canonicalize_google_tail(tail: str) -> str:
-    stripped = tail.strip()
-    if not stripped:
-        return "help"
-
-    normalized = " ".join(stripped.lower().split())
-    head = normalized.split(" ", maxsplit=1)[0]
-    if head in {"help", "gmail", "calendar", "confirm", "cancel"}:
-        return stripped
-
-    if re.fullmatch(r"(?:summari[sz]e|summary)\s+(?:the\s+)?(?:last|latest)\s+email", normalized):
-        return "gmail summarize last"
-
-    if normalized in {"unread email", "unread emails"} or re.fullmatch(
-        r"(?:show|list|get)\s+(?:my\s+)?unread\s+emails?",
-        normalized,
-    ):
-        return "gmail unread"
-
-    if normalized in {"agenda", "my agenda"} or re.fullmatch(
-        r"(?:show|list|get)\s+(?:my\s+)?(?:calendar\s+)?agenda",
-        normalized,
-    ):
-        return "calendar agenda"
-
-    if normalized in {"today calendar", "calendar today", "today schedule"} or re.fullmatch(
-        r"(?:show|list|get)\s+(?:my\s+)?(?:today'?s\s+)?(?:calendar|schedule)",
-        normalized,
-    ):
-        return "calendar today"
-
-    return stripped
-
-
 def strip_required_prefix(
     text: str,
     prefixes: List[str],
@@ -268,6 +234,19 @@ def build_ha_keyword_prompt(user_request: str) -> str:
         "- Do not use inline systemd-run, /bin/bash -lc, or direct curl commands for HA actions.\n"
         "- If entity/time/mode is unclear, ask one concise clarification question instead of guessing.\n"
         "- After execution, report the result with state or timer/service unit names."
+    )
+
+
+def build_google_keyword_prompt(user_request: str) -> str:
+    return (
+        "Google operations priority mode is active.\n"
+        "Treat this as a Google Gmail/Calendar request.\n"
+        f"User request: {user_request.strip()}\n\n"
+        "Mandatory execution policy:\n"
+        "- Use local Google credentials under /home/architect/.config/google/architect/.\n"
+        "- For read operations (list/read/summarize), execute and return results.\n"
+        "- For write operations (send email/create event), require explicit user confirmation before execution.\n"
+        "- If intent is unclear, ask one concise clarification question."
     )
 
 
@@ -922,7 +901,7 @@ def build_google_help_text(config) -> str:
         "- /google confirm <code>\n"
         "- /google cancel\n\n"
         "Notes:\n"
-        "- `Google ...` keyword routing is enabled (for example: `Google summarize last email`).\n"
+        "- `Google ...` keyword routing is enabled and handled in AI mode.\n"
         "- send/create actions are pending until confirmed.\n"
         "- datetime format: 2026-03-01T17:30 or 2026-03-01T17:30+10:00"
     )
@@ -1182,7 +1161,6 @@ def handle_google_command(
     tail = pieces[1].strip() if len(pieces) > 1 else "help"
     if not tail:
         tail = "help"
-    tail = canonicalize_google_tail(tail)
 
     try:
         tokens = shlex.split(tail)
@@ -2918,8 +2896,9 @@ def handle_update(
                     reply_to_message_id=message_id,
                 )
                 return
-            prompt_input = f"/google {canonicalize_google_tail(google_request)}"
-            command = "/google"
+            prompt_input = build_google_keyword_prompt(google_request)
+            command = "/google-keyword"
+            stateless = True
             emit_event(
                 "bridge.google_keyword_routed",
                 fields={"chat_id": chat_id, "message_id": message_id},
