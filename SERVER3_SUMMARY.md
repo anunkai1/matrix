@@ -10,6 +10,7 @@ Last updated: 2026-03-01 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-03-01: removed `/google ...` slash-command interface from Architect bridge; Google operations are now keyword-only via `Google ...` stateless AI routing, and slash usage now returns a migration hint to use keyword format.
 - 2026-03-01: simplified Google operational flow by removing `/google confirm` and `/google cancel` write-gating; `/google gmail send ...` and `/google calendar create ...` now execute immediately, and bridge help/docs/tests were updated to match.
 - 2026-03-01: changed Google keyword handling in Architect bridge from parser-mapped commands to HA-style stateless AI routing: `Google ...` no longer rewrites into `/google ...` command parsing, and now wraps requests with Google-priority execution guidance; explicit `/google ...` command flow (including confirm/cancel safety for writes) remains available.
 - 2026-03-01: added Google keyword parity routing in Architect Telegram bridge so `Google ...` messages now enter Google command mode (like HA keyword routing), including free-text alias mapping for `Google summarize/summarise last email`; added Gmail recent/latest API helpers, expanded bridge tests, and updated Google command docs.

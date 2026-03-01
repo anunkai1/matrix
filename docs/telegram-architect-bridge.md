@@ -180,14 +180,6 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/status` bridge health and uptime
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
-- `/google help` show Google Gmail/Calendar command help
-- `/google gmail unread [limit]` list unread Gmail messages
-- `/google gmail read <message_id>` show one Gmail message metadata/snippet
-- `/google gmail summarize [last email]` summarize most recent email
-- `/google gmail send <to_email> | <subject> | <body>` send email immediately
-- `/google calendar today [limit]` list today’s calendar events
-- `/google calendar agenda [days]` list upcoming events for N days
-- `/google calendar create <start_iso> | <end_iso> | <title> | [description]` create event immediately
 - `/voice-alias list` show pending learned voice corrections
 - `/voice-alias approve <id>` approve one learned correction
 - `/voice-alias reject <id>` reject one learned correction
@@ -223,6 +215,7 @@ Message handling:
 - Messages starting with `Google` are routed in Google priority AI mode:
   - Google keyword requests run stateless (no memory/session carryover), like HA keyword mode
   - empty keyword-only messages are rejected with a usage hint
+  - slash command `/google ...` is deprecated/disabled; use `Google ...` instead
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`
 - File without caption uses: `Please analyze this file.`
@@ -232,10 +225,9 @@ Message handling:
 - While Architect is running, the bridge sends:
   - Telegram typing actions (`typing`)
   - a progress status message that is edited in place with elapsed time and step updates
-- Google command safety:
-  - Enable via `TELEGRAM_GOOGLE_ENABLED=true`
-  - Optional sender allowlist via `TELEGRAM_GOOGLE_ALLOWED_SENDER_IDS`
-  - Email send and calendar create execute immediately when command is valid
+- Google operation mode:
+  - use `Google ...` free text for read/write Gmail/Calendar actions via AI routing
+  - write actions are executed by AI flow (no separate `/google confirm` step)
 
 ## Context Persistence
 

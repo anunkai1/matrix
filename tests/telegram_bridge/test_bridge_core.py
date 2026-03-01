@@ -1319,10 +1319,10 @@ class BridgeCoreTests(unittest.TestCase):
             self.assertIn("Memory status:", client.messages[-1][1])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_google_command_disabled_returns_message(self, start_message_worker):
+    def test_handle_update_google_slash_command_removed_returns_hint(self, start_message_worker):
         state = bridge.State()
         client = FakeTelegramClient()
-        config = make_config(google_enabled=False)
+        config = make_config(google_enabled=True)
         update = {
             "update_id": 201,
             "message": {
@@ -1336,45 +1336,7 @@ class BridgeCoreTests(unittest.TestCase):
         bridge.handle_update(state, config, client, update)
         self.assertFalse(start_message_worker.called)
         self.assertEqual(len(client.messages), 1)
-        self.assertIn("disabled", client.messages[0][1].lower())
-
-    @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_google_gmail_unread(self, start_message_worker):
-        class FakeGoogleOpsClient:
-            def __init__(self, *args, **kwargs):
-                pass
-
-            def gmail_list_unread(self, limit):
-                self.last_limit = limit
-                return [
-                    bridge_handlers.GmailMessageSummary(
-                        message_id="abc123",
-                        from_value="alice@example.com",
-                        subject="Hello",
-                        date="Sun, 1 Mar 2026 10:00:00 +1000",
-                        snippet="Snippet text",
-                    )
-                ]
-
-        state = bridge.State()
-        client = FakeTelegramClient()
-        config = make_config(google_enabled=True, google_max_results=10)
-        update = {
-            "update_id": 202,
-            "message": {
-                "message_id": 302,
-                "chat": {"id": 1, "type": "private"},
-                "from": {"id": 55, "first_name": "V"},
-                "text": "/google gmail unread 1",
-            },
-        }
-        with mock.patch.object(bridge_handlers, "GoogleOpsClient", FakeGoogleOpsClient):
-            bridge.handle_update(state, config, client, update)
-
-        self.assertFalse(start_message_worker.called)
-        self.assertEqual(len(client.messages), 1)
-        self.assertIn("Unread Gmail", client.messages[0][1])
-        self.assertIn("abc123", client.messages[0][1])
+        self.assertIn("Slash Google commands were removed", client.messages[0][1])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_google_keyword_summarize_last_email(self, start_message_worker):
@@ -1399,45 +1361,6 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Google operations priority mode is active.", kwargs["prompt"])
         self.assertIn("User request: summarise last email", kwargs["prompt"])
         self.assertEqual(client.messages, [])
-
-    @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_google_send_executes_immediately(self, start_message_worker):
-        sent_payload = {}
-
-        class FakeGoogleOpsClient:
-            def __init__(self, *args, **kwargs):
-                pass
-
-            def gmail_send_message(self, to_email, subject, body_text):
-                sent_payload["to_email"] = to_email
-                sent_payload["subject"] = subject
-                sent_payload["body_text"] = body_text
-                return "msg-555"
-
-        state = bridge.State()
-        client = FakeTelegramClient()
-        config = make_config(google_enabled=True)
-
-        create_update = {
-            "update_id": 203,
-            "message": {
-                "message_id": 303,
-                "chat": {"id": 1, "type": "private"},
-                "from": {"id": 55, "first_name": "V"},
-                "text": "/google gmail send bob@example.com | Subject A | Body B",
-            },
-        }
-
-        with mock.patch.object(bridge_handlers, "GoogleOpsClient", FakeGoogleOpsClient):
-            bridge.handle_update(state, config, client, create_update)
-
-            self.assertFalse(start_message_worker.called)
-            self.assertTrue(client.messages)
-            self.assertIn("Gmail sent successfully", client.messages[-1][1])
-
-        self.assertEqual(sent_payload["to_email"], "bob@example.com")
-        self.assertEqual(sent_payload["subject"], "Subject A")
-        self.assertEqual(sent_payload["body_text"], "Body B")
 
     def test_handle_update_rejects_too_long_input_before_worker_dispatch(self):
         state = bridge.State()

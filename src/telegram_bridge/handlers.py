@@ -2,7 +2,6 @@ import logging
 import json
 import os
 import re
-import shlex
 import subprocess
 import threading
 import time
@@ -21,7 +20,6 @@ try:
     from .engine_adapter import CodexEngineAdapter, EngineAdapter
     from .media import TelegramFileDownloadSpec, download_telegram_file_to_temp
     from .memory_engine import MemoryEngine, TurnContext, build_memory_help_lines, handle_memory_command
-    from .google_ops import CalendarEventSummary, GmailMessageSummary, GoogleOpsClient, GoogleOpsError
     from .session_manager import (
         ensure_chat_worker_session,
         finalize_chat_work,
@@ -43,7 +41,6 @@ except ImportError:
     from engine_adapter import CodexEngineAdapter, EngineAdapter
     from media import TelegramFileDownloadSpec, download_telegram_file_to_temp
     from memory_engine import MemoryEngine, TurnContext, build_memory_help_lines, handle_memory_command
-    from google_ops import CalendarEventSummary, GmailMessageSummary, GoogleOpsClient, GoogleOpsError
     from session_manager import (
         ensure_chat_worker_session,
         finalize_chat_work,
@@ -861,406 +858,6 @@ def extract_sender_name(message: Dict[str, object]) -> str:
     return "Telegram User"
 
 
-def extract_sender_id(message: Dict[str, object]) -> Optional[int]:
-    sender = message.get("from")
-    if not isinstance(sender, dict):
-        return None
-    sender_id = sender.get("id")
-    if isinstance(sender_id, int):
-        return sender_id
-    return None
-
-
-def build_google_help_text(config) -> str:
-    enabled = getattr(config, "google_enabled", False)
-    status = "enabled" if enabled else "disabled"
-    return (
-        "Google assistant commands:\n"
-        f"- Status: {status}\n"
-        "- /google help\n"
-        "- /google gmail unread [limit]\n"
-        "- /google gmail read <message_id>\n"
-        "- /google gmail summarize [last email]\n"
-        "- /google gmail send <to_email> | <subject> | <body>\n"
-        "- /google calendar today [limit]\n"
-        "- /google calendar agenda [days]\n"
-        "- /google calendar create <start_iso> | <end_iso> | <title> | [description]\n"
-        "\n"
-        "Notes:\n"
-        "- `Google ...` keyword routing is enabled and handled in AI mode.\n"
-        "- send/create actions execute immediately.\n"
-        "- datetime format: 2026-03-01T17:30 or 2026-03-01T17:30+10:00"
-    )
-
-
-def parse_positive_int(value: str, fallback: int, minimum: int, maximum: int) -> int:
-    if not value.strip():
-        return fallback
-    parsed = int(value.strip())
-    if parsed < minimum or parsed > maximum:
-        raise ValueError(f"value must be between {minimum} and {maximum}")
-    return parsed
-
-
-def parse_pipe_fields(raw: str, min_parts: int, max_parts: int) -> Optional[List[str]]:
-    parts = [item.strip() for item in raw.split("|")]
-    if len(parts) < min_parts or len(parts) > max_parts:
-        return None
-    if any(not part for part in parts):
-        return None
-    return parts
-
-
-def build_google_client(config) -> GoogleOpsClient:
-    return GoogleOpsClient(
-        client_secret_path=getattr(
-            config,
-            "google_client_secret_path",
-            "/home/architect/.config/google/architect/client_secret.json",
-        ),
-        token_path=getattr(
-            config,
-            "google_token_path",
-            "/home/architect/.config/google/architect/oauth_token.json",
-        ),
-        default_timezone=getattr(config, "google_default_timezone", "Australia/Brisbane"),
-    )
-
-
-def is_google_sender_allowed(config, sender_id: Optional[int]) -> bool:
-    allowed = getattr(config, "google_allowed_sender_ids", set())
-    if not allowed:
-        return True
-    if sender_id is None:
-        return False
-    return sender_id in allowed
-
-
-def render_gmail_summary(item: GmailMessageSummary) -> str:
-    return (
-        f"ID: `{item.message_id}`\n"
-        f"From: {item.from_value}\n"
-        f"Subject: {item.subject}\n"
-        f"Date: {item.date}\n"
-        f"Snippet: {item.snippet or '(no snippet)'}"
-    )
-
-
-def render_calendar_summary(item: CalendarEventSummary) -> str:
-    base = (
-        f"ID: `{item.event_id}`\n"
-        f"Title: {item.summary}\n"
-        f"Start: {item.start}\n"
-        f"End: {item.end}"
-    )
-    if item.html_link:
-        return f"{base}\nLink: {item.html_link}"
-    return base
-
-
-def build_calendar_list_response(events: List[CalendarEventSummary], heading: str) -> str:
-    if not events:
-        return f"{heading}\nNo events found."
-    lines = [heading]
-    for index, event in enumerate(events, start=1):
-        lines.append(
-            (
-                f"{index}. {event.summary}\n"
-                f"   start: {event.start}\n"
-                f"   end: {event.end}\n"
-                f"   id: {event.event_id}"
-            )
-        )
-    return trim_output("\\n".join(lines), TELEGRAM_LIMIT)
-
-
-def build_gmail_list_response(messages: List[GmailMessageSummary], heading: str) -> str:
-    if not messages:
-        return f"{heading}\nNo matching emails found."
-    lines = [heading]
-    for index, item in enumerate(messages, start=1):
-        lines.append(
-            (
-                f"{index}. {item.subject}\n"
-                f"   from: {item.from_value}\n"
-                f"   date: {item.date}\n"
-                f"   id: {item.message_id}"
-            )
-        )
-    return trim_output("\\n".join(lines), TELEGRAM_LIMIT)
-
-
-def handle_google_command(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    chat_id: int,
-    message_id: Optional[int],
-    raw_text: str,
-    sender_id: Optional[int],
-) -> bool:
-    if not getattr(config, "google_enabled", False):
-        client.send_message(
-            chat_id,
-            "Google assistant commands are disabled. Set TELEGRAM_GOOGLE_ENABLED=true.",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    if not is_google_sender_allowed(config, sender_id):
-        client.send_message(
-            chat_id,
-            "Google assistant commands are not allowed for this Telegram user.",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    pieces = raw_text.strip().split(maxsplit=1)
-    tail = pieces[1].strip() if len(pieces) > 1 else "help"
-    if not tail:
-        tail = "help"
-
-    try:
-        tokens = shlex.split(tail)
-    except ValueError:
-        client.send_message(
-            chat_id,
-            "Invalid quoting in /google command.",
-            reply_to_message_id=message_id,
-        )
-        return True
-    if not tokens:
-        tokens = ["help"]
-
-    top = tokens[0].lower()
-    if top in ("help", "h"):
-        client.send_message(
-            chat_id,
-            build_google_help_text(config),
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    try:
-        google_client = build_google_client(config)
-        max_results = max(1, min(int(getattr(config, "google_max_results", 10)), 50))
-
-        if top == "gmail":
-            if len(tokens) < 2:
-                client.send_message(
-                    chat_id,
-                    build_google_help_text(config),
-                    reply_to_message_id=message_id,
-                )
-                return True
-            gmail_action = tokens[1].lower()
-
-            if gmail_action in ("unread", "list"):
-                limit = max_results
-                if len(tokens) >= 3:
-                    limit = parse_positive_int(tokens[2], max_results, 1, 50)
-                messages = google_client.gmail_list_unread(limit=limit)
-                client.send_message(
-                    chat_id,
-                    build_gmail_list_response(messages, heading=f"Unread Gmail (max {limit})"),
-                    reply_to_message_id=message_id,
-                )
-                return True
-
-            if gmail_action == "read":
-                if len(tokens) < 3:
-                    client.send_message(
-                        chat_id,
-                        "Usage: /google gmail read <message_id>",
-                        reply_to_message_id=message_id,
-                    )
-                    return True
-                message_summary = google_client.gmail_read_message(tokens[2])
-                client.send_message(
-                    chat_id,
-                    trim_output(render_gmail_summary(message_summary), TELEGRAM_LIMIT),
-                    reply_to_message_id=message_id,
-                )
-                return True
-
-            if gmail_action == "send":
-                match = re.match(r"(?is)^gmail\s+send\s+(.+)$", tail)
-                if not match:
-                    client.send_message(
-                        chat_id,
-                        "Usage: /google gmail send <to_email> | <subject> | <body>",
-                        reply_to_message_id=message_id,
-                    )
-                    return True
-                parsed_fields = parse_pipe_fields(match.group(1), 3, 3)
-                if parsed_fields is None:
-                    client.send_message(
-                        chat_id,
-                        "Usage: /google gmail send <to_email> | <subject> | <body>",
-                        reply_to_message_id=message_id,
-                    )
-                    return True
-                to_email, subject, body = parsed_fields
-                message_id_value = google_client.gmail_send_message(
-                    to_email=to_email,
-                    subject=subject,
-                    body_text=body,
-                )
-                client.send_message(
-                    chat_id,
-                    trim_output(
-                        (
-                            "Gmail sent successfully.\n"
-                            f"To: {to_email}\n"
-                            f"Subject: {subject}\n"
-                            f"Message ID: `{message_id_value}`"
-                        ),
-                        TELEGRAM_LIMIT,
-                    ),
-                    reply_to_message_id=message_id,
-                )
-                return True
-
-            if gmail_action in ("summarize", "summarise", "summary"):
-                target_tokens = [token.lower() for token in tokens[2:]]
-                allowed_targets = ([], ["last"], ["latest"], ["last", "email"], ["latest", "email"])
-                if target_tokens not in allowed_targets:
-                    client.send_message(
-                        chat_id,
-                        "Usage: /google gmail summarize [last email]",
-                        reply_to_message_id=message_id,
-                    )
-                    return True
-                message_summary = google_client.gmail_latest_message()
-                client.send_message(
-                    chat_id,
-                    trim_output(
-                        "Latest Gmail summary:\n" + render_gmail_summary(message_summary),
-                        TELEGRAM_LIMIT,
-                    ),
-                    reply_to_message_id=message_id,
-                )
-                return True
-
-            client.send_message(
-                chat_id,
-                build_google_help_text(config),
-                reply_to_message_id=message_id,
-            )
-            return True
-
-        if top == "calendar":
-            if len(tokens) < 2:
-                client.send_message(
-                    chat_id,
-                    build_google_help_text(config),
-                    reply_to_message_id=message_id,
-                )
-                return True
-            calendar_action = tokens[1].lower()
-
-            if calendar_action == "today":
-                limit = max_results
-                if len(tokens) >= 3:
-                    limit = parse_positive_int(tokens[2], max_results, 1, 50)
-                events = google_client.calendar_today_events(limit=limit)
-                client.send_message(
-                    chat_id,
-                    build_calendar_list_response(events, heading=f"Calendar today (max {limit})"),
-                    reply_to_message_id=message_id,
-                )
-                return True
-
-            if calendar_action in ("agenda", "list"):
-                days = 7
-                if len(tokens) >= 3:
-                    days = parse_positive_int(tokens[2], 7, 1, 30)
-                events = google_client.calendar_list_events(days=days, limit=max_results)
-                client.send_message(
-                    chat_id,
-                    build_calendar_list_response(
-                        events,
-                        heading=f"Calendar agenda (next {days} day{'s' if days != 1 else ''})",
-                    ),
-                    reply_to_message_id=message_id,
-                )
-                return True
-
-            if calendar_action in ("create", "add"):
-                match = re.match(r"(?is)^calendar\s+(?:create|add)\s+(.+)$", tail)
-                if not match:
-                    client.send_message(
-                        chat_id,
-                        "Usage: /google calendar create <start_iso> | <end_iso> | <title> | [description]",
-                        reply_to_message_id=message_id,
-                    )
-                    return True
-                parsed_fields = parse_pipe_fields(match.group(1), 3, 4)
-                if parsed_fields is None:
-                    client.send_message(
-                        chat_id,
-                        "Usage: /google calendar create <start_iso> | <end_iso> | <title> | [description]",
-                        reply_to_message_id=message_id,
-                    )
-                    return True
-                start_iso = parsed_fields[0]
-                end_iso = parsed_fields[1]
-                title = parsed_fields[2]
-                description = parsed_fields[3] if len(parsed_fields) > 3 else ""
-                created = google_client.calendar_create_event(
-                    title=title,
-                    start_iso=start_iso,
-                    end_iso=end_iso,
-                    description=description,
-                )
-                client.send_message(
-                    chat_id,
-                    trim_output(
-                        "Calendar event created:\n" + render_calendar_summary(created),
-                        TELEGRAM_LIMIT,
-                    ),
-                    reply_to_message_id=message_id,
-                )
-                return True
-
-            client.send_message(
-                chat_id,
-                build_google_help_text(config),
-                reply_to_message_id=message_id,
-            )
-            return True
-
-        client.send_message(
-            chat_id,
-            build_google_help_text(config),
-            reply_to_message_id=message_id,
-        )
-        return True
-    except ValueError as exc:
-        client.send_message(
-            chat_id,
-            f"Invalid value: {exc}",
-            reply_to_message_id=message_id,
-        )
-        return True
-    except GoogleOpsError as exc:
-        logging.warning("Google command failed for chat_id=%s: %s", chat_id, exc)
-        client.send_message(
-            chat_id,
-            f"Google command failed: {exc}",
-            reply_to_message_id=message_id,
-        )
-        return True
-    except Exception:
-        logging.exception("Unexpected Google command failure for chat_id=%s", chat_id)
-        client.send_message(
-            chat_id,
-            "Google command failed due to an unexpected error.",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-
 def download_photo_to_temp(
     client: ChannelAdapter,
     config,
@@ -1597,14 +1194,13 @@ def build_help_text(config) -> str:
         "/status - show bridge status and context\n"
         "/reset - clear saved context for this chat\n"
         "/restart - queue a safe bridge restart\n"
-        "/google help - show Google Gmail/Calendar commands\n"
         "/voice-alias list - show pending learned voice corrections\n"
         "/voice-alias approve <id> - approve one learned correction\n"
         "server3-tv-start - start TV desktop mode (local shell command)\n"
         "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
         "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
-        "Use `Google ...` for Google Gmail/Calendar free-text routing."
+        "Use `Google ...` for Google Gmail/Calendar free-text routing (no `/google` slash command)."
     )
     return base + "\n\n" + "\n".join(build_memory_help_lines())
 
@@ -2494,7 +2090,6 @@ def handle_known_command(
     message_id: Optional[int],
     command: Optional[str],
     raw_text: str,
-    sender_id: Optional[int],
 ) -> bool:
     if command == "/start":
         client.send_message(
@@ -2533,15 +2128,12 @@ def handle_known_command(
             raw_text=raw_text,
         )
     if command == "/google":
-        return handle_google_command(
-            state=state,
-            config=config,
-            client=client,
-            chat_id=chat_id,
-            message_id=message_id,
-            raw_text=raw_text,
-            sender_id=sender_id,
+        client.send_message(
+            chat_id,
+            "Slash Google commands were removed. Use `Google ...` (no slash), for example: `Google summarize last email`.",
+            reply_to_message_id=message_id,
         )
+        return True
     return False
 
 
@@ -2656,7 +2248,6 @@ def handle_update(
                 return
 
     sender_name = extract_sender_name(message)
-    sender_id = extract_sender_id(message)
     stateless = False
     command = normalize_command(prompt_input or "")
     ha_keyword_mode = False
@@ -2760,7 +2351,6 @@ def handle_update(
         message_id,
         command,
         prompt_input or "",
-        sender_id,
     ):
         emit_event(
             "bridge.command_handled",
