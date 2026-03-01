@@ -1,18 +1,19 @@
 # Tank Joplin Sync Target State (Redacted)
 
-- Timestamp (Australia/Brisbane ISO-8601): 2026-03-01T10:21:18+10:00
+- Timestamp (Australia/Brisbane ISO-8601): 2026-03-01T13:21:24+10:00
 - Owner: `tank`
-- Sync direction (bootstrap): copied existing profile state, then validated local CLI/config
+- Sync direction: isolated profile + dedicated WebDAV folder for Tank-only data
 
 ## Runtime Components
 - User-level npm prefix: `~/.local`
 - Joplin binary: `~/.local/bin/joplin`
-- Joplin profile: `~/.config/joplin`
+- Joplin profile (active): `~/.config/joplin-tank`
+- Joplin profile (legacy shared): removed from Tank home after backup
 
 ## Sync Endpoint
 - Base URL: `https://mavali.top`
-- WebDAV path: `/remote.php/dav/files/admin/VladsPhoneMoto/Joplin`
-- Full sync path: `https://mavali.top/remote.php/dav/files/admin/VladsPhoneMoto/Joplin`
+- WebDAV path: `/remote.php/dav/files/admin/VladsPhoneMoto/Joplin-Tank`
+- Full sync path: `https://mavali.top/remote.php/dav/files/admin/VladsPhoneMoto/Joplin-Tank`
 
 ## Credentials
 - Username: `admin`
@@ -20,6 +21,8 @@
 
 ## Validation Targets
 - `sudo -u tank bash -lc 'command -v joplin'` returns `/home/tank/.local/bin/joplin`
-- `sudo -u tank bash -lc 'joplin version'` reports current CLI version
-- `sudo -u tank bash -lc 'joplin config sync.target'` returns `5`
-- `sudo -u tank bash -lc 'joplin config sync.5.path'` returns the path above
+- `sudo -u tank bash -lc 'joplin --profile ~/.config/joplin-tank config sync.target'` returns `5`
+- `sudo -u tank bash -lc 'joplin --profile ~/.config/joplin-tank config sync.5.path'` returns the path above
+- `sudo -u tank bash -lc 'joplin --profile ~/.config/joplin-tank ls / -l'` shows notebook `Tank`
+- `/etc/default/telegram-tank-bridge` includes:
+  - `JOPLIN_PROFILE=/home/tank/.config/joplin-tank`
