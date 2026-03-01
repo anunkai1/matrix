@@ -1,6 +1,6 @@
 # Tank Joplin Sync Target State (Redacted)
 
-- Timestamp (Australia/Brisbane ISO-8601): 2026-03-01T13:21:24+10:00
+- Timestamp (Australia/Brisbane ISO-8601): 2026-03-01T13:43:58+10:00
 - Owner: `tank`
 - Sync direction: isolated profile + dedicated WebDAV folder for Tank-only data
 
@@ -18,6 +18,7 @@
 ## Credentials
 - Username: `admin`
 - App password: redacted (stored only in local Joplin profile config, not in git)
+- Latest app-password update applied live: `2026-03-01T13:43:58+10:00`
 
 ## Validation Targets
 - `sudo -u tank bash -lc 'command -v joplin'` returns `/home/tank/.local/bin/joplin`
