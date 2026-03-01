@@ -2168,8 +2168,15 @@ def handle_update(
     if prompt_input is None and voice_file_id is None and document is None:
         return
 
+    chat_obj = message.get("chat")
+    chat_type = chat_obj.get("type") if isinstance(chat_obj, dict) else None
+    is_private_chat = isinstance(chat_type, str) and chat_type == "private"
+    requires_prefix_for_message = bool(config.required_prefixes) and (
+        config.require_prefix_in_private or not is_private_chat
+    )
+
     enforce_voice_prefix_from_transcript = False
-    if prompt_input is not None and config.required_prefixes:
+    if prompt_input is not None and requires_prefix_for_message:
         voice_without_caption = bool(voice_file_id) and not prompt_input.strip()
         if voice_without_caption:
             enforce_voice_prefix_from_transcript = True

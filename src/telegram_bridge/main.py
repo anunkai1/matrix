@@ -144,6 +144,7 @@ class Config:
     memory_prune_interval_seconds: int
     required_prefixes: List[str]
     required_prefix_ignore_case: bool
+    require_prefix_in_private: bool
     assistant_name: str
     channel_plugin: str
     engine_plugin: str
@@ -471,6 +472,10 @@ def load_config() -> Config:
         required_prefixes=parse_prefixes_env("TELEGRAM_REQUIRED_PREFIXES"),
         required_prefix_ignore_case=parse_bool_env(
             "TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE",
+            True,
+        ),
+        require_prefix_in_private=parse_bool_env(
+            "TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE",
             True,
         ),
         assistant_name=assistant_name,

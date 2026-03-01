@@ -117,6 +117,7 @@ def make_config(**overrides):
         "memory_prune_interval_seconds": 300,
         "required_prefixes": [],
         "required_prefix_ignore_case": True,
+        "require_prefix_in_private": True,
         "assistant_name": "Architect",
         "channel_plugin": "telegram",
         "engine_plugin": "codex",
@@ -275,6 +276,21 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.whatsapp_bridge_api_base, "http://localhost:9876")
         self.assertEqual(config.whatsapp_bridge_auth_token, "secret")
         self.assertEqual(config.whatsapp_poll_timeout_seconds, 33)
+
+    def test_load_config_reads_require_prefix_in_private_override(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_REQUIRED_PREFIXES": "@tank",
+                "TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE": "false",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertEqual(config.required_prefixes, ["@tank"])
+        self.assertFalse(config.require_prefix_in_private)
 
     def test_whatsapp_adapter_send_message_get_id_posts_json(self):
         class Response:
@@ -1148,6 +1164,56 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(kwargs["prompt"], "transcribe this")
         self.assertEqual(kwargs["voice_file_id"], "voice-2")
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_allows_unprefixed_private_message_when_configured(
+        self, start_message_worker
+    ):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(
+            required_prefixes=["@helper"],
+            require_prefix_in_private=False,
+        )
+        update = {
+            "update_id": 105,
+            "message": {
+                "message_id": 205,
+                "chat": {"id": 1, "type": "private"},
+                "text": "hello there",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertEqual(kwargs["prompt"], "hello there")
+        self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_keeps_prefix_required_in_group_when_private_bypass_enabled(
+        self, start_message_worker
+    ):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(
+            required_prefixes=["@helper"],
+            require_prefix_in_private=False,
+        )
+        update = {
+            "update_id": 106,
+            "message": {
+                "message_id": 206,
+                "chat": {"id": 1, "type": "group"},
+                "text": "hello there",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertFalse(start_message_worker.called)
+        self.assertEqual(client.messages, [])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_ha_keyword_prompt_stateless(self, start_message_worker):
