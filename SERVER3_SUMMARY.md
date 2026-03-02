@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-01 (AEST, +10:00)
+Last updated: 2026-03-02 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
@@ -10,6 +10,7 @@ Last updated: 2026-03-01 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-03-02: installed Firefox on Server3 desktop (`apt install firefox`, snap `firefox 148.0-1`), verified launcher binary `/usr/bin/firefox` and desktop entry `firefox_firefox.desktop`; updated desktop target-state/docs and recorded trace log.
 - 2026-03-01: removed `/google ...` slash-command interface from Architect bridge; Google operations are now keyword-only via `Google ...` stateless AI routing, and slash usage now returns a migration hint to use keyword format.
 - 2026-03-01: simplified Google operational flow by removing `/google confirm` and `/google cancel` write-gating; `/google gmail send ...` and `/google calendar create ...` now execute immediately, and bridge help/docs/tests were updated to match.
 - 2026-03-01: changed Google keyword handling in Architect bridge from parser-mapped commands to HA-style stateless AI routing: `Google ...` no longer rewrites into `/google ...` command parsing, and now wraps requests with Google-priority execution guidance; explicit `/google ...` command flow (including confirm/cancel safety for writes) remains available.

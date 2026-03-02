@@ -10,6 +10,7 @@ This runbook configures Server3 for HDMI TV usage while keeping default boot in 
   - `server3-tv-start`
   - `server3-tv-stop`
 - Auto-opens Brave maximized at login (`https://www.youtube.com`).
+- Firefox is also available as an alternate browser (manual launch).
 - Prefers HDMI audio sink in the `tv` session.
 
 ## Apply
