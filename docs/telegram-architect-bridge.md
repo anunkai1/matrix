@@ -189,7 +189,6 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `server3-tv-stop` stop TV desktop mode and return to CLI from shell
 - `/memory mode` show memory mode for this conversation key
 - `/memory mode all_context` use summary + durable facts + recent messages
-- `/memory mode full` legacy alias for `all_context`
 - `/memory mode session_only` use recent messages + session continuity only
 - `/memory status` show mode/session/fact/summary counts for this key
 - `/memory export` list stored facts for this key (sensitive values redacted)

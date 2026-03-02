@@ -1074,6 +1074,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Use `Server3 ...`", client.messages[-1][1])
         self.assertIn("/cancel", client.messages[-1][1])
         self.assertIn("/memory mode", client.messages[-1][1])
+        self.assertNotIn("/memory mode full - legacy alias for all_context", client.messages[-1][1])
         self.assertIn("/ask <prompt>", client.messages[-1][1])
 
     def test_handle_update_routes_cancel_when_no_active_request(self):

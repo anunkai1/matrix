@@ -1481,7 +1481,6 @@ def build_memory_help_lines() -> List[str]:
         "Memory commands:",
         "/memory mode - show mode for this conversation key",
         "/memory mode all_context - use summary + facts + recent messages",
-        "/memory mode full - legacy alias for all_context",
         "/memory mode session_only - keep session continuity and recent messages only",
         "/memory status - show memory/session counts for this key",
         "/memory export - list stored facts for this key (redacted)",
