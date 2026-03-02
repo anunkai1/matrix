@@ -49,7 +49,6 @@ class State:
     restart_in_progress: bool = False
     restart_chat_id: Optional[int] = None
     restart_reply_to_message_id: Optional[int] = None
-    google_pending_actions: Dict[int, object] = field(default_factory=dict)
     memory_engine: Optional[object] = None
     voice_alias_learning_store: Optional[object] = None
     lock: threading.Lock = field(default_factory=threading.Lock)

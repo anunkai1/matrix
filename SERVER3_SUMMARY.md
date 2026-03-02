@@ -10,6 +10,7 @@ Last updated: 2026-03-02 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-03-02: removed Architect bridge Google integration because the backing Google account was disabled: deleted Google runtime module (`src/telegram_bridge/google_ops.py`), removed Google config/routing/state/test paths, removed Google OAuth docs/env/scripts, removed live `TELEGRAM_GOOGLE_*` keys from `/etc/default/telegram-architect-bridge`, restarted `telegram-architect-bridge.service`, and re-validated `tests.telegram_bridge.test_bridge_core` (`79 OK`); trace: `logs/changes/20260302-1700-google-removal-from-architect-bridge.md`.
 - 2026-03-02: installed Firefox on Server3 desktop (`apt install firefox`, snap `firefox 148.0-1`), verified launcher binary `/usr/bin/firefox` and desktop entry `firefox_firefox.desktop`; updated desktop target-state/docs and recorded trace log.
 - 2026-03-01: removed `/google ...` slash-command interface from Architect bridge; Google operations are now keyword-only via `Google ...` stateless AI routing, and slash usage now returns a migration hint to use keyword format.
 - 2026-03-01: simplified Google operational flow by removing `/google confirm` and `/google cancel` write-gating; `/google gmail send ...` and `/google calendar create ...` now execute immediately, and bridge help/docs/tests were updated to match.

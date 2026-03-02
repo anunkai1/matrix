@@ -70,9 +70,6 @@ RETRY_FAILED_MESSAGE = "Execution failed after an automatic retry. Please resend
 HA_KEYWORD_HELP_MESSAGE = (
     "HA mode needs an action. Example: `HA turn on masters AC to dry mode at 9:25am`."
 )
-GOOGLE_KEYWORD_HELP_MESSAGE = (
-    "Google mode needs an action. Example: `Google summarize last email`."
-)
 PREFIX_HELP_MESSAGE = (
     "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
 )
@@ -150,23 +147,6 @@ def extract_ha_keyword_request(text: str) -> tuple[bool, str]:
     return False, ""
 
 
-def extract_google_keyword_request(text: str) -> tuple[bool, str]:
-    stripped = text.strip()
-    if not stripped:
-        return False, ""
-
-    lowered = stripped.lower()
-    keyword = "google"
-    if lowered == keyword:
-        return True, ""
-    if lowered.startswith(keyword):
-        remainder = stripped[len(keyword):]
-        if remainder and remainder[0] not in (" ", ":", "-"):
-            return False, ""
-        return True, remainder.lstrip(" :-\t")
-    return False, ""
-
-
 def strip_required_prefix(
     text: str,
     prefixes: List[str],
@@ -218,19 +198,6 @@ def build_ha_keyword_prompt(user_request: str) -> str:
         "- Do not use inline systemd-run, /bin/bash -lc, or direct curl commands for HA actions.\n"
         "- If entity/time/mode is unclear, ask one concise clarification question instead of guessing.\n"
         "- After execution, report the result with state or timer/service unit names."
-    )
-
-
-def build_google_keyword_prompt(user_request: str) -> str:
-    return (
-        "Google operations priority mode is active.\n"
-        "Treat this as a Google Gmail/Calendar request.\n"
-        f"User request: {user_request.strip()}\n\n"
-        "Mandatory execution policy:\n"
-        "- Use local Google credentials under /home/architect/.config/google/architect/.\n"
-        "- For read operations (list/read/summarize), execute and return results.\n"
-        "- For write operations (send email/create event), execute directly.\n"
-        "- If intent is unclear, ask one concise clarification question."
     )
 
 
@@ -1199,8 +1166,7 @@ def build_help_text(config) -> str:
         "server3-tv-start - start TV desktop mode (local shell command)\n"
         "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
-        "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
-        "Use `Google ...` for Google Gmail/Calendar free-text routing (no `/google` slash command)."
+        "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing."
     )
     return base + "\n\n" + "\n".join(build_memory_help_lines())
 
@@ -2127,13 +2093,6 @@ def handle_known_command(
             message_id=message_id,
             raw_text=raw_text,
         )
-    if command == "/google":
-        client.send_message(
-            chat_id,
-            "Slash Google commands were removed. Use `Google ...` (no slash), for example: `Google summarize last email`.",
-            reply_to_message_id=message_id,
-        )
-        return True
     return False
 
 
@@ -2277,33 +2236,6 @@ def handle_update(
                 "bridge.ha_keyword_routed",
                 fields={"chat_id": chat_id, "message_id": message_id},
             )
-    if prompt_input and command is None and not ha_keyword_mode:
-        google_keyword_mode, google_request = extract_google_keyword_request(prompt_input)
-        if google_keyword_mode:
-            if not google_request.strip():
-                emit_event(
-                    "bridge.request_rejected",
-                    level=logging.WARNING,
-                    fields={
-                        "chat_id": chat_id,
-                        "message_id": message_id,
-                        "reason": "google_keyword_missing_action",
-                    },
-                )
-                client.send_message(
-                    chat_id,
-                    GOOGLE_KEYWORD_HELP_MESSAGE,
-                    reply_to_message_id=message_id,
-                )
-                return
-            prompt_input = build_google_keyword_prompt(google_request)
-            command = "/google-keyword"
-            stateless = True
-            emit_event(
-                "bridge.google_keyword_routed",
-                fields={"chat_id": chat_id, "message_id": message_id},
-            )
-
     if prompt_input:
         maybe_process_voice_alias_learning_confirmation(
             state=state,

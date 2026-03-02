@@ -152,13 +152,6 @@ class Config:
     whatsapp_bridge_api_base: str
     whatsapp_bridge_auth_token: str
     whatsapp_poll_timeout_seconds: int
-    google_enabled: bool
-    google_client_secret_path: str
-    google_token_path: str
-    google_allowed_sender_ids: Set[int]
-    google_pending_confirm_ttl_seconds: int
-    google_max_results: int
-    google_default_timezone: str
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -251,20 +244,6 @@ def parse_prefixes_env(name: str) -> List[str]:
         seen.add(key)
         parsed.append(value)
     return parsed
-
-
-def parse_optional_id_set_env(name: str) -> Set[int]:
-    raw = os.getenv(name, "").strip()
-    if not raw:
-        return set()
-    out: Set[int] = set()
-    values = [item.strip() for item in raw.split(",") if item.strip()]
-    for value in values:
-        try:
-            out.add(int(value))
-        except ValueError as exc:
-            raise ValueError(f"{name} contains invalid integer: {value!r}") from exc
-    return out
 
 
 def parse_plugin_name_env(name: str, default: str) -> str:
@@ -391,19 +370,6 @@ def load_config() -> Config:
 
     allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids)
     assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
-    google_client_secret_path = os.getenv(
-        "TELEGRAM_GOOGLE_CLIENT_SECRET_PATH",
-        "/home/architect/.config/google/architect/client_secret.json",
-    ).strip() or "/home/architect/.config/google/architect/client_secret.json"
-    google_token_path = os.getenv(
-        "TELEGRAM_GOOGLE_TOKEN_PATH",
-        "/home/architect/.config/google/architect/oauth_token.json",
-    ).strip() or "/home/architect/.config/google/architect/oauth_token.json"
-    google_default_timezone = os.getenv(
-        "TELEGRAM_GOOGLE_DEFAULT_TIMEZONE",
-        "Australia/Brisbane",
-    ).strip() or "Australia/Brisbane"
-
     return Config(
         token=token,
         allowed_chat_ids=allowed_chat_ids,
@@ -525,23 +491,6 @@ def load_config() -> Config:
             20,
             minimum=1,
         ),
-        google_enabled=parse_bool_env("TELEGRAM_GOOGLE_ENABLED", False),
-        google_client_secret_path=google_client_secret_path,
-        google_token_path=google_token_path,
-        google_allowed_sender_ids=parse_optional_id_set_env(
-            "TELEGRAM_GOOGLE_ALLOWED_SENDER_IDS"
-        ),
-        google_pending_confirm_ttl_seconds=parse_int_env(
-            "TELEGRAM_GOOGLE_PENDING_CONFIRM_TTL_SECONDS",
-            600,
-            minimum=30,
-        ),
-        google_max_results=parse_int_env(
-            "TELEGRAM_GOOGLE_MAX_RESULTS",
-            10,
-            minimum=1,
-        ),
-        google_default_timezone=google_default_timezone,
         empty_output_message=f"(No output from {assistant_name})",
     )
 

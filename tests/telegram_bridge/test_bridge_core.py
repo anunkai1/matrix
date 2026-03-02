@@ -125,13 +125,6 @@ def make_config(**overrides):
         "whatsapp_bridge_api_base": "http://127.0.0.1:8787",
         "whatsapp_bridge_auth_token": "",
         "whatsapp_poll_timeout_seconds": 20,
-        "google_enabled": False,
-        "google_client_secret_path": "/tmp/google-client-secret.json",
-        "google_token_path": "/tmp/google-oauth-token.json",
-        "google_allowed_sender_ids": set(),
-        "google_pending_confirm_ttl_seconds": 600,
-        "google_max_results": 10,
-        "google_default_timezone": "Australia/Brisbane",
     }
     base.update(overrides)
     return bridge.Config(**base)
@@ -745,18 +738,6 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("ha"), (True, ""))
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("happy path"), (False, ""))
 
-    def test_extract_google_keyword_request_variants(self):
-        self.assertEqual(
-            bridge_handlers.extract_google_keyword_request("Google gmail unread 2"),
-            (True, "gmail unread 2"),
-        )
-        self.assertEqual(
-            bridge_handlers.extract_google_keyword_request("google: summarize last email"),
-            (True, "summarize last email"),
-        )
-        self.assertEqual(bridge_handlers.extract_google_keyword_request("google"), (True, ""))
-        self.assertEqual(bridge_handlers.extract_google_keyword_request("googler"), (False, ""))
-
     def test_strip_required_prefix_variants(self):
         prefixes = ["@helper", "helper:"]
         self.assertEqual(
@@ -1277,27 +1258,6 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(len(client.messages), 1)
         self.assertIn("HA mode needs an action.", client.messages[0][1])
 
-    @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_rejects_google_keyword_without_action(self, start_message_worker):
-        state = bridge.State()
-        client = FakeTelegramClient()
-        config = make_config(google_enabled=True)
-        update = {
-            "update_id": 12,
-            "message": {
-                "message_id": 42,
-                "chat": {"id": 1},
-                "from": {"id": 55, "first_name": "V"},
-                "text": "Google",
-            },
-        }
-
-        bridge.handle_update(state, config, client, update)
-
-        self.assertFalse(start_message_worker.called)
-        self.assertEqual(len(client.messages), 1)
-        self.assertIn("Google mode needs an action.", client.messages[0][1])
-
     def test_handle_update_routes_memory_status_command(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             state = bridge.State(
@@ -1317,50 +1277,6 @@ class BridgeCoreTests(unittest.TestCase):
             bridge.handle_update(state, config, client, update)
             self.assertTrue(client.messages)
             self.assertIn("Memory status:", client.messages[-1][1])
-
-    @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_google_slash_command_removed_returns_hint(self, start_message_worker):
-        state = bridge.State()
-        client = FakeTelegramClient()
-        config = make_config(google_enabled=True)
-        update = {
-            "update_id": 201,
-            "message": {
-                "message_id": 301,
-                "chat": {"id": 1, "type": "private"},
-                "from": {"id": 55, "first_name": "V"},
-                "text": "/google gmail unread 2",
-            },
-        }
-
-        bridge.handle_update(state, config, client, update)
-        self.assertFalse(start_message_worker.called)
-        self.assertEqual(len(client.messages), 1)
-        self.assertIn("Slash Google commands were removed", client.messages[0][1])
-
-    @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_google_keyword_summarize_last_email(self, start_message_worker):
-        state = bridge.State()
-        client = FakeTelegramClient()
-        config = make_config(google_enabled=True)
-        update = {
-            "update_id": 2021,
-            "message": {
-                "message_id": 3021,
-                "chat": {"id": 1, "type": "private"},
-                "from": {"id": 55, "first_name": "V"},
-                "text": "Google summarise last email",
-            },
-        }
-
-        bridge.handle_update(state, config, client, update)
-
-        self.assertTrue(start_message_worker.called)
-        kwargs = start_message_worker.call_args.kwargs
-        self.assertTrue(kwargs["stateless"])
-        self.assertIn("Google operations priority mode is active.", kwargs["prompt"])
-        self.assertIn("User request: summarise last email", kwargs["prompt"])
-        self.assertEqual(client.messages, [])
 
     def test_handle_update_rejects_too_long_input_before_worker_dispatch(self):
         state = bridge.State()

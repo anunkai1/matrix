@@ -212,10 +212,6 @@ Message handling:
   - the bridge wraps the request with strict policy to use only `ops/ha/*.sh` scripts
   - HA-keyword requests run stateless (no memory/session carryover)
   - empty keyword-only messages are rejected with a usage hint
-- Messages starting with `Google` are routed in Google priority AI mode:
-  - Google keyword requests run stateless (no memory/session carryover), like HA keyword mode
-  - empty keyword-only messages are rejected with a usage hint
-  - slash command `/google ...` is deprecated/disabled; use `Google ...` instead
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`
 - File without caption uses: `Please analyze this file.`
@@ -225,10 +221,6 @@ Message handling:
 - While Architect is running, the bridge sends:
   - Telegram typing actions (`typing`)
   - a progress status message that is edited in place with elapsed time and step updates
-- Google operation mode:
-  - use `Google ...` free text for read/write Gmail/Calendar actions via AI routing
-  - write actions are executed by AI flow (no separate `/google confirm` step)
-
 ## Context Persistence
 
 - Chat context is stored per Telegram chat as `chat_id -> thread_id`.
