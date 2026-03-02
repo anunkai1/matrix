@@ -16,6 +16,7 @@ This runbook configures Server3 for HDMI TV usage while keeping default boot in 
   - `ops/tv-desktop/server3-tv-open-browser-url.sh`
   - `ops/tv-desktop/server3-youtube-open-top-result.sh`
   - `ops/tv-desktop/server3-tv-browser-youtube-pause.sh`
+  - `ops/tv-desktop/server3-tv-browser-youtube-play.sh`
 
 ## Apply
 ```bash
@@ -50,6 +51,12 @@ Pause currently focused YouTube playback in a target browser window:
 ```bash
 bash ops/tv-desktop/server3-tv-browser-youtube-pause.sh brave
 bash ops/tv-desktop/server3-tv-browser-youtube-pause.sh firefox
+```
+
+Force deterministic YouTube playback in a target browser window:
+```bash
+bash ops/tv-desktop/server3-tv-browser-youtube-play.sh brave
+bash ops/tv-desktop/server3-tv-browser-youtube-play.sh firefox
 ```
 
 Note:

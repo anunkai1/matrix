@@ -4,11 +4,11 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  server3-tv-browser-youtube-pause.sh <brave|firefox>
+  server3-tv-browser-youtube-play.sh <brave|firefox>
 
 Examples:
-  server3-tv-browser-youtube-pause.sh brave
-  server3-tv-browser-youtube-pause.sh firefox
+  server3-tv-browser-youtube-play.sh brave
+  server3-tv-browser-youtube-play.sh firefox
 USAGE
 }
 
@@ -68,7 +68,10 @@ fi
 sudo -u tv env "${ENV_VARS[@]}" wmctrl -i -a "${WINDOW_ID}" >/dev/null 2>&1 || true
 sleep 0.2
 
-# Use explicit media pause to avoid accidental toggle.
+# Deterministic play sequence for unknown current state:
+# first force pause, then force play.
 sudo -u tv env "${ENV_VARS[@]}" xdotool key --window "${WINDOW_ID}" --clearmodifiers XF86AudioPause >/dev/null 2>&1 || true
+sleep 0.15
+sudo -u tv env "${ENV_VARS[@]}" xdotool key --window "${WINDOW_ID}" --clearmodifiers XF86AudioPlay >/dev/null 2>&1 || true
 
-echo "[server3-tv-browser-youtube-pause] browser=${BROWSER_LC} window_id=${WINDOW_ID}"
+echo "[server3-tv-browser-youtube-play] browser=${BROWSER_LC} window_id=${WINDOW_ID}"

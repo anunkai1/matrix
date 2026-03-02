@@ -130,6 +130,7 @@ def build_server3_routing_script_allowlist() -> List[str]:
         os.path.join(repo_root, "ops", "tv-desktop", "server3-tv-open-browser-url.sh"),
         os.path.join(repo_root, "ops", "tv-desktop", "server3-youtube-open-top-result.sh"),
         os.path.join(repo_root, "ops", "tv-desktop", "server3-tv-browser-youtube-pause.sh"),
+        os.path.join(repo_root, "ops", "tv-desktop", "server3-tv-browser-youtube-play.sh"),
     ]
 
 

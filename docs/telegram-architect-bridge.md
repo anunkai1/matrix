@@ -220,6 +220,7 @@ Message handling:
     - `ops/tv-desktop/server3-tv-open-browser-url.sh`
     - `ops/tv-desktop/server3-youtube-open-top-result.sh`
     - `ops/tv-desktop/server3-tv-browser-youtube-pause.sh`
+    - `ops/tv-desktop/server3-tv-browser-youtube-play.sh`
   - empty keyword-only messages are rejected with a usage hint
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`
