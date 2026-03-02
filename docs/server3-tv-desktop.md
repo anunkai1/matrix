@@ -46,9 +46,12 @@ bash ops/tv-desktop/server3-youtube-open-top-result.sh --query "mersheimer" --mi
 
 Note:
 - `server3-youtube-open-top-result.sh` requires `yt-dlp`.
+- For Firefox autoplay-block fallback (focus + click + `k` play key), install:
+  - `wmctrl`
+  - `xdotool`
 - Install if needed:
 ```bash
-sudo apt-get install -y yt-dlp
+sudo apt-get install -y yt-dlp wmctrl xdotool
 ```
 
 ## TV Session Behavior

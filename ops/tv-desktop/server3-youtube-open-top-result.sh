@@ -16,6 +16,7 @@ QUERY=""
 BROWSER="firefox"
 MIN_DURATION_SECONDS=0
 AUTOPLAY=1
+PLAYBACK_FALLBACK_ATTEMPTED=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -58,6 +59,48 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+maybe_force_playback_fallback() {
+  local browser_lc="$1"
+  if (( AUTOPLAY == 0 )); then
+    return 0
+  fi
+  if [[ "${browser_lc}" != "firefox" ]]; then
+    return 0
+  fi
+  if ! command -v wmctrl >/dev/null 2>&1 || ! command -v xdotool >/dev/null 2>&1; then
+    echo "[server3-youtube-open-top-result] playback fallback skipped (wmctrl/xdotool missing)." >&2
+    return 0
+  fi
+
+  local display_env="DISPLAY=:0"
+  local xauth_env="XAUTHORITY=/home/tv/.Xauthority"
+  local window_id=""
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8; do
+    window_id="$(
+      sudo -u tv env "${display_env}" "${xauth_env}" wmctrl -lx 2>/dev/null \
+        | awk 'tolower($0) ~ /firefox/ {print $1}' \
+        | tail -n 1
+    )"
+    if [[ -n "${window_id}" ]]; then
+      break
+    fi
+    sleep 1
+  done
+  if [[ -z "${window_id}" ]]; then
+    echo "[server3-youtube-open-top-result] playback fallback skipped (no firefox window id)." >&2
+    return 0
+  fi
+
+  sleep 1
+  sudo -u tv env "${display_env}" "${xauth_env}" wmctrl -i -a "${window_id}" >/dev/null 2>&1 || true
+  sleep 1
+  sudo -u tv env "${display_env}" "${xauth_env}" xdotool mousemove --window "${window_id}" 640 360 click 1 >/dev/null 2>&1 || true
+  sleep 0.4
+  sudo -u tv env "${display_env}" "${xauth_env}" xdotool key --window "${window_id}" --clearmodifiers k >/dev/null 2>&1 || true
+  PLAYBACK_FALLBACK_ATTEMPTED=1
+}
 
 if [[ -z "${QUERY}" ]]; then
   echo "Missing --query" >&2
@@ -129,5 +172,6 @@ if (( AUTOPLAY == 1 )); then
 fi
 
 "$(dirname "$0")/server3-tv-open-browser-url.sh" "${BROWSER}" "${FINAL_URL}"
+maybe_force_playback_fallback "${BROWSER,,}"
 
-echo "[server3-youtube-open-top-result] query=${QUERY} title=${TITLE} duration_seconds=${DURATION_SECONDS} url=${FINAL_URL}"
+echo "[server3-youtube-open-top-result] query=${QUERY} title=${TITLE} duration_seconds=${DURATION_SECONDS} url=${FINAL_URL} playback_fallback_attempted=${PLAYBACK_FALLBACK_ATTEMPTED}"
