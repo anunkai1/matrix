@@ -70,6 +70,9 @@ RETRY_FAILED_MESSAGE = "Execution failed after an automatic retry. Please resend
 HA_KEYWORD_HELP_MESSAGE = (
     "HA mode needs an action. Example: `HA turn on masters AC to dry mode at 9:25am`."
 )
+SERVER3_KEYWORD_HELP_MESSAGE = (
+    "Server3 mode needs an action. Example: `Server3 open TV desktop and play top YouTube result for deep house 2026`."
+)
 PREFIX_HELP_MESSAGE = (
     "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
 )
@@ -109,6 +112,16 @@ def build_ha_routing_script_allowlist() -> List[str]:
     ]
 
 
+def build_server3_routing_script_allowlist() -> List[str]:
+    repo_root = build_repo_root()
+    return [
+        "/usr/local/bin/server3-tv-start",
+        "/usr/local/bin/server3-tv-stop",
+        os.path.join(repo_root, "ops", "tv-desktop", "server3-tv-open-browser-url.sh"),
+        os.path.join(repo_root, "ops", "tv-desktop", "server3-youtube-open-top-result.sh"),
+    ]
+
+
 def assistant_label(config) -> str:
     value = getattr(config, "assistant_name", "").strip()
     return value or "Architect"
@@ -137,6 +150,23 @@ def extract_ha_keyword_request(text: str) -> tuple[bool, str]:
 
     lowered = stripped.lower()
     for keyword in ("ha", "home assistant"):
+        if lowered == keyword:
+            return True, ""
+        if lowered.startswith(keyword):
+            remainder = stripped[len(keyword):]
+            if remainder and remainder[0] not in (" ", ":", "-"):
+                continue
+            return True, remainder.lstrip(" :-\t")
+    return False, ""
+
+
+def extract_server3_keyword_request(text: str) -> tuple[bool, str]:
+    stripped = text.strip()
+    if not stripped:
+        return False, ""
+
+    lowered = stripped.lower()
+    for keyword in ("server3", "server 3"):
         if lowered == keyword:
             return True, ""
         if lowered.startswith(keyword):
@@ -198,6 +228,23 @@ def build_ha_keyword_prompt(user_request: str) -> str:
         "- Do not use inline systemd-run, /bin/bash -lc, or direct curl commands for HA actions.\n"
         "- If entity/time/mode is unclear, ask one concise clarification question instead of guessing.\n"
         "- After execution, report the result with state or timer/service unit names."
+    )
+
+
+def build_server3_keyword_prompt(user_request: str) -> str:
+    scripts = "\n".join(f"- {path}" for path in build_server3_routing_script_allowlist())
+    return (
+        "Server3 operations priority mode is active.\n"
+        "Treat this as a Server3 desktop/browser/UI action request.\n"
+        f"User request: {user_request.strip()}\n\n"
+        "Mandatory execution policy:\n"
+        f"{scripts}\n"
+        "- Prefer deterministic script execution over ad-hoc shell steps.\n"
+        "- For browser navigation, use server3-tv-open-browser-url.sh with firefox or brave and explicit URL.\n"
+        "- For YouTube top-result playback, use server3-youtube-open-top-result.sh with quoted query.\n"
+        "- Respect optional min-duration constraints when explicitly requested.\n"
+        "- If intent is unclear, ask one concise clarification question instead of guessing.\n"
+        "- After execution, report exact scripts/commands used and final outcome."
     )
 
 
@@ -1166,7 +1213,8 @@ def build_help_text(config) -> str:
         "server3-tv-start - start TV desktop mode (local shell command)\n"
         "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
-        "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing."
+        "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
+        "Use `Server3 ...` for Server3 desktop/browser/UI operations."
     )
     return base + "\n\n" + "\n".join(build_memory_help_lines())
 
@@ -2007,7 +2055,7 @@ def maybe_process_voice_alias_learning_confirmation(
     message_id: Optional[int],
     prompt_input: str,
     command: Optional[str],
-    ha_keyword_mode: bool,
+    priority_keyword_mode: bool,
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
@@ -2016,7 +2064,7 @@ def maybe_process_voice_alias_learning_confirmation(
         return
     if command is not None:
         return
-    if ha_keyword_mode:
+    if priority_keyword_mode:
         return
     if photo_file_id or voice_file_id or document is not None:
         return
@@ -2209,33 +2257,64 @@ def handle_update(
     sender_name = extract_sender_name(message)
     stateless = False
     command = normalize_command(prompt_input or "")
-    ha_keyword_mode = False
+    priority_keyword_mode = False
     if prompt_input:
-        ha_keyword_mode, ha_request = extract_ha_keyword_request(prompt_input)
-        if ha_keyword_mode:
-            if not ha_request.strip():
+        server3_keyword_mode, server3_request = extract_server3_keyword_request(prompt_input)
+        if server3_keyword_mode:
+            if not server3_request.strip():
                 emit_event(
                     "bridge.request_rejected",
                     level=logging.WARNING,
                     fields={
                         "chat_id": chat_id,
                         "message_id": message_id,
-                        "reason": "ha_keyword_missing_action",
+                        "reason": "server3_keyword_missing_action",
                     },
                 )
                 client.send_message(
                     chat_id,
-                    HA_KEYWORD_HELP_MESSAGE,
+                    SERVER3_KEYWORD_HELP_MESSAGE,
                     reply_to_message_id=message_id,
                 )
                 return
-            prompt_input = build_ha_keyword_prompt(ha_request)
+            prompt_input = build_server3_keyword_prompt(server3_request)
             command = None
             stateless = True
+            priority_keyword_mode = True
             emit_event(
-                "bridge.ha_keyword_routed",
+                "bridge.server3_keyword_routed",
                 fields={"chat_id": chat_id, "message_id": message_id},
             )
+        else:
+            ha_keyword_mode, ha_request = extract_ha_keyword_request(prompt_input)
+            if not ha_keyword_mode:
+                ha_request = ""
+            if ha_keyword_mode:
+                if not ha_request.strip():
+                    emit_event(
+                        "bridge.request_rejected",
+                        level=logging.WARNING,
+                        fields={
+                            "chat_id": chat_id,
+                            "message_id": message_id,
+                            "reason": "ha_keyword_missing_action",
+                        },
+                    )
+                    client.send_message(
+                        chat_id,
+                        HA_KEYWORD_HELP_MESSAGE,
+                        reply_to_message_id=message_id,
+                    )
+                    return
+                prompt_input = build_ha_keyword_prompt(ha_request)
+                command = None
+                stateless = True
+                priority_keyword_mode = True
+                emit_event(
+                    "bridge.ha_keyword_routed",
+                    fields={"chat_id": chat_id, "message_id": message_id},
+                )
+
     if prompt_input:
         maybe_process_voice_alias_learning_confirmation(
             state=state,
@@ -2245,14 +2324,14 @@ def handle_update(
             message_id=message_id,
             prompt_input=prompt_input,
             command=command,
-            ha_keyword_mode=ha_keyword_mode,
+            priority_keyword_mode=priority_keyword_mode,
             photo_file_id=photo_file_id,
             voice_file_id=voice_file_id,
             document=document,
         )
 
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
-    if memory_engine is not None and prompt_input and not ha_keyword_mode:
+    if memory_engine is not None and prompt_input and not priority_keyword_mode:
         cmd_result = handle_memory_command(
             engine=memory_engine,
             conversation_key=MemoryEngine.telegram_key(chat_id),
@@ -2375,3 +2454,4 @@ def handle_update(
         "bridge.worker_started",
         fields={"chat_id": chat_id, "message_id": message_id},
     )
+    return

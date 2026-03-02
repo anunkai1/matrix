@@ -49,3 +49,6 @@ Provide a command-start desktop mode for HDMI TV use while keeping Server3 defau
 ## Operations
 - Apply: `bash ops/tv-desktop/apply_server3.sh`
 - Rollback: `bash ops/tv-desktop/rollback_server3.sh`
+- Runtime helpers (repo scripts used by Server3 keyword executor):
+  - `bash ops/tv-desktop/server3-tv-open-browser-url.sh <firefox|brave> <url>`
+  - `bash ops/tv-desktop/server3-youtube-open-top-result.sh --query "<text>" [--min-duration-seconds <n>]`

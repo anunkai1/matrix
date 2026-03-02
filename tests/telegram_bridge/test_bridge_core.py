@@ -738,6 +738,18 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("ha"), (True, ""))
         self.assertEqual(bridge_handlers.extract_ha_keyword_request("happy path"), (False, ""))
 
+    def test_extract_server3_keyword_request_variants(self):
+        self.assertEqual(
+            bridge_handlers.extract_server3_keyword_request("Server3 open Firefox"),
+            (True, "open Firefox"),
+        )
+        self.assertEqual(
+            bridge_handlers.extract_server3_keyword_request("server 3: play youtube top result"),
+            (True, "play youtube top result"),
+        )
+        self.assertEqual(bridge_handlers.extract_server3_keyword_request("server3"), (True, ""))
+        self.assertEqual(bridge_handlers.extract_server3_keyword_request("server32 status"), (False, ""))
+
     def test_strip_required_prefix_variants(self):
         prefixes = ["@helper", "helper:"]
         self.assertEqual(
@@ -1059,6 +1071,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Available commands:", client.messages[-1][1])
         self.assertIn("server3-tv-start", client.messages[-1][1])
         self.assertIn("server3-tv-stop", client.messages[-1][1])
+        self.assertIn("Use `Server3 ...`", client.messages[-1][1])
         self.assertIn("/memory mode", client.messages[-1][1])
         self.assertIn("/ask <prompt>", client.messages[-1][1])
 
@@ -1237,6 +1250,52 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Home Assistant priority mode is active.", kwargs["prompt"])
         self.assertIn("User request: turn on masters AC to dry mode at 9:25am", kwargs["prompt"])
         self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_routes_server3_keyword_prompt_stateless(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 12,
+            "message": {
+                "message_id": 42,
+                "chat": {"id": 1},
+                "text": "Server3 open desktop and play top youtube result for deephouse 2026",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertTrue(kwargs["stateless"])
+        self.assertIn("Server3 operations priority mode is active.", kwargs["prompt"])
+        self.assertIn(
+            "User request: open desktop and play top youtube result for deephouse 2026",
+            kwargs["prompt"],
+        )
+        self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_rejects_server3_keyword_without_action(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 13,
+            "message": {
+                "message_id": 43,
+                "chat": {"id": 1},
+                "text": "Server3",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertFalse(start_message_worker.called)
+        self.assertEqual(len(client.messages), 1)
+        self.assertIn("Server3 mode needs an action.", client.messages[0][1])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_rejects_ha_keyword_without_action(self, start_message_worker):

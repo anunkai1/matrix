@@ -212,6 +212,14 @@ Message handling:
   - the bridge wraps the request with strict policy to use only `ops/ha/*.sh` scripts
   - HA-keyword requests run stateless (no memory/session carryover)
   - empty keyword-only messages are rejected with a usage hint
+- Messages starting with `Server3` or `Server 3` are routed into Server3 operations mode:
+  - requests run stateless (no memory/session carryover)
+  - the bridge wraps the request with strict policy to prefer deterministic scripts:
+    - `/usr/local/bin/server3-tv-start`
+    - `/usr/local/bin/server3-tv-stop`
+    - `ops/tv-desktop/server3-tv-open-browser-url.sh`
+    - `ops/tv-desktop/server3-youtube-open-top-result.sh`
+  - empty keyword-only messages are rejected with a usage hint
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`
 - File without caption uses: `Please analyze this file.`

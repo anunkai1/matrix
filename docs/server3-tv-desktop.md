@@ -12,6 +12,9 @@ This runbook configures Server3 for HDMI TV usage while keeping default boot in 
 - Auto-opens Brave maximized at login (`https://www.youtube.com`).
 - Firefox is also available as an alternate browser (manual launch).
 - Prefers HDMI audio sink in the `tv` session.
+- Includes helper scripts for intent-executor flows:
+  - `ops/tv-desktop/server3-tv-open-browser-url.sh`
+  - `ops/tv-desktop/server3-youtube-open-top-result.sh`
 
 ## Apply
 ```bash
@@ -28,6 +31,24 @@ server3-tv-start
 Stop desktop and return to CLI-only operation:
 ```bash
 server3-tv-stop
+```
+
+Open a URL in Firefox/Brave under the `tv` desktop session:
+```bash
+bash ops/tv-desktop/server3-tv-open-browser-url.sh firefox https://www.youtube.com
+```
+
+Resolve and open top YouTube search result (with optional duration constraint):
+```bash
+bash ops/tv-desktop/server3-youtube-open-top-result.sh --query "deephouse 2026"
+bash ops/tv-desktop/server3-youtube-open-top-result.sh --query "mersheimer" --min-duration-seconds 600
+```
+
+Note:
+- `server3-youtube-open-top-result.sh` requires `yt-dlp` + `jq`.
+- Install if needed:
+```bash
+sudo apt-get install -y yt-dlp jq
 ```
 
 ## TV Session Behavior
