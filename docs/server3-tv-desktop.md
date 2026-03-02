@@ -15,6 +15,7 @@ This runbook configures Server3 for HDMI TV usage while keeping default boot in 
 - Includes helper scripts for intent-executor flows:
   - `ops/tv-desktop/server3-tv-open-browser-url.sh`
   - `ops/tv-desktop/server3-youtube-open-top-result.sh`
+  - `ops/tv-desktop/server3-tv-browser-youtube-pause.sh`
 
 ## Apply
 ```bash
@@ -37,11 +38,18 @@ Open a URL in Firefox/Brave under the `tv` desktop session:
 ```bash
 bash ops/tv-desktop/server3-tv-open-browser-url.sh firefox https://www.youtube.com
 ```
+By default, if a matching browser window already exists, it is reused (`Ctrl+L` + URL + Enter). Use `--new-window` to force a new window.
 
 Resolve and open top YouTube search result (with optional duration constraint):
 ```bash
 bash ops/tv-desktop/server3-youtube-open-top-result.sh --query "deephouse 2026"
 bash ops/tv-desktop/server3-youtube-open-top-result.sh --query "mersheimer" --min-duration-seconds 600
+```
+
+Pause currently focused YouTube playback in a target browser window:
+```bash
+bash ops/tv-desktop/server3-tv-browser-youtube-pause.sh brave
+bash ops/tv-desktop/server3-tv-browser-youtube-pause.sh firefox
 ```
 
 Note:
