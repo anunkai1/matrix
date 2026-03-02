@@ -75,29 +75,42 @@ if ! command -v yt-dlp >/dev/null 2>&1; then
   exit 3
 fi
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "jq is required. Install with: sudo apt-get install -y jq" >&2
-  exit 3
-fi
-
-SEARCH_JSON="$(yt-dlp --dump-single-json --skip-download "ytsearch1:${QUERY}" 2>/dev/null || true)"
-if [[ -z "${SEARCH_JSON}" ]]; then
+SEARCH_LINE="$(yt-dlp --flat-playlist --print '%(id)s|%(title)s|%(duration)s' "ytsearch1:${QUERY}" 2>/dev/null | head -n 1 || true)"
+if [[ -z "${SEARCH_LINE}" ]]; then
   echo "Failed to resolve YouTube search result for query: ${QUERY}" >&2
   exit 4
 fi
 
-URL="$(jq -r '.entries[0].webpage_url // .webpage_url // empty' <<<"${SEARCH_JSON}")"
-TITLE="$(jq -r '.entries[0].title // .title // "(unknown title)"' <<<"${SEARCH_JSON}")"
-DURATION_SECONDS="$(jq -r '.entries[0].duration // .duration // 0' <<<"${SEARCH_JSON}")"
+IFS='|' read -r VIDEO_ID TITLE DURATION_RAW <<<"${SEARCH_LINE}"
 
-if [[ -z "${URL}" || "${URL}" == "null" ]]; then
+if [[ -z "${VIDEO_ID}" || "${VIDEO_ID}" == "NA" ]]; then
   echo "No playable top YouTube result found for query: ${QUERY}" >&2
   exit 4
 fi
 
+if [[ -z "${TITLE}" || "${TITLE}" == "NA" ]]; then
+  TITLE="(unknown title)"
+fi
+
+DURATION_SECONDS="$(python3 - "${DURATION_RAW}" <<'PY'
+import sys
+raw = (sys.argv[1] if len(sys.argv) > 1 else "").strip()
+try:
+    value = float(raw)
+except Exception:
+    print(0)
+    raise SystemExit
+if value < 0:
+    value = 0
+print(int(value))
+PY
+)"
+
 if ! [[ "${DURATION_SECONDS}" =~ ^[0-9]+$ ]]; then
   DURATION_SECONDS=0
 fi
+
+URL="https://www.youtube.com/watch?v=${VIDEO_ID}"
 
 if (( DURATION_SECONDS < MIN_DURATION_SECONDS )); then
   echo "Top result rejected: duration ${DURATION_SECONDS}s is below minimum ${MIN_DURATION_SECONDS}s" >&2

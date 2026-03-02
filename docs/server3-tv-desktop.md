@@ -45,10 +45,10 @@ bash ops/tv-desktop/server3-youtube-open-top-result.sh --query "mersheimer" --mi
 ```
 
 Note:
-- `server3-youtube-open-top-result.sh` requires `yt-dlp` + `jq`.
+- `server3-youtube-open-top-result.sh` requires `yt-dlp`.
 - Install if needed:
 ```bash
-sudo apt-get install -y yt-dlp jq
+sudo apt-get install -y yt-dlp
 ```
 
 ## TV Session Behavior

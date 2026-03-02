@@ -45,6 +45,8 @@ Provide a command-start desktop mode for HDMI TV use while keeping Server3 defau
 ## Live Additive Packages (Server3)
 - `firefox` (Ubuntu transitional package installing snap `firefox`)
 - Installed manually on 2026-03-02 for alternate TV desktop browser access.
+- `yt-dlp`
+- Installed manually on 2026-03-02 to enable deterministic YouTube top-result resolver script.
 
 ## Operations
 - Apply: `bash ops/tv-desktop/apply_server3.sh`
