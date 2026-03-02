@@ -26,6 +26,10 @@ class ExecutorProgressEvent:
     exit_code: Optional[int] = None
 
 
+class ExecutorCancelledError(Exception):
+    """Raised when a running executor subprocess is canceled by user request."""
+
+
 def parse_stream_json_line(raw_line: str) -> Optional[Dict[str, object]]:
     line = (raw_line or "").strip()
     if not line or not line.startswith("{"):
@@ -82,6 +86,7 @@ def run_executor(
     thread_id: Optional[str],
     image_path: Optional[str] = None,
     progress_callback: Optional[Callable[[ExecutorProgressEvent], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
 ) -> subprocess.CompletedProcess[str]:
     cmd = list(config.executor_cmd)
     mode = "resume" if thread_id else "new"
@@ -156,22 +161,44 @@ def run_executor(
         process.wait(timeout=5)
         raise
 
-    try:
-        return_code = process.wait(timeout=config.exec_timeout_seconds)
-    except subprocess.TimeoutExpired as exc:
-        process.kill()
-        process.wait(timeout=5)
-        stdout_worker.join(timeout=1.5)
-        stderr_worker.join(timeout=1.5)
-        emit_event(
-            "bridge.executor_subprocess_timeout",
-            level=logging.WARNING,
-            fields={
-                "mode": mode,
-                "timeout_seconds": config.exec_timeout_seconds,
-            },
-        )
-        raise subprocess.TimeoutExpired(cmd, config.exec_timeout_seconds) from exc
+    deadline = time.monotonic() + float(config.exec_timeout_seconds)
+    return_code: Optional[int] = None
+    while True:
+        if cancel_event is not None and cancel_event.is_set():
+            process.kill()
+            process.wait(timeout=5)
+            stdout_worker.join(timeout=1.5)
+            stderr_worker.join(timeout=1.5)
+            emit_event(
+                "bridge.executor_subprocess_cancelled",
+                level=logging.INFO,
+                fields={"mode": mode},
+            )
+            raise ExecutorCancelledError("Executor request canceled by user.")
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            process.kill()
+            process.wait(timeout=5)
+            stdout_worker.join(timeout=1.5)
+            stderr_worker.join(timeout=1.5)
+            emit_event(
+                "bridge.executor_subprocess_timeout",
+                level=logging.WARNING,
+                fields={
+                    "mode": mode,
+                    "timeout_seconds": config.exec_timeout_seconds,
+                },
+            )
+            raise subprocess.TimeoutExpired(cmd, config.exec_timeout_seconds)
+        try:
+            return_code = process.wait(timeout=min(0.2, max(0.01, remaining)))
+            break
+        except subprocess.TimeoutExpired:
+            continue
+
+    if return_code is None:
+        raise RuntimeError("Executor subprocess completed without a return code")
 
     stdout_worker.join(timeout=1.5)
     stderr_worker.join(timeout=1.5)

@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 try:
     from .executor import (
+        ExecutorCancelledError,
         ExecutorProgressEvent,
         parse_executor_output,
         should_reset_thread_after_resume_failure,
@@ -33,6 +34,7 @@ try:
     from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 except ImportError:
     from executor import (
+        ExecutorCancelledError,
         ExecutorProgressEvent,
         parse_executor_output,
         should_reset_thread_after_resume_failure,
@@ -76,6 +78,14 @@ SERVER3_KEYWORD_HELP_MESSAGE = (
 PREFIX_HELP_MESSAGE = (
     "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
 )
+CANCEL_REQUESTED_MESSAGE = "Cancel requested. Stopping current request."
+CANCEL_ALREADY_REQUESTED_MESSAGE = (
+    "Cancel is already in progress. Waiting for current request to stop."
+)
+CANCEL_NO_ACTIVE_MESSAGE = "No active request to cancel."
+REQUEST_CANCELED_MESSAGE = "Request canceled."
+
+
 @dataclass
 class DocumentPayload:
     file_id: str
@@ -604,6 +614,43 @@ def send_executor_failure_message(
         config.generic_error_message,
         reply_to_message_id=message_id,
     )
+
+
+def register_cancel_event(state: State, chat_id: int) -> threading.Event:
+    cancel_event = threading.Event()
+    with state.lock:
+        state.cancel_events[chat_id] = cancel_event
+    return cancel_event
+
+
+def clear_cancel_event(
+    state: State,
+    chat_id: int,
+    expected_event: Optional[threading.Event] = None,
+) -> None:
+    with state.lock:
+        current = state.cancel_events.get(chat_id)
+        if current is None:
+            return
+        if expected_event is not None and current is not expected_event:
+            return
+        del state.cancel_events[chat_id]
+
+
+def request_chat_cancel(state: State, chat_id: int) -> str:
+    with state.lock:
+        is_busy = chat_id in state.busy_chats
+        cancel_event = state.cancel_events.get(chat_id)
+        if not is_busy:
+            if cancel_event is not None:
+                del state.cancel_events[chat_id]
+            return "idle"
+        if cancel_event is None:
+            return "unavailable"
+        if cancel_event.is_set():
+            return "already_requested"
+        cancel_event.set()
+        return "requested"
 
 
 def extract_chat_context(update: Dict[str, object]) -> tuple[Optional[Dict[str, object]], Optional[int], Optional[int]]:
@@ -1207,6 +1254,7 @@ def build_help_text(config) -> str:
         "/help or /h - show this message\n"
         "/status - show bridge status and context\n"
         "/reset - clear saved context for this chat\n"
+        "/cancel - cancel current in-flight request for this chat\n"
         "/restart - queue a safe bridge restart\n"
         "/voice-alias list - show pending learned voice corrections\n"
         "/voice-alias approve <id> - approve one learned correction\n"
@@ -1436,6 +1484,7 @@ def execute_prompt_with_retry(
     previous_thread_id: Optional[str],
     image_path: Optional[str],
     progress: ProgressReporter,
+    cancel_event: Optional[threading.Event] = None,
     session_continuity_enabled: bool = True,
 ) -> Optional[subprocess.CompletedProcess[str]]:
     allow_automatic_retry = config.persistent_workers_enabled
@@ -1444,6 +1493,20 @@ def execute_prompt_with_retry(
     attempt = 0
 
     while True:
+        if cancel_event is not None and cancel_event.is_set():
+            emit_event(
+                "bridge.request_cancelled",
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "phase": "before_executor_attempt",
+                    "attempt": attempt + 1,
+                },
+            )
+            progress.mark_failure("Execution canceled.")
+            client.send_message(chat_id, REQUEST_CANCELED_MESSAGE, reply_to_message_id=message_id)
+            return None
+
         attempt += 1
         emit_event(
             "bridge.executor_attempt",
@@ -1462,7 +1525,17 @@ def execute_prompt_with_retry(
                 thread_id=attempt_thread_id,
                 image_path=image_path,
                 progress_callback=progress.handle_executor_event,
+                cancel_event=cancel_event,
             )
+        except ExecutorCancelledError:
+            logging.info("Executor canceled for chat_id=%s", chat_id)
+            emit_event(
+                "bridge.request_cancelled",
+                fields={"chat_id": chat_id, "message_id": message_id, "attempt": attempt},
+            )
+            progress.mark_failure("Execution canceled.")
+            client.send_message(chat_id, REQUEST_CANCELED_MESSAGE, reply_to_message_id=message_id)
+            return None
         except subprocess.TimeoutExpired:
             logging.warning("Executor timeout for chat_id=%s", chat_id)
             emit_event(
@@ -1657,6 +1730,7 @@ def process_prompt(
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
+    cancel_event: Optional[threading.Event] = None,
     stateless: bool = False,
     sender_name: str = "Telegram User",
     enforce_voice_prefix_from_transcript: bool = False,
@@ -1731,6 +1805,7 @@ def process_prompt(
             previous_thread_id=previous_thread_id,
             image_path=image_path,
             progress=progress,
+            cancel_event=cancel_event,
             session_continuity_enabled=not stateless,
         )
         if result is None:
@@ -1760,6 +1835,7 @@ def process_prompt(
                 logging.exception("Failed to finish shared memory turn for chat_id=%s", chat_id)
     finally:
         progress.close()
+        clear_cancel_event(state, chat_id, expected_event=cancel_event)
         if image_path:
             try:
                 os.remove(image_path)
@@ -1788,6 +1864,7 @@ def process_message_worker(
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
+    cancel_event: Optional[threading.Event] = None,
     stateless: bool = False,
     sender_name: str = "Telegram User",
     enforce_voice_prefix_from_transcript: bool = False,
@@ -1804,6 +1881,7 @@ def process_message_worker(
             photo_file_id,
             voice_file_id,
             document,
+            cancel_event,
             stateless=stateless,
             sender_name=sender_name,
             enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
@@ -1899,6 +1977,45 @@ def handle_restart_command(
         reply_to_message_id=message_id,
     )
     trigger_restart_async(state, client, chat_id, message_id)
+
+
+def handle_cancel_command(
+    state: State,
+    client: ChannelAdapter,
+    chat_id: int,
+    message_id: Optional[int],
+) -> None:
+    status = request_chat_cancel(state, chat_id)
+    emit_event(
+        "bridge.cancel_requested",
+        fields={"chat_id": chat_id, "message_id": message_id, "status": status},
+    )
+    if status == "requested":
+        client.send_message(
+            chat_id,
+            CANCEL_REQUESTED_MESSAGE,
+            reply_to_message_id=message_id,
+        )
+        return
+    if status == "already_requested":
+        client.send_message(
+            chat_id,
+            CANCEL_ALREADY_REQUESTED_MESSAGE,
+            reply_to_message_id=message_id,
+        )
+        return
+    if status == "unavailable":
+        client.send_message(
+            chat_id,
+            "Active request cannot be canceled at this stage. Please wait a few seconds and retry.",
+            reply_to_message_id=message_id,
+        )
+        return
+    client.send_message(
+        chat_id,
+        CANCEL_NO_ACTIVE_MESSAGE,
+        reply_to_message_id=message_id,
+    )
 
 
 def build_voice_alias_help_text() -> str:
@@ -2129,6 +2246,9 @@ def handle_known_command(
     if command == "/restart":
         handle_restart_command(state, client, chat_id, message_id)
         return True
+    if command == "/cancel":
+        handle_cancel_command(state, client, chat_id, message_id)
+        return True
     if command == "/reset":
         handle_reset_command(state, config, client, chat_id, message_id)
         return True
@@ -2155,6 +2275,7 @@ def start_message_worker(
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
+    cancel_event: Optional[threading.Event] = None,
     stateless: bool = False,
     sender_name: str = "Telegram User",
     enforce_voice_prefix_from_transcript: bool = False,
@@ -2172,6 +2293,7 @@ def start_message_worker(
             photo_file_id,
             voice_file_id,
             document,
+            cancel_event,
             stateless,
             sender_name,
             enforce_voice_prefix_from_transcript,
@@ -2422,6 +2544,7 @@ def handle_update(
             reply_to_message_id=message_id,
         )
         return
+    cancel_event = register_cancel_event(state, chat_id)
     state_repo = StateRepository(state)
     state_repo.mark_in_flight_request(chat_id, message_id)
     emit_event(
@@ -2446,6 +2569,7 @@ def handle_update(
         photo_file_id=photo_file_id,
         voice_file_id=voice_file_id,
         document=document,
+        cancel_event=cancel_event,
         stateless=stateless,
         sender_name=sender_name,
         enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,

@@ -1072,8 +1072,48 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("server3-tv-start", client.messages[-1][1])
         self.assertIn("server3-tv-stop", client.messages[-1][1])
         self.assertIn("Use `Server3 ...`", client.messages[-1][1])
+        self.assertIn("/cancel", client.messages[-1][1])
         self.assertIn("/memory mode", client.messages[-1][1])
         self.assertIn("/ask <prompt>", client.messages[-1][1])
+
+    def test_handle_update_routes_cancel_when_no_active_request(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 2,
+            "message": {
+                "message_id": 21,
+                "chat": {"id": 1},
+                "text": "/cancel",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+        self.assertTrue(client.messages)
+        self.assertEqual(client.messages[-1][1], "No active request to cancel.")
+
+    def test_handle_update_routes_cancel_when_request_active(self):
+        state = bridge.State()
+        with state.lock:
+            state.busy_chats.add(1)
+            state.cancel_events[1] = threading.Event()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 3,
+            "message": {
+                "message_id": 22,
+                "chat": {"id": 1},
+                "text": "/cancel",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+        self.assertTrue(client.messages)
+        self.assertEqual(client.messages[-1][1], "Cancel requested. Stopping current request.")
+        with state.lock:
+            self.assertTrue(state.cancel_events[1].is_set())
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_ignores_non_prefixed_when_required(self, start_message_worker):
@@ -1411,6 +1451,60 @@ class BridgeCoreTests(unittest.TestCase):
         status, busy = bridge_session_manager.request_safe_restart(state, chat_id=1, reply_to_message_id=None)
         self.assertEqual(status, "already_queued")
         self.assertEqual(busy, 1)
+
+    def test_execute_prompt_with_retry_handles_executor_cancelled(self):
+        class CancelingEngine:
+            engine_name = "canceling"
+
+            def run(
+                self,
+                config,
+                prompt,
+                thread_id,
+                image_path=None,
+                progress_callback=None,
+                cancel_event=None,
+            ):
+                raise bridge_handlers.ExecutorCancelledError("cancel")
+
+        class FakeProgress:
+            def __init__(self):
+                self.last_failure = ""
+
+            def handle_executor_event(self, _event):
+                return None
+
+            def set_phase(self, _phase):
+                return None
+
+            def mark_failure(self, detail):
+                self.last_failure = detail
+
+        state = bridge.State()
+        state_repo = bridge.StateRepository(state)
+        client = FakeTelegramClient()
+        config = make_config()
+        progress = FakeProgress()
+
+        result = bridge_handlers.execute_prompt_with_retry(
+            state_repo=state_repo,
+            config=config,
+            client=client,
+            engine=CancelingEngine(),
+            chat_id=1,
+            message_id=50,
+            prompt_text="hello",
+            previous_thread_id=None,
+            image_path=None,
+            progress=progress,
+            cancel_event=threading.Event(),
+            session_continuity_enabled=True,
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(progress.last_failure, "Execution canceled.")
+        self.assertTrue(client.messages)
+        self.assertEqual(client.messages[-1][1], "Request canceled.")
 
     def test_build_canonical_sessions_from_legacy(self):
         worker = bridge.WorkerSession(

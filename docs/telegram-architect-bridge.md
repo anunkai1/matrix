@@ -178,6 +178,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/help` command list
 - `/h` short help alias
 - `/status` bridge health and uptime
+- `/cancel` cancel the current in-flight request for this chat
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
 - `/voice-alias list` show pending learned voice corrections
@@ -219,6 +220,7 @@ Message handling:
     - `/usr/local/bin/server3-tv-stop`
     - `ops/tv-desktop/server3-tv-open-browser-url.sh`
     - `ops/tv-desktop/server3-youtube-open-top-result.sh`
+    - `ops/tv-desktop/server3-tv-browser-youtube-pause.sh`
   - empty keyword-only messages are rejected with a usage hint
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`
@@ -301,6 +303,7 @@ Message handling:
 - Chat ID allowlist (`TELEGRAM_ALLOWED_CHAT_IDS`)
 - Optional prefix allowlist (`TELEGRAM_REQUIRED_PREFIXES`)
 - Per-chat single in-flight request (`busy` response on overlap)
+- Per-chat `/cancel` to interrupt a currently running request
 - Built-in safe `/restart` command that bypasses busy rejection by queuing restart until active work completes
 - Request timeout guard (`TELEGRAM_EXEC_TIMEOUT_SECONDS`)
 - Input and output size limits

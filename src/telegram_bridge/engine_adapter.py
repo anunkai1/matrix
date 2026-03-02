@@ -1,4 +1,5 @@
 import subprocess
+import threading
 from typing import Callable, Optional, Protocol
 
 try:
@@ -19,6 +20,7 @@ class EngineAdapter(Protocol):
         thread_id: Optional[str],
         image_path: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
+        cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
         ...
 
@@ -33,6 +35,7 @@ class CodexEngineAdapter:
         thread_id: Optional[str],
         image_path: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
+        cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
         return run_executor(
             config=config,
@@ -40,4 +43,5 @@ class CodexEngineAdapter:
             thread_id=thread_id,
             image_path=image_path,
             progress_callback=progress_callback,
+            cancel_event=cancel_event,
         )

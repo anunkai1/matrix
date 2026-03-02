@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-03-02T17:46:39+10:00 - Execute Immediately After Approved Plan
+- Mistake pattern: After receiving explicit approval for a planned change, I failed to execute and left no completion/progress output, forcing the owner to ask what happened.
+- Prevention rule: Once approval is received, immediately run the planned implementation steps and post visible progress updates until completion or blocker.
+- Where/when applied: Right after approval-gate turns for non-exempt repo changes, before any context switch or status-only reply.
+
 ### 2026-02-28T11:41:46+10:00 - Regenerate Existing Data After Summary-Format Changes
 - Mistake pattern: Improving summarization logic alone leaves legacy summary rows in old/noisy format, so runtime behavior remains mixed and confusing.
 - Prevention rule: When summary format changes materially, provide and run a controlled regeneration path for existing `chat_summaries` rows in the same rollout.
