@@ -16,25 +16,20 @@
 - WhatsApp API env: `/home/govorun/whatsapp-govorun/app/.env`
 
 ## Install / update Govorun WhatsApp service
-1. Install units:
-   - `ops/whatsapp_govorun/install_user_service.sh`
-2. Ensure env file exists:
+1. Follow canonical provisioning/auth/service controls in:
+   - `docs/runbooks/whatsapp-govorun-operations.md`
+2. Ensure bridge env file exists:
    - `/etc/default/govorun-whatsapp-bridge`
    - set real `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALLOWED_CHAT_IDS`
-3. Start services:
-   - `ops/whatsapp_govorun/start_service.sh`
-   - `sudo systemctl restart govorun-whatsapp-bridge.service`
+3. Start/restart both Govorun services per operations runbook.
 4. Verify status:
    - `sudo systemctl status whatsapp-govorun-bridge.service --no-pager -n 50`
    - `sudo systemctl status govorun-whatsapp-bridge.service --no-pager -n 50`
+   - `sudo systemctl status telegram-architect-bridge.service --no-pager -n 50`
 
 ## WhatsApp API requirements
-- In `/home/govorun/whatsapp-govorun/app/.env` set:
-  - `WA_PLUGIN_MODE=true`
-  - `WA_API_HOST=127.0.0.1`
-  - `WA_API_PORT=8787`
-- Restart service:
-  - `ops/whatsapp_govorun/start_service.sh`
+- API env keys and limits are defined in:
+  - `docs/runbooks/whatsapp-govorun-operations.md` (Plugin API mode section)
 - Health check:
   - `curl http://127.0.0.1:8787/health`
 
