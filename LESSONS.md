@@ -20,10 +20,10 @@ Use one section per lesson:
 - Prevention rule: When a request mentions sending/sharing a file and destination is ambiguous, ask one explicit routing question first: "Codex chat link/content or Telegram document attachment?"
 - Where/when applied: Before executing any file-delivery request in chat operations and Telegram bridge actions.
 
-### 2026-03-02T17:46:39+10:00 - Execute Immediately After Approved Plan
-- Mistake pattern: After receiving explicit approval for a planned change, I failed to execute and left no completion/progress output, forcing the owner to ask what happened.
-- Prevention rule: Once approval is received, immediately run the planned implementation steps and post visible progress updates until completion or blocker.
-- Where/when applied: Right after approval-gate turns for non-exempt repo changes, before any context switch or status-only reply.
+### 2026-03-02T17:46:39+10:00 - Approval-Turn Protocol: Scope, Pause, Then Execute
+- Mistake pattern: I repeated approval-turn failures by either pausing without clear scope/approval phrasing, sending an empty response, or not executing immediately after approval.
+- Prevention rule: At approval gates, always output `Status`, `Approval for` (objective + exact scope/files), `Next action` with exact approval phrase, and `No commands will run`; once approved, execute immediately with visible progress until done or blocked.
+- Where/when applied: Any approval boundary turn for non-exempt repo changes.
 
 ### 2026-02-28T11:41:46+10:00 - Regenerate Existing Data After Summary-Format Changes
 - Mistake pattern: Improving summarization logic alone leaves legacy summary rows in old/noisy format, so runtime behavior remains mixed and confusing.
@@ -40,52 +40,22 @@ Use one section per lesson:
 - Prevention rule: When owner marks an item as accepted risk/as-designed, record it in repo context and treat it as deferred by default; do not propose or implement unless owner explicitly asks to revisit.
 - Where/when applied: Audit follow-up planning and priority lists before drafting any new AI Prompt for Action.
 
-### 2026-02-26T08:58:28+10:00 - Approval Gate Must Include Approval Target
-- Mistake pattern: I repeated approval-gate messaging issues by logging similar lessons more than once without enforcing one strict paused-state output format.
-- Prevention rule: At any approval pause, output `Status`, `Approval for` (one-sentence objective + exact scope/files), `Next action` with the exact approval phrase, and `No commands will run` line before stopping.
-- Where/when applied: Immediately after every AI Prompt for Action when execution is blocked waiting for user approval.
-
 ### 2026-02-23T07:24:07+10:00 - One-Shot Timer Verification
 - Mistake pattern: I initially reported no scheduled action existed because I checked active timers/repo notes but not unit journal history.
 - Prevention rule: For any schedule verification, check both current units and historical evidence (`systemctl status <unit>` and `journalctl -u <timer> -u <service>` in the target time window).
 - Where/when applied: Incident/ops checks when user asks whether a timed HA action was planned or executed.
 
-### 2026-02-27T08:08:01+10:00 - Urgent HA Actions Must Use Stable Credentials and Fast Preflight
-- Mistake pattern: I let simple HA requests fail late because scripts depended on a changing env file and I troubleshot before applying an immediate fallback action.
-- Prevention rule: Keep HA ops on a dedicated stable env path, run API preflight before scheduling, and for urgent user requests execute the direct action first when safe.
-- Where/when applied: Every HA on/off/mode/temperature request and before creating any HA schedule timer.
+### 2026-02-27T08:08:01+10:00 - HA Ops Reliability Baseline
+- Mistake pattern: HA requests failed or misrouted because of unstable env wiring, ad-hoc transient shell payloads, and ambiguous free-form routing.
+- Prevention rule: Use explicit `HA` / `Home Assistant` routing, keep HA ops on stable env paths, run API preflight before scheduling, use dedicated versioned scripts (not inline `systemd-run` shell payloads), and for urgent safe requests apply direct action first then refine.
+- Where/when applied: Every HA request path, including Telegram routing and scheduled climate/mode execution.
 
-### 2026-02-27T08:48:27+10:00 - Avoid Ad-Hoc systemd-run Shell Payloads for HA Climate Mode
-- Mistake pattern: A one-off inline `systemd-run` climate mode command failed at execution due shell/env interpolation behavior in the transient unit.
-- Prevention rule: Use dedicated versioned scripts (`set_climate_mode.sh` and `schedule_climate_mode.sh`) with explicit arguments and preflight checks, not ad-hoc inline command strings.
-- Where/when applied: Any future HA climate mode request, especially scheduled `--at`/`--in` actions.
+### 2026-02-27T12:03:38+10:00 - Prefix Gating Robustness and Recovery
+- Mistake pattern: Prefix parsing ignored valid mobile Unicode whitespace, and I kept tightening parser logic while users remained blocked.
+- Prevention rule: Accept Unicode whitespace in prefix parsing with regression tests, and if production flow is blocked by `prefix_required`, apply immediate fallback (`TELEGRAM_REQUIRED_PREFIXES=`) to restore service first, then refine parser logic.
+- Where/when applied: Telegram routing/prefix handling in `src/telegram_bridge/handlers.py` and incident response for ignored allowlisted messages.
 
-### 2026-02-27T09:38:29+10:00 - Require Explicit HA Prefix for Deterministic Chat Routing
-- Mistake pattern: Free-form chat requests could still flow into generic execution paths even after HA scripts were hardened.
-- Prevention rule: Reserve `HA` / `Home Assistant` as explicit routing triggers and force those requests into stateless HA-script-only policy mode.
-- Where/when applied: Telegram bridge message routing before memory/command handling in `src/telegram_bridge/handlers.py`.
-
-### 2026-02-27T11:39:12+10:00 - Confirm Bot Purpose Before Recommending Security Model
-- Mistake pattern: I assumed a narrowly scoped HA bot design before confirming the user wanted a general helper bot with mixed advice/file + HA use.
-- Prevention rule: For new bot/service requests, confirm intended capability scope first (general assistant vs single-domain ops) before proposing privilege boundaries and routing model.
-- Where/when applied: Initial design step for any new Telegram bot/service rollout on Server3, before drafting implementation plan.
-
-### 2026-02-27T12:03:38+10:00 - Prefix Parsers Must Handle Unicode Whitespace
-- Mistake pattern: I assumed ASCII-only separators after Telegram mention prefixes, causing valid mobile-formatted messages to be ignored.
-- Prevention rule: Treat any Unicode whitespace as a valid delimiter in prefix/command parsers and add regression tests for NBSP-style inputs.
-- Where/when applied: Telegram message routing and prefix gating in `src/telegram_bridge/handlers.py`.
-
-### 2026-02-27T12:22:44+10:00 - Prefer Operational Fallback When Prefix Gating Blocks Users
-- Mistake pattern: I iterated on parser strictness while user remained blocked in production chat flow.
-- Prevention rule: When allowlisted updates are received but repeatedly ignored by prefix-gating, apply immediate fallback (`TELEGRAM_REQUIRED_PREFIXES=`) to restore service, then refine parser afterward if needed.
-- Where/when applied: Helper bot production incidents where `bridge.request_ignored` reason is `prefix_required`.
-
-### 2026-02-27T13:46:59+10:00 - Separate Identity Requires Separate Workspace Root
-- Mistake pattern: I split Linux runtime user but still ran helper bot from Architect workspace, so helper inherited Architect persona/instruction context.
-- Prevention rule: For any separate bot persona, isolate both runtime user and workspace root (own `AGENTS.md` + instruction file) and point systemd `WorkingDirectory` + executor path to that workspace.
-- Where/when applied: New Telegram bot deployments that need distinct identity/rules on Server3.
-
-### 2026-02-28T09:47:50+10:00 - Never Leave Approval Turn Without Visible Response
-- Mistake pattern: After the user approval turn, I emitted an empty assistant response instead of a visible next-step or execution update.
-- Prevention rule: Every user turn must produce visible output; after approval, immediately emit a short execution status update and continue with commands.
-- Where/when applied: Approval boundary turns and long-running execution turns in this repo workflow.
+### 2026-02-27T13:46:59+10:00 - Bot Scope and Identity Must Be Decided Together
+- Mistake pattern: I assumed narrow HA-only scope without confirmation and also reused Architect workspace context for a separate bot identity.
+- Prevention rule: Before rollout, confirm capability scope (general assistant vs single-domain ops), then isolate identity fully when required (runtime user + dedicated workspace root with own `AGENTS.md`/instructions and systemd working directory).
+- Where/when applied: Initial design and deployment setup for new Telegram bot/services on Server3.
