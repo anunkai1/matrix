@@ -73,7 +73,10 @@ HA_KEYWORD_HELP_MESSAGE = (
     "HA mode needs an action. Example: `HA turn on masters AC to dry mode at 9:25am`."
 )
 SERVER3_KEYWORD_HELP_MESSAGE = (
-    "Server3 mode needs an action. Example: `Server3 open TV desktop and play top YouTube result for deep house 2026`."
+    "Server3 TV mode needs an action. Example: `Server3 TV open desktop and play top YouTube result for deep house 2026`."
+)
+NEXTCLOUD_KEYWORD_HELP_MESSAGE = (
+    "Nextcloud mode needs an action. Example: `Nextcloud create event tomorrow 3pm dentist in Personal calendar`."
 )
 PREFIX_HELP_MESSAGE = (
     "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
@@ -134,6 +137,17 @@ def build_server3_routing_script_allowlist() -> List[str]:
     ]
 
 
+def build_nextcloud_routing_script_allowlist() -> List[str]:
+    repo_root = build_repo_root()
+    return [
+        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-files-list.sh"),
+        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-file-upload.sh"),
+        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-file-delete.sh"),
+        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-calendars-list.sh"),
+        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-calendar-create-event.sh"),
+    ]
+
+
 def assistant_label(config) -> str:
     value = getattr(config, "assistant_name", "").strip()
     return value or "Architect"
@@ -178,7 +192,24 @@ def extract_server3_keyword_request(text: str) -> tuple[bool, str]:
         return False, ""
 
     lowered = stripped.lower()
-    for keyword in ("server3", "server 3"):
+    for keyword in ("server3 tv",):
+        if lowered == keyword:
+            return True, ""
+        if lowered.startswith(keyword):
+            remainder = stripped[len(keyword):]
+            if remainder and remainder[0] not in (" ", ":", "-"):
+                continue
+            return True, remainder.lstrip(" :-\t")
+    return False, ""
+
+
+def extract_nextcloud_keyword_request(text: str) -> tuple[bool, str]:
+    stripped = text.strip()
+    if not stripped:
+        return False, ""
+
+    lowered = stripped.lower()
+    for keyword in ("nextcloud",):
         if lowered == keyword:
             return True, ""
         if lowered.startswith(keyword):
@@ -246,8 +277,8 @@ def build_ha_keyword_prompt(user_request: str) -> str:
 def build_server3_keyword_prompt(user_request: str) -> str:
     scripts = "\n".join(f"- {path}" for path in build_server3_routing_script_allowlist())
     return (
-        "Server3 operations priority mode is active.\n"
-        "Treat this as a Server3 desktop/browser/UI action request.\n"
+        "Server3 TV operations priority mode is active.\n"
+        "Treat this as a Server3 TV desktop/browser/UI action request.\n"
         f"User request: {user_request.strip()}\n\n"
         "Mandatory execution policy:\n"
         f"{scripts}\n"
@@ -257,6 +288,23 @@ def build_server3_keyword_prompt(user_request: str) -> str:
         "- Respect optional min-duration constraints when explicitly requested.\n"
         "- If intent is unclear, ask one concise clarification question instead of guessing.\n"
         "- After execution, report exact scripts/commands used and final outcome."
+    )
+
+
+def build_nextcloud_keyword_prompt(user_request: str) -> str:
+    scripts = "\n".join(f"- {path}" for path in build_nextcloud_routing_script_allowlist())
+    return (
+        "Nextcloud operations priority mode is active.\n"
+        "Treat this as a Nextcloud file/calendar action request.\n"
+        f"User request: {user_request.strip()}\n\n"
+        "Mandatory execution policy:\n"
+        f"{scripts}\n"
+        "- Prefer deterministic script execution over ad-hoc shell or direct curl commands.\n"
+        "- For file browsing use nextcloud-files-list.sh.\n"
+        "- For calendar discovery use nextcloud-calendars-list.sh before creating events if unsure.\n"
+        "- Do not print or expose credentials.\n"
+        "- If path/calendar/time is unclear, ask one concise clarification question.\n"
+        "- After execution, report exact scripts used and final outcome."
     )
 
 
@@ -1264,7 +1312,8 @@ def build_help_text(config) -> str:
         "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
         "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
-        "Use `Server3 ...` for Server3 desktop/browser/UI operations."
+        "Use `Server3 TV ...` for Server3 desktop/browser/UI operations.\n"
+        "Use `Nextcloud ...` for Nextcloud files/calendar operations."
     )
     return base + "\n\n" + "\n".join(build_memory_help_lines())
 
@@ -2383,61 +2432,88 @@ def handle_update(
     command = normalize_command(prompt_input or "")
     priority_keyword_mode = False
     if prompt_input:
-        server3_keyword_mode, server3_request = extract_server3_keyword_request(prompt_input)
-        if server3_keyword_mode:
-            if not server3_request.strip():
+        nextcloud_keyword_mode, nextcloud_request = extract_nextcloud_keyword_request(prompt_input)
+        if nextcloud_keyword_mode:
+            if not nextcloud_request.strip():
                 emit_event(
                     "bridge.request_rejected",
                     level=logging.WARNING,
                     fields={
                         "chat_id": chat_id,
                         "message_id": message_id,
-                        "reason": "server3_keyword_missing_action",
+                        "reason": "nextcloud_keyword_missing_action",
                     },
                 )
                 client.send_message(
                     chat_id,
-                    SERVER3_KEYWORD_HELP_MESSAGE,
+                    NEXTCLOUD_KEYWORD_HELP_MESSAGE,
                     reply_to_message_id=message_id,
                 )
                 return
-            prompt_input = build_server3_keyword_prompt(server3_request)
+            prompt_input = build_nextcloud_keyword_prompt(nextcloud_request)
             command = None
             stateless = True
             priority_keyword_mode = True
             emit_event(
-                "bridge.server3_keyword_routed",
+                "bridge.nextcloud_keyword_routed",
                 fields={"chat_id": chat_id, "message_id": message_id},
             )
         else:
-            ha_keyword_mode, ha_request = extract_ha_keyword_request(prompt_input)
-            if not ha_keyword_mode:
-                ha_request = ""
-            if ha_keyword_mode:
-                if not ha_request.strip():
+            server3_keyword_mode, server3_request = extract_server3_keyword_request(prompt_input)
+            if server3_keyword_mode:
+                if not server3_request.strip():
                     emit_event(
                         "bridge.request_rejected",
                         level=logging.WARNING,
                         fields={
                             "chat_id": chat_id,
                             "message_id": message_id,
-                            "reason": "ha_keyword_missing_action",
+                            "reason": "server3_keyword_missing_action",
                         },
                     )
                     client.send_message(
                         chat_id,
-                        HA_KEYWORD_HELP_MESSAGE,
+                        SERVER3_KEYWORD_HELP_MESSAGE,
                         reply_to_message_id=message_id,
                     )
                     return
-                prompt_input = build_ha_keyword_prompt(ha_request)
+                prompt_input = build_server3_keyword_prompt(server3_request)
                 command = None
                 stateless = True
                 priority_keyword_mode = True
                 emit_event(
-                    "bridge.ha_keyword_routed",
+                    "bridge.server3_keyword_routed",
                     fields={"chat_id": chat_id, "message_id": message_id},
                 )
+            else:
+                ha_keyword_mode, ha_request = extract_ha_keyword_request(prompt_input)
+                if not ha_keyword_mode:
+                    ha_request = ""
+                if ha_keyword_mode:
+                    if not ha_request.strip():
+                        emit_event(
+                            "bridge.request_rejected",
+                            level=logging.WARNING,
+                            fields={
+                                "chat_id": chat_id,
+                                "message_id": message_id,
+                                "reason": "ha_keyword_missing_action",
+                            },
+                        )
+                        client.send_message(
+                            chat_id,
+                            HA_KEYWORD_HELP_MESSAGE,
+                            reply_to_message_id=message_id,
+                        )
+                        return
+                    prompt_input = build_ha_keyword_prompt(ha_request)
+                    command = None
+                    stateless = True
+                    priority_keyword_mode = True
+                    emit_event(
+                        "bridge.ha_keyword_routed",
+                        fields={"chat_id": chat_id, "message_id": message_id},
+                    )
 
     if prompt_input:
         maybe_process_voice_alias_learning_confirmation(

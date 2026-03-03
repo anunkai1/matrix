@@ -740,15 +740,27 @@ class BridgeCoreTests(unittest.TestCase):
 
     def test_extract_server3_keyword_request_variants(self):
         self.assertEqual(
-            bridge_handlers.extract_server3_keyword_request("Server3 open Firefox"),
+            bridge_handlers.extract_server3_keyword_request("Server3 TV open Firefox"),
             (True, "open Firefox"),
         )
         self.assertEqual(
-            bridge_handlers.extract_server3_keyword_request("server 3: play youtube top result"),
+            bridge_handlers.extract_server3_keyword_request("server3 tv: play youtube top result"),
             (True, "play youtube top result"),
         )
-        self.assertEqual(bridge_handlers.extract_server3_keyword_request("server3"), (True, ""))
-        self.assertEqual(bridge_handlers.extract_server3_keyword_request("server32 status"), (False, ""))
+        self.assertEqual(bridge_handlers.extract_server3_keyword_request("server3 tv"), (True, ""))
+        self.assertEqual(bridge_handlers.extract_server3_keyword_request("server3 status"), (False, ""))
+
+    def test_extract_nextcloud_keyword_request_variants(self):
+        self.assertEqual(
+            bridge_handlers.extract_nextcloud_keyword_request("Nextcloud list files"),
+            (True, "list files"),
+        )
+        self.assertEqual(
+            bridge_handlers.extract_nextcloud_keyword_request("nextcloud: create event tomorrow"),
+            (True, "create event tomorrow"),
+        )
+        self.assertEqual(bridge_handlers.extract_nextcloud_keyword_request("nextcloud"), (True, ""))
+        self.assertEqual(bridge_handlers.extract_nextcloud_keyword_request("nextcloudx"), (False, ""))
 
     def test_strip_required_prefix_variants(self):
         prefixes = ["@helper", "helper:"]
@@ -1071,7 +1083,8 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Available commands:", client.messages[-1][1])
         self.assertIn("server3-tv-start", client.messages[-1][1])
         self.assertIn("server3-tv-stop", client.messages[-1][1])
-        self.assertIn("Use `Server3 ...`", client.messages[-1][1])
+        self.assertIn("Use `Server3 TV ...`", client.messages[-1][1])
+        self.assertIn("Use `Nextcloud ...`", client.messages[-1][1])
         self.assertIn("/cancel", client.messages[-1][1])
         self.assertIn("/memory mode", client.messages[-1][1])
         self.assertNotIn("/memory mode full - legacy alias for all_context", client.messages[-1][1])
@@ -1302,7 +1315,7 @@ class BridgeCoreTests(unittest.TestCase):
             "message": {
                 "message_id": 42,
                 "chat": {"id": 1},
-                "text": "Server3 open desktop and play top youtube result for deephouse 2026",
+                "text": "Server3 TV open desktop and play top youtube result for deephouse 2026",
             },
         }
 
@@ -1311,7 +1324,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
         self.assertTrue(kwargs["stateless"])
-        self.assertIn("Server3 operations priority mode is active.", kwargs["prompt"])
+        self.assertIn("Server3 TV operations priority mode is active.", kwargs["prompt"])
         self.assertIn(
             "User request: open desktop and play top youtube result for deephouse 2026",
             kwargs["prompt"],
@@ -1328,7 +1341,7 @@ class BridgeCoreTests(unittest.TestCase):
             "message": {
                 "message_id": 43,
                 "chat": {"id": 1},
-                "text": "Server3",
+                "text": "Server3 TV",
             },
         }
 
@@ -1336,7 +1349,50 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertFalse(start_message_worker.called)
         self.assertEqual(len(client.messages), 1)
-        self.assertIn("Server3 mode needs an action.", client.messages[0][1])
+        self.assertIn("Server3 TV mode needs an action.", client.messages[0][1])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_routes_nextcloud_keyword_prompt_stateless(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 14,
+            "message": {
+                "message_id": 44,
+                "chat": {"id": 1},
+                "text": "Nextcloud list files in Documents",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertTrue(kwargs["stateless"])
+        self.assertIn("Nextcloud operations priority mode is active.", kwargs["prompt"])
+        self.assertIn("User request: list files in Documents", kwargs["prompt"])
+        self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_rejects_nextcloud_keyword_without_action(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 15,
+            "message": {
+                "message_id": 45,
+                "chat": {"id": 1},
+                "text": "Nextcloud",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertFalse(start_message_worker.called)
+        self.assertEqual(len(client.messages), 1)
+        self.assertIn("Nextcloud mode needs an action.", client.messages[0][1])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_rejects_ha_keyword_without_action(self, start_message_worker):

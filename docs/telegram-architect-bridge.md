@@ -212,7 +212,7 @@ Message handling:
   - the bridge wraps the request with strict policy to use only `ops/ha/*.sh` scripts
   - HA-keyword requests run stateless (no memory/session carryover)
   - empty keyword-only messages are rejected with a usage hint
-- Messages starting with `Server3` or `Server 3` are routed into Server3 operations mode:
+- Messages starting with `Server3 TV` are routed into Server3 operations mode:
   - requests run stateless (no memory/session carryover)
   - the bridge wraps the request with strict policy to prefer deterministic scripts:
     - `/usr/local/bin/server3-tv-start`
@@ -221,6 +221,15 @@ Message handling:
     - `ops/tv-desktop/server3-youtube-open-top-result.sh`
     - `ops/tv-desktop/server3-tv-browser-youtube-pause.sh`
     - `ops/tv-desktop/server3-tv-browser-youtube-play.sh`
+  - empty keyword-only messages are rejected with a usage hint
+- Messages starting with `Nextcloud` are routed into Nextcloud operations mode:
+  - requests run stateless (no memory/session carryover)
+  - the bridge wraps the request with strict policy to use deterministic scripts:
+    - `ops/nextcloud/nextcloud-files-list.sh`
+    - `ops/nextcloud/nextcloud-file-upload.sh`
+    - `ops/nextcloud/nextcloud-file-delete.sh`
+    - `ops/nextcloud/nextcloud-calendars-list.sh`
+    - `ops/nextcloud/nextcloud-calendar-create-event.sh`
   - empty keyword-only messages are rejected with a usage hint
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`
