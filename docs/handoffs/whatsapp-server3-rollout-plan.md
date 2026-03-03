@@ -205,7 +205,7 @@ Use this prompt directly with Codex when restarting this task:
 Resume WhatsApp Govorun auth recovery on Server3 from docs/handoffs/whatsapp-server3-rollout-plan.md.
 
 Requirements:
-- Read ARCHITECT_INSTRUCTION.md, SERVER3_SUMMARY.md, LESSONS.md first.
+- Read AGENTS.md, SERVER3_SUMMARY.md, LESSONS.md first.
 - Do not run parallel auth attempts.
 - Keep whatsapp-govorun-bridge.service stopped until auth success is verified.
 - Use a single clean auth attempt only (prefer QR first, then one pairing-code fallback if needed).

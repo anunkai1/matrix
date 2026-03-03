@@ -1,4 +1,4 @@
-# 🚀 🕶️💊🟩 Welcome to the Matrix 🟩💊🕶️
+# Matrix (Server3 Operations)
 
 Source-of-truth repository for Server3 automation and operations. The current primary workload is the Telegram Architect bridge that forwards Telegram prompts to local Codex execution on Server3.
 
@@ -17,6 +17,11 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Help alias: `/h` (same as `/help`)
 - Live request progress: typing heartbeat + in-place progress status updates while Architect is running
 - Architect-only routing for all allowlisted chats
+- Keyword operation routing:
+  - `HA ...` / `Home Assistant ...` for HA stateless operation mode
+  - `Server3 TV ...` for desktop/browser control mode
+  - `Nextcloud ...` for Nextcloud file/calendar operation mode
+- Google integration in Architect bridge: removed from live runtime
 - CI checks: `.github/workflows/telegram-bridge-ci.yml` (compile + unit tests + self/smoke tests)
 
 ## Repository Structure
@@ -29,8 +34,9 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - `docs/` operator runbooks
 - `logs/` repo-tracked execution/change records
 - `SERVER3_SUMMARY.md` summary-first session context log
-- `SERVER3_ARCHIVE.md` detailed historical/diagnostic archive
-- `ARCHITECT_INSTRUCTION.md` authoritative workflow rules
+- `SERVER3_ARCHIVE.md` canonical long-term archive index
+- `SERVER3_ARCHIVE_LEGACY_*.md` preserved verbatim historical snapshots
+- `AGENTS.md` authoritative workflow rules
 
 ## Prerequisites
 
@@ -94,15 +100,16 @@ bash src/telegram_bridge/smoke_test.sh
 - Default path: every non-exempt change set is GitHub-traceable through commit + push.
 - For non-exempt live edits outside repo paths, mirror intended/final state under `infra/`, use `ops/` for apply/rollback, document in `docs/`, and record applied changes under `logs/` in the same session.
 - For non-exempt change sets, update `SERVER3_SUMMARY.md` as a short rolling log; move older detailed entries into `SERVER3_ARCHIVE.md` as needed to keep summary bounded; then push in the same session.
-- Exception boundaries and operational exemptions are defined in `ARCHITECT_INSTRUCTION.md`.
+- Exception boundaries and operational exemptions are defined in `AGENTS.md`.
 
 ## Summary and Archive Tracking
 
 Use `SERVER3_SUMMARY.md` as the default session-to-session status log and read it first.
 Open `SERVER3_ARCHIVE.md` only when more detail is needed for the current task.
 Keep `SERVER3_SUMMARY.md` concise (current snapshot + recent change sets only, target roughly latest 10-15 entries).
-Use `SERVER3_ARCHIVE.md` as the canonical long-term detailed history.
-When summary grows past the rolling bound, migrate oldest summary entries into archive in the same session (preserve details; do not delete history).
+Use `SERVER3_ARCHIVE.md` as the canonical long-term archive index/history.
+When summary grows past the rolling bound, migrate oldest summary entries into archive in the same session.
+If migrated content is a very large verbatim dump, place it in `SERVER3_ARCHIVE_LEGACY_*.md` and link it from `SERVER3_ARCHIVE.md` to keep the main archive scannable.
 
 ## Security Notes
 
@@ -121,10 +128,11 @@ When summary grows past the rolling bound, migrate oldest summary entries into a
 
 ## Related Docs
 
-- `ARCHITECT_INSTRUCTION.md`
+- `AGENTS.md`
 - `docs/home-assistant-ops.md`
 - `docs/telegram-architect-bridge.md`
 - `docs/telegram-bridge-debug-checklist.md`
 - `docs/server-setup.md`
 - `SERVER3_SUMMARY.md`
 - `SERVER3_ARCHIVE.md`
+- `SERVER3_ARCHIVE_LEGACY_20260228.md`
