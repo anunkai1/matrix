@@ -1,7 +1,7 @@
 # WhatsApp Govorun Operations (Server3)
 
 ## Runtime identity
-- User: `govorun` (legacy installs may still use `wa-govorun`)
+- User: `govorun`
 - Runtime root: `/home/govorun/whatsapp-govorun`
 - Service: `whatsapp-govorun-bridge.service` (system-level)
 

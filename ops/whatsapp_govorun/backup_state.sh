@@ -1,23 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-resolve_runtime_user() {
-  if [[ -n "${WA_RUNTIME_USER:-}" ]]; then
-    echo "${WA_RUNTIME_USER}"
-    return
-  fi
-  if id "govorun" >/dev/null 2>&1; then
-    echo "govorun"
-    return
-  fi
-  if id "wa-govorun" >/dev/null 2>&1; then
-    echo "wa-govorun"
-    return
-  fi
-  echo "govorun"
-}
-
-USER_NAME="$(resolve_runtime_user)"
+USER_NAME="govorun"
 ROOT="/home/${USER_NAME}/whatsapp-govorun"
 STATE_DIR="${ROOT}/state"
 BACKUP_DIR="${ROOT}/backup"
