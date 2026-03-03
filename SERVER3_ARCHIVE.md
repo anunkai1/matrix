@@ -2,6 +2,28 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-04 (Summary Retention Refactor: Operator-First)
+
+Summary:
+- Updated `SERVER3_SUMMARY.md` from time-heavy rolling history to an operator-first format:
+  - `Current Snapshot`
+  - `Operational Memory (Pinned)`
+  - `Recent Changes (Rolling Max 8)`
+  - `Current Risks/Watchouts`
+- Added mandatory summary-retention policy to `ARCHITECT_INSTRUCTION.md`.
+- Updated `README.md` summary-tracking pointer to reference the new operator-first retention policy.
+
+Migrated out of summary during this refactor:
+- 2026-03-03: added lessons rule to clarify file-delivery target before sending (Codex chat vs Telegram attachment).
+- 2026-03-02: added keyword-routed Nextcloud operations and changed desktop trigger from `Server3 ...` to `Server3 TV ...`.
+- 2026-03-02: hardened TV/browser control flow with deterministic pause/play helpers, existing-window reuse, and Firefox autoplay fallback tooling (`wmctrl`, `xdotool`, `yt-dlp`).
+- 2026-03-02: added Telegram Architect `/cancel` for per-chat in-flight interruption; change-time test run recorded `85 OK`.
+- 2026-03-02: removed Architect Google runtime module/config/env/docs paths; change-time test run recorded `79 OK`.
+- 2026-03-01: completed Telegram plugin architecture phases (A/B/C) plus WhatsApp bridge API + dual-runtime rollout; returned Architect primary channel to Telegram after WhatsApp auth/readiness failures.
+- 2026-03-01: hardened Tank runtime (dedicated Joplin profile/sync path, DM prefix bypass in private chats, reasoning lowered to `low`).
+- 2026-02-28: completed Telegram outbound hardening phases 1-4 (media sends, retries/backoff, observability, structured outbound envelope).
+- 2026-02-28: deployed voice transcription quality/safety improvements (decode tuning, alias correction, confidence gating) across Architect/Tank paths.
+
 ## 2026-02-26 (Repository Scope Cleanup)
 
 Summary:

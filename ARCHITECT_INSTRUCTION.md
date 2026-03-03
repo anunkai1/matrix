@@ -81,3 +81,19 @@ Assistant name: `Architect`
 - Keep active docs/runbooks aligned with current live service names/paths.
 - Historical change logs in `logs/changes/*` may reflect older states; do not "normalize" history.
 - Ensure markdown links resolve.
+
+## 11) Summary Retention Policy (Operator-First, Mandatory)
+- `SERVER3_SUMMARY.md` is optimized for execution speed, clarity, and recovery value.
+- Do not trim summary entries by age alone.
+- Required summary structure:
+  - `Current Snapshot`
+  - `Operational Memory (Pinned)` with 6-10 non-expiring high-value items
+  - `Recent Changes` with rolling 5-8 entries
+  - `Current Risks/Watchouts` with max 5 items
+- Keep an item in summary if it materially affects:
+  - routing/commands
+  - service topology or defaults
+  - safety boundaries
+  - common failure recovery/debug flow
+- Move low-reuse completed history to `SERVER3_ARCHIVE.md` in the same change set.
+- When trimming summary, add one archive entry documenting which items were migrated out.

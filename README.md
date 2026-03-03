@@ -105,7 +105,7 @@ bash src/telegram_bridge/smoke_test.sh
 
 - Read `SERVER3_SUMMARY.md` first for current state.
 - Use `SERVER3_ARCHIVE.md` for deeper history.
-- Keep summary/archive maintenance aligned with `ARCHITECT_INSTRUCTION.md`.
+- Keep summary/archive maintenance aligned with the operator-first retention policy in `ARCHITECT_INSTRUCTION.md`.
 
 ## Security Notes
 
