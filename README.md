@@ -36,7 +36,8 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - `SERVER3_SUMMARY.md` summary-first session context log
 - `SERVER3_ARCHIVE.md` canonical long-term archive index
 - `SERVER3_ARCHIVE_LEGACY_*.md` preserved verbatim historical snapshots
-- `AGENTS.md` authoritative workflow rules
+- `ARCHITECT_INSTRUCTION.md` authoritative execution policy
+- `AGENTS.md` startup checklist + pointer to authoritative policy
 
 ## Prerequisites
 
@@ -100,7 +101,7 @@ bash src/telegram_bridge/smoke_test.sh
 - Default path: every non-exempt change set is GitHub-traceable through commit + push.
 - For non-exempt live edits outside repo paths, mirror intended/final state under `infra/`, use `ops/` for apply/rollback, document in `docs/`, and record applied changes under `logs/` in the same session.
 - For non-exempt change sets, update `SERVER3_SUMMARY.md` as a short rolling log; move older detailed entries into `SERVER3_ARCHIVE.md` as needed to keep summary bounded; then push in the same session.
-- Exception boundaries and operational exemptions are defined by the active workspace policy files and session instructions in `AGENTS.md`.
+- Exception boundaries and operational exemptions are defined in `ARCHITECT_INSTRUCTION.md`.
 
 ## Summary and Archive Tracking
 
@@ -129,6 +130,7 @@ If migrated content is a very large verbatim dump, place it in `SERVER3_ARCHIVE_
 ## Related Docs
 
 - `AGENTS.md`
+- `ARCHITECT_INSTRUCTION.md`
 - `docs/home-assistant-ops.md`
 - `docs/telegram-architect-bridge.md`
 - `docs/telegram-bridge-debug-checklist.md`
