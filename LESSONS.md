@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-03-03T19:18:12+10:00 - Clarify File Delivery Target Before Sending
+- Mistake pattern: I assumed "send file here" meant Codex chat delivery and did not immediately confirm whether the owner wanted Telegram attachment delivery.
+- Prevention rule: When a request mentions sending/sharing a file and destination is ambiguous, ask one explicit routing question first: "Codex chat link/content or Telegram document attachment?"
+- Where/when applied: Before executing any file-delivery request in chat operations and Telegram bridge actions.
+
 ### 2026-03-02T17:46:39+10:00 - Execute Immediately After Approved Plan
 - Mistake pattern: After receiving explicit approval for a planned change, I failed to execute and left no completion/progress output, forcing the owner to ask what happened.
 - Prevention rule: Once approval is received, immediately run the planned implementation steps and post visible progress updates until completion or blocker.
