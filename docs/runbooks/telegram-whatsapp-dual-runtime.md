@@ -7,24 +7,26 @@
 
 ## Services
 - Telegram primary: `telegram-architect-bridge.service`
-- WhatsApp parallel: `telegram-architect-whatsapp-bridge.service`
+- Govorun WhatsApp bridge: `govorun-whatsapp-bridge.service`
 - WhatsApp API runtime: `whatsapp-govorun-bridge.service` (user `govorun`)
 
 ## Config files
 - Telegram primary env: `/etc/default/telegram-architect-bridge`
-- WhatsApp parallel env: `/etc/default/telegram-architect-whatsapp-bridge`
+- Govorun WhatsApp env: `/etc/default/govorun-whatsapp-bridge`
 - WhatsApp API env: `/home/govorun/whatsapp-govorun/app/.env`
 
-## Install / update WhatsApp parallel service
-1. Install unit:
-   - `ops/telegram-bridge/install_whatsapp_bridge_service.sh apply`
+## Install / update Govorun WhatsApp service
+1. Install units:
+   - `ops/whatsapp_govorun/install_user_service.sh`
 2. Ensure env file exists:
-   - copy from `infra/env/telegram-architect-whatsapp-bridge.env.example`
-   - set real `TELEGRAM_BOT_TOKEN`
-3. Start service:
-   - `ops/telegram-bridge/start_whatsapp_bridge_service.sh`
+   - `/etc/default/govorun-whatsapp-bridge`
+   - set real `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALLOWED_CHAT_IDS`
+3. Start services:
+   - `ops/whatsapp_govorun/start_service.sh`
+   - `sudo systemctl restart govorun-whatsapp-bridge.service`
 4. Verify status:
-   - `ops/telegram-bridge/status_whatsapp_bridge_service.sh`
+   - `sudo systemctl status whatsapp-govorun-bridge.service --no-pager -n 50`
+   - `sudo systemctl status govorun-whatsapp-bridge.service --no-pager -n 50`
 
 ## WhatsApp API requirements
 - In `/home/govorun/whatsapp-govorun/app/.env` set:
@@ -39,11 +41,11 @@
 ## Linking behavior
 - Before WhatsApp link: `/health` may show `ready:false` and WhatsApp bridge gets no updates.
 - Telegram primary remains unaffected and should continue serving chats.
-- After link success: `/health` should transition to `ready:true`, then WhatsApp updates flow to the parallel bridge.
+- After link success: `/health` should transition to `ready:true`, then WhatsApp updates flow to Govorun bridge.
 
 ## Rollback
-1. Stop and disable parallel service:
-   - `ops/telegram-bridge/install_whatsapp_bridge_service.sh rollback`
+1. Stop and disable Govorun services:
+   - `sudo systemctl disable --now govorun-whatsapp-bridge.service whatsapp-govorun-bridge.service`
 2. Leave Telegram primary running as-is.
 3. Confirm:
    - `systemctl status telegram-architect-bridge.service`

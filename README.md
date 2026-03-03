@@ -100,7 +100,7 @@ bash src/telegram_bridge/smoke_test.sh
 - Default path: every non-exempt change set is GitHub-traceable through commit + push.
 - For non-exempt live edits outside repo paths, mirror intended/final state under `infra/`, use `ops/` for apply/rollback, document in `docs/`, and record applied changes under `logs/` in the same session.
 - For non-exempt change sets, update `SERVER3_SUMMARY.md` as a short rolling log; move older detailed entries into `SERVER3_ARCHIVE.md` as needed to keep summary bounded; then push in the same session.
-- Exception boundaries and operational exemptions are defined in `AGENTS.md`.
+- Exception boundaries and operational exemptions are defined by the active workspace policy files and session instructions in `AGENTS.md`.
 
 ## Summary and Archive Tracking
 

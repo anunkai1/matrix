@@ -3,7 +3,9 @@
 ## Runtime identity
 - User: `govorun`
 - Runtime root: `/home/govorun/whatsapp-govorun`
-- Service: `whatsapp-govorun-bridge.service` (system-level)
+- Services (system-level):
+  - `whatsapp-govorun-bridge.service` (Node WhatsApp API runtime)
+  - `govorun-whatsapp-bridge.service` (Python Govorun bridge)
 
 ## Provisioning flow
 1. `ops/whatsapp_govorun/setup_runtime_user.sh`
@@ -20,8 +22,12 @@
   - Re-run `ops/whatsapp_govorun/run_auth.sh` and enter printed code in WhatsApp Linked Devices.
 
 ## Service controls
-- Start/restart: `ops/whatsapp_govorun/start_service.sh`
-- Status: `sudo systemctl status whatsapp-govorun-bridge.service --no-pager -n 50`
+- Start/restart:
+  - `ops/whatsapp_govorun/start_service.sh` (API runtime)
+  - `sudo systemctl restart govorun-whatsapp-bridge.service` (Govorun bridge)
+- Status:
+  - `sudo systemctl status whatsapp-govorun-bridge.service --no-pager -n 50`
+  - `sudo systemctl status govorun-whatsapp-bridge.service --no-pager -n 50`
 - Logs:
   - `/home/govorun/whatsapp-govorun/state/logs/service.log`
   - `/home/govorun/whatsapp-govorun/state/logs/service.err.log`
