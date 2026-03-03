@@ -23,6 +23,7 @@ Last updated: 2026-03-03 (AEST, +10:00)
 - Tank runtime defaults: DM prefix bypass enabled in private chats, isolated Joplin profile/path, Codex reasoning effort set to `low`
 
 ## Recent Change Sets (Condensed Rolling)
+- 2026-03-04: addressed three follow-up code-review issues in WhatsApp/progress paths: made outbound edit-key cache dedupe-safe (prevents self-eviction), enforced mapped-chat usage for `/messages/edit` (with mismatch warning), and removed hardcoded compact elapsed wording by adding configurable env keys `TELEGRAM_PROGRESS_ELAPSED_PREFIX`/`TELEGRAM_PROGRESS_ELAPSED_SUFFIX`; deployed live (`whatsapp-govorun-bridge` + `govorun-whatsapp-bridge`) with Govorun env set to `Уже` + `с`.
 - 2026-03-03: fixed Govorun WhatsApp progress freeze at `... Уже 1с` by implementing real `/messages/edit` handling in `ops/whatsapp_govorun/bridge/src/index.mjs` (with tracked-message mapping and safe fallback send), then redeployed bridge runtime and restarted `whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service`.
 - 2026-03-03: updated Govorun/WhatsApp progress rendering for compact mode (`TELEGRAM_PROGRESS_LABEL`): removed default `Starting request.` line, changed to one-line `... Уже <N>с`, and set compact progress edits to 1s cadence so seconds increment while thinking.
 - 2026-03-03: strict WhatsApp runtime cleanup finalized `govorun`-only ops/docs and removed legacy user-unit artifact

@@ -84,6 +84,10 @@ function nextMessageId() {
 function rememberOutboundMessageKey(internalMessageId, chatJid, waMessageId) {
   if (!Number.isInteger(internalMessageId) || !waMessageId) return;
   outboundMessageKeys.set(internalMessageId, { chatJid, waMessageId: String(waMessageId) });
+  const existingIndex = outboundMessageOrder.indexOf(internalMessageId);
+  if (existingIndex >= 0) {
+    outboundMessageOrder.splice(existingIndex, 1);
+  }
   outboundMessageOrder.push(internalMessageId);
   while (outboundMessageOrder.length > MAX_OUTBOUND_MESSAGE_KEYS) {
     const victim = outboundMessageOrder.shift();
@@ -529,15 +533,22 @@ async function handleApiRequest(req, res) {
     }
 
     const mapped = outboundMessageKeys.get(internalMessageId);
+    if (mapped && mapped.chatJid && mapped.chatJid !== chatJid) {
+      logger.warn(
+        { requestedChatJid: chatJid, mappedChatJid: mapped.chatJid, messageId: internalMessageId },
+        'message edit chat mismatch; using mapped chat id'
+      );
+    }
+    const effectiveChatJid = mapped?.chatJid || chatJid;
     const target = {
-      remoteJid: chatJid,
+      remoteJid: effectiveChatJid,
       fromMe: true,
       id: mapped?.waMessageId || ''
     };
 
     if (!target.id) {
-      const fallback = await activeSock.sendMessage(chatJid, { text });
-      rememberOutboundMessageKey(internalMessageId, chatJid, fallback?.key?.id || null);
+      const fallback = await activeSock.sendMessage(effectiveChatJid, { text });
+      rememberOutboundMessageKey(internalMessageId, effectiveChatJid, fallback?.key?.id || null);
       sendJson(res, 200, {
         ok: true,
         result: {
@@ -551,9 +562,9 @@ async function handleApiRequest(req, res) {
     }
 
     try {
-      const edited = await activeSock.sendMessage(chatJid, { text, edit: target });
+      const edited = await activeSock.sendMessage(effectiveChatJid, { text, edit: target });
       if (edited?.key?.id) {
-        rememberOutboundMessageKey(internalMessageId, chatJid, edited.key.id);
+        rememberOutboundMessageKey(internalMessageId, effectiveChatJid, edited.key.id);
       }
       sendJson(res, 200, {
         ok: true,
@@ -565,11 +576,11 @@ async function handleApiRequest(req, res) {
       });
     } catch (err) {
       logger.warn(
-        { chatJid, messageId: internalMessageId, err: String(err) },
+        { chatJid: effectiveChatJid, messageId: internalMessageId, err: String(err) },
         'message edit failed; falling back to fresh send'
       );
-      const fallback = await activeSock.sendMessage(chatJid, { text });
-      rememberOutboundMessageKey(internalMessageId, chatJid, fallback?.key?.id || null);
+      const fallback = await activeSock.sendMessage(effectiveChatJid, { text });
+      rememberOutboundMessageKey(internalMessageId, effectiveChatJid, fallback?.key?.id || null);
       sendJson(res, 200, {
         ok: true,
         result: {

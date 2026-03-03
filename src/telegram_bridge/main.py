@@ -153,6 +153,8 @@ class Config:
     whatsapp_bridge_auth_token: str
     whatsapp_poll_timeout_seconds: int
     progress_label: str = ""
+    progress_elapsed_prefix: str = "Already"
+    progress_elapsed_suffix: str = "s"
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -372,6 +374,10 @@ def load_config() -> Config:
     allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids)
     assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
     progress_label = os.getenv("TELEGRAM_PROGRESS_LABEL", "").strip()
+    progress_elapsed_prefix = (
+        os.getenv("TELEGRAM_PROGRESS_ELAPSED_PREFIX", "Already").strip() or "Already"
+    )
+    progress_elapsed_suffix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_SUFFIX", "s")
     return Config(
         token=token,
         allowed_chat_ids=allowed_chat_ids,
@@ -481,6 +487,8 @@ def load_config() -> Config:
         ),
         assistant_name=assistant_name,
         progress_label=progress_label,
+        progress_elapsed_prefix=progress_elapsed_prefix,
+        progress_elapsed_suffix=progress_elapsed_suffix,
         channel_plugin=parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram"),
         engine_plugin=parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
         whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),

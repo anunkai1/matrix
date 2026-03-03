@@ -755,12 +755,16 @@ class ProgressReporter:
         reply_to_message_id: Optional[int],
         assistant_name: str,
         progress_label: str = "",
+        compact_elapsed_prefix: str = "Already",
+        compact_elapsed_suffix: str = "s",
     ) -> None:
         self.client = client
         self.chat_id = chat_id
         self.reply_to_message_id = reply_to_message_id
         self.assistant_name = assistant_name
         self.progress_label = progress_label.strip()
+        self.compact_elapsed_prefix = (compact_elapsed_prefix or "Already").strip() or "Already"
+        self.compact_elapsed_suffix = compact_elapsed_suffix or "s"
         self.started_at = time.time()
         self.progress_message_id: Optional[int] = None
         self.phase = ""
@@ -878,7 +882,7 @@ class ProgressReporter:
             completed = self.commands_completed
         label = self.progress_label or f"{self.assistant_name} is working"
         if self._is_compact_progress:
-            text = f"{label}... Уже {elapsed}с"
+            text = f"{label}... {self.compact_elapsed_prefix} {elapsed}{self.compact_elapsed_suffix}"
             return trim_output(text, TELEGRAM_LIMIT)
 
         text = f"{label}... {elapsed}s elapsed."
@@ -1841,6 +1845,8 @@ def process_prompt(
         message_id,
         assistant_label(config),
         getattr(config, "progress_label", ""),
+        getattr(config, "progress_elapsed_prefix", "Already"),
+        getattr(config, "progress_elapsed_suffix", "s"),
     )
     try:
         progress.start()
