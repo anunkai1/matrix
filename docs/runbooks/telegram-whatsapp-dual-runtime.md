@@ -8,12 +8,12 @@
 ## Services
 - Telegram primary: `telegram-architect-bridge.service`
 - WhatsApp parallel: `telegram-architect-whatsapp-bridge.service`
-- WhatsApp API runtime: `whatsapp-govorun-bridge.service` (user `wa-govorun`)
+- WhatsApp API runtime: `whatsapp-govorun-bridge.service` (user `govorun`)
 
 ## Config files
 - Telegram primary env: `/etc/default/telegram-architect-bridge`
 - WhatsApp parallel env: `/etc/default/telegram-architect-whatsapp-bridge`
-- WhatsApp API env: `/home/wa-govorun/whatsapp-govorun/app/.env`
+- WhatsApp API env: `/home/govorun/whatsapp-govorun/app/.env`
 
 ## Install / update WhatsApp parallel service
 1. Install unit:
@@ -27,11 +27,11 @@
    - `ops/telegram-bridge/status_whatsapp_bridge_service.sh`
 
 ## WhatsApp API requirements
-- In `/home/wa-govorun/whatsapp-govorun/app/.env` set:
+- In `/home/govorun/whatsapp-govorun/app/.env` set:
   - `WA_PLUGIN_MODE=true`
   - `WA_API_HOST=127.0.0.1`
   - `WA_API_PORT=8787`
-- Restart user service:
+- Restart service:
   - `ops/whatsapp_govorun/start_service.sh`
 - Health check:
   - `curl http://127.0.0.1:8787/health`

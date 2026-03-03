@@ -2,7 +2,15 @@
 set -euo pipefail
 
 SRC_USER="architect"
-DST_USER="govorun"
+if [[ -n "${WA_RUNTIME_USER:-}" ]]; then
+  DST_USER="${WA_RUNTIME_USER}"
+elif id "govorun" >/dev/null 2>&1; then
+  DST_USER="govorun"
+elif id "wa-govorun" >/dev/null 2>&1; then
+  DST_USER="wa-govorun"
+else
+  DST_USER="govorun"
+fi
 SRC_DIR="/home/${SRC_USER}/.codex"
 DST_DIR="/home/${DST_USER}/.codex"
 

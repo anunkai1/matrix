@@ -1,7 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-USER_NAME="govorun"
+resolve_runtime_user_for_setup() {
+  if [[ -n "${WA_RUNTIME_USER:-}" ]]; then
+    echo "${WA_RUNTIME_USER}"
+    return
+  fi
+  if id "govorun" >/dev/null 2>&1; then
+    echo "govorun"
+    return
+  fi
+  if id "wa-govorun" >/dev/null 2>&1; then
+    echo "wa-govorun"
+    return
+  fi
+  echo "govorun"
+}
+
+USER_NAME="$(resolve_runtime_user_for_setup)"
 HOME_DIR="/home/${USER_NAME}"
 RUNTIME_ROOT="${HOME_DIR}/whatsapp-govorun"
 WORK_ROOT="${HOME_DIR}/govorunbot"

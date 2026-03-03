@@ -71,7 +71,7 @@ export function createConfig() {
   const logsDir = process.env.WA_LOGS_DIR || path.join(stateDir, 'logs');
   const filesDir = process.env.WA_FILES_DIR || path.join(stateDir, 'files');
   const codexWorkdir = process.env.CODEX_WORKDIR || '/home/architect/matrix';
-  const trigger = process.env.WA_TRIGGER || '@govorun';
+  const trigger = process.env.WA_TRIGGER || '@говорун';
   const trimmedTrigger = trigger.trim();
   const triggerCore = trimmedTrigger.startsWith('@') ? trimmedTrigger.slice(1).trim() : trimmedTrigger;
   const escapedTriggerCore = escapeRegex(triggerCore || trimmedTrigger);
@@ -95,7 +95,7 @@ export function createConfig() {
     ),
     // Match trigger anywhere in text as a standalone token (used for tolerant self-message checks).
     triggerSearchRegex: new RegExp(`(?:^|\\s|[(:;,.!?\\-])@?${escapedTriggerCore}(?:$|\\b|\\s|[,:;.!?\\-)])`, 'iu'),
-    allowFromMeGroupTriggerOnly: parseBool(process.env.WA_ALLOW_FROM_ME_GROUP_TRIGGER_ONLY, false),
+    allowFromMeGroupTriggerOnly: parseBool(process.env.WA_ALLOW_FROM_ME_GROUP_TRIGGER_ONLY, true),
     dmAlwaysRespond: parseBool(process.env.WA_DM_ALWAYS_RESPOND, true),
     groupTriggerRequired: parseBool(process.env.WA_GROUP_TRIGGER_REQUIRED, true),
     allowedGroups: splitCsv(process.env.WA_ALLOWED_GROUPS),

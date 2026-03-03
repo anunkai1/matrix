@@ -1,0 +1,19 @@
+[Unit]
+Description=WhatsApp Govorun Bridge (Codex)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=govorun
+Group=govorun
+WorkingDirectory=/home/govorun/whatsapp-govorun/app
+Environment=HOME=/home/govorun
+ExecStart=/usr/bin/node /home/govorun/whatsapp-govorun/app/src/index.mjs
+Restart=always
+RestartSec=3
+StandardOutput=append:/home/govorun/whatsapp-govorun/state/logs/service.log
+StandardError=append:/home/govorun/whatsapp-govorun/state/logs/service.err.log
+
+[Install]
+WantedBy=multi-user.target

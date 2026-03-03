@@ -3,7 +3,7 @@
 Matrix-managed runtime component that links WhatsApp messages to Codex execution.
 
 ## Behavior
-- Group chats: responds only when message starts with `WA_TRIGGER` (default `@govorun`).
+- Group chats: responds only when message starts with `WA_TRIGGER` (default `@говорун`).
 - DMs: responds to all messages when `WA_DM_ALWAYS_RESPOND=true`.
 - Runs Codex with model `gpt-5-codex-mini` and reasoning effort `medium` by default.
 - Fetches latest WhatsApp Web version at startup/auth to avoid stale-version auth failures.
@@ -25,6 +25,8 @@ Matrix-managed runtime component that links WhatsApp messages to Codex execution
 - `GET /files/content?file_path=<token>`
 
 ### Key env vars
+- `WA_TRIGGER` (`@говорун` default)
+- `WA_ALLOW_FROM_ME_GROUP_TRIGGER_ONLY` (`true` default)
 - `WA_PLUGIN_MODE` (`false` default)
 - `WA_API_HOST` (`127.0.0.1` default)
 - `WA_API_PORT` (`8787` default)
@@ -50,8 +52,8 @@ npm run start
   The script will print a pairing code for WhatsApp Linked Devices.
 
 ## Runtime paths (recommended)
-- App: `/home/wa-govorun/whatsapp-govorun/app`
-- State: `/home/wa-govorun/whatsapp-govorun/state`
+- App: `/home/govorun/whatsapp-govorun/app`
+- State: `/home/govorun/whatsapp-govorun/state`
 
 ## Security note
 `CODEX_FULL_ACCESS=true` runs Codex without sandbox/approval prompts inside the runtime user boundary.

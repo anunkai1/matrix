@@ -23,6 +23,7 @@ Last updated: 2026-03-03 (AEST, +10:00)
 - Tank runtime defaults: DM prefix bypass enabled in private chats, isolated Joplin profile/path, Codex reasoning effort set to `low`
 
 ## Recent Change Sets (Condensed Rolling)
+- 2026-03-03: fixed WhatsApp runtime drift/regressions (Config compatibility, WhatsApp caption return consistency, `govorun`/`wa-govorun` script compatibility, system unit install templates, env/runbook alignment, and live dependency add for `link-preview-js`); validation recorded `111 OK` + `self-test OK` + `smoke-test OK`
 - 2026-03-03: unified Server3 Codex CLI to `0.107.0` in `/usr/local`; resolved `/usr/local` vs `/usr` version mismatch
 - 2026-03-03: added lessons rule to clarify file-delivery target before sending (Codex chat vs Telegram attachment)
 - 2026-03-02: added keyword-routed Nextcloud operations and changed desktop trigger from `Server3 ...` to `Server3 TV ...`

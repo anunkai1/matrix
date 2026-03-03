@@ -146,13 +146,13 @@ class Config:
     required_prefix_ignore_case: bool
     require_prefix_in_private: bool
     assistant_name: str
-    progress_label: str
     channel_plugin: str
     engine_plugin: str
     whatsapp_plugin_enabled: bool
     whatsapp_bridge_api_base: str
     whatsapp_bridge_auth_token: str
     whatsapp_poll_timeout_seconds: int
+    progress_label: str = ""
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."

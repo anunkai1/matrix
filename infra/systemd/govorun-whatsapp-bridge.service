@@ -1,0 +1,21 @@
+[Unit]
+Description=Govorun WhatsApp Bridge
+After=network-online.target whatsapp-govorun-bridge.service
+Wants=network-online.target whatsapp-govorun-bridge.service
+
+[Service]
+Type=simple
+User=govorun
+Group=govorun
+WorkingDirectory=/home/govorun/govorunbot
+Environment=PYTHONUNBUFFERED=1
+Environment=TELEGRAM_EXECUTOR_CMD=/home/govorun/govorunbot/src/telegram_bridge/executor.sh
+EnvironmentFile=-/etc/default/govorun-whatsapp-bridge
+ExecStart=/usr/bin/python3 /home/govorun/govorunbot/src/telegram_bridge/main.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

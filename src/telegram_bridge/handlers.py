@@ -640,7 +640,9 @@ def send_executor_output(
 
     if follow_up_text:
         client.send_message(chat_id, follow_up_text, reply_to_message_id=message_id)
-
+        return follow_up_text
+    if caption:
+        return caption
     if rendered_text:
         return rendered_text
     return f"[media sent: {directive.media_ref}]"
