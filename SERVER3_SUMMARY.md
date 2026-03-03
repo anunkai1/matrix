@@ -10,6 +10,7 @@ Last updated: 2026-03-03 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 
 ## Recent Change Sets (Rolling)
+- 2026-03-03: updated Server3 Codex CLI to npm latest (`@openai/codex@0.107.0`) in `/usr/local` to remove version mismatch (`/usr/local/bin/codex` had stayed on `0.106.0` while `/usr/bin/codex` was `0.107.0`); verified `codex --version` now reports `codex-cli 0.107.0` and recorded target-state/log artifacts.
 - 2026-03-03: added a new `LESSONS.md` entry to enforce file-delivery clarification before execution ("Codex chat link/content vs Telegram document attachment") after owner correction on ambiguous "send file here" phrasing.
 - 2026-03-02: added keyword-routed Nextcloud operations in Architect bridge (`Nextcloud ...`) with stateless priority mode and deterministic script allowlist (`ops/nextcloud/*` for file listing/upload/delete and calendar listing/event creation); changed Server3 desktop keyword trigger from `Server3 ...` to `Server3 TV ...`; added Nextcloud ops docs and redacted/env target-state mirrors.
 - 2026-03-02: hardened Server3 Brave playback control to avoid accidental double-toggle: removed click-before-key behavior from `ops/tv-desktop/server3-tv-browser-youtube-pause.sh` and added deterministic play helper `ops/tv-desktop/server3-tv-browser-youtube-play.sh` that sends `Pause` then `Play`; updated Server3 routing allowlist/docs/target-state accordingly.
