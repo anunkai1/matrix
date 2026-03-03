@@ -41,6 +41,9 @@ const updateQueue = [];
 const updateWaiters = [];
 const storedFiles = new Map();
 const storedFileOrder = [];
+const outboundMessageKeys = new Map();
+const outboundMessageOrder = [];
+const MAX_OUTBOUND_MESSAGE_KEYS = 2000;
 
 let nextInternalMessageId = 1;
 let nextUpdateId = 1;
@@ -76,6 +79,18 @@ function nextMessageId() {
   const value = nextInternalMessageId;
   nextInternalMessageId += 1;
   return value;
+}
+
+function rememberOutboundMessageKey(internalMessageId, chatJid, waMessageId) {
+  if (!Number.isInteger(internalMessageId) || !waMessageId) return;
+  outboundMessageKeys.set(internalMessageId, { chatJid, waMessageId: String(waMessageId) });
+  outboundMessageOrder.push(internalMessageId);
+  while (outboundMessageOrder.length > MAX_OUTBOUND_MESSAGE_KEYS) {
+    const victim = outboundMessageOrder.shift();
+    if (victim !== undefined && victim !== null) {
+      outboundMessageKeys.delete(victim);
+    }
+  }
 }
 
 function stableBaseChatId(jid) {
@@ -443,10 +458,12 @@ async function handleApiRequest(req, res) {
       return;
     }
     const response = await activeSock.sendMessage(chatJid, { text });
+    const internalMessageId = nextMessageId();
+    rememberOutboundMessageKey(internalMessageId, chatJid, response?.key?.id || null);
     sendJson(res, 200, {
       ok: true,
       result: {
-        message_id: nextMessageId(),
+        message_id: internalMessageId,
         wa_message_id: response?.key?.id || null
       }
     });
@@ -480,10 +497,12 @@ async function handleApiRequest(req, res) {
       payload = { document: { url: mediaRef }, fileName, caption };
     }
     const response = await activeSock.sendMessage(chatJid, payload);
+    const internalMessageId = nextMessageId();
+    rememberOutboundMessageKey(internalMessageId, chatJid, response?.key?.id || null);
     sendJson(res, 200, {
       ok: true,
       result: {
-        message_id: nextMessageId(),
+        message_id: internalMessageId,
         wa_message_id: response?.key?.id || null
       }
     });
@@ -491,14 +510,76 @@ async function handleApiRequest(req, res) {
   }
 
   if (method === 'POST' && pathname === '/messages/edit') {
+    if (!requireSocket(res)) return;
     const body = await parseJsonBody(req);
     const chatJid = resolveChatJid(body.chat_id, body.chat_jid);
     if (!chatJid) {
       sendJson(res, 404, { ok: false, description: 'chat not found' });
       return;
     }
-    // WhatsApp message edit compatibility is intentionally a no-op in bridge API mode.
-    sendJson(res, 200, { ok: true, result: { edited: false } });
+    const text = String(body.text || '').trim();
+    if (!text) {
+      sendJson(res, 400, { ok: false, description: 'text is required' });
+      return;
+    }
+    const internalMessageId = parseInteger(body.message_id, NaN, 1);
+    if (!Number.isFinite(internalMessageId) || Number.isNaN(internalMessageId)) {
+      sendJson(res, 400, { ok: false, description: 'message_id is required' });
+      return;
+    }
+
+    const mapped = outboundMessageKeys.get(internalMessageId);
+    const target = {
+      remoteJid: chatJid,
+      fromMe: true,
+      id: mapped?.waMessageId || ''
+    };
+
+    if (!target.id) {
+      const fallback = await activeSock.sendMessage(chatJid, { text });
+      rememberOutboundMessageKey(internalMessageId, chatJid, fallback?.key?.id || null);
+      sendJson(res, 200, {
+        ok: true,
+        result: {
+          edited: false,
+          fallback_sent: true,
+          message_id: internalMessageId,
+          wa_message_id: fallback?.key?.id || null
+        }
+      });
+      return;
+    }
+
+    try {
+      const edited = await activeSock.sendMessage(chatJid, { text, edit: target });
+      if (edited?.key?.id) {
+        rememberOutboundMessageKey(internalMessageId, chatJid, edited.key.id);
+      }
+      sendJson(res, 200, {
+        ok: true,
+        result: {
+          edited: true,
+          message_id: internalMessageId,
+          wa_message_id: edited?.key?.id || target.id
+        }
+      });
+    } catch (err) {
+      logger.warn(
+        { chatJid, messageId: internalMessageId, err: String(err) },
+        'message edit failed; falling back to fresh send'
+      );
+      const fallback = await activeSock.sendMessage(chatJid, { text });
+      rememberOutboundMessageKey(internalMessageId, chatJid, fallback?.key?.id || null);
+      sendJson(res, 200, {
+        ok: true,
+        result: {
+          edited: false,
+          fallback_sent: true,
+          message_id: internalMessageId,
+          wa_message_id: fallback?.key?.id || null
+        }
+      });
+    }
     return;
   }
 
