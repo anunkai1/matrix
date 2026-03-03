@@ -763,12 +763,19 @@ class ProgressReporter:
         self.progress_label = progress_label.strip()
         self.started_at = time.time()
         self.progress_message_id: Optional[int] = None
-        self.phase = "Starting request."
+        self.phase = ""
         self.commands_started = 0
         self.commands_completed = 0
         self.pending_update = True
         self.last_edit_at = 0.0
         self.last_rendered_text = ""
+        self._is_compact_progress = bool(self.progress_label)
+        self._edit_min_interval_seconds = (
+            1.0 if self._is_compact_progress else PROGRESS_EDIT_MIN_INTERVAL_SECONDS
+        )
+        self._heartbeat_edit_seconds = (
+            1.0 if self._is_compact_progress else PROGRESS_HEARTBEAT_EDIT_SECONDS
+        )
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._worker: Optional[threading.Thread] = None
@@ -854,7 +861,7 @@ class ProgressReporter:
             self._maybe_edit(force=False)
             if now >= next_progress_at:
                 self._maybe_edit(force=True)
-                next_progress_at = now + PROGRESS_HEARTBEAT_EDIT_SECONDS
+                next_progress_at = now + self._heartbeat_edit_seconds
             self._stop_event.wait(1.0)
 
     def _send_typing(self) -> None:
@@ -870,7 +877,13 @@ class ProgressReporter:
             started = self.commands_started
             completed = self.commands_completed
         label = self.progress_label or f"{self.assistant_name} is working"
-        text = f"{label}... {elapsed}s elapsed.\n{phase}"
+        if self._is_compact_progress:
+            text = f"{label}... Уже {elapsed}с"
+            return trim_output(text, TELEGRAM_LIMIT)
+
+        text = f"{label}... {elapsed}s elapsed."
+        if phase:
+            text += f"\n{phase}"
         if started > 0:
             text += f"\nCommands done: {completed}/{started}"
         return trim_output(text, TELEGRAM_LIMIT)
@@ -886,7 +899,7 @@ class ProgressReporter:
             return
 
         now = time.time()
-        if not force and now - self.last_edit_at < PROGRESS_EDIT_MIN_INTERVAL_SECONDS:
+        if not force and now - self.last_edit_at < self._edit_min_interval_seconds:
             return
 
         text = self._render_progress_text()

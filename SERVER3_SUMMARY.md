@@ -23,6 +23,7 @@ Last updated: 2026-03-03 (AEST, +10:00)
 - Tank runtime defaults: DM prefix bypass enabled in private chats, isolated Joplin profile/path, Codex reasoning effort set to `low`
 
 ## Recent Change Sets (Condensed Rolling)
+- 2026-03-03: updated Govorun/WhatsApp progress rendering for compact mode (`TELEGRAM_PROGRESS_LABEL`): removed default `Starting request.` line, changed to one-line `... Уже <N>с`, and set compact progress edits to 1s cadence so seconds increment while thinking.
 - 2026-03-03: strict WhatsApp runtime cleanup finalized `govorun`-only ops/docs and removed legacy user-unit artifact
 - 2026-03-03: fixed WhatsApp runtime drift/regressions (Config compatibility, WhatsApp caption return consistency, system unit install templates, env/runbook alignment, and live dependency add for `link-preview-js`); validation recorded `111 OK` + `self-test OK` + `smoke-test OK`
 - 2026-03-03: unified Server3 Codex CLI to `0.107.0` in `/usr/local`; resolved `/usr/local` vs `/usr` version mismatch
