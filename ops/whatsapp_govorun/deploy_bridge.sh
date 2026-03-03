@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-USER_NAME="wa-govorun"
+USER_NAME="govorun"
 HOME_DIR="/home/${USER_NAME}"
 RUNTIME_ROOT="${HOME_DIR}/whatsapp-govorun"
 APP_DIR="${RUNTIME_ROOT}/app"
-SRC_DIR="/home/architect/matrix/ops/whatsapp_govorun/bridge"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SRC_DIR="${SCRIPT_DIR}/bridge"
 
 sudo mkdir -p "${APP_DIR}" "${RUNTIME_ROOT}/state" "${RUNTIME_ROOT}/state/logs"
 

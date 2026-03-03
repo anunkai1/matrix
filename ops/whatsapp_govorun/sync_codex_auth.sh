@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SRC_USER="architect"
-DST_USER="wa-govorun"
+DST_USER="govorun"
 SRC_DIR="/home/${SRC_USER}/.codex"
 DST_DIR="/home/${DST_USER}/.codex"
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-USER_NAME="wa-govorun"
+USER_NAME="govorun"
 ROOT="/home/${USER_NAME}/whatsapp-govorun"
 STATE_DIR="${ROOT}/state"
 BACKUP_DIR="${ROOT}/backup"

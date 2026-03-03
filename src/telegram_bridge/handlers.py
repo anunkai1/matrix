@@ -87,6 +87,7 @@ CANCEL_ALREADY_REQUESTED_MESSAGE = (
 )
 CANCEL_NO_ACTIVE_MESSAGE = "No active request to cancel."
 REQUEST_CANCELED_MESSAGE = "Request canceled."
+WHATSAPP_REPLY_PREFIX = "Говорун:"
 
 
 @dataclass
@@ -163,9 +164,17 @@ def resume_retry_phase(config) -> str:
 
 def normalize_command(text: str) -> Optional[str]:
     stripped = text.strip()
-    if not stripped.startswith("/"):
+    head: Optional[str] = None
+    if stripped.startswith("/"):
+        head = stripped.split(maxsplit=1)[0]
+    else:
+        parts = stripped.split(maxsplit=1)
+        if len(parts) == 2 and parts[0].startswith("@"):
+            candidate = parts[1].lstrip()
+            if candidate.startswith("/"):
+                head = candidate.split(maxsplit=1)[0]
+    if not head:
         return None
-    head = stripped.split(maxsplit=1)[0]
     return head.split("@", maxsplit=1)[0]
 
 
@@ -423,6 +432,19 @@ def send_chat_action_safe(client: ChannelAdapter, chat_id: int, action: str) -> 
         logging.debug("Failed to send %s action for chat_id=%s", action, chat_id)
 
 
+def apply_outbound_reply_prefix(client: ChannelAdapter, text: str) -> str:
+    if not text:
+        return text
+    if getattr(client, "channel_name", "") != "whatsapp":
+        return text
+    stripped = text.lstrip()
+    if not stripped:
+        return WHATSAPP_REPLY_PREFIX
+    if stripped.casefold().startswith(WHATSAPP_REPLY_PREFIX.casefold()):
+        return text
+    return f"{WHATSAPP_REPLY_PREFIX} {stripped}"
+
+
 def send_executor_output(
     client: ChannelAdapter,
     chat_id: int,
@@ -441,7 +463,7 @@ def send_executor_output(
                 "reason": parse_error,
             },
         )
-        fallback_text = output or ""
+        fallback_text = apply_outbound_reply_prefix(client, output or "")
         client.send_message(chat_id, fallback_text, reply_to_message_id=message_id)
         return fallback_text
 
@@ -464,10 +486,11 @@ def send_executor_output(
     )
 
     if directive is None:
+        rendered_text = apply_outbound_reply_prefix(client, rendered_text)
         client.send_message(chat_id, rendered_text, reply_to_message_id=message_id)
         return rendered_text
 
-    caption = rendered_text if rendered_text else None
+    caption = apply_outbound_reply_prefix(client, rendered_text) if rendered_text else None
     follow_up_text: Optional[str] = None
     if caption and len(caption) > TELEGRAM_CAPTION_LIMIT:
         follow_up_text = caption
@@ -611,7 +634,7 @@ def send_executor_output(
                 "fallback_to_text": True,
             },
         )
-        fallback_text = rendered_text or output
+        fallback_text = apply_outbound_reply_prefix(client, rendered_text or output)
         client.send_message(chat_id, fallback_text, reply_to_message_id=message_id)
         return fallback_text
 
@@ -729,11 +752,13 @@ class ProgressReporter:
         chat_id: int,
         reply_to_message_id: Optional[int],
         assistant_name: str,
+        progress_label: str = "",
     ) -> None:
         self.client = client
         self.chat_id = chat_id
         self.reply_to_message_id = reply_to_message_id
         self.assistant_name = assistant_name
+        self.progress_label = progress_label.strip()
         self.started_at = time.time()
         self.progress_message_id: Optional[int] = None
         self.phase = "Starting request."
@@ -842,7 +867,8 @@ class ProgressReporter:
             phase = self.phase
             started = self.commands_started
             completed = self.commands_completed
-        text = f"{self.assistant_name} is working... {elapsed}s elapsed.\n{phase}"
+        label = self.progress_label or f"{self.assistant_name} is working"
+        text = f"{label}... {elapsed}s elapsed.\n{phase}"
         if started > 0:
             text += f"\nCommands done: {completed}/{started}"
         return trim_output(text, TELEGRAM_LIMIT)
@@ -1794,7 +1820,13 @@ def process_prompt(
     turn_context: Optional[TurnContext] = None
     image_path: Optional[str] = None
     document_path: Optional[str] = None
-    progress = ProgressReporter(client, chat_id, message_id, assistant_label(config))
+    progress = ProgressReporter(
+        client,
+        chat_id,
+        message_id,
+        assistant_label(config),
+        getattr(config, "progress_label", ""),
+    )
     try:
         progress.start()
         prepared = prepare_prompt_input(

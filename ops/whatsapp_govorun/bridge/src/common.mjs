@@ -72,12 +72,30 @@ export function createConfig() {
   const filesDir = process.env.WA_FILES_DIR || path.join(stateDir, 'files');
   const codexWorkdir = process.env.CODEX_WORKDIR || '/home/architect/matrix';
   const trigger = process.env.WA_TRIGGER || '@govorun';
+  const trimmedTrigger = trigger.trim();
+  const triggerCore = trimmedTrigger.startsWith('@') ? trimmedTrigger.slice(1).trim() : trimmedTrigger;
+  const escapedTriggerCore = escapeRegex(triggerCore || trimmedTrigger);
+  const leadingNoiseClass = '[\\s\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069\\ufeff]*';
   const pairingPhone = String(process.env.WA_PAIRING_PHONE || '').replace(/[^\d]/g, '');
   const pairingCode = String(process.env.WA_PAIRING_CODE || '').trim();
 
   return {
     trigger,
-    triggerRegex: new RegExp(`^\\s*${escapeRegex(trigger)}(?:\\b|\\s|[:,.-])`, 'iu'),
+    // Accept trigger with optional leading '@' and followed by end-of-message,
+    // whitespace, or common punctuation.
+    triggerRegex: new RegExp(
+      `^${leadingNoiseClass}@?${escapedTriggerCore}(?:$|\\b|\\s|[,:;.!?\\-])`,
+      'iu'
+    ),
+    // Stricter summon regex for self-messages (no colon/semicolon) to avoid
+    // bot reply echoes like "Говорун: ..." being re-consumed as new prompts.
+    selfTriggerRegex: new RegExp(
+      `^${leadingNoiseClass}@?${escapedTriggerCore}(?:$|\\b|\\s|[,.!?\\-])`,
+      'iu'
+    ),
+    // Match trigger anywhere in text as a standalone token (used for tolerant self-message checks).
+    triggerSearchRegex: new RegExp(`(?:^|\\s|[(:;,.!?\\-])@?${escapedTriggerCore}(?:$|\\b|\\s|[,:;.!?\\-)])`, 'iu'),
+    allowFromMeGroupTriggerOnly: parseBool(process.env.WA_ALLOW_FROM_ME_GROUP_TRIGGER_ONLY, false),
     dmAlwaysRespond: parseBool(process.env.WA_DM_ALWAYS_RESPOND, true),
     groupTriggerRequired: parseBool(process.env.WA_GROUP_TRIGGER_REQUIRED, true),
     allowedGroups: splitCsv(process.env.WA_ALLOWED_GROUPS),

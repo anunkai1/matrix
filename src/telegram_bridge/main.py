@@ -146,6 +146,7 @@ class Config:
     required_prefix_ignore_case: bool
     require_prefix_in_private: bool
     assistant_name: str
+    progress_label: str
     channel_plugin: str
     engine_plugin: str
     whatsapp_plugin_enabled: bool
@@ -370,6 +371,7 @@ def load_config() -> Config:
 
     allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids)
     assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
+    progress_label = os.getenv("TELEGRAM_PROGRESS_LABEL", "").strip()
     return Config(
         token=token,
         allowed_chat_ids=allowed_chat_ids,
@@ -478,6 +480,7 @@ def load_config() -> Config:
             True,
         ),
         assistant_name=assistant_name,
+        progress_label=progress_label,
         channel_plugin=parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram"),
         engine_plugin=parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
         whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),

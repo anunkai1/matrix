@@ -34,7 +34,8 @@ import transport as bridge_transport
 
 
 class FakeTelegramClient:
-    def __init__(self) -> None:
+    def __init__(self, channel_name: str = "telegram") -> None:
+        self.channel_name = channel_name
         self.messages = []
         self.photos = []
         self.documents = []
@@ -380,6 +381,39 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(rendered, "photo caption")
         self.assertEqual(len(client.photos), 1)
         self.assertEqual(client.photos[0][1], "https://example.com/pic.jpg")
+
+    def test_send_executor_output_prefixes_whatsapp_plain_text(self):
+        client = FakeTelegramClient(channel_name="whatsapp")
+        rendered = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=1,
+            message_id=116,
+            output="hello there",
+        )
+        self.assertEqual(rendered, "Говорун: hello there")
+        self.assertEqual(client.messages[-1][1], "Говорун: hello there")
+
+    def test_send_executor_output_does_not_double_prefix_whatsapp_plain_text(self):
+        client = FakeTelegramClient(channel_name="whatsapp")
+        rendered = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=1,
+            message_id=117,
+            output="Говорун: already prefixed",
+        )
+        self.assertEqual(rendered, "Говорун: already prefixed")
+        self.assertEqual(client.messages[-1][1], "Говорун: already prefixed")
+
+    def test_send_executor_output_prefixes_whatsapp_media_caption(self):
+        client = FakeTelegramClient(channel_name="whatsapp")
+        rendered = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=1,
+            message_id=118,
+            output="[[media:https://example.com/pic.jpg]] caption",
+        )
+        self.assertEqual(rendered, "Говорун: caption")
+        self.assertEqual(client.photos[0][2], "Говорун: caption")
 
     def test_send_executor_output_invalid_structured_payload_falls_back_to_raw_text(self):
         client = FakeTelegramClient()
