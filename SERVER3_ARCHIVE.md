@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-04 (Summary Roll-Forward Trim for Runtime Observer Live Enable)
+
+Summary:
+- Added a new rolling-summary entry for live enablement of `server3-runtime-observer.timer` with immediate service execution verification on Server3.
+- Kept rolling bound by migrating one oldest entry from summary into archive.
+
+Migrated out of summary during this trim:
+- 2026-03-03: updated Govorun/WhatsApp compact progress rendering to one-line elapsed format and 1s edit cadence.
+
 ## 2026-03-04 (Summary Roll-Forward Trim for Phase-1 Runtime Observer)
 
 Summary:
