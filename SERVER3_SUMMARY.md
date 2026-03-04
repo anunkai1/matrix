@@ -34,6 +34,7 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-04: completed Govorun WhatsApp number migration to `61433720167` via fresh Baileys auth-state rotation + relink, then added English summon alias `govorun` alongside `@говорун,говорун` in live `/etc/default/govorun-whatsapp-bridge` (`TELEGRAM_REQUIRED_PREFIXES`) and verified both WhatsApp services healthy after restart.
 - 2026-03-04: enabled Phase-2 proactive runtime observer alerts to Telegram by extending `ops/runtime_observer/runtime_observer.py` with alert/recovery delivery + cooldown state, adding `notify-test`, wiring observer unit fallback to `/etc/default/telegram-architect-bridge`, and activating live `/etc/default/server3-runtime-observer` in `telegram_alerts` mode with explicit chat routing.
 - 2026-03-04: live-enabled `server3-runtime-observer.timer` on Server3 via `ops/runtime_observer/install_systemd.sh apply`, validated manual service run success and next scheduled trigger at `2026-03-04 12:10:00 AEST` (Phase-1 remains `collect_only`).
 - 2026-03-04: added Phase-1 runtime observer control layer (`ops/runtime_observer/runtime_observer.py`) with KPI snapshot collection (`service_up`, `restart_count`, `telegram_retry_rate`, `telegram_edit_400_rate`, `wa_reconnect_rate`, `request_fail_rate`), plus systemd timer/service units and operator commands for current status + 24h summary; day-1 mode remains collect-only.
@@ -41,7 +42,6 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - 2026-03-04: completed strict WhatsApp canonicalization cleanup by removing legacy `telegram-architect-whatsapp-bridge` unit/ops/env artifacts, adding canonical `govorun-whatsapp-bridge` env templates, and removing live alias symlinks from `/etc/systemd/system` and `/etc/default`.
 - 2026-03-04: reduced active markdown redundancy by making `AGENTS.md` a minimal pointer to `ARCHITECT_INSTRUCTION.md`, trimming duplicated policy text in `README.md`, and consolidating repeated Govorun setup details in `docs/runbooks/telegram-whatsapp-dual-runtime.md` to reference the canonical ops runbook.
 - 2026-03-04: drafted and activated `ARCHITECT_INSTRUCTION.md` as authoritative Server3 execution policy; aligned `AGENTS.md` to startup-checklist/pointer role and updated `README.md` policy references to remove authority ambiguity.
-- 2026-03-04: addressed three follow-up code-review issues in WhatsApp/progress paths: made outbound edit-key cache dedupe-safe, enforced mapped-chat usage for `/messages/edit`, and replaced hardcoded compact elapsed wording with configurable env keys.
 
 ## Current Risks/Watchouts (Max 5)
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.
