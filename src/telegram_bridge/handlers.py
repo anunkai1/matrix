@@ -445,6 +445,10 @@ def apply_outbound_reply_prefix(client: ChannelAdapter, text: str) -> str:
     return f"{WHATSAPP_REPLY_PREFIX} {stripped}"
 
 
+def is_whatsapp_channel(client: ChannelAdapter) -> bool:
+    return getattr(client, "channel_name", "") == "whatsapp"
+
+
 def send_executor_output(
     client: ChannelAdapter,
     chat_id: int,
@@ -1537,11 +1541,12 @@ def prepare_prompt_input(
                     },
                 )
                 progress.mark_failure("Voice transcript missing required prefix.")
-                client.send_message(
-                    chat_id,
-                    PREFIX_HELP_MESSAGE,
-                    reply_to_message_id=message_id,
-                )
+                if not is_whatsapp_channel(client):
+                    client.send_message(
+                        chat_id,
+                        PREFIX_HELP_MESSAGE,
+                        reply_to_message_id=message_id,
+                    )
                 return None
             transcript = stripped_transcript
             if not transcript.strip():
@@ -1555,11 +1560,12 @@ def prepare_prompt_input(
                     },
                 )
                 progress.mark_failure("Voice transcript prefix missing action.")
-                client.send_message(
-                    chat_id,
-                    PREFIX_HELP_MESSAGE,
-                    reply_to_message_id=message_id,
-                )
+                if not is_whatsapp_channel(client):
+                    client.send_message(
+                        chat_id,
+                        PREFIX_HELP_MESSAGE,
+                        reply_to_message_id=message_id,
+                    )
                 return None
         if prompt_text:
             prompt_text = f"{prompt_text}\n\nVoice transcript:\n{transcript}"

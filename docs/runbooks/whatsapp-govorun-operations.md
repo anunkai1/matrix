@@ -42,6 +42,7 @@
 - Accepted prefix aliases (via `TELEGRAM_REQUIRED_PREFIXES`): `говорун`, `govorun`
 - Group behavior: trigger required
 - DM behavior: always respond
+- Voice notes: require `TELEGRAM_VOICE_TRANSCRIBE_CMD`; in group chats transcript is checked against required prefix and silently ignored when prefix is missing.
 
 ## Plugin API mode
 - Enable plugin-mode queueing for matrix channel plugin:

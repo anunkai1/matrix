@@ -1065,6 +1065,58 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Helper mode needs a prefixed prompt.", client.messages[0][1])
         transcribe_voice_for_chat.assert_called_once()
 
+    @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="turn on the light")
+    def test_prepare_prompt_input_ignores_whatsapp_voice_transcript_without_prefix(
+        self, transcribe_voice_for_chat
+    ):
+        client = FakeTelegramClient(channel_name="whatsapp")
+        config = make_config(required_prefixes=["@helper"])
+        progress = mock.Mock()
+
+        prepared = bridge_handlers.prepare_prompt_input(
+            state=bridge.State(),
+            config=config,
+            client=client,
+            chat_id=1,
+            message_id=110,
+            prompt="",
+            photo_file_id=None,
+            voice_file_id="voice-wa-1",
+            document=None,
+            progress=progress,
+            enforce_voice_prefix_from_transcript=True,
+        )
+
+        self.assertIsNone(prepared)
+        self.assertEqual(client.messages, [])
+        transcribe_voice_for_chat.assert_called_once()
+
+    @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="@helper")
+    def test_prepare_prompt_input_ignores_whatsapp_voice_prefix_without_action(
+        self, transcribe_voice_for_chat
+    ):
+        client = FakeTelegramClient(channel_name="whatsapp")
+        config = make_config(required_prefixes=["@helper"])
+        progress = mock.Mock()
+
+        prepared = bridge_handlers.prepare_prompt_input(
+            state=bridge.State(),
+            config=config,
+            client=client,
+            chat_id=1,
+            message_id=111,
+            prompt="",
+            photo_file_id=None,
+            voice_file_id="voice-wa-2",
+            document=None,
+            progress=progress,
+            enforce_voice_prefix_from_transcript=True,
+        )
+
+        self.assertIsNone(prepared)
+        self.assertEqual(client.messages, [])
+        transcribe_voice_for_chat.assert_called_once()
+
     @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="@helper turn on the light")
     def test_prepare_prompt_input_accepts_voice_transcript_with_required_prefix(
         self, transcribe_voice_for_chat

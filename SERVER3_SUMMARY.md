@@ -34,6 +34,7 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-04: enabled Govorun WhatsApp voice-note transcription by wiring live `/etc/default/govorun-whatsapp-bridge` with `TELEGRAM_VOICE_TRANSCRIBE_CMD` + dedicated whisper runtime env (`TELEGRAM_VOICE_WHISPER_VENV`, socket/log path, `HF_HOME` cache reuse), and changed voice-prefix enforcement to silent-ignore non-prefixed WhatsApp transcripts after transcription (no helper reply spam) while still executing prefixed transcripts.
 - 2026-03-04: made WhatsApp `/help` and `/h` output minimal and command-only (`/start`, `/help`, `/status`, `/reset`, `/cancel`, `/restart`) by channel-specific help rendering in `src/telegram_bridge/handlers.py`; removed non-applicable WhatsApp help lines (voice-alias, TV helpers, routing keywords, memory help) for `channel_plugin=whatsapp`.
 - 2026-03-04: fixed WhatsApp progress-message spam by making Node `/messages/edit` strict (no fallback fresh-send on edit miss/failure) and stopping repeated WhatsApp progress edit retries in Python after first edit error; group prefix-required behavior is unchanged.
 - 2026-03-04: added `SRO` keyword guidance to Telegram `/help` (`/h`) output so operator-facing help explicitly references Server3 Runtime Observer wording.
@@ -41,7 +42,6 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - 2026-03-04: hardened Govorun WhatsApp media contract across Node transport + Python policy by normalizing inbound `text/caption/photo/voice/document`, tightening `/media` outbound validation (`media_type`, URL/local-file ref checks, local size limit), and updating `src/telegram_bridge/handlers.py` prompt/media extraction so captioned media is not downgraded to text-only; live runtime copies were synced to `/home/govorun/whatsapp-govorun/app` and `/home/govorun/govorunbot/src/telegram_bridge`, then both WhatsApp services were restarted healthy.
 - 2026-03-04: tuned runtime observer Telegram edit-400 KPI to reduce low-volume false paging by adding `RUNTIME_OBSERVER_TELEGRAM_EDIT_MIN_ATTEMPTS` (default `20`) and suppressing `telegram_edit_400_rate` alert severity when edit attempts are below threshold; status/alert output now includes `min_attempts` and suppression flag.
 - 2026-03-04: documented current WhatsApp summon aliases in runbook by updating `docs/runbooks/whatsapp-govorun-operations.md` Trigger policy to explicitly include `govorun` alongside existing Cyrillic triggers.
-- 2026-03-04: completed Govorun WhatsApp number migration to `61433720167` via fresh Baileys auth-state rotation + relink, then added English summon alias `govorun` alongside `@говорун,говорун` in live `/etc/default/govorun-whatsapp-bridge` (`TELEGRAM_REQUIRED_PREFIXES`) and verified both WhatsApp services healthy after restart.
 
 ## Current Risks/Watchouts (Max 5)
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.
