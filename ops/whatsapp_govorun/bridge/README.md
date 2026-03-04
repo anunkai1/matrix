@@ -24,6 +24,9 @@ Matrix-managed runtime component that links WhatsApp messages to Codex execution
 - `GET /files/meta?file_id=<id>`
 - `GET /files/content?file_path=<token>`
 
+`GET /updates` message objects include normalized fields such as `text`, `caption`, media objects,
+and `reply_to_message` (quoted-message context) when available.
+
 ### Key env vars
 - `WA_TRIGGER` (`@говорун` default)
 - `WA_ALLOW_FROM_ME_GROUP_TRIGGER_ONLY` (`true` default)

@@ -17,6 +17,7 @@ import {
   createQueuedCredsSaver,
   ensureDir,
   extractNormalizedMessageContent,
+  extractReplyContextFromBaileysMessage,
   extractPlainTextFromBaileysMessage,
   extractTextFromBaileysMessage,
   parseInteger,
@@ -331,6 +332,10 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
   if (text) payload.text = text;
 
   const message = extractNormalizedMessageContent(msg);
+  const replyToMessage = extractReplyContextFromBaileysMessage(msg);
+  if (replyToMessage) {
+    payload.reply_to_message = replyToMessage;
+  }
 
   if (message.imageMessage) {
     const buffer = await downloadIncomingMedia(sock, msg);

@@ -993,6 +993,30 @@ def normalize_optional_text(value: object) -> Optional[str]:
     return value.strip()
 
 
+def build_reply_context_prompt(message: Dict[str, object]) -> str:
+    reply_to = message.get("reply_to_message")
+    if not isinstance(reply_to, dict):
+        return ""
+
+    reply_text = normalize_optional_text(reply_to.get("text"))
+    reply_caption = normalize_optional_text(reply_to.get("caption"))
+    quoted_text = reply_text or reply_caption or ""
+    if not quoted_text:
+        return ""
+
+    sender_name = extract_sender_name(reply_to)
+    sender_line = ""
+    if sender_name != "Telegram User":
+        sender_line = f"Автор исходного сообщения: {sender_name}\n"
+
+    return (
+        "Контекст ответа:\n"
+        f"{sender_line}"
+        "Сообщение, на которое пользователь ответил:\n"
+        f"{quoted_text}"
+    )
+
+
 def select_media_prompt(text: Optional[str], caption: Optional[str], default_prompt: str) -> str:
     text_value = text or ""
     caption_value = caption or ""
@@ -2790,7 +2814,17 @@ def handle_update(
         )
         return
 
+    reply_context_prompt = build_reply_context_prompt(message)
     prompt = (prompt_input or "").strip()
+    if reply_context_prompt:
+        if prompt:
+            prompt = (
+                f"{reply_context_prompt}\n\n"
+                "Текущее сообщение пользователя:\n"
+                f"{prompt}"
+            )
+        else:
+            prompt = reply_context_prompt
     if not prompt and not voice_file_id and document is None:
         return
 

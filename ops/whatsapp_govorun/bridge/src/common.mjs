@@ -94,6 +94,27 @@ function getMessageText(message, includeCaptions = true) {
   return '';
 }
 
+function extractContextInfo(normalizedMessage) {
+  if (!normalizedMessage || typeof normalizedMessage !== 'object') return null;
+  const candidates = [
+    normalizedMessage.extendedTextMessage?.contextInfo,
+    normalizedMessage.imageMessage?.contextInfo,
+    normalizedMessage.videoMessage?.contextInfo,
+    normalizedMessage.documentMessage?.contextInfo,
+    normalizedMessage.audioMessage?.contextInfo,
+    normalizedMessage.stickerMessage?.contextInfo,
+    normalizedMessage.buttonsResponseMessage?.contextInfo,
+    normalizedMessage.listResponseMessage?.contextInfo,
+    normalizedMessage.templateButtonReplyMessage?.contextInfo
+  ];
+  for (const value of candidates) {
+    if (value && typeof value === 'object') {
+      return value;
+    }
+  }
+  return null;
+}
+
 export function extractNormalizedMessageContent(msg) {
   return unwrapMessageContent(msg?.message);
 }
@@ -104,6 +125,32 @@ export function extractTextFromBaileysMessage(msg) {
 
 export function extractPlainTextFromBaileysMessage(msg) {
   return getMessageText(msg?.message, false).trim();
+}
+
+export function extractReplyContextFromBaileysMessage(msg) {
+  const normalized = unwrapMessageContent(msg?.message);
+  const contextInfo = extractContextInfo(normalized);
+  if (!contextInfo) return null;
+
+  const quotedText = getMessageText(contextInfo.quotedMessage, true).trim();
+  const waMessageId = String(contextInfo.stanzaId || '').trim();
+  const participant = String(contextInfo.participant || '').trim();
+
+  if (!quotedText && !waMessageId && !participant) {
+    return null;
+  }
+
+  const reply = {};
+  if (quotedText) {
+    reply.text = quotedText;
+  }
+  if (waMessageId) {
+    reply.wa_message_id = waMessageId;
+  }
+  if (participant) {
+    reply.from = { username: participant };
+  }
+  return reply;
 }
 
 export function createConfig() {

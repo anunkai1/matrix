@@ -991,6 +991,21 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(voice_file_id, "voice-3")
         self.assertIsNone(document)
 
+    def test_build_reply_context_prompt_from_reply_to_message_text(self):
+        prompt = bridge_handlers.build_reply_context_prompt(
+            {
+                "text": "Это про что",
+                "reply_to_message": {
+                    "text": "Доброе утро, Путиловы! ☀️\n\nДаю справку: ...",
+                    "from": {"username": "Govorun TPG 2026"},
+                },
+            }
+        )
+        self.assertIn("Контекст ответа:", prompt)
+        self.assertIn("Автор исходного сообщения: Govorun TPG 2026", prompt)
+        self.assertIn("Сообщение, на которое пользователь ответил:", prompt)
+        self.assertIn("Доброе утро, Путиловы!", prompt)
+
     def test_apply_voice_alias_replacements(self):
         transcript, changed = bridge_handlers.apply_voice_alias_replacements(
             "turn off master broom air con",
@@ -1620,6 +1635,33 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
         self.assertEqual(kwargs["prompt"], "hello there")
+        self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_includes_reply_context_in_prompt(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient(channel_name="whatsapp")
+        config = make_config(channel_plugin="whatsapp")
+        update = {
+            "update_id": 1051,
+            "message": {
+                "message_id": 2051,
+                "chat": {"id": 1, "type": "private"},
+                "text": "Это про что",
+                "reply_to_message": {
+                    "text": "Доброе утро, Путиловы! ☀️\n\nДаю справку: В Эрмитаже живут коты.",
+                    "from": {"username": "Govorun TPG 2026"},
+                },
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertIn("Контекст ответа:", kwargs["prompt"])
+        self.assertIn("Автор исходного сообщения: Govorun TPG 2026", kwargs["prompt"])
+        self.assertIn("Текущее сообщение пользователя:\nЭто про что", kwargs["prompt"])
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
