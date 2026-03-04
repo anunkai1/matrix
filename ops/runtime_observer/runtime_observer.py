@@ -67,6 +67,10 @@ DAILY_SUMMARY_HOUR_LOCAL = min(
     23,
     env_int("RUNTIME_OBSERVER_DAILY_SUMMARY_HOUR_LOCAL", 20, minimum=0),
 )
+DAILY_SUMMARY_MINUTE_LOCAL = min(
+    59,
+    env_int("RUNTIME_OBSERVER_DAILY_SUMMARY_MINUTE_LOCAL", 0, minimum=0),
+)
 
 
 def env_csv(name: str) -> List[str]:
@@ -743,8 +747,14 @@ def maybe_send_daily_summary(observed_dt: datetime) -> Tuple[bool, str]:
 
     local_now = to_local(observed_dt)
     local_date = local_now.date().isoformat()
-    if local_now.hour < DAILY_SUMMARY_HOUR_LOCAL:
-        return False, "before_daily_summary_hour"
+    if (
+        local_now.hour < DAILY_SUMMARY_HOUR_LOCAL
+        or (
+            local_now.hour == DAILY_SUMMARY_HOUR_LOCAL
+            and local_now.minute < DAILY_SUMMARY_MINUTE_LOCAL
+        )
+    ):
+        return False, "before_daily_summary_time"
 
     state = load_alert_state()
     if str(state.get("last_daily_summary_local_date", "")) == local_date:
