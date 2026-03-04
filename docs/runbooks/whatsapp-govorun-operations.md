@@ -43,6 +43,7 @@
 - Group behavior: trigger required
 - DM behavior: always respond
 - Prefix behavior in DM/private chats is controlled by `TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE` (set `false` for 1:1 without prefix).
+- Allow private chats that are not in `TELEGRAM_ALLOWED_CHAT_IDS`: set `TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED=true`.
 - Optional tone control: set `TELEGRAM_RESPONSE_STYLE_HINT` in `/etc/default/govorun-whatsapp-bridge` to keep replies informative with light humor.
 - Optional speed/profile override: set `ARCHITECT_EXEC_ARGS` (for example `--model gpt-5.3-codex --config model_reasoning_effort="high"`). This is applied by `executor.sh` to both new and resumed chats.
 - `/restart` path override for Govorun runtime: set `TELEGRAM_RESTART_SCRIPT=/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh` and `TELEGRAM_RESTART_UNIT=govorun-whatsapp-bridge.service`.
@@ -55,6 +56,7 @@
 ## Plugin API mode
 - Enable plugin-mode queueing for matrix channel plugin:
   - `WA_PLUGIN_MODE=true`
+- In plugin mode, `WA_ALLOWED_CHAT_IDS` is enforced for groups; use `WA_ALLOWED_DMS` for explicit DM JID allowlists.
 - API defaults:
   - `WA_API_HOST=127.0.0.1`
   - `WA_API_PORT=8787`

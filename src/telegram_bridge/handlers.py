@@ -2586,7 +2586,12 @@ def handle_update(
         },
     )
 
-    if chat_id not in config.allowed_chat_ids:
+    chat_obj = message.get("chat")
+    chat_type = chat_obj.get("type") if isinstance(chat_obj, dict) else None
+    is_private_chat = isinstance(chat_type, str) and chat_type == "private"
+    allow_private_unlisted = bool(getattr(config, "allow_private_chats_unlisted", False))
+
+    if chat_id not in config.allowed_chat_ids and not (allow_private_unlisted and is_private_chat):
         logging.warning("Denied non-allowlisted chat_id=%s", chat_id)
         emit_event(
             "bridge.request_denied",
@@ -2603,9 +2608,6 @@ def handle_update(
     if prompt_input is None and voice_file_id is None and document is None:
         return
 
-    chat_obj = message.get("chat")
-    chat_type = chat_obj.get("type") if isinstance(chat_obj, dict) else None
-    is_private_chat = isinstance(chat_type, str) and chat_type == "private"
     requires_prefix_for_message = bool(config.required_prefixes) and (
         config.require_prefix_in_private or not is_private_chat
     )

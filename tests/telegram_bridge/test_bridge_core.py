@@ -134,6 +134,7 @@ def make_config(**overrides):
         "required_prefixes": [],
         "required_prefix_ignore_case": True,
         "require_prefix_in_private": True,
+        "allow_private_chats_unlisted": False,
         "assistant_name": "Architect",
         "channel_plugin": "telegram",
         "engine_plugin": "codex",
@@ -327,6 +328,19 @@ class BridgeCoreTests(unittest.TestCase):
             config = bridge.load_config()
         self.assertEqual(config.required_prefixes, ["@tank"])
         self.assertFalse(config.require_prefix_in_private)
+
+    def test_load_config_reads_allow_private_chats_unlisted_override(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED": "true",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertTrue(config.allow_private_chats_unlisted)
 
     def test_whatsapp_adapter_send_message_get_id_posts_json(self):
         class Response:
@@ -1817,6 +1831,28 @@ class BridgeCoreTests(unittest.TestCase):
         bridge.handle_update(state, config, client, update)
         self.assertEqual(len(client.messages), 1)
         self.assertEqual(client.messages[0][1], config.denied_message)
+
+    def test_handle_update_allows_private_chat_when_unlisted_allowed(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(
+            allowed_chat_ids={1},
+            allow_private_chats_unlisted=True,
+        )
+        update = {
+            "update_id": 4,
+            "message": {
+                "message_id": 31,
+                "chat": {"id": 2, "type": "private"},
+                "text": "hello",
+            },
+        }
+
+        with mock.patch.object(bridge_handlers, "start_message_worker") as start_message_worker:
+            bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        self.assertEqual(client.messages, [])
 
     def test_handle_update_rejects_when_chat_busy(self):
         state = bridge.State()

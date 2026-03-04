@@ -71,7 +71,9 @@ const MIME_BY_EXTENSION = new Map([
 ]);
 
 function shouldHandleChat(jid, isGroup, chatId = null) {
-  if (config.allowedChatIds.length > 0) {
+  // Apply numeric chat-id allowlist to groups only. DMs are controlled via
+  // WA_ALLOWED_DMS and WA_DM_ALWAYS_RESPOND policy.
+  if (isGroup && config.allowedChatIds.length > 0) {
     const parsedChatId = Number.isInteger(chatId) ? chatId : parseInteger(chatId, NaN, 1);
     if (!Number.isFinite(parsedChatId) || Number.isNaN(parsedChatId)) {
       return false;

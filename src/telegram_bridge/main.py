@@ -146,6 +146,7 @@ class Config:
     required_prefixes: List[str]
     required_prefix_ignore_case: bool
     require_prefix_in_private: bool
+    allow_private_chats_unlisted: bool
     assistant_name: str
     channel_plugin: str
     engine_plugin: str
@@ -492,6 +493,10 @@ def load_config() -> Config:
         require_prefix_in_private=parse_bool_env(
             "TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE",
             True,
+        ),
+        allow_private_chats_unlisted=parse_bool_env(
+            "TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED",
+            False,
         ),
         assistant_name=assistant_name,
         progress_label=progress_label,
