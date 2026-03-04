@@ -32,6 +32,26 @@
   - `/home/govorun/whatsapp-govorun/state/logs/service.log`
   - `/home/govorun/whatsapp-govorun/state/logs/service.err.log`
 
+## Daily Morning Message (09:00 AEST)
+- Purpose: send a Russian good-morning message with one uplifting fact to a target WhatsApp chat.
+- Script: `ops/whatsapp_govorun/send_daily_uplift.py`
+- Units:
+  - `govorun-whatsapp-daily-uplift.service`
+  - `govorun-whatsapp-daily-uplift.timer`
+- Installer:
+  - `ops/whatsapp_govorun/install_daily_uplift_timer.sh apply`
+  - `ops/whatsapp_govorun/install_daily_uplift_timer.sh status`
+  - `ops/whatsapp_govorun/install_daily_uplift_timer.sh run-now`
+- Env file:
+  - `/etc/default/govorun-whatsapp-daily-uplift`
+  - Template: `infra/env/govorun-whatsapp-daily-uplift.env.example`
+- Key variables:
+  - `WA_DAILY_UPLIFT_CHAT_JID` target group JID (preferred)
+  - `WA_DAILY_UPLIFT_TZ=Australia/Brisbane`
+  - `WA_DAILY_UPLIFT_GROUP_NAME=Путиловы`
+- 1:1 preview send:
+  - `python3 ops/whatsapp_govorun/send_daily_uplift.py --test --chat-id <dm_chat_id>`
+
 ## Backup
 - Run: `ops/whatsapp_govorun/backup_state.sh`
 - Backups stored in: `/home/govorun/whatsapp-govorun/backup`

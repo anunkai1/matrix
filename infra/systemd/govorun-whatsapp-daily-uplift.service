@@ -1,0 +1,13 @@
+[Unit]
+Description=Govorun WhatsApp Daily Uplift Sender
+After=network-online.target whatsapp-govorun-bridge.service
+Wants=network-online.target whatsapp-govorun-bridge.service
+
+[Service]
+Type=oneshot
+User=govorun
+Group=govorun
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/default/govorun-whatsapp-daily-uplift
+ExecStart=/usr/bin/python3 /home/architect/matrix/ops/whatsapp_govorun/send_daily_uplift.py

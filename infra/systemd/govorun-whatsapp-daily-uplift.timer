@@ -1,0 +1,10 @@
+[Unit]
+Description=Govorun WhatsApp Daily Uplift Timer
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+Unit=govorun-whatsapp-daily-uplift.service
+
+[Install]
+WantedBy=timers.target
