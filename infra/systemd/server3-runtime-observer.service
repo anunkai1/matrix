@@ -1,0 +1,17 @@
+[Unit]
+Description=Server3 Runtime KPI Observer (Phase 1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+Environment=RUNTIME_OBSERVER_STATE_DIR=/var/lib/server3-runtime-observer
+Environment=RUNTIME_OBSERVER_TZ=Australia/Brisbane
+Environment=RUNTIME_OBSERVER_MODE=collect_only
+EnvironmentFile=-/etc/default/server3-runtime-observer
+StateDirectory=server3-runtime-observer
+ExecStart=/usr/bin/python3 /home/architect/matrix/ops/runtime_observer/runtime_observer.py collect

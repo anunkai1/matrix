@@ -44,3 +44,19 @@
 2. Leave Telegram primary running as-is.
 3. Confirm:
    - `systemctl status telegram-architect-bridge.service`
+
+## Runtime observer (Phase 1, day-1 collect only)
+- Purpose:
+  - Compute KPI snapshots off-path without changing chat behavior.
+  - Persist local snapshots for operator inspection (`status`, `summary`).
+- Install/enable timer:
+  - `ops/runtime_observer/install_systemd.sh apply`
+- Optional env override file:
+  - `/etc/default/server3-runtime-observer` (template: `infra/env/server3-runtime-observer.env.example`)
+- Timer/service checks:
+  - `sudo systemctl status server3-runtime-observer.timer --no-pager -n 20`
+  - `sudo systemctl status server3-runtime-observer.service --no-pager -n 50`
+- Operator commands (Brisbane-time output):
+  - Current KPI status: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py status`
+  - Force snapshot collection now: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py collect`
+  - Last 24h summary: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py summary --hours 24`

@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-04 (Summary Roll-Forward Trim for Phase-1 Runtime Observer)
+
+Summary:
+- Added a new rolling-summary entry for Phase-1 runtime observer rollout (collect-only KPI control layer, timer/service path, and operator status/24h-summary commands).
+- Kept rolling bound by migrating one oldest entry from summary into archive.
+
+Migrated out of summary during this trim:
+- 2026-03-03: strict WhatsApp runtime cleanup finalized `govorun`-only ops/docs and removed legacy user-unit artifact.
+
 ## 2026-03-04 (Summary Roll-Forward Trim for Strict WhatsApp Canonicalization)
 
 Summary:

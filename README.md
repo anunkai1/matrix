@@ -92,6 +92,10 @@ bash src/telegram_bridge/smoke_test.sh
 - Check status: `bash ops/telegram-bridge/status_service.sh`
 - Check logs: `sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager`
 - Roll back systemd install: `bash ops/telegram-bridge/install_systemd.sh rollback`
+- Runtime observer (Phase 1):
+  - Install timer: `bash ops/runtime_observer/install_systemd.sh apply`
+  - Current KPI state: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py status`
+  - Last 24h KPI summary: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py summary --hours 24`
 - HA on/off scheduling + climate set/schedule runbook: `docs/home-assistant-ops.md`
 - Server3 NordVPN rollout + rollback runbook: `docs/nordvpn-server3.md`
 

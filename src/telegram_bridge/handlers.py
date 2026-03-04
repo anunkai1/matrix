@@ -783,6 +783,10 @@ class ProgressReporter:
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._worker: Optional[threading.Thread] = None
+        self.edit_attempts = 0
+        self.edit_successes = 0
+        self.edit_failures_400 = 0
+        self.edit_failures_other = 0
 
     def start(self) -> None:
         text = self._render_progress_text()
@@ -806,6 +810,18 @@ class ProgressReporter:
         if self._worker:
             self._worker.join(timeout=2.0)
         self._maybe_edit(force=True)
+        emit_event(
+            "bridge.progress_edit_stats",
+            fields={
+                "chat_id": self.chat_id,
+                "reply_to_message_id": self.reply_to_message_id,
+                "progress_message_id": self.progress_message_id,
+                "edit_attempts": self.edit_attempts,
+                "edit_successes": self.edit_successes,
+                "edit_failures_400": self.edit_failures_400,
+                "edit_failures_other": self.edit_failures_other,
+            },
+        )
 
     def mark_success(self) -> None:
         self.set_phase("Finalizing response.", immediate=True)
@@ -912,19 +928,24 @@ class ProgressReporter:
                 self.pending_update = False
             return
 
+        self.edit_attempts += 1
         try:
             self.client.edit_message(self.chat_id, message_id, text)
         except RuntimeError as exc:
             if "message is not modified" in str(exc).lower():
+                self.edit_failures_400 += 1
                 with self._lock:
                     self.pending_update = False
                 return
+            self.edit_failures_other += 1
             logging.debug("Failed to edit progress message for chat_id=%s: %s", self.chat_id, exc)
             return
         except Exception:
+            self.edit_failures_other += 1
             logging.debug("Failed to edit progress message for chat_id=%s", self.chat_id)
             return
 
+        self.edit_successes += 1
         self.last_rendered_text = text
         self.last_edit_at = now
         with self._lock:

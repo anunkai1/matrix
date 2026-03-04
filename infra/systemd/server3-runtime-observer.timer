@@ -1,0 +1,11 @@
+[Unit]
+Description=Server3 Runtime KPI Observer Timer
+
+[Timer]
+OnCalendar=*:0/5
+RandomizedDelaySec=30
+Persistent=true
+Unit=server3-runtime-observer.service
+
+[Install]
+WantedBy=timers.target
