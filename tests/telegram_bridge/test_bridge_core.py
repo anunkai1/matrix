@@ -216,7 +216,12 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("/reset - clear saved context for this chat", text)
         self.assertIn("/cancel - cancel current in-flight request for this chat", text)
         self.assertIn("/restart - queue a safe bridge restart", text)
-        self.assertNotIn("/voice-alias", text)
+        self.assertIn(
+            "/voice-alias add <source> => <target> - add approved alias manually",
+            text,
+        )
+        self.assertNotIn("/voice-alias list", text)
+        self.assertNotIn("/voice-alias approve", text)
         self.assertNotIn("server3-tv-start", text)
         self.assertNotIn("Use `HA ...`", text)
         self.assertNotIn("/memory mode", text)
@@ -1350,6 +1355,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Use `Nextcloud ...`", client.messages[-1][1])
         self.assertIn("Use `SRO ...`", client.messages[-1][1])
         self.assertIn("/cancel", client.messages[-1][1])
+        self.assertIn("/voice-alias add <source> => <target>", client.messages[-1][1])
         self.assertIn("/memory mode", client.messages[-1][1])
         self.assertNotIn("/memory mode full - legacy alias for all_context", client.messages[-1][1])
         self.assertIn("/ask <prompt>", client.messages[-1][1])

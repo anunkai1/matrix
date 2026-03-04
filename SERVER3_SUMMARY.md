@@ -26,7 +26,7 @@ Last updated: 2026-03-04 (AEST, +10:00)
   - `Server3 TV ...` for desktop/browser control mode
   - `Nextcloud ...` for Nextcloud file/calendar operation mode
 - Primary channel: `telegram`; WhatsApp runtime exists in parallel (`whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service`).
-- Runtime observer is enabled on timer (`server3-runtime-observer.timer`) with Telegram proactive alert mode (`RUNTIME_OBSERVER_MODE=telegram_alerts`) and 30-minute reminder cooldown.
+- Runtime observer is enabled on timer (`server3-runtime-observer.timer`) with Telegram daily summary mode (`RUNTIME_OBSERVER_MODE=telegram_daily_summary`) scheduled for `08:05` AEST.
 - TV desktop/browser reliability is hardened with deterministic helpers, existing-window reuse, and autoplay fallback tooling (`wmctrl`, `xdotool`, `yt-dlp`).
 - Tank defaults are hardened: DM prefix bypass in private chats, isolated Joplin profile/path, reasoning effort `low`.
 - Govorun WhatsApp progress depends on outbound message-key mapping for `/messages/edit`; compact elapsed wording is env-configured.
@@ -34,7 +34,7 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
-- 2026-03-04: updated Govorun WhatsApp compact progress wording in live `/etc/default/govorun-whatsapp-bridge` to `Говорун соображает... Уже Nс` by setting `TELEGRAM_PROGRESS_LABEL=Говорун соображает` (elapsed prefix/suffix unchanged: `Уже` / `с`).
+- 2026-03-04: added `/voice-alias add <source> => <target>` back into WhatsApp `/help` + `/h` command list in `src/telegram_bridge/handlers.py` while keeping other non-applicable help lines removed.
 - 2026-03-04: forced Govorun WhatsApp whisper language to Russian (`TELEGRAM_VOICE_WHISPER_LANGUAGE=ru`) so Russian-spoken summon prefix `говорун` is transcribed in Cyrillic-compatible form instead of English-biased output; applied live in `/etc/default/govorun-whatsapp-bridge` and restarted bridge runtime.
 - 2026-03-04: lowered Govorun WhatsApp voice low-confidence threshold to `0.35` and changed low-confidence user prompt to `Не понял что вы промурлычили, скажите ещё раз`; wired new config field/env `TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE` and applied live in `/etc/default/govorun-whatsapp-bridge`.
 - 2026-03-04: enabled WhatsApp voice-prefix alias learning assist by allowing `/voice-alias` commands to bypass summon-prefix gating in WhatsApp groups and by auto-observing repeated near-prefix transcript misses (for example `govoron` -> `govorun`) into standard voice-alias suggestions that can be approved via `/voice-alias approve <id>`.

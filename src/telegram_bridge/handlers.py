@@ -1484,7 +1484,8 @@ def build_help_text(config) -> str:
         "/status - show bridge status and context\n"
         "/reset - clear saved context for this chat\n"
         "/cancel - cancel current in-flight request for this chat\n"
-        "/restart - queue a safe bridge restart"
+        "/restart - queue a safe bridge restart\n"
+        "/voice-alias add <source> => <target> - add approved alias manually"
     )
     if getattr(config, "channel_plugin", "telegram") == "whatsapp":
         return minimal
