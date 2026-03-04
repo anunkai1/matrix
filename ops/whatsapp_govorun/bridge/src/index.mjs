@@ -674,16 +674,9 @@ async function handleApiRequest(req, res) {
     };
 
     if (!target.id) {
-      const fallback = await activeSock.sendMessage(effectiveChatJid, { text });
-      rememberOutboundMessageKey(internalMessageId, effectiveChatJid, fallback?.key?.id || null);
-      sendJson(res, 200, {
-        ok: true,
-        result: {
-          edited: false,
-          fallback_sent: true,
-          message_id: internalMessageId,
-          wa_message_id: fallback?.key?.id || null
-        }
+      sendJson(res, 409, {
+        ok: false,
+        description: 'message edit target not found'
       });
       return;
     }
@@ -702,20 +695,10 @@ async function handleApiRequest(req, res) {
         }
       });
     } catch (err) {
-      logger.warn(
-        { chatJid: effectiveChatJid, messageId: internalMessageId, err: String(err) },
-        'message edit failed; falling back to fresh send'
-      );
-      const fallback = await activeSock.sendMessage(effectiveChatJid, { text });
-      rememberOutboundMessageKey(internalMessageId, effectiveChatJid, fallback?.key?.id || null);
-      sendJson(res, 200, {
-        ok: true,
-        result: {
-          edited: false,
-          fallback_sent: true,
-          message_id: internalMessageId,
-          wa_message_id: fallback?.key?.id || null
-        }
+      logger.warn({ chatJid: effectiveChatJid, messageId: internalMessageId, err: String(err) }, 'message edit failed');
+      sendJson(res, 502, {
+        ok: false,
+        description: 'message edit failed'
       });
     }
     return;

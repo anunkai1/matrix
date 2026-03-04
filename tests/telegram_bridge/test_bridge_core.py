@@ -78,6 +78,19 @@ class FakeDownloadClient:
         Path(target_path).write_bytes(b"x")
 
 
+class FakeProgressEditClient:
+    channel_name = "whatsapp"
+
+    def send_message_get_id(self, chat_id, text, reply_to_message_id=None):
+        return 101
+
+    def edit_message(self, chat_id, message_id, text):
+        raise RuntimeError("WhatsApp bridge HTTP 502: message edit failed")
+
+    def send_chat_action(self, chat_id, action="typing"):
+        return None
+
+
 def make_config(**overrides):
     base = {
         "token": "x",
@@ -868,6 +881,22 @@ class BridgeCoreTests(unittest.TestCase):
             0.723,
         )
         self.assertIsNone(bridge_handlers.parse_voice_confidence("no marker"))
+
+    def test_progress_reporter_disables_whatsapp_edits_after_edit_failure(self):
+        client = FakeProgressEditClient()
+        reporter = bridge_handlers.ProgressReporter(
+            client=client,
+            chat_id=1,
+            reply_to_message_id=5,
+            assistant_name="Architect",
+            progress_label="Говорун размышляет",
+        )
+        reporter.progress_message_id = 101
+        reporter.pending_update = True
+
+        reporter._maybe_edit(force=True)
+
+        self.assertIsNone(reporter.progress_message_id)
 
     def test_extract_prompt_and_media_prefers_media_payload_for_photo_with_caption(self):
         prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(

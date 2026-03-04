@@ -938,10 +938,15 @@ class ProgressReporter:
                     self.pending_update = False
                 return
             self.edit_failures_other += 1
+            if getattr(self.client, "channel_name", "") == "whatsapp":
+                # WhatsApp edit failures can create visible noise if retried aggressively.
+                self.progress_message_id = None
             logging.debug("Failed to edit progress message for chat_id=%s: %s", self.chat_id, exc)
             return
         except Exception:
             self.edit_failures_other += 1
+            if getattr(self.client, "channel_name", "") == "whatsapp":
+                self.progress_message_id = None
             logging.debug("Failed to edit progress message for chat_id=%s", self.chat_id)
             return
 
