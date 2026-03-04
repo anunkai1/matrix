@@ -7,6 +7,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -1117,6 +1118,49 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(client.messages, [])
         transcribe_voice_for_chat.assert_called_once()
 
+    @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="govoron you ok")
+    def test_prepare_prompt_input_whatsapp_voice_prefix_miss_creates_alias_suggestion(
+        self, transcribe_voice_for_chat
+    ):
+        client = FakeTelegramClient(channel_name="whatsapp")
+        config = make_config(required_prefixes=["govorun"])
+        progress = mock.Mock()
+        state = bridge.State()
+        state.voice_alias_learning_store = mock.Mock()
+        state.voice_alias_learning_store.get_approved_replacements.return_value = []
+        state.voice_alias_learning_store.observe_pair.return_value = [
+            SimpleNamespace(
+                suggestion_id=7,
+                source="govoron",
+                target="govorun",
+                count=2,
+            )
+        ]
+
+        prepared = bridge_handlers.prepare_prompt_input(
+            state=state,
+            config=config,
+            client=client,
+            chat_id=1,
+            message_id=113,
+            prompt="",
+            photo_file_id=None,
+            voice_file_id="voice-wa-3",
+            document=None,
+            progress=progress,
+            enforce_voice_prefix_from_transcript=True,
+        )
+
+        self.assertIsNone(prepared)
+        state.voice_alias_learning_store.observe_pair.assert_called_once_with(
+            source="govoron",
+            target="govorun",
+        )
+        self.assertEqual(len(client.messages), 1)
+        self.assertIn("Voice correction learning suggestion(s):", client.messages[0][1])
+        self.assertIn("Approve with: `/voice-alias approve <id>`", client.messages[0][1])
+        transcribe_voice_for_chat.assert_called_once()
+
     @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="@helper turn on the light")
     def test_prepare_prompt_input_accepts_voice_transcript_with_required_prefix(
         self, transcribe_voice_for_chat
@@ -1377,6 +1421,30 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertTrue(client.messages)
         self.assertIn("Bridge status: online", client.messages[-1][1])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_whatsapp_voice_alias_command_bypasses_prefix_requirement(
+        self, start_message_worker
+    ):
+        state = bridge.State()
+        state.voice_alias_learning_store = mock.Mock()
+        state.voice_alias_learning_store.list_pending.return_value = []
+        client = FakeTelegramClient(channel_name="whatsapp")
+        config = make_config(required_prefixes=["govorun"], channel_plugin="whatsapp")
+        update = {
+            "update_id": 1011,
+            "message": {
+                "message_id": 2011,
+                "chat": {"id": 1, "type": "group"},
+                "text": "/voice-alias list",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertFalse(start_message_worker.called)
+        self.assertEqual(len(client.messages), 1)
+        self.assertIn("No pending learned voice alias suggestions.", client.messages[0][1])
 
     def test_handle_update_rejects_prefix_without_action(self):
         state = bridge.State()

@@ -331,3 +331,52 @@ class VoiceAliasLearningStore:
         self._approved[_pair_key(source_value, target_value)] = (source_value, target_value)
         self._persist()
         return source_value, target_value
+
+    def observe_pair(self, *, source: str, target: str) -> List[VoiceAliasSuggestion]:
+        source_value = " ".join((source or "").strip().split())
+        target_value = " ".join((target or "").strip().split())
+        if not source_value or not target_value:
+            return []
+        if len(source_value.split()) > self.max_phrase_words:
+            return []
+        if len(target_value.split()) > self.max_phrase_words:
+            return []
+        if _normalize_phrase(source_value) == _normalize_phrase(target_value):
+            return []
+
+        key = _pair_key(source_value, target_value)
+        if key in self._approved:
+            return []
+        if key in self._ignored:
+            return []
+
+        count = self._counts.get(key, 0) + 1
+        self._counts[key] = count
+        now = time.time()
+        created: List[VoiceAliasSuggestion] = []
+
+        existing_pending = next(
+            (item for item in self._pending.values() if _pair_key(item.source, item.target) == key),
+            None,
+        )
+        if existing_pending is not None:
+            existing_pending.count = count
+            existing_pending.last_seen_at = now
+            self._persist()
+            return []
+
+        if count >= self.min_examples:
+            suggestion = VoiceAliasSuggestion(
+                suggestion_id=self._next_id,
+                source=source_value,
+                target=target_value,
+                count=count,
+                created_at=now,
+                last_seen_at=now,
+            )
+            self._next_id += 1
+            self._pending[suggestion.suggestion_id] = suggestion
+            created.append(suggestion)
+
+        self._persist()
+        return created

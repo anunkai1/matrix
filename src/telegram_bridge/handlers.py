@@ -5,6 +5,7 @@ import re
 import subprocess
 import threading
 import time
+from difflib import SequenceMatcher
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -447,6 +448,10 @@ def apply_outbound_reply_prefix(client: ChannelAdapter, text: str) -> str:
 
 def is_whatsapp_channel(client: ChannelAdapter) -> bool:
     return getattr(client, "channel_name", "") == "whatsapp"
+
+
+def command_bypasses_required_prefix(client: ChannelAdapter, command: Optional[str]) -> bool:
+    return is_whatsapp_channel(client) and command == "/voice-alias"
 
 
 def send_executor_output(
@@ -1236,6 +1241,103 @@ def build_voice_alias_suggestions_message(suggestions: List[object]) -> Optional
     return "\n".join(lines)
 
 
+def suggest_required_prefix_alias_candidate(
+    transcript: str,
+    required_prefixes: List[str],
+    *,
+    ignore_case: bool,
+    min_similarity: float = 0.5,
+) -> Optional[Tuple[str, str, float]]:
+    words = transcript.strip().split()
+    if not words or not required_prefixes:
+        return None
+
+    best_source = ""
+    best_target = ""
+    best_similarity = 0.0
+    for required_prefix in required_prefixes:
+        normalized_prefix = " ".join(required_prefix.strip().split())
+        if not normalized_prefix:
+            continue
+        prefix_words = normalized_prefix.split()
+        if len(words) < len(prefix_words):
+            continue
+        source_candidate = " ".join(words[: len(prefix_words)])
+        source_probe = source_candidate.casefold() if ignore_case else source_candidate
+        target_probe = normalized_prefix.casefold() if ignore_case else normalized_prefix
+        if source_probe == target_probe:
+            continue
+        similarity = SequenceMatcher(None, source_probe, target_probe).ratio()
+        if similarity > best_similarity:
+            best_source = source_candidate
+            best_target = normalized_prefix
+            best_similarity = similarity
+
+    if not best_source:
+        return None
+    if best_similarity < min_similarity:
+        return None
+    return best_source, best_target, best_similarity
+
+
+def maybe_suggest_voice_prefix_alias(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    chat_id: int,
+    message_id: Optional[int],
+    transcript: str,
+) -> None:
+    if not is_whatsapp_channel(client):
+        return
+    learning_store = getattr(state, "voice_alias_learning_store", None)
+    if learning_store is None or not hasattr(learning_store, "observe_pair"):
+        return
+
+    candidate = suggest_required_prefix_alias_candidate(
+        transcript,
+        list(getattr(config, "required_prefixes", [])),
+        ignore_case=bool(getattr(config, "required_prefix_ignore_case", True)),
+    )
+    if candidate is None:
+        return
+    source, target, similarity = candidate
+
+    for active_source, active_target in build_active_voice_alias_replacements(config, state):
+        if source.casefold() == active_source.casefold() and target.casefold() == active_target.casefold():
+            return
+
+    try:
+        created = learning_store.observe_pair(source=source, target=target)
+    except Exception:
+        logging.exception(
+            "Failed to register prefix alias suggestion for chat_id=%s source=%r target=%r",
+            chat_id,
+            source,
+            target,
+        )
+        return
+
+    emit_event(
+        "bridge.voice_alias_prefix_observed",
+        fields={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "source": source,
+            "target": target,
+            "similarity": round(similarity, 3),
+            "suggestions_created": len(created),
+        },
+    )
+    suggestion_text = build_voice_alias_suggestions_message(created)
+    if suggestion_text:
+        client.send_message(
+            chat_id,
+            suggestion_text,
+            reply_to_message_id=message_id,
+        )
+
+
 def transcribe_voice(config, voice_path: str) -> Tuple[str, Optional[float]]:
     if not config.voice_transcribe_cmd:
         raise RuntimeError("Voice transcription is not configured")
@@ -1532,6 +1634,14 @@ def prepare_prompt_input(
                 config.required_prefix_ignore_case,
             )
             if not has_required_prefix:
+                maybe_suggest_voice_prefix_alias(
+                    state=state,
+                    config=config,
+                    client=client,
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    transcript=transcript,
+                )
                 emit_event(
                     "bridge.request_ignored",
                     fields={
@@ -2501,9 +2611,14 @@ def handle_update(
     requires_prefix_for_message = bool(config.required_prefixes) and (
         config.require_prefix_in_private or not is_private_chat
     )
+    prefix_bypass_command = normalize_command(prompt_input or "")
 
     enforce_voice_prefix_from_transcript = False
-    if prompt_input is not None and requires_prefix_for_message:
+    if (
+        prompt_input is not None
+        and requires_prefix_for_message
+        and not command_bypasses_required_prefix(client, prefix_bypass_command)
+    ):
         voice_without_caption = bool(voice_file_id) and not prompt_input.strip()
         if voice_without_caption:
             enforce_voice_prefix_from_transcript = True

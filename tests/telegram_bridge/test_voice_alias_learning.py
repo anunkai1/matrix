@@ -77,6 +77,27 @@ class VoiceAliasLearningTests(unittest.TestCase):
             self.assertEqual(result.suggestion_created, [])
             self.assertEqual(store.list_pending(), [])
 
+    def test_observe_pair_creates_pending_suggestion_after_threshold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = learning.VoiceAliasLearningStore(
+                path=str(Path(tmp) / "voice_alias_learning.json"),
+                min_examples=2,
+                confirmation_window_seconds=3600,
+            )
+
+            first = store.observe_pair(source="govoron", target="govorun")
+            self.assertEqual(first, [])
+            self.assertEqual(store.list_pending(), [])
+
+            second = store.observe_pair(source="govoron", target="govorun")
+            self.assertEqual(len(second), 1)
+            self.assertEqual(second[0].source, "govoron")
+            self.assertEqual(second[0].target, "govorun")
+            pending = store.list_pending()
+            self.assertEqual(len(pending), 1)
+            self.assertEqual(pending[0].source, "govoron")
+            self.assertEqual(pending[0].target, "govorun")
+
 
 if __name__ == "__main__":
     unittest.main()
