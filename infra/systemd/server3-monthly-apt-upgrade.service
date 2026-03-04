@@ -1,0 +1,11 @@
+[Unit]
+Description=Server3 Monthly APT Update and Upgrade
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/home/architect/matrix/ops/system-maintenance/run_monthly_apt_upgrade.sh
+

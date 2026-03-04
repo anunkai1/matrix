@@ -1,0 +1,11 @@
+[Unit]
+Description=Server3 Monthly APT Update and Upgrade Timer
+
+[Timer]
+OnCalendar=*-*-01 04:00:00
+Persistent=true
+Unit=server3-monthly-apt-upgrade.service
+
+[Install]
+WantedBy=timers.target
+
