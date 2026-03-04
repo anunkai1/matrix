@@ -128,6 +128,7 @@ class Config:
     voice_alias_learning_confirmation_window_seconds: int
     voice_low_confidence_confirmation_enabled: bool
     voice_low_confidence_threshold: float
+    voice_low_confidence_message: str
     state_dir: str
     persistent_workers_enabled: bool
     persistent_workers_max: int
@@ -426,6 +427,13 @@ def load_config() -> Config:
             0.45,
             minimum=0.0,
             maximum=1.0,
+        ),
+        voice_low_confidence_message=(
+            os.getenv(
+                "TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE",
+                "Voice transcript confidence is low, resend",
+            ).strip()
+            or "Voice transcript confidence is low, resend"
         ),
         state_dir=state_dir,
         persistent_workers_enabled=parse_bool_env(

@@ -45,6 +45,7 @@
 - Voice notes: require `TELEGRAM_VOICE_TRANSCRIBE_CMD`; in group chats transcript is checked against required prefix and silently ignored when prefix is missing.
 - WhatsApp group admin command exception: `/voice-alias ...` bypasses summon prefix so operators can run `list/approve/reject/add` directly.
 - Voice prefix learning: repeated near-match prefix mishears (for example `govoron` vs `govorun`) create normal `/voice-alias` suggestions for approval.
+- Low-confidence guardrail: set `TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD` (Server3 tuned to `0.35`) and short prompt `TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE="Voice transcript confidence is low, resend"` for retry guidance.
 
 ## Plugin API mode
 - Enable plugin-mode queueing for matrix channel plugin:

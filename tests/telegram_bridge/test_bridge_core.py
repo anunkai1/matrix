@@ -116,6 +116,7 @@ def make_config(**overrides):
         "voice_alias_learning_confirmation_window_seconds": 900,
         "voice_low_confidence_confirmation_enabled": True,
         "voice_low_confidence_threshold": 0.45,
+        "voice_low_confidence_message": "Voice transcript confidence is low, resend",
         "state_dir": "/tmp",
         "persistent_workers_enabled": False,
         "persistent_workers_max": 2,
@@ -972,6 +973,15 @@ class BridgeCoreTests(unittest.TestCase):
         defaults = bridge.default_voice_alias_replacements()
         self.assertIn(("clode code", "claude code"), defaults)
 
+    def test_build_low_confidence_voice_message_uses_configured_text(self):
+        config = make_config(voice_low_confidence_message="Voice transcript confidence is low, resend")
+        message = bridge_handlers.build_low_confidence_voice_message(
+            config,
+            transcript="govorun test",
+            confidence=0.2,
+        )
+        self.assertEqual(message, "Voice transcript confidence is low, resend")
+
     @mock.patch.object(bridge_handlers, "transcribe_voice")
     @mock.patch.object(bridge_handlers, "download_voice_to_temp")
     def test_transcribe_voice_for_chat_blocks_low_confidence(self, download_voice_to_temp, transcribe_voice):
@@ -1002,9 +1012,7 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertIsNone(transcript)
         self.assertEqual(len(client.messages), 1)
-        self.assertIn("confidence is low", client.messages[0][1])
-        self.assertIn("master bedroom", client.messages[0][1])
-        self.assertIn("aircon", client.messages[0][1])
+        self.assertEqual(client.messages[0][1], "Voice transcript confidence is low, resend")
 
     @mock.patch.object(bridge_handlers, "transcribe_voice")
     @mock.patch.object(bridge_handlers, "download_voice_to_temp")

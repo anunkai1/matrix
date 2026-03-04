@@ -1206,17 +1206,10 @@ def build_low_confidence_voice_message(
     transcript: str,
     confidence: float,
 ) -> str:
-    confirm_example = transcript
-    required_prefixes = getattr(config, "required_prefixes", [])
-    if required_prefixes:
-        confirm_example = f"{required_prefixes[0]} {transcript}".strip()
-    return (
-        f"Voice transcript confidence is low ({confidence:.2f}).\n"
-        f"I heard:\n{transcript}\n\n"
-        "If this is correct, send it as text so I execute exactly this command:\n"
-        f"{confirm_example}\n\n"
-        "Or resend a clearer voice note."
-    )
+    _ = transcript
+    _ = confidence
+    message = getattr(config, "voice_low_confidence_message", "")
+    return (message or "Voice transcript confidence is low, resend").strip()
 
 
 def build_voice_alias_suggestions_message(suggestions: List[object]) -> Optional[str]:
