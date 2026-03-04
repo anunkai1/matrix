@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-04 (Summary Roll-Forward Trim for Strict WhatsApp Canonicalization)
+
+Summary:
+- Added a new rolling-summary entry for strict WhatsApp canonicalization cleanup (legacy `telegram-architect-whatsapp-bridge` unit/ops/env artifact removal, canonical `govorun-whatsapp-bridge` env template path, and live alias symlink cleanup).
+- Kept rolling bound by migrating one oldest entry from summary into archive.
+
+Migrated out of summary during this trim:
+- 2026-03-03: unified Server3 Codex CLI to `0.107.0` in `/usr/local`; resolved `/usr/local` vs `/usr` version mismatch.
+
 ## 2026-03-04 (Summary Retention Refactor: Operator-First)
 
 Summary:
