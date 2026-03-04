@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-04 (AEST, +10:00)
+Last updated: 2026-03-05 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -34,6 +34,7 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-05: set Govorun WhatsApp outbound reply prefix to `Даю справку:` (including automatic rewrite of legacy leading `Говорун:`/`говорун:`) in `src/telegram_bridge/handlers.py`, updated prefix regression tests in `tests/telegram_bridge/test_bridge_core.py`, and applied the same live patch to `/home/govorun/govorunbot/src/telegram_bridge/handlers.py` with `govorun-whatsapp-bridge.service` restart.
 - 2026-03-04: fixed Govorun WhatsApp `/restart` by adding restart target overrides (`TELEGRAM_RESTART_SCRIPT`, `TELEGRAM_RESTART_UNIT`) in `src/telegram_bridge/session_manager.py`, extending `ops/telegram-bridge/restart_and_verify.sh` allowlist for `govorun-whatsapp-bridge.service`, adding scoped sudoers mirror `infra/system/sudoers/govorun-whatsapp-bridge`, and applying live env/runtime updates so restarts execute in correct order and unit context.
 - 2026-03-04: added Govorun WhatsApp reply-tone control via env-driven prompt preface (`TELEGRAM_RESPONSE_STYLE_HINT`) in `src/telegram_bridge/executor.sh`, documented it in runbooks/env templates, applied live to `/home/govorun/govorunbot/src/telegram_bridge/executor.sh`, refined live hint wording to "info first + occasional short jokes + tiny mild sarcasm" with safety-topic sarcasm guardrails, and enabled immediate model profile override via `ARCHITECT_EXEC_ARGS` for both new and resumed chats (`--model gpt-5-codex-mini --config model_reasoning_effort="medium"`) in `/etc/default/govorun-whatsapp-bridge` with service restart.
 - 2026-03-04: removed forced WhatsApp outbound reply name prefix from Python bridge (`src/telegram_bridge/handlers.py` `apply_outbound_reply_prefix` now pass-through), so Govorun answers without leading `Говорун:`; added/updated regression tests in `tests/telegram_bridge/test_bridge_core.py` and applied the same patch live to `/home/govorun/govorunbot/src/telegram_bridge/handlers.py` with service restart.
@@ -41,7 +42,6 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - 2026-03-04: added new WhatsApp group allowlist mapping `chat_id=53072088` to both live allowlists (`TELEGRAM_ALLOWED_CHAT_IDS` in `/etc/default/govorun-whatsapp-bridge` and `WA_ALLOWED_CHAT_IDS` in `/home/govorun/whatsapp-govorun/app/.env`) and restarted `whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service`; startup now reports `allowedChatIdsCount=3` (Node) and `Allowed chats=[53072088, 335502052, 1434663945]` (Python).
 - 2026-03-04: forced Govorun WhatsApp whisper language to Russian (`TELEGRAM_VOICE_WHISPER_LANGUAGE=ru`) so Russian-spoken summon prefix `говорун` is transcribed in Cyrillic-compatible form instead of English-biased output; applied live in `/etc/default/govorun-whatsapp-bridge` and restarted bridge runtime.
 - 2026-03-04: lowered Govorun WhatsApp voice low-confidence threshold to `0.35` and changed low-confidence user prompt to `Не понял что вы промурлычили, скажите ещё раз`; wired new config field/env `TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE` and applied live in `/etc/default/govorun-whatsapp-bridge`.
-- 2026-03-04: enabled WhatsApp voice-prefix alias learning assist by allowing `/voice-alias` commands to bypass summon-prefix gating in WhatsApp groups and by auto-observing repeated near-prefix transcript misses (for example `govoron` -> `govorun`) into standard voice-alias suggestions that can be approved via `/voice-alias approve <id>`.
 
 ## Current Risks/Watchouts (Max 5)
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.

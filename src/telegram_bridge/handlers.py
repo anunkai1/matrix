@@ -88,6 +88,9 @@ CANCEL_ALREADY_REQUESTED_MESSAGE = (
 )
 CANCEL_NO_ACTIVE_MESSAGE = "No active request to cancel."
 REQUEST_CANCELED_MESSAGE = "Request canceled."
+WHATSAPP_REPLY_PREFIX = "Даю справку:"
+WHATSAPP_REPLY_PREFIX_RE = re.compile(r"^\s*даю\s+справку\s*:\s*", re.IGNORECASE)
+WHATSAPP_LEGACY_REPLY_PREFIX_RE = re.compile(r"^\s*говорун\s*:\s*", re.IGNORECASE)
 
 
 @dataclass
@@ -433,8 +436,18 @@ def send_chat_action_safe(client: ChannelAdapter, chat_id: int, action: str) -> 
 
 
 def apply_outbound_reply_prefix(client: ChannelAdapter, text: str) -> str:
-    _ = client
-    return text
+    if not is_whatsapp_channel(client):
+        return text
+    stripped = (text or "").strip()
+    if not stripped:
+        return text
+    if WHATSAPP_REPLY_PREFIX_RE.match(stripped):
+        body = WHATSAPP_REPLY_PREFIX_RE.sub("", stripped, count=1).strip()
+    else:
+        body = WHATSAPP_LEGACY_REPLY_PREFIX_RE.sub("", stripped, count=1).strip()
+    if not body:
+        return WHATSAPP_REPLY_PREFIX
+    return f"{WHATSAPP_REPLY_PREFIX} {body}"
 
 
 def is_whatsapp_channel(client: ChannelAdapter) -> bool:

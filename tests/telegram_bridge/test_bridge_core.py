@@ -452,7 +452,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(len(client.photos), 1)
         self.assertEqual(client.photos[0][1], "https://example.com/pic.jpg")
 
-    def test_send_executor_output_sends_whatsapp_plain_text_without_prefix(self):
+    def test_send_executor_output_sends_whatsapp_plain_text_with_prefix(self):
         client = FakeTelegramClient(channel_name="whatsapp")
         rendered = bridge_handlers.send_executor_output(
             client=client,
@@ -460,10 +460,10 @@ class BridgeCoreTests(unittest.TestCase):
             message_id=116,
             output="hello there",
         )
-        self.assertEqual(rendered, "hello there")
-        self.assertEqual(client.messages[-1][1], "hello there")
+        self.assertEqual(rendered, "Даю справку: hello there")
+        self.assertEqual(client.messages[-1][1], "Даю справку: hello there")
 
-    def test_send_executor_output_keeps_whatsapp_text_unchanged(self):
+    def test_send_executor_output_rewrites_whatsapp_legacy_prefix(self):
         client = FakeTelegramClient(channel_name="whatsapp")
         rendered = bridge_handlers.send_executor_output(
             client=client,
@@ -471,10 +471,21 @@ class BridgeCoreTests(unittest.TestCase):
             message_id=117,
             output="Говорун: already prefixed",
         )
-        self.assertEqual(rendered, "Говорун: already prefixed")
-        self.assertEqual(client.messages[-1][1], "Говорун: already prefixed")
+        self.assertEqual(rendered, "Даю справку: already prefixed")
+        self.assertEqual(client.messages[-1][1], "Даю справку: already prefixed")
 
-    def test_send_executor_output_sends_whatsapp_media_caption_without_prefix(self):
+    def test_send_executor_output_keeps_whatsapp_new_prefix_single(self):
+        client = FakeTelegramClient(channel_name="whatsapp")
+        rendered = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=1,
+            message_id=117,
+            output="Даю справку: already prefixed",
+        )
+        self.assertEqual(rendered, "Даю справку: already prefixed")
+        self.assertEqual(client.messages[-1][1], "Даю справку: already prefixed")
+
+    def test_send_executor_output_sends_whatsapp_media_caption_with_prefix(self):
         client = FakeTelegramClient(channel_name="whatsapp")
         rendered = bridge_handlers.send_executor_output(
             client=client,
@@ -482,8 +493,8 @@ class BridgeCoreTests(unittest.TestCase):
             message_id=118,
             output="[[media:https://example.com/pic.jpg]] caption",
         )
-        self.assertEqual(rendered, "caption")
-        self.assertEqual(client.photos[0][2], "caption")
+        self.assertEqual(rendered, "Даю справку: caption")
+        self.assertEqual(client.photos[0][2], "Даю справку: caption")
 
     def test_send_executor_output_invalid_structured_payload_falls_back_to_raw_text(self):
         client = FakeTelegramClient()
