@@ -51,6 +51,11 @@ if [[ -z "${prompt}" ]]; then
   exit 2
 fi
 
+style_hint="${TELEGRAM_RESPONSE_STYLE_HINT:-}"
+if [[ -n "${style_hint//[[:space:]]/}" ]]; then
+  prompt=$'Response style guidance:\n'"${style_hint}"$'\n\nUser request:\n'"${prompt}"
+fi
+
 CODEX_BIN="${CODEX_BIN:-codex}"
 if ! command -v "${CODEX_BIN}" >/dev/null 2>&1; then
   echo "codex binary not found: ${CODEX_BIN}" >&2

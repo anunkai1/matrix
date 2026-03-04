@@ -29,11 +29,12 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - Runtime observer is enabled on timer (`server3-runtime-observer.timer`) with Telegram daily summary mode (`RUNTIME_OBSERVER_MODE=telegram_daily_summary`) scheduled for `08:05` AEST.
 - TV desktop/browser reliability is hardened with deterministic helpers, existing-window reuse, and autoplay fallback tooling (`wmctrl`, `xdotool`, `yt-dlp`).
 - Tank defaults are hardened: DM prefix bypass in private chats, isolated Joplin profile/path, reasoning effort `low`.
-- Govorun WhatsApp progress depends on outbound message-key mapping for `/messages/edit`; compact elapsed wording is env-configured.
+- Govorun WhatsApp behavior is env-tunable: progress wording and reply-tone guidance are configured via `/etc/default/govorun-whatsapp-bridge`.
 - Architect Google runtime integration is removed/disabled.
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-04: added Govorun WhatsApp reply-tone control via env-driven prompt preface (`TELEGRAM_RESPONSE_STYLE_HINT`) in `src/telegram_bridge/executor.sh`, documented it in runbooks/env templates, applied live to `/home/govorun/govorunbot/src/telegram_bridge/executor.sh`, and set a light-humor/mild-sarcasm style hint in `/etc/default/govorun-whatsapp-bridge` with service restart.
 - 2026-03-04: removed forced WhatsApp outbound reply name prefix from Python bridge (`src/telegram_bridge/handlers.py` `apply_outbound_reply_prefix` now pass-through), so Govorun answers without leading `Говорун:`; added/updated regression tests in `tests/telegram_bridge/test_bridge_core.py` and applied the same patch live to `/home/govorun/govorunbot/src/telegram_bridge/handlers.py` with service restart.
 - 2026-03-04: added owner persona preferences to `AGENTS.md` (keep Govorun-like cartoon persona in user-facing answers and use the requested "came from an egg / ancient dinosaurs like pteradactyl" line when asked who made you), without changing policy authority in `ARCHITECT_INSTRUCTION.md`.
 - 2026-03-04: added new WhatsApp group allowlist mapping `chat_id=53072088` to both live allowlists (`TELEGRAM_ALLOWED_CHAT_IDS` in `/etc/default/govorun-whatsapp-bridge` and `WA_ALLOWED_CHAT_IDS` in `/home/govorun/whatsapp-govorun/app/.env`) and restarted `whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service`; startup now reports `allowedChatIdsCount=3` (Node) and `Allowed chats=[53072088, 335502052, 1434663945]` (Python).
@@ -41,7 +42,6 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - 2026-03-04: lowered Govorun WhatsApp voice low-confidence threshold to `0.35` and changed low-confidence user prompt to `Не понял что вы промурлычили, скажите ещё раз`; wired new config field/env `TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE` and applied live in `/etc/default/govorun-whatsapp-bridge`.
 - 2026-03-04: enabled WhatsApp voice-prefix alias learning assist by allowing `/voice-alias` commands to bypass summon-prefix gating in WhatsApp groups and by auto-observing repeated near-prefix transcript misses (for example `govoron` -> `govorun`) into standard voice-alias suggestions that can be approved via `/voice-alias approve <id>`.
 - 2026-03-04: enabled Govorun WhatsApp voice-note transcription by wiring live `/etc/default/govorun-whatsapp-bridge` with `TELEGRAM_VOICE_TRANSCRIBE_CMD` + dedicated whisper runtime env (`TELEGRAM_VOICE_WHISPER_VENV`, socket/log path, `HF_HOME=/home/govorun/.cache/huggingface`) and setting `TELEGRAM_VOICE_WHISPER_MODEL=medium`; voice-prefix enforcement now silently ignores non-prefixed WhatsApp transcripts after transcription while still executing prefixed transcripts.
-- 2026-03-04: made WhatsApp `/help` and `/h` output minimal and command-only (`/start`, `/help`, `/status`, `/reset`, `/cancel`, `/restart`) by channel-specific help rendering in `src/telegram_bridge/handlers.py`; removed non-applicable WhatsApp help lines (voice-alias, TV helpers, routing keywords, memory help) for `channel_plugin=whatsapp`.
 
 ## Current Risks/Watchouts (Max 5)
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.

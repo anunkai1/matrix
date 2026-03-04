@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-04 (Summary Roll-Forward Trim for Govorun Tone Control)
+
+Summary:
+- Added a new rolling-summary entry for Govorun WhatsApp tone control (`TELEGRAM_RESPONSE_STYLE_HINT`) with live runtime apply.
+- Kept rolling bound by migrating one oldest entry from summary into archive.
+
+Migrated out of summary during this trim:
+- 2026-03-04: made WhatsApp `/help` and `/h` output minimal and command-only (`/start`, `/help`, `/status`, `/reset`, `/cancel`, `/restart`) by channel-specific help rendering in `src/telegram_bridge/handlers.py`; removed non-applicable WhatsApp help lines (voice-alias, TV helpers, routing keywords, memory help) for `channel_plugin=whatsapp`.
+
 ## 2026-03-04 (Summary Roll-Forward Trim for Runtime Observer Live Enable)
 
 Summary:
