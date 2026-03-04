@@ -56,6 +56,11 @@ WA_RUNTIME_LOG = Path(os.getenv("RUNTIME_OBSERVER_WA_LOG_PATH", WA_RUNTIME_LOG_D
 ALERT_COOLDOWN_MINUTES = env_int("RUNTIME_OBSERVER_ALERT_COOLDOWN_MINUTES", 30, minimum=1)
 ALERT_ENABLED = MODE == "telegram_alerts"
 ALERT_TIMEOUT_SECONDS = env_int("RUNTIME_OBSERVER_ALERT_TIMEOUT_SECONDS", 10, minimum=2)
+TELEGRAM_EDIT_MIN_ATTEMPTS = env_int(
+    "RUNTIME_OBSERVER_TELEGRAM_EDIT_MIN_ATTEMPTS",
+    20,
+    minimum=1,
+)
 
 
 def env_csv(name: str) -> List[str]:
@@ -379,9 +384,16 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         and safe_int(row.get("error_code"), default=-1) == 400
     )
     edit_rate: Optional[float]
+    sample_size_suppressed = False
     if edit_attempts > 0:
         edit_rate = (edit_400_count / edit_attempts) * 100.0
-        edit_severity = Threshold(warn=3.0, critical=8.0).classify(edit_rate)
+        if edit_attempts >= TELEGRAM_EDIT_MIN_ATTEMPTS:
+            edit_severity = Threshold(warn=3.0, critical=8.0).classify(edit_rate)
+        else:
+            # Keep low-volume 400s visible in status output but suppress paging
+            # until we have enough edit attempts for a reliable signal.
+            edit_severity = "ok"
+            sample_size_suppressed = True
     elif edit_400_count > 0:
         edit_rate = None
         edit_severity = "warn"
@@ -394,8 +406,10 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         "window": "15m",
         "warn_threshold_percent": 3.0,
         "critical_threshold_percent": 8.0,
+        "min_attempts_threshold": TELEGRAM_EDIT_MIN_ATTEMPTS,
         "edit_400_count": edit_400_count,
         "edit_attempts": edit_attempts,
+        "sample_size_suppressed": sample_size_suppressed,
         "rate_percent": round(edit_rate, 3) if isinstance(edit_rate, float) else None,
     }
 
@@ -595,9 +609,12 @@ def format_kpi_alert_line(name: str, metric: Dict[str, object]) -> str:
     if name == "telegram_retry_rate":
         return f"- {name}: {severity} count_last_15m={metric.get('count_last_15m', '-')}"
     if name == "telegram_edit_400_rate":
+        suppressed = bool(metric.get("sample_size_suppressed", False))
+        suppressed_suffix = " (suppressed:low_sample)" if suppressed else ""
         return (
             f"- {name}: {severity} rate={format_percent(metric.get('rate_percent'))} "
             f"edit_400={metric.get('edit_400_count', '-')} attempts={metric.get('edit_attempts', '-')}"
+            f" min_attempts={metric.get('min_attempts_threshold', '-')}{suppressed_suffix}"
         )
     if name == "wa_reconnect_rate":
         return f"- {name}: {severity} count_last_hour={metric.get('count_last_hour', '-')}"
@@ -739,7 +756,9 @@ def format_status(snapshot: Dict[str, object]) -> str:
         (
             "telegram_edit_400_rate: "
             f"{edit['severity']} rate={format_percent(edit['rate_percent'])} "
-            f"edit_400={edit['edit_400_count']} attempts={edit['edit_attempts']}"
+            f"edit_400={edit['edit_400_count']} attempts={edit['edit_attempts']} "
+            f"min_attempts={edit.get('min_attempts_threshold', '-')} "
+            f"suppressed={bool(edit.get('sample_size_suppressed', False))}"
         ),
         (
             "wa_reconnect_rate: "

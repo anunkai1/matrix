@@ -34,6 +34,7 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-04: tuned runtime observer Telegram edit-400 KPI to reduce low-volume false paging by adding `RUNTIME_OBSERVER_TELEGRAM_EDIT_MIN_ATTEMPTS` (default `20`) and suppressing `telegram_edit_400_rate` alert severity when edit attempts are below threshold; status/alert output now includes `min_attempts` and suppression flag.
 - 2026-03-04: documented current WhatsApp summon aliases in runbook by updating `docs/runbooks/whatsapp-govorun-operations.md` Trigger policy to explicitly include `govorun` alongside existing Cyrillic triggers.
 - 2026-03-04: completed Govorun WhatsApp number migration to `61433720167` via fresh Baileys auth-state rotation + relink, then added English summon alias `govorun` alongside `@говорун,говорун` in live `/etc/default/govorun-whatsapp-bridge` (`TELEGRAM_REQUIRED_PREFIXES`) and verified both WhatsApp services healthy after restart.
 - 2026-03-04: enabled Phase-2 proactive runtime observer alerts to Telegram by extending `ops/runtime_observer/runtime_observer.py` with alert/recovery delivery + cooldown state, adding `notify-test`, wiring observer unit fallback to `/etc/default/telegram-architect-bridge`, and activating live `/etc/default/server3-runtime-observer` in `telegram_alerts` mode with explicit chat routing.
@@ -41,7 +42,6 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - 2026-03-04: added Phase-1 runtime observer control layer (`ops/runtime_observer/runtime_observer.py`) with KPI snapshot collection (`service_up`, `restart_count`, `telegram_retry_rate`, `telegram_edit_400_rate`, `wa_reconnect_rate`, `request_fail_rate`), plus systemd timer/service units and operator commands for current status + 24h summary; day-1 mode remains collect-only.
 - 2026-03-04: prevented cross-group `Access denied` replies by adding upstream WhatsApp numeric allowlist support (`WA_ALLOWED_CHAT_IDS`) in `ops/whatsapp_govorun/bridge` and making non-allowlisted WhatsApp plugin requests silent-deny in `src/telegram_bridge/handlers.py`; live runtime now pins `WA_ALLOWED_CHAT_IDS=1434663945,335502052`.
 - 2026-03-04: completed strict WhatsApp canonicalization cleanup by removing legacy `telegram-architect-whatsapp-bridge` unit/ops/env artifacts, adding canonical `govorun-whatsapp-bridge` env templates, and removing live alias symlinks from `/etc/systemd/system` and `/etc/default`.
-- 2026-03-04: reduced active markdown redundancy by making `AGENTS.md` a minimal pointer to `ARCHITECT_INSTRUCTION.md`, trimming duplicated policy text in `README.md`, and consolidating repeated Govorun setup details in `docs/runbooks/telegram-whatsapp-dual-runtime.md` to reference the canonical ops runbook.
 
 ## Current Risks/Watchouts (Max 5)
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.
