@@ -46,6 +46,7 @@
 - WhatsApp group admin command exception: `/voice-alias ...` bypasses summon prefix so operators can run `list/approve/reject/add` directly.
 - Voice prefix learning: repeated near-match prefix mishears (for example `govoron` vs `govorun`) create normal `/voice-alias` suggestions for approval.
 - Low-confidence guardrail: set `TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD` (Server3 tuned to `0.35`) and short prompt `TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE="Не понял что вы промурлычили, скажите ещё раз"` for retry guidance.
+- Language guardrail: set `TELEGRAM_VOICE_WHISPER_LANGUAGE=ru` for Russian trigger words/prefixes (`говорун`) so transcription does not force English transliteration.
 
 ## Plugin API mode
 - Enable plugin-mode queueing for matrix channel plugin:
