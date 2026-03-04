@@ -39,6 +39,7 @@
 
 ## Trigger policy
 - Group trigger: `@говорун`
+- Accepted prefix aliases (via `TELEGRAM_REQUIRED_PREFIXES`): `говорун`, `govorun`
 - Group behavior: trigger required
 - DM behavior: always respond
 
