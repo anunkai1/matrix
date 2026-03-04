@@ -1,0 +1,3 @@
+# Mirror of /etc/sudoers.d/govorun-whatsapp-bridge on Server3.
+Defaults:govorun !requiretty
+govorun ALL=(root) NOPASSWD: /home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit govorun-whatsapp-bridge.service

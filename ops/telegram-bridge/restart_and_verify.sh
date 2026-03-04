@@ -5,6 +5,7 @@ UNIT_NAME="${UNIT_NAME:-telegram-architect-bridge.service}"
 ALLOWED_UNITS=(
   "telegram-architect-bridge.service"
   "telegram-tank-bridge.service"
+  "govorun-whatsapp-bridge.service"
 )
 
 is_allowed_unit() {

@@ -42,8 +42,18 @@ def build_repo_root() -> str:
 
 
 def build_restart_script_path() -> str:
+    configured = os.getenv("TELEGRAM_RESTART_SCRIPT", "").strip()
+    if configured:
+        return configured
     repo_root = build_repo_root()
     return os.path.join(repo_root, "ops", "telegram-bridge", "restart_and_verify.sh")
+
+
+def build_restart_unit_name() -> str:
+    configured = os.getenv("TELEGRAM_RESTART_UNIT", "").strip()
+    if configured:
+        return configured
+    return "telegram-architect-bridge.service"
 
 
 def compute_policy_fingerprint(paths: List[str]) -> str:
@@ -577,13 +587,14 @@ def run_restart_script(
     reply_to_message_id: Optional[int],
 ) -> None:
     script_path = build_restart_script_path()
+    restart_unit = build_restart_unit_name()
     emit_event(
         "bridge.restart_script_started",
-        fields={"chat_id": chat_id, "script_path": script_path},
+        fields={"chat_id": chat_id, "script_path": script_path, "restart_unit": restart_unit},
     )
     try:
         result = subprocess.run(
-            ["bash", script_path],
+            ["bash", script_path, "--unit", restart_unit],
             capture_output=True,
             text=True,
             timeout=90,
@@ -631,7 +642,10 @@ def run_restart_script(
         )
         client.send_message(
             chat_id,
-            "Restart failed. Please run `bash ops/telegram-bridge/restart_and_verify.sh`.",
+            (
+                "Restart failed. Please run "
+                f"`bash {script_path} --unit {restart_unit}`."
+            ),
             reply_to_message_id=reply_to_message_id,
         )
         finish_restart_attempt(state)
