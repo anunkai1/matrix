@@ -969,50 +969,60 @@ def pick_largest_photo_file_id(photo_items: List[object]) -> Optional[str]:
     return best_file_id
 
 
+def normalize_optional_text(value: object) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    return value.strip()
+
+
+def select_media_prompt(text: Optional[str], caption: Optional[str], default_prompt: str) -> str:
+    text_value = text or ""
+    caption_value = caption or ""
+    if caption_value and text_value and caption_value != text_value:
+        return f"{caption_value}\n\n{text_value}"
+    if caption_value:
+        return caption_value
+    if text_value:
+        return text_value
+    return default_prompt
+
+
 def extract_prompt_and_media(
     message: Dict[str, object]
 ) -> tuple[Optional[str], Optional[str], Optional[str], Optional[DocumentPayload]]:
-    text = message.get("text")
-    if isinstance(text, str):
-        return text, None, None, None
+    text = normalize_optional_text(message.get("text"))
+    caption = normalize_optional_text(message.get("caption"))
 
     photo_items = message.get("photo")
     if isinstance(photo_items, list) and photo_items:
         file_id = pick_largest_photo_file_id(photo_items)
-        if not file_id:
-            return None, None, None, None
-
-        caption = message.get("caption")
-        if isinstance(caption, str) and caption.strip():
-            return caption, file_id, None, None
-        return "Please analyze this image.", file_id, None, None
+        if file_id:
+            prompt = select_media_prompt(text, caption, "Please analyze this image.")
+            return prompt, file_id, None, None
 
     voice = message.get("voice")
     if isinstance(voice, dict):
         voice_file_id = voice.get("file_id")
-        if not isinstance(voice_file_id, str) or not voice_file_id.strip():
-            return None, None, None, None
-        caption = message.get("caption")
-        if isinstance(caption, str):
-            return caption, None, voice_file_id.strip(), None
-        return "", None, voice_file_id.strip(), None
+        if isinstance(voice_file_id, str) and voice_file_id.strip():
+            prompt = select_media_prompt(text, caption, "")
+            return prompt, None, voice_file_id.strip(), None
 
     document = message.get("document")
     if isinstance(document, dict):
         file_id = document.get("file_id")
-        if not isinstance(file_id, str) or not file_id.strip():
-            return None, None, None, None
-        file_name = document.get("file_name")
-        mime_type = document.get("mime_type")
-        payload = DocumentPayload(
-            file_id=file_id.strip(),
-            file_name=file_name.strip() if isinstance(file_name, str) and file_name.strip() else "unnamed",
-            mime_type=mime_type.strip() if isinstance(mime_type, str) and mime_type.strip() else "unknown",
-        )
-        caption = message.get("caption")
-        if isinstance(caption, str) and caption.strip():
-            return caption, None, None, payload
-        return "Please analyze this file.", None, None, payload
+        if isinstance(file_id, str) and file_id.strip():
+            file_name = document.get("file_name")
+            mime_type = document.get("mime_type")
+            payload = DocumentPayload(
+                file_id=file_id.strip(),
+                file_name=file_name.strip() if isinstance(file_name, str) and file_name.strip() else "unnamed",
+                mime_type=mime_type.strip() if isinstance(mime_type, str) and mime_type.strip() else "unknown",
+            )
+            prompt = select_media_prompt(text, caption, "Please analyze this file.")
+            return prompt, None, None, payload
+
+    if text is not None:
+        return text, None, None, None
 
     return None, None, None, None
 

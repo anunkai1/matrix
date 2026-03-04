@@ -16,6 +16,8 @@ import {
   createConfig,
   createQueuedCredsSaver,
   ensureDir,
+  extractNormalizedMessageContent,
+  extractPlainTextFromBaileysMessage,
   extractTextFromBaileysMessage,
   parseInteger,
   readEnvFromFile
@@ -49,6 +51,24 @@ let nextInternalMessageId = 1;
 let nextUpdateId = 1;
 let activeSock = null;
 let apiServer = null;
+const OUTBOUND_MEDIA_TYPES = new Set(['photo', 'audio', 'voice', 'document']);
+const MIME_BY_EXTENSION = new Map([
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.png', 'image/png'],
+  ['.webp', 'image/webp'],
+  ['.gif', 'image/gif'],
+  ['.pdf', 'application/pdf'],
+  ['.txt', 'text/plain'],
+  ['.json', 'application/json'],
+  ['.ogg', 'audio/ogg'],
+  ['.oga', 'audio/ogg'],
+  ['.opus', 'audio/ogg; codecs=opus'],
+  ['.mp3', 'audio/mpeg'],
+  ['.m4a', 'audio/mp4'],
+  ['.aac', 'audio/aac'],
+  ['.wav', 'audio/wav']
+]);
 
 function shouldHandleChat(jid, isGroup, chatId = null) {
   if (config.allowedChatIds.length > 0) {
@@ -142,6 +162,53 @@ function resolveChatJid(chatIdRaw, chatJidRaw = null) {
   const parsed = parseInteger(chatIdRaw, NaN, 1);
   if (!Number.isFinite(parsed) || Number.isNaN(parsed)) return '';
   return chatIdToJid.get(parsed) || '';
+}
+
+function inferMimeTypeFromRef(fileRef, fallback = '') {
+  if (!fileRef || typeof fileRef !== 'string') return fallback;
+  let pathname = fileRef;
+  try {
+    const parsed = new URL(fileRef);
+    pathname = parsed.pathname || pathname;
+  } catch {
+    // Not a URL; treat as local path string.
+  }
+  const extension = path.extname(pathname).toLowerCase();
+  return MIME_BY_EXTENSION.get(extension) || fallback;
+}
+
+function resolveOutboundMediaRef(mediaRef) {
+  try {
+    const parsed = new URL(mediaRef);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return {
+        isLocalFile: false,
+        value: { url: mediaRef },
+        fileName: path.basename(parsed.pathname || '') || 'upload.bin',
+        mimeType: inferMimeTypeFromRef(parsed.pathname)
+      };
+    }
+  } catch {
+    // Continue with local file checks.
+  }
+
+  const resolvedPath = path.resolve(mediaRef);
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error('unsupported_media_ref');
+  }
+  const stat = fs.statSync(resolvedPath);
+  if (!stat.isFile()) {
+    throw new Error('unsupported_media_ref');
+  }
+  if (stat.size > config.bridgeFileMaxBytes) {
+    throw new Error('media_file_too_large');
+  }
+  return {
+    isLocalFile: true,
+    value: fs.readFileSync(resolvedPath),
+    fileName: path.basename(resolvedPath) || 'upload.bin',
+    mimeType: inferMimeTypeFromRef(resolvedPath)
+  };
 }
 
 function evictStoredFile(fileId) {
@@ -254,10 +321,10 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
   const sender = msg.key?.participant || msg.pushName || msg.key?.remoteJid || '';
   if (sender) payload.from = { username: String(sender) };
 
-  const text = extractTextFromBaileysMessage(msg);
+  const text = extractPlainTextFromBaileysMessage(msg);
   if (text) payload.text = text;
 
-  const message = msg.message || {};
+  const message = extractNormalizedMessageContent(msg);
 
   if (message.imageMessage) {
     const buffer = await downloadIncomingMedia(sock, msg);
@@ -270,11 +337,14 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
         'img'
       );
       if (metadata) {
-        payload.photo = [{ file_id: metadata.fileId, file_size: metadata.fileSize }];
+        payload.photo = [
+          { file_id: metadata.fileId, file_size: metadata.fileSize, mime_type: metadata.mimeType }
+        ];
       }
     }
-    if (message.imageMessage.caption) {
-      payload.caption = message.imageMessage.caption;
+    const caption = String(message.imageMessage.caption || '').trim();
+    if (caption) {
+      payload.caption = caption;
     }
   }
 
@@ -299,6 +369,7 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
           payload.document = {
             file_id: metadata.fileId,
             file_name: metadata.fileName,
+            file_size: metadata.fileSize,
             mime_type: metadata.mimeType
           };
         }
@@ -316,13 +387,19 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
         payload.document = {
           file_id: metadata.fileId,
           file_name: metadata.fileName,
+          file_size: metadata.fileSize,
           mime_type: metadata.mimeType
         };
       }
     }
-    if (message.documentMessage.caption) {
-      payload.caption = message.documentMessage.caption;
+    const caption = String(message.documentMessage.caption || '').trim();
+    if (caption) {
+      payload.caption = caption;
     }
+  }
+
+  if (payload.caption && !payload.text && !payload.photo && !payload.voice && !payload.document) {
+    payload.text = payload.caption;
   }
 
   if (!payload.text && !payload.photo && !payload.voice && !payload.document) {
@@ -497,26 +574,67 @@ async function handleApiRequest(req, res) {
       return;
     }
     const mediaType = String(body.media_type || 'document').toLowerCase();
-    const caption = typeof body.caption === 'string' ? body.caption : undefined;
-    let payload;
-    if (mediaType === 'photo') {
-      payload = { image: { url: mediaRef }, caption };
-    } else if (mediaType === 'audio') {
-      payload = { audio: { url: mediaRef }, caption };
-    } else if (mediaType === 'voice') {
-      payload = { audio: { url: mediaRef }, ptt: true, caption };
-    } else {
-      const fileName = path.basename(mediaRef) || 'upload.bin';
-      payload = { document: { url: mediaRef }, fileName, caption };
+    if (!OUTBOUND_MEDIA_TYPES.has(mediaType)) {
+      sendJson(res, 400, { ok: false, description: 'media_type must be one of: photo,audio,voice,document' });
+      return;
     }
-    const response = await activeSock.sendMessage(chatJid, payload);
+    const caption = typeof body.caption === 'string' && body.caption.trim() ? body.caption.trim() : undefined;
+
+    let mediaSource;
+    try {
+      mediaSource = resolveOutboundMediaRef(mediaRef);
+    } catch (err) {
+      if (String(err) === 'Error: media_file_too_large') {
+        sendJson(res, 413, { ok: false, description: `media file too large (> ${config.bridgeFileMaxBytes} bytes)` });
+        return;
+      }
+      sendJson(res, 400, { ok: false, description: 'media_ref must be an existing local file path or http(s) URL' });
+      return;
+    }
+
+    let payload;
+    let followUpCaption;
+    if (mediaType === 'photo') {
+      payload = { image: mediaSource.value };
+      if (mediaSource.mimeType) payload.mimetype = mediaSource.mimeType;
+      if (caption) payload.caption = caption;
+    } else if (mediaType === 'audio') {
+      payload = { audio: mediaSource.value };
+      if (mediaSource.mimeType) payload.mimetype = mediaSource.mimeType;
+      if (caption) payload.caption = caption;
+    } else if (mediaType === 'voice') {
+      payload = { audio: mediaSource.value, ptt: true };
+      if (mediaSource.mimeType) payload.mimetype = mediaSource.mimeType;
+      // Voice-note captions are not reliably supported; send follow-up text instead.
+      if (caption) followUpCaption = caption;
+    } else {
+      payload = {
+        document: mediaSource.value,
+        fileName: mediaSource.fileName || 'upload.bin'
+      };
+      if (mediaSource.mimeType) payload.mimetype = mediaSource.mimeType;
+      if (caption) payload.caption = caption;
+    }
+
+    let response;
+    try {
+      response = await activeSock.sendMessage(chatJid, payload);
+      if (followUpCaption) {
+        await activeSock.sendMessage(chatJid, { text: followUpCaption });
+      }
+    } catch (err) {
+      logger.warn({ err: String(err), chatJid, mediaType }, 'failed sending outbound media');
+      sendJson(res, 502, { ok: false, description: 'failed sending outbound media' });
+      return;
+    }
     const internalMessageId = nextMessageId();
     rememberOutboundMessageKey(internalMessageId, chatJid, response?.key?.id || null);
     sendJson(res, 200, {
       ok: true,
       result: {
         message_id: internalMessageId,
-        wa_message_id: response?.key?.id || null
+        wa_message_id: response?.key?.id || null,
+        voice_caption_followup_sent: Boolean(followUpCaption)
       }
     });
     return;

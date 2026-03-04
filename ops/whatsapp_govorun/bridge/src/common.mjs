@@ -63,18 +63,47 @@ export function readEnvFromFile(filePath) {
   return env;
 }
 
-function getMessageText(message) {
-  if (!message) return '';
-  if (message.conversation) return message.conversation;
-  if (message.extendedTextMessage?.text) return message.extendedTextMessage.text;
-  if (message.imageMessage?.caption) return message.imageMessage.caption;
-  if (message.videoMessage?.caption) return message.videoMessage.caption;
-  if (message.documentMessage?.caption) return message.documentMessage.caption;
+function unwrapMessageContent(message) {
+  let current = message && typeof message === 'object' ? message : null;
+  let safety = 0;
+  while (current && safety < 8) {
+    safety += 1;
+    const next =
+      current.ephemeralMessage?.message ||
+      current.viewOnceMessage?.message ||
+      current.viewOnceMessageV2?.message ||
+      current.viewOnceMessageV2Extension?.message ||
+      current.documentWithCaptionMessage?.message ||
+      current.editedMessage?.message;
+    if (!next || typeof next !== 'object') {
+      break;
+    }
+    current = next;
+  }
+  return current || {};
+}
+
+function getMessageText(message, includeCaptions = true) {
+  if (!message || typeof message !== 'object') return '';
+  const normalized = unwrapMessageContent(message);
+  if (normalized.conversation) return normalized.conversation;
+  if (normalized.extendedTextMessage?.text) return normalized.extendedTextMessage.text;
+  if (includeCaptions && normalized.imageMessage?.caption) return normalized.imageMessage.caption;
+  if (includeCaptions && normalized.videoMessage?.caption) return normalized.videoMessage.caption;
+  if (includeCaptions && normalized.documentMessage?.caption) return normalized.documentMessage.caption;
   return '';
 }
 
+export function extractNormalizedMessageContent(msg) {
+  return unwrapMessageContent(msg?.message);
+}
+
 export function extractTextFromBaileysMessage(msg) {
-  return getMessageText(msg?.message).trim();
+  return getMessageText(msg?.message, true).trim();
+}
+
+export function extractPlainTextFromBaileysMessage(msg) {
+  return getMessageText(msg?.message, false).trim();
 }
 
 export function createConfig() {

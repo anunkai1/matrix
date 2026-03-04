@@ -327,6 +327,41 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(payload["reply_to_message_id"], "55")
         self.assertEqual(request.get_header("Authorization"), "Bearer token-1")
 
+    def test_whatsapp_adapter_send_voice_posts_media_payload(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"ok": true, "result": {"message_id": 654}}'
+
+        config = make_config(
+            whatsapp_plugin_enabled=True,
+            whatsapp_bridge_api_base="http://127.0.0.1:8787",
+            whatsapp_bridge_auth_token="token-2",
+        )
+        adapter = bridge_whatsapp_channel.WhatsAppChannelAdapter(config)
+        with mock.patch.object(bridge_whatsapp_channel, "urlopen", return_value=Response()) as mocked:
+            adapter.send_voice(
+                chat_id=123,
+                voice="https://example.com/note.ogg",
+                caption="voice caption",
+                reply_to_message_id=77,
+            )
+
+        request = mocked.call_args.args[0]
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.full_url, "http://127.0.0.1:8787/media")
+        payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(payload["chat_id"], "123")
+        self.assertEqual(payload["media_ref"], "https://example.com/note.ogg")
+        self.assertEqual(payload["media_type"], "voice")
+        self.assertEqual(payload["caption"], "voice caption")
+        self.assertEqual(payload["reply_to_message_id"], "77")
+
     def test_parse_outbound_media_directive_extracts_media_and_voice_flag(self):
         text, directive = bridge_handlers.parse_outbound_media_directive(
             "[[media:/tmp/note.ogg]] [[audio_as_voice]] hello there"
@@ -834,6 +869,52 @@ class BridgeCoreTests(unittest.TestCase):
         )
         self.assertIsNone(bridge_handlers.parse_voice_confidence("no marker"))
 
+    def test_extract_prompt_and_media_prefers_media_payload_for_photo_with_caption(self):
+        prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+            {
+                "text": "photo caption",
+                "caption": "photo caption",
+                "photo": [
+                    {"file_id": "p-small", "file_size": 10},
+                    {"file_id": "p-large", "file_size": 20},
+                ],
+            }
+        )
+        self.assertEqual(prompt, "photo caption")
+        self.assertEqual(photo_file_id, "p-large")
+        self.assertIsNone(voice_file_id)
+        self.assertIsNone(document)
+
+    def test_extract_prompt_and_media_uses_text_fallback_for_document_without_caption(self):
+        prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+            {
+                "text": "summarize this",
+                "document": {
+                    "file_id": "doc-1",
+                    "file_name": "notes.txt",
+                    "mime_type": "text/plain",
+                },
+            }
+        )
+        self.assertEqual(prompt, "summarize this")
+        self.assertIsNone(photo_file_id)
+        self.assertIsNone(voice_file_id)
+        self.assertIsNotNone(document)
+        self.assertEqual(document.file_id, "doc-1")
+
+    def test_extract_prompt_and_media_combines_caption_and_text_for_voice(self):
+        prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+            {
+                "text": "extra context",
+                "caption": "@helper execute this",
+                "voice": {"file_id": "voice-3"},
+            }
+        )
+        self.assertEqual(prompt, "@helper execute this\n\nextra context")
+        self.assertIsNone(photo_file_id)
+        self.assertEqual(voice_file_id, "voice-3")
+        self.assertIsNone(document)
+
     def test_apply_voice_alias_replacements(self):
         transcript, changed = bridge_handlers.apply_voice_alias_replacements(
             "turn off master broom air con",
@@ -1242,6 +1323,51 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(kwargs["voice_file_id"], "voice-1")
         self.assertTrue(kwargs["enforce_voice_prefix_from_transcript"])
         self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_mixed_whatsapp_photo_payload_keeps_photo(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 150,
+            "message": {
+                "message_id": 250,
+                "chat": {"id": 1},
+                "text": "photo caption",
+                "caption": "photo caption",
+                "photo": [{"file_id": "photo-1", "file_size": 100}],
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertEqual(kwargs["prompt"], "photo caption")
+        self.assertEqual(kwargs["photo_file_id"], "photo-1")
+        self.assertIsNone(kwargs["voice_file_id"])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_text_message_never_routes_to_voice_transcribe_path(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 151,
+            "message": {
+                "message_id": 251,
+                "chat": {"id": 1},
+                "text": "@helper status",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertEqual(kwargs["voice_file_id"], None)
+        self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_accepts_prefixed_voice_caption_when_required(self, start_message_worker):

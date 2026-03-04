@@ -56,3 +56,26 @@
   - `WA_API_MAX_QUEUE_SIZE=2000`
   - `WA_API_MAX_LONG_POLL_SECONDS=30`
   - `WA_FILE_MAX_BYTES=52428800`
+
+## Media Contract (Node transport <-> Python policy)
+- Boundary model:
+  - Transport layer (`ops/whatsapp_govorun/bridge`, Node/Baileys) only normalizes WhatsApp payloads and serves file indirection APIs.
+  - Policy/orchestration layer (`src/telegram_bridge/*`, Python) decides prompt assembly, transcription policy, and user-facing fallback behavior.
+- Inbound normalization (`GET /updates` message envelope):
+  - `text`: plain text message body only (no media caption overloading).
+  - `caption`: media caption when present.
+  - `photo`: Telegram-compatible list with `file_id` (+ size metadata).
+  - `voice`: object with `file_id` for PTT voice notes only.
+  - `document`: object with `file_id`, `file_name`, `mime_type` for files and non-PTT audio.
+- File indirection:
+  - Python must resolve media through bridge APIs only:
+    - `GET /files/meta?file_id=...`
+    - `GET /files/content?file_path=...`
+  - Size guardrails are enforced by `WA_FILE_MAX_BYTES` in Node and per-media max bytes in Python (`TELEGRAM_MAX_*_BYTES`).
+- Outbound media (`POST /media`):
+  - Supported `media_type`: `photo`, `document`, `audio`, `voice`.
+  - `media_ref` must be either an existing local file path or an `http(s)` URL.
+  - Invalid type/ref or oversize local file returns actionable API errors (`400`/`413`).
+- Fallback behavior:
+  - If outbound media send fails, Python falls back to text response.
+  - Voice-note captions are sent as follow-up text to keep voice delivery reliable.
