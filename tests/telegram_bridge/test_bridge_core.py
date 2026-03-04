@@ -223,9 +223,15 @@ class BridgeCoreTests(unittest.TestCase):
         )
         self.assertNotIn("/voice-alias list", text)
         self.assertNotIn("/voice-alias approve", text)
+        self.assertNotIn("/yt <youtube_or_media_url>", text)
         self.assertNotIn("server3-tv-start", text)
         self.assertNotIn("Use `HA ...`", text)
         self.assertNotIn("/memory mode", text)
+
+    def test_non_whatsapp_help_text_includes_media_transcribe_command(self):
+        cfg = make_config(channel_plugin="telegram")
+        text = bridge_handlers.build_help_text(cfg)
+        self.assertIn("/yt <youtube_or_media_url> - transcribe video/audio URL", text)
 
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
@@ -1499,6 +1505,47 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertFalse(start_message_worker.called)
         self.assertEqual(len(client.messages), 1)
         self.assertIn("No pending learned voice alias suggestions.", client.messages[0][1])
+
+    @mock.patch.object(bridge_handlers, "start_media_transcribe_worker")
+    def test_handle_update_whatsapp_media_transcribe_command_bypasses_prefix_requirement(
+        self, start_media_transcribe_worker
+    ):
+        state = bridge.State()
+        client = FakeTelegramClient(channel_name="whatsapp")
+        config = make_config(required_prefixes=["govorun"], channel_plugin="whatsapp")
+        update = {
+            "update_id": 1012,
+            "message": {
+                "message_id": 2012,
+                "chat": {"id": 1, "type": "group"},
+                "text": "/yt https://youtube.com/watch?v=abc123",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_media_transcribe_worker.called)
+        kwargs = start_media_transcribe_worker.call_args.kwargs
+        self.assertEqual(kwargs["media_url"], "https://youtube.com/watch?v=abc123")
+        self.assertEqual(client.messages, [])
+
+    def test_handle_update_media_transcribe_command_shows_usage_without_url(self):
+        state = bridge.State()
+        client = FakeTelegramClient(channel_name="whatsapp")
+        config = make_config(channel_plugin="whatsapp")
+        update = {
+            "update_id": 1013,
+            "message": {
+                "message_id": 2013,
+                "chat": {"id": 1, "type": "private"},
+                "text": "/yt",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(client.messages)
+        self.assertIn("Usage: /yt <youtube_or_media_url>", client.messages[-1][1])
 
     def test_handle_update_rejects_prefix_without_action(self):
         state = bridge.State()

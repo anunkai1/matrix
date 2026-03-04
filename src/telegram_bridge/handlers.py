@@ -67,6 +67,7 @@ AUDIO_EXTENSIONS = {".ogg", ".oga", ".opus", ".mp3", ".m4a", ".aac", ".wav", ".f
 VOICE_COMPATIBLE_EXTENSIONS = {".ogg", ".oga", ".opus", ".mp3", ".m4a"}
 
 HELP_COMMAND_ALIASES = ("/help", "/h")
+MEDIA_TRANSCRIBE_COMMAND_ALIASES = ("/yt", "/yt-transcribe", "/transcribe-url")
 RATE_LIMIT_MESSAGE = "Rate limit exceeded. Please wait a minute and retry."
 RETRY_WITH_NEW_SESSION_PHASE = "Execution failed. Retrying once with a new session."
 RETRY_FAILED_MESSAGE = "Execution failed after an automatic retry. Please resend your request."
@@ -91,6 +92,7 @@ REQUEST_CANCELED_MESSAGE = "Request canceled."
 WHATSAPP_REPLY_PREFIX = "Даю справку:"
 WHATSAPP_REPLY_PREFIX_RE = re.compile(r"^\s*даю\s+справку\s*:\s*", re.IGNORECASE)
 WHATSAPP_LEGACY_REPLY_PREFIX_RE = re.compile(r"^\s*говорун\s*:\s*", re.IGNORECASE)
+MEDIA_URL_RE = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 
 
 @dataclass
@@ -455,7 +457,10 @@ def is_whatsapp_channel(client: ChannelAdapter) -> bool:
 
 
 def command_bypasses_required_prefix(client: ChannelAdapter, command: Optional[str]) -> bool:
-    return is_whatsapp_channel(client) and command == "/voice-alias"
+    return is_whatsapp_channel(client) and command in (
+        "/voice-alias",
+        *MEDIA_TRANSCRIBE_COMMAND_ALIASES,
+    )
 
 
 def send_executor_output(
@@ -1386,6 +1391,115 @@ def transcribe_voice(config, voice_path: str) -> Tuple[str, Optional[float]]:
     return transcript, parse_voice_confidence(result.stderr or "")
 
 
+def extract_first_media_url(text: str) -> Optional[str]:
+    match = MEDIA_URL_RE.search(text or "")
+    if not match:
+        return None
+    return match.group(0).strip()
+
+
+def resolve_voice_transcribe_script(config) -> Optional[Path]:
+    template = list(getattr(config, "voice_transcribe_cmd", []) or [])
+    if not template:
+        return None
+
+    for part in template:
+        if not isinstance(part, str):
+            continue
+        if "transcribe_voice.sh" not in part:
+            continue
+        candidate = Path(part).expanduser()
+        if candidate.is_file():
+            return candidate
+
+    first = template[0]
+    if isinstance(first, str):
+        candidate = Path(first).expanduser()
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def build_media_transcribe_command(config, media_url: str) -> List[str]:
+    voice_script = resolve_voice_transcribe_script(config)
+    if voice_script is None:
+        raise FileNotFoundError("Voice transcribe script is not configured.")
+    media_script = voice_script.with_name("transcribe_media_url.sh")
+    if not media_script.is_file():
+        raise FileNotFoundError(f"Media transcribe script not found: {media_script}")
+    return [str(media_script), media_url]
+
+
+def run_subprocess_with_cancel(
+    cmd: List[str],
+    timeout_seconds: int,
+    cancel_event: Optional[threading.Event],
+) -> Tuple[str, str]:
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    started_at = time.monotonic()
+    while True:
+        if cancel_event is not None and cancel_event.is_set():
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+            raise ExecutorCancelledError("Media transcription canceled.")
+        try:
+            stdout, stderr = process.communicate(timeout=0.2)
+            break
+        except subprocess.TimeoutExpired:
+            if time.monotonic() - started_at > timeout_seconds:
+                process.kill()
+                stdout, stderr = process.communicate()
+                raise subprocess.TimeoutExpired(
+                    cmd=cmd,
+                    timeout=timeout_seconds,
+                    output=stdout,
+                    stderr=stderr,
+                )
+            continue
+
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(
+            returncode=process.returncode,
+            cmd=cmd,
+            output=stdout,
+            stderr=stderr,
+        )
+    return stdout or "", stderr or ""
+
+
+def transcribe_media_url(
+    config,
+    media_url: str,
+    cancel_event: Optional[threading.Event] = None,
+) -> str:
+    cmd = build_media_transcribe_command(config, media_url)
+    timeout_seconds = int(
+        os.getenv(
+            "TELEGRAM_MEDIA_TRANSCRIBE_TIMEOUT_SECONDS",
+            str(max(300, int(getattr(config, "voice_transcribe_timeout_seconds", 180)) * 4)),
+        )
+        or "600"
+    )
+    logging.info("Running media transcription command: %s", cmd)
+    stdout, _stderr = run_subprocess_with_cancel(
+        cmd,
+        timeout_seconds=timeout_seconds,
+        cancel_event=cancel_event,
+    )
+    transcript = (stdout or "").strip()
+    if not transcript:
+        raise ValueError("Media transcription output was empty")
+    return transcript
+
+
 def transcribe_voice_for_chat(
     state: State,
     config,
@@ -1524,6 +1638,7 @@ def build_help_text(config) -> str:
         + "\n"
         "/voice-alias list - show pending learned voice corrections\n"
         "/voice-alias approve <id> - approve one learned correction\n"
+        "/yt <youtube_or_media_url> - transcribe video/audio URL\n"
         "server3-tv-start - start TV desktop mode (local shell command)\n"
         "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
@@ -2450,6 +2565,201 @@ def handle_voice_alias_command(
     return True
 
 
+def build_media_transcribe_help_text() -> str:
+    return (
+        "Usage: /yt <youtube_or_media_url>\n"
+        "Aliases: /yt-transcribe, /transcribe-url"
+    )
+
+
+def process_media_transcribe_worker(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    chat_id: int,
+    message_id: Optional[int],
+    media_url: str,
+    cancel_event: Optional[threading.Event] = None,
+) -> None:
+    progress = ProgressReporter(
+        client,
+        chat_id,
+        message_id,
+        assistant_label(config),
+        "Transcribing media",
+    )
+    try:
+        progress.start()
+        progress.set_phase("Fetching subtitles/audio.")
+        transcript = transcribe_media_url(config, media_url, cancel_event=cancel_event)
+        if cancel_event is not None and cancel_event.is_set():
+            client.send_message(
+                chat_id,
+                REQUEST_CANCELED_MESSAGE,
+                reply_to_message_id=message_id,
+            )
+            return
+        output_limit = int(getattr(config, "max_output_chars", TELEGRAM_LIMIT))
+        rendered = trim_output(transcript, output_limit)
+        client.send_message(chat_id, rendered, reply_to_message_id=message_id)
+        emit_event(
+            "bridge.media_transcribe_succeeded",
+            fields={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "output_chars": len(rendered),
+            },
+        )
+    except ExecutorCancelledError:
+        client.send_message(
+            chat_id,
+            REQUEST_CANCELED_MESSAGE,
+            reply_to_message_id=message_id,
+        )
+    except subprocess.TimeoutExpired:
+        client.send_message(
+            chat_id,
+            "Media transcription timed out. Try a shorter clip or send audio directly.",
+            reply_to_message_id=message_id,
+        )
+        emit_event(
+            "bridge.media_transcribe_failed",
+            level=logging.WARNING,
+            fields={"chat_id": chat_id, "message_id": message_id, "reason": "timeout"},
+        )
+    except FileNotFoundError as exc:
+        client.send_message(
+            chat_id,
+            str(exc),
+            reply_to_message_id=message_id,
+        )
+        emit_event(
+            "bridge.media_transcribe_failed",
+            level=logging.ERROR,
+            fields={"chat_id": chat_id, "message_id": message_id, "reason": "script_missing"},
+        )
+    except subprocess.CalledProcessError as exc:
+        logging.warning(
+            "Media transcription command failed chat_id=%s returncode=%s stderr=%r",
+            chat_id,
+            exc.returncode,
+            (exc.stderr or "")[-1000:],
+        )
+        client.send_message(
+            chat_id,
+            (
+                "Could not transcribe this media URL. "
+                "If it is YouTube, try again later or send the file/voice note directly."
+            ),
+            reply_to_message_id=message_id,
+        )
+        emit_event(
+            "bridge.media_transcribe_failed",
+            level=logging.WARNING,
+            fields={"chat_id": chat_id, "message_id": message_id, "reason": "command_failed"},
+        )
+    except Exception:
+        logging.exception("Unexpected media transcription error for chat_id=%s", chat_id)
+        client.send_message(
+            chat_id,
+            "Media transcription failed. Please try again.",
+            reply_to_message_id=message_id,
+        )
+        emit_event(
+            "bridge.media_transcribe_failed",
+            level=logging.ERROR,
+            fields={"chat_id": chat_id, "message_id": message_id, "reason": "unexpected_error"},
+        )
+    finally:
+        progress.close()
+        clear_cancel_event(state, chat_id, expected_event=cancel_event)
+        finalize_chat_work(state, client, chat_id)
+        emit_event(
+            "bridge.request_processing_finished",
+            fields={"chat_id": chat_id, "message_id": message_id},
+        )
+
+
+def start_media_transcribe_worker(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    chat_id: int,
+    message_id: Optional[int],
+    media_url: str,
+    cancel_event: Optional[threading.Event] = None,
+) -> None:
+    worker = threading.Thread(
+        target=process_media_transcribe_worker,
+        args=(state, config, client, chat_id, message_id, media_url, cancel_event),
+        daemon=True,
+    )
+    worker.start()
+
+
+def handle_media_transcribe_command(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    chat_id: int,
+    message_id: Optional[int],
+    raw_text: str,
+) -> bool:
+    media_url = extract_first_media_url(raw_text)
+    if not media_url:
+        client.send_message(
+            chat_id,
+            build_media_transcribe_help_text(),
+            reply_to_message_id=message_id,
+        )
+        return True
+
+    if is_rate_limited(state, config, chat_id):
+        client.send_message(
+            chat_id,
+            RATE_LIMIT_MESSAGE,
+            reply_to_message_id=message_id,
+        )
+        return True
+
+    if not mark_busy(state, chat_id):
+        client.send_message(
+            chat_id,
+            config.busy_message,
+            reply_to_message_id=message_id,
+        )
+        return True
+
+    cancel_event = register_cancel_event(state, chat_id)
+    state_repo = StateRepository(state)
+    state_repo.mark_in_flight_request(chat_id, message_id)
+    emit_event(
+        "bridge.request_accepted",
+        fields={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "has_photo": False,
+            "has_voice": False,
+            "has_document": False,
+            "stateless": True,
+        },
+    )
+    start_media_transcribe_worker(
+        state=state,
+        config=config,
+        client=client,
+        chat_id=chat_id,
+        message_id=message_id,
+        media_url=media_url,
+        cancel_event=cancel_event,
+    )
+    emit_event(
+        "bridge.worker_started",
+        fields={"chat_id": chat_id, "message_id": message_id},
+    )
+    return True
+
+
 def maybe_process_voice_alias_learning_confirmation(
     state: State,
     config,
@@ -2540,6 +2850,15 @@ def handle_known_command(
         return True
     if command == "/voice-alias":
         return handle_voice_alias_command(
+            state=state,
+            config=config,
+            client=client,
+            chat_id=chat_id,
+            message_id=message_id,
+            raw_text=raw_text,
+        )
+    if command in MEDIA_TRANSCRIBE_COMMAND_ALIASES:
+        return handle_media_transcribe_command(
             state=state,
             config=config,
             client=client,

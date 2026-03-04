@@ -78,6 +78,7 @@
 - `/restart` path override for Govorun runtime: set `TELEGRAM_RESTART_SCRIPT=/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh` and `TELEGRAM_RESTART_UNIT=govorun-whatsapp-bridge.service`.
 - Voice notes: require `TELEGRAM_VOICE_TRANSCRIBE_CMD`; in group chats transcript is checked against required prefix and silently ignored when prefix is missing.
 - WhatsApp group admin command exception: `/voice-alias ...` bypasses summon prefix so operators can run `list/approve/reject/add` directly.
+- Media URL transcription command: `/yt <url>` (aliases: `/yt-transcribe`, `/transcribe-url`) uses `ops/telegram-voice/transcribe_media_url.sh` with captions-first then Whisper fallback; these commands bypass summon prefix in groups.
 - Voice prefix learning: repeated near-match prefix mishears (for example `govoron` vs `govorun`) create normal `/voice-alias` suggestions for approval.
 - Low-confidence guardrail: set `TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD` (Server3 tuned to `0.35`) and short prompt `TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE="Не понял что вы промурлычили, скажите ещё раз"` for retry guidance.
 - Language guardrail: set `TELEGRAM_VOICE_WHISPER_LANGUAGE=ru` for Russian trigger words/prefixes (`говорун`) so transcription does not force English transliteration.
