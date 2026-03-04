@@ -62,17 +62,17 @@ if ! command -v "${CODEX_BIN}" >/dev/null 2>&1; then
   exit 127
 fi
 
+EXEC_COMMON_ARGS=()
 if [[ -n "${ARCHITECT_EXEC_ARGS:-}" ]]; then
-  # Optional override for operators, applied to new sessions only.
-  read -r -a EXEC_ARGS <<<"${ARCHITECT_EXEC_ARGS}"
-else
-  EXEC_ARGS=(--color never)
+  # Optional override for operators, applied to both new and resumed sessions.
+  read -r -a EXEC_COMMON_ARGS <<<"${ARCHITECT_EXEC_ARGS}"
 fi
+EXEC_NEW_ARGS=(--color never)
 
 if [[ "${mode}" == "resume" ]]; then
-  CMD=("${CODEX_BIN}" exec resume --dangerously-bypass-approvals-and-sandbox --json "${IMAGE_ARGS[@]}" "${thread_id}" -)
+  CMD=("${CODEX_BIN}" exec resume --dangerously-bypass-approvals-and-sandbox "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" "${thread_id}" -)
 else
-  CMD=("${CODEX_BIN}" exec --dangerously-bypass-approvals-and-sandbox "${EXEC_ARGS[@]}" --json "${IMAGE_ARGS[@]}" -)
+  CMD=("${CODEX_BIN}" exec --dangerously-bypass-approvals-and-sandbox "${EXEC_NEW_ARGS[@]}" "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" -)
 fi
 
 printf '%s\n' "${prompt}" | "${CMD[@]}"

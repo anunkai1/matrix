@@ -43,6 +43,7 @@
 - Group behavior: trigger required
 - DM behavior: always respond
 - Optional tone control: set `TELEGRAM_RESPONSE_STYLE_HINT` in `/etc/default/govorun-whatsapp-bridge` to keep replies informative with light humor.
+- Optional speed/profile override: set `ARCHITECT_EXEC_ARGS` (for example `--model gpt-5-codex-mini --config model_reasoning_effort="medium"`). This is applied by `executor.sh` to both new and resumed chats.
 - Voice notes: require `TELEGRAM_VOICE_TRANSCRIBE_CMD`; in group chats transcript is checked against required prefix and silently ignored when prefix is missing.
 - WhatsApp group admin command exception: `/voice-alias ...` bypasses summon prefix so operators can run `list/approve/reject/add` directly.
 - Voice prefix learning: repeated near-match prefix mishears (for example `govoron` vs `govorun`) create normal `/voice-alias` suggestions for approval.
