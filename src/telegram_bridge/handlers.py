@@ -1378,15 +1378,22 @@ def transcribe_voice_for_chat(
 
 
 def build_help_text(config) -> str:
-    name = assistant_label(config)
-    base = (
+    minimal = (
         "Available commands:\n"
         "/start - verify bridge connectivity\n"
         "/help or /h - show this message\n"
         "/status - show bridge status and context\n"
         "/reset - clear saved context for this chat\n"
         "/cancel - cancel current in-flight request for this chat\n"
-        "/restart - queue a safe bridge restart\n"
+        "/restart - queue a safe bridge restart"
+    )
+    if getattr(config, "channel_plugin", "telegram") == "whatsapp":
+        return minimal
+
+    name = assistant_label(config)
+    base = (
+        minimal
+        + "\n"
         "/voice-alias list - show pending learned voice corrections\n"
         "/voice-alias approve <id> - approve one learned correction\n"
         "server3-tv-start - start TV desktop mode (local shell command)\n"

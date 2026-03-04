@@ -204,6 +204,21 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("HelperBot", bridge_handlers.start_command_message(cfg))
         self.assertIn("HelperBot", bridge_handlers.build_help_text(cfg))
 
+    def test_whatsapp_help_text_is_minimal(self):
+        cfg = make_config(channel_plugin="whatsapp")
+        text = bridge_handlers.build_help_text(cfg)
+        self.assertIn("Available commands:", text)
+        self.assertIn("/start - verify bridge connectivity", text)
+        self.assertIn("/help or /h - show this message", text)
+        self.assertIn("/status - show bridge status and context", text)
+        self.assertIn("/reset - clear saved context for this chat", text)
+        self.assertIn("/cancel - cancel current in-flight request for this chat", text)
+        self.assertIn("/restart - queue a safe bridge restart", text)
+        self.assertNotIn("/voice-alias", text)
+        self.assertNotIn("server3-tv-start", text)
+        self.assertNotIn("Use `HA ...`", text)
+        self.assertNotIn("/memory mode", text)
+
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
         self.assertEqual(registry.list_channels(), ["telegram", "whatsapp"])
