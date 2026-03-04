@@ -34,6 +34,7 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-04: updated Govorun WhatsApp compact progress wording in live `/etc/default/govorun-whatsapp-bridge` to `Говорун соображает... Уже Nс` by setting `TELEGRAM_PROGRESS_LABEL=Говорун соображает` (elapsed prefix/suffix unchanged: `Уже` / `с`).
 - 2026-03-04: forced Govorun WhatsApp whisper language to Russian (`TELEGRAM_VOICE_WHISPER_LANGUAGE=ru`) so Russian-spoken summon prefix `говорун` is transcribed in Cyrillic-compatible form instead of English-biased output; applied live in `/etc/default/govorun-whatsapp-bridge` and restarted bridge runtime.
 - 2026-03-04: lowered Govorun WhatsApp voice low-confidence threshold to `0.35` and changed low-confidence user prompt to `Не понял что вы промурлычили, скажите ещё раз`; wired new config field/env `TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE` and applied live in `/etc/default/govorun-whatsapp-bridge`.
 - 2026-03-04: enabled WhatsApp voice-prefix alias learning assist by allowing `/voice-alias` commands to bypass summon-prefix gating in WhatsApp groups and by auto-observing repeated near-prefix transcript misses (for example `govoron` -> `govorun`) into standard voice-alias suggestions that can be approved via `/voice-alias approve <id>`.
@@ -41,7 +42,6 @@ Last updated: 2026-03-04 (AEST, +10:00)
 - 2026-03-04: made WhatsApp `/help` and `/h` output minimal and command-only (`/start`, `/help`, `/status`, `/reset`, `/cancel`, `/restart`) by channel-specific help rendering in `src/telegram_bridge/handlers.py`; removed non-applicable WhatsApp help lines (voice-alias, TV helpers, routing keywords, memory help) for `channel_plugin=whatsapp`.
 - 2026-03-04: fixed WhatsApp progress-message spam by making Node `/messages/edit` strict (no fallback fresh-send on edit miss/failure) and stopping repeated WhatsApp progress edit retries in Python after first edit error; group prefix-required behavior is unchanged.
 - 2026-03-04: added runtime observer daily-digest capability with new modes `telegram_daily_summary` and `telegram_alerts_daily`, local-time scheduling (`RUNTIME_OBSERVER_DAILY_SUMMARY_HOUR_LOCAL` + `RUNTIME_OBSERVER_DAILY_SUMMARY_MINUTE_LOCAL`), window sizing (`RUNTIME_OBSERVER_DAILY_SUMMARY_WINDOW_HOURS`, default `24`), and summary lines that include warn/critical occurrence counts per KPI.
-- 2026-03-04: hardened Govorun WhatsApp media contract across Node transport + Python policy by normalizing inbound `text/caption/photo/voice/document`, tightening `/media` outbound validation (`media_type`, URL/local-file ref checks, local size limit), and updating `src/telegram_bridge/handlers.py` prompt/media extraction so captioned media is not downgraded to text-only; live runtime copies were synced to `/home/govorun/whatsapp-govorun/app` and `/home/govorun/govorunbot/src/telegram_bridge`, then both WhatsApp services were restarted healthy.
 
 ## Current Risks/Watchouts (Max 5)
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.
