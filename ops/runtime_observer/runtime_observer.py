@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Phase-1 runtime observer for Server3 bridge services.
+"""Runtime observer for Server3 bridge services.
 
-Day-1 mode is collect-only: compute KPI state, persist snapshots, and expose
-operator commands. This script intentionally does not send alerts.
+Phase-1 mode is collect-only: compute KPI state, persist snapshots, and expose
+operator commands. Phase-2 can enable Telegram alert delivery with cooldown.
 """
 
 from __future__ import annotations
@@ -13,6 +13,9 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -46,9 +49,34 @@ def env_int(name: str, default: int, minimum: int = 0) -> int:
 TZ_NAME = os.getenv("RUNTIME_OBSERVER_TZ", "Australia/Brisbane")
 STATE_DIR = Path(os.getenv("RUNTIME_OBSERVER_STATE_DIR", "/var/lib/server3-runtime-observer"))
 SNAPSHOT_PATH = STATE_DIR / "snapshots.jsonl"
+ALERT_STATE_PATH = STATE_DIR / "alert_state.json"
 RETENTION_HOURS = env_int("RUNTIME_OBSERVER_RETENTION_HOURS", 168, minimum=24)
 MODE = os.getenv("RUNTIME_OBSERVER_MODE", "collect_only").strip() or "collect_only"
 WA_RUNTIME_LOG = Path(os.getenv("RUNTIME_OBSERVER_WA_LOG_PATH", WA_RUNTIME_LOG_DEFAULT))
+ALERT_COOLDOWN_MINUTES = env_int("RUNTIME_OBSERVER_ALERT_COOLDOWN_MINUTES", 30, minimum=1)
+ALERT_ENABLED = MODE == "telegram_alerts"
+ALERT_TIMEOUT_SECONDS = env_int("RUNTIME_OBSERVER_ALERT_TIMEOUT_SECONDS", 10, minimum=2)
+
+
+def env_csv(name: str) -> List[str]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def alert_telegram_bot_token() -> str:
+    return (
+        os.getenv("RUNTIME_OBSERVER_TELEGRAM_BOT_TOKEN", "").strip()
+        or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    )
+
+
+def alert_telegram_chat_ids() -> List[str]:
+    explicit = env_csv("RUNTIME_OBSERVER_TELEGRAM_CHAT_IDS")
+    if explicit:
+        return explicit
+    return env_csv("TELEGRAM_ALLOWED_CHAT_IDS")
 
 
 def now_utc() -> datetime:
@@ -495,6 +523,187 @@ def append_snapshot(snapshot: Dict[str, object]) -> None:
     save_snapshots(kept)
 
 
+def load_alert_state() -> Dict[str, object]:
+    if not ALERT_STATE_PATH.exists():
+        return {}
+    try:
+        with open(ALERT_STATE_PATH, "r", encoding="utf-8") as handle:
+            decoded = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(decoded, dict):
+        return {}
+    return decoded
+
+
+def save_alert_state(state: Dict[str, object]) -> None:
+    ensure_state_dir()
+    temp_path = ALERT_STATE_PATH.with_suffix(".json.tmp")
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        json.dump(state, handle, sort_keys=True, ensure_ascii=True, indent=2)
+        handle.write("\n")
+    temp_path.replace(ALERT_STATE_PATH)
+
+
+def parse_iso_utc(raw: object) -> Optional[datetime]:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def kpi_alert_rows(snapshot: Dict[str, object]) -> List[Tuple[str, Dict[str, object]]]:
+    kpis = snapshot.get("kpis")
+    if not isinstance(kpis, dict):
+        return []
+    rows: List[Tuple[str, Dict[str, object]]] = []
+    for name, metric in kpis.items():
+        if not isinstance(name, str) or not isinstance(metric, dict):
+            continue
+        severity = metric.get("severity")
+        if severity not in {"warn", "critical"}:
+            continue
+        rows.append((name, metric))
+    rows.sort(key=lambda row: row[0])
+    return rows
+
+
+def alert_signature(rows: List[Tuple[str, Dict[str, object]]]) -> str:
+    if not rows:
+        return ""
+    return "|".join(f"{name}:{metric.get('severity', 'unknown')}" for name, metric in rows)
+
+
+def format_kpi_alert_line(name: str, metric: Dict[str, object]) -> str:
+    severity = str(metric.get("severity", "unknown"))
+    if name == "service_up":
+        active = metric.get("active_services", "-")
+        total = metric.get("total_services", "-")
+        down = metric.get("down_over_60s")
+        down_text = ",".join(down) if isinstance(down, list) and down else "-"
+        return f"- {name}: {severity} active={active}/{total} down_over_60s={down_text}"
+    if name == "restart_count":
+        return (
+            f"- {name}: {severity} max_per_service_last_hour="
+            f"{metric.get('max_restarts_per_service_last_hour', '-')}"
+        )
+    if name == "telegram_retry_rate":
+        return f"- {name}: {severity} count_last_15m={metric.get('count_last_15m', '-')}"
+    if name == "telegram_edit_400_rate":
+        return (
+            f"- {name}: {severity} rate={format_percent(metric.get('rate_percent'))} "
+            f"edit_400={metric.get('edit_400_count', '-')} attempts={metric.get('edit_attempts', '-')}"
+        )
+    if name == "wa_reconnect_rate":
+        return f"- {name}: {severity} count_last_hour={metric.get('count_last_hour', '-')}"
+    if name == "request_fail_rate":
+        return (
+            f"- {name}: {severity} rate={format_percent(metric.get('rate_percent'))} "
+            f"failed={metric.get('failed', '-')} total={metric.get('total', '-')}"
+        )
+    return f"- {name}: {severity}"
+
+
+def format_alert_message(snapshot: Dict[str, object], rows: List[Tuple[str, Dict[str, object]]]) -> str:
+    observed_local = snapshot.get("observed_at_local", "-")
+    host = os.uname().nodename
+    highest = pick_worst_severity(str(metric.get("severity", "unknown")) for _, metric in rows)
+    lines = [
+        f"[Server3] Runtime alert ({observed_local})",
+        f"host={host} mode={MODE} highest={highest}",
+    ]
+    for name, metric in rows:
+        lines.append(format_kpi_alert_line(name, metric))
+    warnings = snapshot.get("warnings")
+    if isinstance(warnings, list) and warnings:
+        lines.append(f"warnings={json.dumps(warnings[:4], ensure_ascii=True)}")
+    return "\n".join(lines)
+
+
+def format_recovery_message(snapshot: Dict[str, object], previous_signature: str) -> str:
+    observed_local = snapshot.get("observed_at_local", "-")
+    host = os.uname().nodename
+    lines = [
+        f"[Server3] Runtime recovered ({observed_local})",
+        f"host={host} mode={MODE}",
+    ]
+    if previous_signature:
+        lines.append(f"cleared={previous_signature}")
+    return "\n".join(lines)
+
+
+def send_telegram_message(text: str) -> None:
+    token = alert_telegram_bot_token()
+    chat_ids = alert_telegram_chat_ids()
+    if not token or not chat_ids:
+        raise RuntimeError("missing telegram token/chat ids for runtime observer alerts")
+    endpoint = f"https://api.telegram.org/bot{token}/sendMessage"
+    for chat_id in chat_ids:
+        payload = urllib.parse.urlencode(
+            {"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"}
+        ).encode("utf-8")
+        request = urllib.request.Request(endpoint, data=payload, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=ALERT_TIMEOUT_SECONDS) as response:
+                _ = response.read()
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"telegram send failed for chat_id={chat_id}: {exc}") from exc
+
+
+def maybe_send_alert(snapshot: Dict[str, object]) -> Tuple[bool, str]:
+    rows = kpi_alert_rows(snapshot)
+    state = load_alert_state()
+    active = bool(state.get("active", False))
+    last_signature = str(state.get("last_signature", ""))
+    last_highest = str(state.get("last_highest", "ok"))
+    last_sent_dt = parse_iso_utc(state.get("last_sent_utc"))
+    now_dt = now_utc()
+    cooldown_elapsed = True
+    if isinstance(last_sent_dt, datetime):
+        cooldown_elapsed = now_dt >= (last_sent_dt + timedelta(minutes=ALERT_COOLDOWN_MINUTES))
+
+    if not rows:
+        if active:
+            message = format_recovery_message(snapshot, previous_signature=last_signature)
+            send_telegram_message(message)
+            save_alert_state(
+                {
+                    "active": False,
+                    "last_signature": "",
+                    "last_highest": "ok",
+                    "last_sent_utc": now_dt.isoformat(),
+                }
+            )
+            return True, "recovery_sent"
+        return False, "no_alert"
+
+    signature = alert_signature(rows)
+    highest = pick_worst_severity(str(metric.get("severity", "unknown")) for _, metric in rows)
+    severity_escalated = SEVERITY_ORDER.get(highest, SEVERITY_ORDER["unknown"]) > SEVERITY_ORDER.get(
+        last_highest, SEVERITY_ORDER["ok"]
+    )
+    should_send = (not active) or (signature != last_signature) or severity_escalated or cooldown_elapsed
+    if not should_send:
+        return False, "cooldown"
+
+    message = format_alert_message(snapshot, rows)
+    send_telegram_message(message)
+    save_alert_state(
+        {
+            "active": True,
+            "last_signature": signature,
+            "last_highest": highest,
+            "last_sent_utc": now_dt.isoformat(),
+        }
+    )
+    return True, "alert_sent"
+
+
 def format_percent(value: Optional[float]) -> str:
     if value is None:
         return "n/a"
@@ -740,6 +949,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("collect", help="collect a KPI snapshot and persist it")
     sub.add_parser("status", help="compute and print current KPI state")
+    sub.add_parser("notify-test", help="send a runtime observer test message to configured Telegram chat(s)")
     summary = sub.add_parser("summary", help="print rolling summary from stored snapshots")
     summary.add_argument("--hours", type=int, default=24, help="window size in hours (default: 24)")
 
@@ -747,6 +957,15 @@ def main() -> int:
     if args.command == "collect":
         snapshot = build_snapshot(now_utc())
         append_snapshot(snapshot)
+        if ALERT_ENABLED:
+            try:
+                sent, reason = maybe_send_alert(snapshot)
+                if sent:
+                    print(f"observer_alert={reason}")
+                else:
+                    print(f"observer_alert_skipped={reason}")
+            except Exception as exc:
+                print(f"observer_alert_error={exc}", file=sys.stderr)
         if args.json:
             print(json.dumps(snapshot, indent=2, sort_keys=True, ensure_ascii=True))
         else:
@@ -766,6 +985,17 @@ def main() -> int:
             print(json.dumps(summary_obj, indent=2, sort_keys=True, ensure_ascii=True))
         else:
             print(format_summary(summary_obj))
+        return 0
+    if args.command == "notify-test":
+        if not ALERT_ENABLED:
+            print("Runtime observer alerts are disabled (set RUNTIME_OBSERVER_MODE=telegram_alerts).")
+            return 2
+        text = (
+            f"[Server3] Runtime observer test message ({iso_local(now_utc())})\n"
+            f"host={os.uname().nodename} mode={MODE}"
+        )
+        send_telegram_message(text)
+        print("Runtime observer test alert sent.")
         return 0
 
     parser.error("unknown command")

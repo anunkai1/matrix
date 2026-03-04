@@ -45,14 +45,24 @@
 3. Confirm:
    - `systemctl status telegram-architect-bridge.service`
 
-## Runtime observer (Phase 1, day-1 collect only)
+## Runtime observer
 - Purpose:
   - Compute KPI snapshots off-path without changing chat behavior.
   - Persist local snapshots for operator inspection (`status`, `summary`).
+  - Optional proactive Telegram alerts with cooldown and recovery notices.
 - Install/enable timer:
   - `ops/runtime_observer/install_systemd.sh apply`
 - Optional env override file:
   - `/etc/default/server3-runtime-observer` (template: `infra/env/server3-runtime-observer.env.example`)
+- Enable proactive Telegram alerts (Phase 2):
+  - Set `RUNTIME_OBSERVER_MODE=telegram_alerts` in `/etc/default/server3-runtime-observer`
+  - Optional: set `RUNTIME_OBSERVER_TELEGRAM_CHAT_IDS` for explicit routing
+  - If explicit Telegram vars are not set, observer falls back to `/etc/default/telegram-architect-bridge` (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`)
+  - Reload/restart timer path:
+    - `sudo systemctl daemon-reload`
+    - `sudo systemctl restart server3-runtime-observer.timer`
+  - Validate send path:
+    - `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py notify-test`
 - Timer/service checks:
   - `sudo systemctl status server3-runtime-observer.timer --no-pager -n 20`
   - `sudo systemctl status server3-runtime-observer.service --no-pager -n 50`

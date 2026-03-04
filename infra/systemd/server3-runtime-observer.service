@@ -1,5 +1,5 @@
 [Unit]
-Description=Server3 Runtime KPI Observer (Phase 1)
+Description=Server3 Runtime KPI Observer
 After=network-online.target
 Wants=network-online.target
 
@@ -13,5 +13,6 @@ Environment=RUNTIME_OBSERVER_STATE_DIR=/var/lib/server3-runtime-observer
 Environment=RUNTIME_OBSERVER_TZ=Australia/Brisbane
 Environment=RUNTIME_OBSERVER_MODE=collect_only
 EnvironmentFile=-/etc/default/server3-runtime-observer
+EnvironmentFile=-/etc/default/telegram-architect-bridge
 StateDirectory=server3-runtime-observer
 ExecStart=/usr/bin/python3 /home/architect/matrix/ops/runtime_observer/runtime_observer.py collect
