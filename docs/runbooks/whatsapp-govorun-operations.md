@@ -52,11 +52,11 @@
 - 1:1 preview send:
   - `python3 ops/whatsapp_govorun/send_daily_uplift.py --test --chat-id <dm_chat_id>`
 - Tone rule (authoritative for this daily message):
-  - Keep it light, warm, and enjoyable.
+  - Keep it fun, funny, light, warm, and enjoyable.
   - Send exactly one short fun fact / amusing positive note.
-  - Prefer: funny history/culture moments, animals, science curiosities, space, wholesome human stories, fun life hacks.
+  - Prefer: funny, fun, interesting history/culture moments, animals, science curiosities, space, wholesome human stories, life hacks.
   - Avoid: politics, war, tragedy, death, illness, stress/work-pressure, money anxiety.
-  - Style: simple Russian, 1-2 sentences for the fact.
+  - Style: simple Russian, 1-2 sentences for the fact, no sarcasm at people.
   - Fixed format:
     - `Доброе утро, Путиловы! ☀️`
     - `Даю справку: <короткий позитивный/забавный факт>`

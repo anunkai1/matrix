@@ -20,11 +20,11 @@ except Exception:  # pragma: no cover
 
 UPLIFTING_FACTS_RU = [
     # Tone rule (daily 09:00 RU message):
-    # - Light, warm, enjoyable.
-    # - Exactly one short fun/amusing positive note.
-    # - Prefer: funny history/culture, animals, science curiosities, space, wholesome stories, fun life hacks.
-    # - Avoid: politics, war, tragedy, death, illness, work-pressure stress, money anxiety.
-    # - Style: simple Russian, 1-2 sentences.
+    # - Keep it fun, funny, light, warm, and enjoyable.
+    # - Send exactly one short fun fact / amusing positive note.
+    # - Prefer: funny, fun, interesting history/culture moments, animals, science curiosities, space, wholesome human stories, life hacks.
+    # - Avoid: politics, war, tragedy, death, illness, stress/work-pressure, money anxiety.
+    # - Style: simple Russian, 1-2 sentences, no sarcasm at people.
     "В Эрмитаже уже много лет живут коты-сотрудники, которые охраняют музей от грызунов.",
     "Во время белых ночей в Санкт-Петербурге можно гулять почти до полуночи при естественном свете.",
     "Зимой на Байкале лед бывает настолько прозрачным, что кажется, будто озеро светится изнутри.",
