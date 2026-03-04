@@ -2435,7 +2435,10 @@ def handle_update(
             level=logging.WARNING,
             fields={"chat_id": chat_id, "message_id": message_id, "reason": "chat_not_allowlisted"},
         )
-        client.send_message(chat_id, config.denied_message, reply_to_message_id=message_id)
+        # For WhatsApp-plugin ingress, silent-deny avoids leaking policy to
+        # unrelated groups while preserving denial telemetry.
+        if config.channel_plugin != "whatsapp":
+            client.send_message(chat_id, config.denied_message, reply_to_message_id=message_id)
         return
 
     prompt_input, photo_file_id, voice_file_id, document = extract_prompt_and_media(message)

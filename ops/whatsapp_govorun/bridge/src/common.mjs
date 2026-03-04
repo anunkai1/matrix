@@ -23,6 +23,19 @@ export function splitCsv(value) {
     .filter(Boolean);
 }
 
+export function parseIntegerCsv(value, minimum = 1) {
+  const parsed = [];
+  const seen = new Set();
+  for (const raw of splitCsv(value)) {
+    const next = Number.parseInt(raw, 10);
+    if (!Number.isFinite(next) || Number.isNaN(next) || next < minimum) continue;
+    if (seen.has(next)) continue;
+    seen.add(next);
+    parsed.push(next);
+  }
+  return parsed;
+}
+
 export function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -98,6 +111,7 @@ export function createConfig() {
     allowFromMeGroupTriggerOnly: parseBool(process.env.WA_ALLOW_FROM_ME_GROUP_TRIGGER_ONLY, true),
     dmAlwaysRespond: parseBool(process.env.WA_DM_ALWAYS_RESPOND, true),
     groupTriggerRequired: parseBool(process.env.WA_GROUP_TRIGGER_REQUIRED, true),
+    allowedChatIds: parseIntegerCsv(process.env.WA_ALLOWED_CHAT_IDS, 1),
     allowedGroups: splitCsv(process.env.WA_ALLOWED_GROUPS),
     allowedDms: splitCsv(process.env.WA_ALLOWED_DMS),
     authDir,

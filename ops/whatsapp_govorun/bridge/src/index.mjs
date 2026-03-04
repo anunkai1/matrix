@@ -50,7 +50,16 @@ let nextUpdateId = 1;
 let activeSock = null;
 let apiServer = null;
 
-function shouldHandleChat(jid, isGroup) {
+function shouldHandleChat(jid, isGroup, chatId = null) {
+  if (config.allowedChatIds.length > 0) {
+    const parsedChatId = Number.isInteger(chatId) ? chatId : parseInteger(chatId, NaN, 1);
+    if (!Number.isFinite(parsedChatId) || Number.isNaN(parsedChatId)) {
+      return false;
+    }
+    if (!config.allowedChatIds.includes(parsedChatId)) {
+      return false;
+    }
+  }
   if (isGroup && config.allowedGroups.length > 0 && !config.allowedGroups.includes(jid)) {
     return false;
   }
@@ -632,6 +641,7 @@ function startApiServer() {
 async function handleIncoming(sock, msg) {
   const chatJid = msg.key?.remoteJid;
   if (!chatJid) return;
+  const chatId = getOrCreateChatId(chatJid);
 
   const isGroup = chatJid.endsWith('@g.us');
   const text = extractTextFromBaileysMessage(msg);
@@ -667,8 +677,8 @@ async function handleIncoming(sock, msg) {
     }
   }
 
-  if (!shouldHandleChat(chatJid, isGroup)) {
-    logger.debug({ chatJid }, 'ignored: not in allowed chat list');
+  if (!shouldHandleChat(chatJid, isGroup, chatId)) {
+    logger.debug({ chatJid, chatId }, 'ignored: not in allowed chat list');
     return;
   }
 
@@ -725,6 +735,7 @@ async function start() {
       allowFromMeGroupTriggerOnly: config.allowFromMeGroupTriggerOnly,
       dmAlwaysRespond: config.dmAlwaysRespond,
       groupTriggerRequired: config.groupTriggerRequired,
+      allowedChatIdsCount: config.allowedChatIds.length,
       pluginMode: config.pluginMode,
       model: config.codexModel,
       reasoningEffort: config.codexReasoningEffort,

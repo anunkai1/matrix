@@ -27,6 +27,7 @@ Matrix-managed runtime component that links WhatsApp messages to Codex execution
 ### Key env vars
 - `WA_TRIGGER` (`@говорун` default)
 - `WA_ALLOW_FROM_ME_GROUP_TRIGGER_ONLY` (`true` default)
+- `WA_ALLOWED_CHAT_IDS` (optional CSV of numeric bridge `chat_id` values; recommended in plugin mode)
 - `WA_PLUGIN_MODE` (`false` default)
 - `WA_API_HOST` (`127.0.0.1` default)
 - `WA_API_PORT` (`8787` default)
