@@ -54,12 +54,18 @@ RETENTION_HOURS = env_int("RUNTIME_OBSERVER_RETENTION_HOURS", 168, minimum=24)
 MODE = os.getenv("RUNTIME_OBSERVER_MODE", "collect_only").strip() or "collect_only"
 WA_RUNTIME_LOG = Path(os.getenv("RUNTIME_OBSERVER_WA_LOG_PATH", WA_RUNTIME_LOG_DEFAULT))
 ALERT_COOLDOWN_MINUTES = env_int("RUNTIME_OBSERVER_ALERT_COOLDOWN_MINUTES", 30, minimum=1)
-ALERT_ENABLED = MODE == "telegram_alerts"
+ALERT_ENABLED = MODE in {"telegram_alerts", "telegram_alerts_daily"}
 ALERT_TIMEOUT_SECONDS = env_int("RUNTIME_OBSERVER_ALERT_TIMEOUT_SECONDS", 10, minimum=2)
 TELEGRAM_EDIT_MIN_ATTEMPTS = env_int(
     "RUNTIME_OBSERVER_TELEGRAM_EDIT_MIN_ATTEMPTS",
     20,
     minimum=1,
+)
+DAILY_SUMMARY_ENABLED = MODE in {"telegram_daily_summary", "telegram_alerts_daily"}
+DAILY_SUMMARY_WINDOW_HOURS = env_int("RUNTIME_OBSERVER_DAILY_SUMMARY_WINDOW_HOURS", 24, minimum=1)
+DAILY_SUMMARY_HOUR_LOCAL = min(
+    23,
+    env_int("RUNTIME_OBSERVER_DAILY_SUMMARY_HOUR_LOCAL", 20, minimum=0),
 )
 
 
@@ -721,6 +727,40 @@ def maybe_send_alert(snapshot: Dict[str, object]) -> Tuple[bool, str]:
     return True, "alert_sent"
 
 
+def format_daily_summary_message(summary: Dict[str, object], observed_dt: datetime) -> str:
+    host = os.uname().nodename
+    lines = [
+        f"[Server3] Daily runtime summary ({iso_local(observed_dt)})",
+        f"host={host} mode={MODE} window={summary.get('hours', DAILY_SUMMARY_WINDOW_HOURS)}h",
+        format_summary(summary),
+    ]
+    return "\n".join(lines)
+
+
+def maybe_send_daily_summary(observed_dt: datetime) -> Tuple[bool, str]:
+    if not DAILY_SUMMARY_ENABLED:
+        return False, "daily_summary_disabled"
+
+    local_now = to_local(observed_dt)
+    local_date = local_now.date().isoformat()
+    if local_now.hour < DAILY_SUMMARY_HOUR_LOCAL:
+        return False, "before_daily_summary_hour"
+
+    state = load_alert_state()
+    if str(state.get("last_daily_summary_local_date", "")) == local_date:
+        return False, "daily_summary_already_sent"
+
+    summary = build_window_summary(DAILY_SUMMARY_WINDOW_HOURS)
+    message = format_daily_summary_message(summary, observed_dt)
+    send_telegram_message(message)
+
+    next_state = dict(state)
+    next_state["last_daily_summary_local_date"] = local_date
+    next_state["last_daily_summary_sent_utc"] = observed_dt.isoformat()
+    save_alert_state(next_state)
+    return True, "daily_summary_sent"
+
+
 def format_percent(value: Optional[float]) -> str:
     if value is None:
         return "n/a"
@@ -860,6 +900,13 @@ def build_window_summary(hours: int) -> Dict[str, object]:
         if isinstance(row.get("rate_percent"), (int, float))
     ]
 
+    def severity_counts(metric_rows: List[Dict[str, object]]) -> Dict[str, int]:
+        return {
+            "warn": sum(1 for row in metric_rows if row.get("severity") == "warn"),
+            "critical": sum(1 for row in metric_rows if row.get("severity") == "critical"),
+            "unknown": sum(1 for row in metric_rows if row.get("severity") == "unknown"),
+        }
+
     return {
         "hours": hours,
         "timezone": TZ_NAME,
@@ -871,36 +918,42 @@ def build_window_summary(hours: int) -> Dict[str, object]:
                 "worst_severity": pick_worst_severity(
                     row.get("severity", "unknown") for row in service_rows
                 ),
+                "severity_counts": severity_counts(service_rows),
                 "value_percent": summarize_values(service_values),
             },
             "restart_count": {
                 "worst_severity": pick_worst_severity(
                     row.get("severity", "unknown") for row in restart_rows
                 ),
+                "severity_counts": severity_counts(restart_rows),
                 "max_restarts_per_service_last_hour": summarize_values(restart_values),
             },
             "telegram_retry_rate": {
                 "worst_severity": pick_worst_severity(
                     row.get("severity", "unknown") for row in retry_rows
                 ),
+                "severity_counts": severity_counts(retry_rows),
                 "count_last_15m": summarize_values(retry_values),
             },
             "telegram_edit_400_rate": {
                 "worst_severity": pick_worst_severity(
                     row.get("severity", "unknown") for row in edit_rows
                 ),
+                "severity_counts": severity_counts(edit_rows),
                 "rate_percent": summarize_values(edit_values),
             },
             "wa_reconnect_rate": {
                 "worst_severity": pick_worst_severity(
                     row.get("severity", "unknown") for row in wa_rows
                 ),
+                "severity_counts": severity_counts(wa_rows),
                 "count_last_hour": summarize_values(wa_values),
             },
             "request_fail_rate": {
                 "worst_severity": pick_worst_severity(
                     row.get("severity", "unknown") for row in req_rows
                 ),
+                "severity_counts": severity_counts(req_rows),
                 "rate_percent": summarize_values(req_values),
             },
         },
@@ -926,32 +979,50 @@ def format_summary(summary: Dict[str, object]) -> str:
         (
             "service_up: "
             f"worst={kpis['service_up']['worst_severity']} "
+            "warn/critical="
+            f"{kpis['service_up']['severity_counts']['warn']}/"
+            f"{kpis['service_up']['severity_counts']['critical']} "
             f"min/avg/max={format_triplet(kpis['service_up']['value_percent'], '%')}"
         ),
         (
             "restart_count: "
             f"worst={kpis['restart_count']['worst_severity']} "
+            "warn/critical="
+            f"{kpis['restart_count']['severity_counts']['warn']}/"
+            f"{kpis['restart_count']['severity_counts']['critical']} "
             "min/avg/max="
             f"{format_triplet(kpis['restart_count']['max_restarts_per_service_last_hour'])}"
         ),
         (
             "telegram_retry_rate: "
             f"worst={kpis['telegram_retry_rate']['worst_severity']} "
+            "warn/critical="
+            f"{kpis['telegram_retry_rate']['severity_counts']['warn']}/"
+            f"{kpis['telegram_retry_rate']['severity_counts']['critical']} "
             f"min/avg/max={format_triplet(kpis['telegram_retry_rate']['count_last_15m'])}"
         ),
         (
             "telegram_edit_400_rate: "
             f"worst={kpis['telegram_edit_400_rate']['worst_severity']} "
+            "warn/critical="
+            f"{kpis['telegram_edit_400_rate']['severity_counts']['warn']}/"
+            f"{kpis['telegram_edit_400_rate']['severity_counts']['critical']} "
             f"min/avg/max={format_triplet(kpis['telegram_edit_400_rate']['rate_percent'], '%')}"
         ),
         (
             "wa_reconnect_rate: "
             f"worst={kpis['wa_reconnect_rate']['worst_severity']} "
+            "warn/critical="
+            f"{kpis['wa_reconnect_rate']['severity_counts']['warn']}/"
+            f"{kpis['wa_reconnect_rate']['severity_counts']['critical']} "
             f"min/avg/max={format_triplet(kpis['wa_reconnect_rate']['count_last_hour'])}"
         ),
         (
             "request_fail_rate: "
             f"worst={kpis['request_fail_rate']['worst_severity']} "
+            "warn/critical="
+            f"{kpis['request_fail_rate']['severity_counts']['warn']}/"
+            f"{kpis['request_fail_rate']['severity_counts']['critical']} "
             f"min/avg/max={format_triplet(kpis['request_fail_rate']['rate_percent'], '%')}"
         ),
     ]
@@ -974,7 +1045,8 @@ def main() -> int:
 
     args = parser.parse_args()
     if args.command == "collect":
-        snapshot = build_snapshot(now_utc())
+        observed_dt = now_utc()
+        snapshot = build_snapshot(observed_dt)
         append_snapshot(snapshot)
         if ALERT_ENABLED:
             try:
@@ -985,6 +1057,15 @@ def main() -> int:
                     print(f"observer_alert_skipped={reason}")
             except Exception as exc:
                 print(f"observer_alert_error={exc}", file=sys.stderr)
+        if DAILY_SUMMARY_ENABLED:
+            try:
+                sent, reason = maybe_send_daily_summary(observed_dt)
+                if sent:
+                    print(f"observer_daily_summary={reason}")
+                else:
+                    print(f"observer_daily_summary_skipped={reason}")
+            except Exception as exc:
+                print(f"observer_daily_summary_error={exc}", file=sys.stderr)
         if args.json:
             print(json.dumps(snapshot, indent=2, sort_keys=True, ensure_ascii=True))
         else:
@@ -1006,8 +1087,11 @@ def main() -> int:
             print(format_summary(summary_obj))
         return 0
     if args.command == "notify-test":
-        if not ALERT_ENABLED:
-            print("Runtime observer alerts are disabled (set RUNTIME_OBSERVER_MODE=telegram_alerts).")
+        if not (ALERT_ENABLED or DAILY_SUMMARY_ENABLED):
+            print(
+                "Runtime observer Telegram notifications are disabled "
+                "(set RUNTIME_OBSERVER_MODE=telegram_alerts, telegram_daily_summary, or telegram_alerts_daily)."
+            )
             return 2
         text = (
             f"[Server3] Runtime observer test message ({iso_local(now_utc())})\n"
