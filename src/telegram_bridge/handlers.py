@@ -1389,7 +1389,8 @@ def build_help_text(config) -> str:
         f"Send text, images, voice notes, or files and {name} will process them.\n"
         "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
         "Use `Server3 TV ...` for Server3 desktop/browser/UI operations.\n"
-        "Use `Nextcloud ...` for Nextcloud files/calendar operations."
+        "Use `Nextcloud ...` for Nextcloud files/calendar operations.\n"
+        "Use `SRO ...` when referring to Server3 Runtime Observer checks/summaries."
     )
     return base + "\n\n" + "\n".join(build_memory_help_lines())
 
