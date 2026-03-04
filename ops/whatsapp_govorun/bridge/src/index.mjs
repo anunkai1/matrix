@@ -314,9 +314,13 @@ async function downloadIncomingMedia(sock, msg) {
 
 async function buildIncomingMessagePayload(sock, msg, chatJid) {
   const chatId = getOrCreateChatId(chatJid);
+  const isGroup = chatJid.endsWith('@g.us');
   const payload = {
     message_id: nextMessageId(),
-    chat: { id: chatId }
+    chat: {
+      id: chatId,
+      type: isGroup ? 'group' : 'private'
+    }
   };
   const sender = msg.key?.participant || msg.pushName || msg.key?.remoteJid || '';
   if (sender) payload.from = { username: String(sender) };
