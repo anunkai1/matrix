@@ -84,9 +84,12 @@ async function startAuth(options = {}) {
       pairingRequested = true;
       try {
         const code = await sock.requestPairingCode(config.pairingPhone, config.pairingCode || undefined);
+        if (process.stdout.isTTY) {
+          process.stdout.write(`\nWhatsApp pairing code (${maskPhone(config.pairingPhone)}): ${code}\n`);
+        }
         logger.info(
-          { pairingPhone: maskPhone(config.pairingPhone), pairingCode: code },
-          'pairing code generated'
+          { pairingPhone: maskPhone(config.pairingPhone) },
+          'pairing code generated (redacted from logs)'
         );
       } catch (err) {
         logger.error({ err: String(err) }, 'failed to generate pairing code');

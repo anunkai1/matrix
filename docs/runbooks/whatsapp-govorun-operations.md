@@ -96,6 +96,8 @@
   - `WA_API_MAX_QUEUE_SIZE=2000`
   - `WA_API_MAX_LONG_POLL_SECONDS=30`
   - `WA_FILE_MAX_BYTES=52428800`
+  - `WA_FILE_MAX_TOTAL_BYTES=524288000`
+  - `WA_FILE_RETENTION_SECONDS=21600`
 
 ## Media Contract (Node transport <-> Python policy)
 - Boundary model:

@@ -167,6 +167,13 @@ export function createConfig() {
   const leadingNoiseClass = '[\\s\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069\\ufeff]*';
   const pairingPhone = String(process.env.WA_PAIRING_PHONE || '').replace(/[^\d]/g, '');
   const pairingCode = String(process.env.WA_PAIRING_CODE || '').trim();
+  const bridgeFileMaxBytes = parseInteger(process.env.WA_FILE_MAX_BYTES, 50 * 1024 * 1024, 1024);
+  const bridgeFileMaxTotalBytes = parseInteger(
+    process.env.WA_FILE_MAX_TOTAL_BYTES,
+    bridgeFileMaxBytes * 10,
+    bridgeFileMaxBytes
+  );
+  const bridgeFileRetentionSeconds = parseInteger(process.env.WA_FILE_RETENTION_SECONDS, 6 * 60 * 60, 60);
 
   return {
     trigger,
@@ -208,7 +215,9 @@ export function createConfig() {
     bridgeApiMaxUpdatesPerPoll: parseInteger(process.env.WA_API_MAX_UPDATES_PER_POLL, 100, 1),
     bridgeApiMaxQueueSize: parseInteger(process.env.WA_API_MAX_QUEUE_SIZE, 2000, 10),
     bridgeApiMaxLongPollSeconds: parseInteger(process.env.WA_API_MAX_LONG_POLL_SECONDS, 30, 1),
-    bridgeFileMaxBytes: parseInteger(process.env.WA_FILE_MAX_BYTES, 50 * 1024 * 1024, 1024),
+    bridgeFileMaxBytes,
+    bridgeFileMaxTotalBytes,
+    bridgeFileRetentionSeconds,
     pairingPhone,
     pairingCode
   };

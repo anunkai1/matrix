@@ -109,6 +109,18 @@ class MemoryEngine:
         return f"tg:{chat_id}"
 
     @staticmethod
+    def channel_key(channel: str, chat_id: int) -> str:
+        normalized = (channel or "telegram").strip().lower()
+        if normalized == "whatsapp":
+            prefix = "wa"
+        elif normalized == "telegram":
+            prefix = "tg"
+        else:
+            safe = re.sub(r"[^a-z0-9]+", "_", normalized).strip("_")
+            prefix = safe or "ch"
+        return f"{prefix}:{chat_id}"
+
+    @staticmethod
     def cli_key(profile_name: str = "default", namespace: str = "architect") -> str:
         profile = (profile_name or "default").strip() or "default"
         scope = (namespace or "architect").strip() or "architect"

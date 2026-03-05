@@ -47,11 +47,13 @@ const storedFileOrder = [];
 const outboundMessageKeys = new Map();
 const outboundMessageOrder = [];
 const MAX_OUTBOUND_MESSAGE_KEYS = 2000;
+const STORED_FILES_CLEANUP_INTERVAL_MS = 60 * 1000;
 
 let nextInternalMessageId = 1;
 let nextUpdateId = 1;
 let activeSock = null;
 let apiServer = null;
+let storedFilesCleanupTimer = null;
 const OUTBOUND_MEDIA_TYPES = new Set(['photo', 'audio', 'voice', 'document']);
 const MIME_BY_EXTENSION = new Map([
   ['.jpg', 'image/jpeg'],
@@ -70,6 +72,8 @@ const MIME_BY_EXTENSION = new Map([
   ['.aac', 'audio/aac'],
   ['.wav', 'audio/wav']
 ]);
+
+cleanupFilesDirOnStartup();
 
 function shouldHandleChat(jid, isGroup, chatId = null) {
   // Apply numeric chat-id allowlist to groups only. DMs are controlled via
@@ -214,8 +218,23 @@ function resolveOutboundMediaRef(mediaRef) {
   };
 }
 
+function createHttpError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+function removeStoredFileOrderEntry(fileId) {
+  let index = storedFileOrder.indexOf(fileId);
+  while (index >= 0) {
+    storedFileOrder.splice(index, 1);
+    index = storedFileOrder.indexOf(fileId);
+  }
+}
+
 function evictStoredFile(fileId) {
   const existing = storedFiles.get(fileId);
+  removeStoredFileOrderEntry(fileId);
   if (!existing) return;
   storedFiles.delete(fileId);
   try {
@@ -225,8 +244,105 @@ function evictStoredFile(fileId) {
   }
 }
 
+function computeStoredFileBytes() {
+  let total = 0;
+  for (const metadata of storedFiles.values()) {
+    const size = Number(metadata?.fileSize);
+    if (Number.isFinite(size) && size > 0) {
+      total += size;
+    }
+  }
+  return total;
+}
+
+function enforceStoredFileRetention() {
+  const ttlMs = Math.max(0, Number(config.bridgeFileRetentionSeconds || 0) * 1000);
+  const now = Date.now();
+  if (ttlMs > 0) {
+    for (const [fileId, metadata] of storedFiles.entries()) {
+      const createdAtMs = Number(metadata?.createdAtMs || 0);
+      if (createdAtMs > 0 && (now - createdAtMs) > ttlMs) {
+        evictStoredFile(fileId);
+      }
+    }
+  }
+
+  let totalBytes = computeStoredFileBytes();
+  while (totalBytes > config.bridgeFileMaxTotalBytes && storedFileOrder.length > 0) {
+    const victim = storedFileOrder[0];
+    evictStoredFile(victim);
+    totalBytes = computeStoredFileBytes();
+  }
+}
+
+function cleanupFilesDirOnStartup() {
+  const ttlMs = Math.max(0, Number(config.bridgeFileRetentionSeconds || 0) * 1000);
+  const now = Date.now();
+  let removedByTtl = 0;
+  let removedByLimit = 0;
+  const candidates = [];
+
+  let entries = [];
+  try {
+    entries = fs.readdirSync(config.filesDir, { withFileTypes: true });
+  } catch (err) {
+    logger.warn({ err: String(err), filesDir: config.filesDir }, 'failed to list bridge files directory');
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const fullPath = path.join(config.filesDir, entry.name);
+    let stat;
+    try {
+      stat = fs.statSync(fullPath);
+    } catch {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+    if (ttlMs > 0 && (now - stat.mtimeMs) > ttlMs) {
+      try {
+        fs.rmSync(fullPath, { force: true });
+        removedByTtl += 1;
+      } catch {
+        // Best-effort startup cleanup.
+      }
+      continue;
+    }
+    candidates.push({ fullPath, mtimeMs: stat.mtimeMs, size: stat.size });
+  }
+
+  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  let keptBytes = 0;
+  for (const candidate of candidates) {
+    if (keptBytes + candidate.size <= config.bridgeFileMaxTotalBytes) {
+      keptBytes += candidate.size;
+      continue;
+    }
+    try {
+      fs.rmSync(candidate.fullPath, { force: true });
+      removedByLimit += 1;
+    } catch {
+      // Best-effort startup cleanup.
+    }
+  }
+
+  if (removedByTtl > 0 || removedByLimit > 0) {
+    logger.info(
+      {
+        removedByTtl,
+        removedByLimit,
+        retentionSeconds: config.bridgeFileRetentionSeconds,
+        maxTotalBytes: config.bridgeFileMaxTotalBytes
+      },
+      'cleaned stale bridge media files on startup'
+    );
+  }
+}
+
 function storeMediaBuffer(buffer, mimeType, fileName, prefix) {
   if (!Buffer.isBuffer(buffer) || buffer.length === 0) return null;
+  enforceStoredFileRetention();
   if (buffer.length > config.bridgeFileMaxBytes) {
     logger.warn(
       { bytes: buffer.length, max: config.bridgeFileMaxBytes },
@@ -243,7 +359,8 @@ function storeMediaBuffer(buffer, mimeType, fileName, prefix) {
     fileName,
     mimeType,
     fileSize: buffer.length,
-    localPath
+    localPath,
+    createdAtMs: Date.now()
   };
   storedFiles.set(fileId, metadata);
   storedFileOrder.push(fileId);
@@ -251,6 +368,7 @@ function storeMediaBuffer(buffer, mimeType, fileName, prefix) {
     const victim = storedFileOrder.shift();
     if (victim) evictStoredFile(victim);
   }
+  enforceStoredFileRetention();
   return metadata;
 }
 
@@ -441,14 +559,18 @@ async function parseJsonBody(req, maxBytes = 1024 * 1024) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += buffer.length;
     if (total > maxBytes) {
-      throw new Error('request_too_large');
+      throw createHttpError('request_too_large', 'request_too_large');
     }
     chunks.push(buffer);
   }
   if (chunks.length === 0) return {};
   const raw = Buffer.concat(chunks).toString('utf-8');
   if (!raw.trim()) return {};
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw createHttpError('invalid_json', 'invalid_json');
+  }
 }
 
 function isAuthorized(req) {
@@ -496,6 +618,7 @@ async function handleApiRequest(req, res) {
   }
 
   if (method === 'GET' && pathname === '/files/meta') {
+    enforceStoredFileRetention();
     const fileId = String(url.searchParams.get('file_id') || '').trim();
     if (!fileId) {
       sendJson(res, 400, { ok: false, description: 'file_id is required' });
@@ -519,6 +642,7 @@ async function handleApiRequest(req, res) {
   }
 
   if (method === 'GET' && pathname === '/files/content') {
+    enforceStoredFileRetention();
     const filePathToken = String(url.searchParams.get('file_path') || '').trim();
     if (!filePathToken) {
       sendJson(res, 400, { ok: false, description: 'file_path is required' });
@@ -734,6 +858,22 @@ function startApiServer() {
   if (apiServer) return;
   apiServer = createServer((req, res) => {
     handleApiRequest(req, res).catch((err) => {
+      if (res.headersSent) {
+        try {
+          res.end();
+        } catch {
+          // Best-effort termination when response was already started.
+        }
+        return;
+      }
+      if (err?.code === 'invalid_json') {
+        sendJson(res, 400, { ok: false, description: 'invalid_json' });
+        return;
+      }
+      if (err?.code === 'request_too_large') {
+        sendJson(res, 413, { ok: false, description: 'request_too_large' });
+        return;
+      }
       logger.error({ err: String(err) }, 'bridge API request failed');
       sendJson(res, 500, { ok: false, description: 'internal_error' });
     });
@@ -840,6 +980,19 @@ async function handleIncoming(sock, msg) {
 }
 
 async function start() {
+  if (!storedFilesCleanupTimer) {
+    storedFilesCleanupTimer = setInterval(() => {
+      try {
+        enforceStoredFileRetention();
+      } catch (err) {
+        logger.warn({ err: String(err) }, 'stored media cleanup tick failed');
+      }
+    }, STORED_FILES_CLEANUP_INTERVAL_MS);
+    if (typeof storedFilesCleanupTimer.unref === 'function') {
+      storedFilesCleanupTimer.unref();
+    }
+  }
+
   startApiServer();
   logger.info(
     {

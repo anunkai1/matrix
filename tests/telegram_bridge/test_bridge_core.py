@@ -267,6 +267,11 @@ class BridgeCoreTests(unittest.TestCase):
                 "whatsapp",
             )
 
+    def test_memory_engine_channel_key_namespaces_channels(self):
+        self.assertEqual(bridge.MemoryEngine.channel_key("telegram", 42), "tg:42")
+        self.assertEqual(bridge.MemoryEngine.channel_key("whatsapp", 42), "wa:42")
+        self.assertEqual(bridge.MemoryEngine.channel_key("custom-bridge", 42), "custom_bridge:42")
+
     def test_load_config_defaults_plugin_selection(self):
         with mock.patch.dict(
             os.environ,
@@ -1895,6 +1900,53 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertTrue(start_message_worker.called)
         self.assertEqual(client.messages, [])
+
+    def test_handle_update_uses_whatsapp_memory_conversation_key(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
+            state = bridge.State(memory_engine=memory_engine)
+            client = FakeTelegramClient(channel_name="whatsapp")
+            config = make_config(
+                channel_plugin="whatsapp",
+                allowed_chat_ids={2},
+            )
+            update = {
+                "update_id": 44,
+                "message": {
+                    "message_id": 451,
+                    "chat": {"id": 2, "type": "private"},
+                    "text": "/memory status",
+                },
+            }
+            captured = {}
+
+            def fake_memory_command(engine, conversation_key, text):
+                captured["conversation_key"] = conversation_key
+                return SimpleNamespace(
+                    handled=True,
+                    response="memory ok",
+                    run_prompt=None,
+                    stateless=False,
+                )
+
+            with mock.patch.object(
+                bridge_handlers,
+                "handle_memory_command",
+                side_effect=fake_memory_command,
+            ):
+                bridge.handle_update(state, config, client, update)
+
+            self.assertEqual(captured.get("conversation_key"), "wa:2")
+            self.assertEqual(client.messages[-1][1], "memory ok")
+
+    def test_build_status_text_uses_configured_channel_memory_namespace(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
+            memory_engine.set_mode("wa:9", "session_only")
+            state = bridge.State(memory_engine=memory_engine)
+            config = make_config(channel_plugin="whatsapp")
+            status_text = bridge_handlers.build_status_text(state, config, chat_id=9)
+            self.assertIn("Memory mode: session_only", status_text)
 
     def test_handle_update_rejects_when_chat_busy(self):
         state = bridge.State()

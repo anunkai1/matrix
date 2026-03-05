@@ -39,6 +39,8 @@ and `reply_to_message` (quoted-message context) when available.
 - `WA_API_MAX_QUEUE_SIZE` (`2000` default)
 - `WA_API_MAX_LONG_POLL_SECONDS` (`30` default)
 - `WA_FILE_MAX_BYTES` (`52428800` default)
+- `WA_FILE_MAX_TOTAL_BYTES` (`524288000` default)
+- `WA_FILE_RETENTION_SECONDS` (`21600` default)
 
 ## Local run
 

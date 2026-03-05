@@ -1586,8 +1586,11 @@ def build_status_text(state: State, config, chat_id: Optional[int] = None) -> st
         lines.append(f"This chat has worker session: {has_worker}")
         memory_engine = state.memory_engine
         if isinstance(memory_engine, MemoryEngine):
+            memory_channel = getattr(config, "channel_plugin", "telegram")
             try:
-                memory_status = memory_engine.get_status(MemoryEngine.telegram_key(chat_id))
+                memory_status = memory_engine.get_status(
+                    MemoryEngine.channel_key(memory_channel, chat_id)
+                )
             except Exception:
                 logging.exception("Failed to query memory status for chat_id=%s", chat_id)
             else:
@@ -2013,10 +2016,11 @@ def process_prompt(
     sender_name: str = "Telegram User",
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
+    channel_name = getattr(client, "channel_name", "telegram")
     active_engine = engine or CodexEngineAdapter()
     state_repo = StateRepository(state)
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
-    conversation_key = MemoryEngine.telegram_key(chat_id)
+    conversation_key = MemoryEngine.channel_key(channel_name, chat_id)
     previous_thread_id: Optional[str] = None
     turn_context: Optional[TurnContext] = None
     image_path: Optional[str] = None
@@ -2054,7 +2058,7 @@ def process_prompt(
             try:
                 turn_context = memory_engine.begin_turn(
                     conversation_key=conversation_key,
-                    channel="telegram",
+                    channel=channel_name,
                     sender_name=sender_name,
                     user_input=prompt_text,
                     stateless=stateless,
@@ -2113,7 +2117,7 @@ def process_prompt(
             try:
                 memory_engine.finish_turn(
                     turn_context,
-                    channel="telegram",
+                    channel=channel_name,
                     assistant_text=output,
                     new_thread_id=new_thread_id,
                 )
@@ -2201,8 +2205,9 @@ def handle_reset_command(
     removed_worker = state_repo.clear_worker_session(chat_id) if config.persistent_workers_enabled else False
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
     if memory_engine is not None:
+        memory_channel = getattr(client, "channel_name", "telegram")
         try:
-            memory_engine.clear_session(MemoryEngine.telegram_key(chat_id))
+            memory_engine.clear_session(MemoryEngine.channel_key(memory_channel, chat_id))
         except Exception:
             logging.exception("Failed to clear shared memory session for chat_id=%s", chat_id)
     if removed_thread or removed_worker:
@@ -2777,9 +2782,10 @@ def handle_update(
 
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
     if memory_engine is not None and prompt_input and not priority_keyword_mode:
+        memory_channel = getattr(client, "channel_name", "telegram")
         cmd_result = handle_memory_command(
             engine=memory_engine,
-            conversation_key=MemoryEngine.telegram_key(chat_id),
+            conversation_key=MemoryEngine.channel_key(memory_channel, chat_id),
             text=prompt_input,
         )
         if cmd_result.handled:
