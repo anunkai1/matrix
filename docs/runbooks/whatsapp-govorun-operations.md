@@ -118,6 +118,7 @@
 - Outbound media (`POST /media`):
   - Supported `media_type`: `photo`, `document`, `audio`, `voice`.
   - `media_ref` must be either an existing local file path or an `http(s)` URL.
+  - Optional `reply_to_message_id` is supported for best-effort quoted replies (same-chat mapped messages only).
   - Invalid type/ref or oversize local file returns actionable API errors (`400`/`413`).
 - Fallback behavior:
   - If outbound media send fails, Python falls back to text response.

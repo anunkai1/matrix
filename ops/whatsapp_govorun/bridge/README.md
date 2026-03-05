@@ -19,13 +19,16 @@ Matrix-managed runtime component that links WhatsApp messages to Codex execution
 - `GET /updates?offset=<int>&timeout=<seconds>`
 - `POST /messages`
 - `POST /media`
-- `POST /messages/edit` (compat no-op)
+- `POST /messages/edit` (best-effort edit when outbound target mapping exists)
 - `POST /chat-action` (compat no-op)
 - `GET /files/meta?file_id=<id>`
 - `GET /files/content?file_path=<token>`
 
 `GET /updates` message objects include normalized fields such as `text`, `caption`, media objects,
 and `reply_to_message` (quoted-message context) when available.
+
+Outbound `POST /messages` and `POST /media` accept optional `reply_to_message_id` and
+use best-effort quoted replies when source message metadata is available.
 
 ### Key env vars
 - `WA_TRIGGER` (`@говорун` default)

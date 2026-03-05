@@ -117,9 +117,14 @@ function nextMessageId() {
   return value;
 }
 
-function rememberOutboundMessageKey(internalMessageId, chatJid, waMessageId) {
+function rememberMessageRef(internalMessageId, chatJid, waMessageId, waMessage = null, fromMe = true) {
   if (!Number.isInteger(internalMessageId) || !waMessageId) return;
-  outboundMessageKeys.set(internalMessageId, { chatJid, waMessageId: String(waMessageId) });
+  outboundMessageKeys.set(internalMessageId, {
+    chatJid,
+    waMessageId: String(waMessageId),
+    waMessage: waMessage && typeof waMessage === 'object' ? waMessage : null,
+    fromMe: Boolean(fromMe)
+  });
   const existingIndex = outboundMessageOrder.indexOf(internalMessageId);
   if (existingIndex >= 0) {
     outboundMessageOrder.splice(existingIndex, 1);
@@ -131,6 +136,30 @@ function rememberOutboundMessageKey(internalMessageId, chatJid, waMessageId) {
       outboundMessageKeys.delete(victim);
     }
   }
+}
+
+function resolveReplyMessage(chatJid, replyToMessageIdRaw) {
+  const replyToMessageId = parseInteger(replyToMessageIdRaw, NaN, 1);
+  if (!Number.isFinite(replyToMessageId) || Number.isNaN(replyToMessageId)) {
+    return null;
+  }
+  const mapped = outboundMessageKeys.get(replyToMessageId);
+  if (!mapped) {
+    logger.debug({ chatJid, replyToMessageId }, 'reply target not found; sending without quoted context');
+    return null;
+  }
+  if (mapped.chatJid !== chatJid) {
+    logger.warn(
+      { requestedChatJid: chatJid, mappedChatJid: mapped.chatJid, replyToMessageId },
+      'reply target chat mismatch; sending without quoted context'
+    );
+    return null;
+  }
+  if (mapped.waMessage && typeof mapped.waMessage === 'object') {
+    return mapped.waMessage;
+  }
+  logger.debug({ chatJid, replyToMessageId }, 'reply target lacks quoted payload; sending without quoted context');
+  return null;
 }
 
 function stableBaseChatId(jid) {
@@ -200,10 +229,12 @@ function resolveOutboundMediaRef(mediaRef) {
   }
 
   const resolvedPath = path.resolve(mediaRef);
-  if (!fs.existsSync(resolvedPath)) {
+  let stat;
+  try {
+    stat = fs.statSync(resolvedPath);
+  } catch {
     throw new Error('unsupported_media_ref');
   }
-  const stat = fs.statSync(resolvedPath);
   if (!stat.isFile()) {
     throw new Error('unsupported_media_ref');
   }
@@ -212,7 +243,7 @@ function resolveOutboundMediaRef(mediaRef) {
   }
   return {
     isLocalFile: true,
-    value: fs.readFileSync(resolvedPath),
+    value: { url: resolvedPath },
     fileName: path.basename(resolvedPath) || 'upload.bin',
     mimeType: inferMimeTypeFromRef(resolvedPath)
   };
@@ -436,8 +467,9 @@ async function downloadIncomingMedia(sock, msg) {
 async function buildIncomingMessagePayload(sock, msg, chatJid) {
   const chatId = getOrCreateChatId(chatJid);
   const isGroup = chatJid.endsWith('@g.us');
+  const internalMessageId = nextMessageId();
   const payload = {
-    message_id: nextMessageId(),
+    message_id: internalMessageId,
     chat: {
       id: chatId,
       type: isGroup ? 'group' : 'private'
@@ -534,6 +566,7 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
   if (!payload.text && !payload.photo && !payload.voice && !payload.document) {
     return null;
   }
+  rememberMessageRef(internalMessageId, chatJid, msg?.key?.id || null, msg, false);
   return payload;
 }
 
@@ -682,9 +715,12 @@ async function handleApiRequest(req, res) {
       sendJson(res, 400, { ok: false, description: 'text is required' });
       return;
     }
-    const response = await activeSock.sendMessage(chatJid, { text });
+    const quoted = resolveReplyMessage(chatJid, body.reply_to_message_id);
+    const response = quoted
+      ? await activeSock.sendMessage(chatJid, { text }, { quoted })
+      : await activeSock.sendMessage(chatJid, { text });
     const internalMessageId = nextMessageId();
-    rememberOutboundMessageKey(internalMessageId, chatJid, response?.key?.id || null);
+    rememberMessageRef(internalMessageId, chatJid, response?.key?.id || null, response, true);
     sendJson(res, 200, {
       ok: true,
       result: {
@@ -714,6 +750,7 @@ async function handleApiRequest(req, res) {
       return;
     }
     const caption = typeof body.caption === 'string' && body.caption.trim() ? body.caption.trim() : undefined;
+    const quoted = resolveReplyMessage(chatJid, body.reply_to_message_id);
 
     let mediaSource;
     try {
@@ -753,9 +790,15 @@ async function handleApiRequest(req, res) {
 
     let response;
     try {
-      response = await activeSock.sendMessage(chatJid, payload);
+      response = quoted
+        ? await activeSock.sendMessage(chatJid, payload, { quoted })
+        : await activeSock.sendMessage(chatJid, payload);
       if (followUpCaption) {
-        await activeSock.sendMessage(chatJid, { text: followUpCaption });
+        if (quoted) {
+          await activeSock.sendMessage(chatJid, { text: followUpCaption }, { quoted });
+        } else {
+          await activeSock.sendMessage(chatJid, { text: followUpCaption });
+        }
       }
     } catch (err) {
       logger.warn({ err: String(err), chatJid, mediaType }, 'failed sending outbound media');
@@ -763,7 +806,7 @@ async function handleApiRequest(req, res) {
       return;
     }
     const internalMessageId = nextMessageId();
-    rememberOutboundMessageKey(internalMessageId, chatJid, response?.key?.id || null);
+    rememberMessageRef(internalMessageId, chatJid, response?.key?.id || null, response, true);
     sendJson(res, 200, {
       ok: true,
       result: {
@@ -795,6 +838,13 @@ async function handleApiRequest(req, res) {
     }
 
     const mapped = outboundMessageKeys.get(internalMessageId);
+    if (!mapped || !mapped.fromMe) {
+      sendJson(res, 409, {
+        ok: false,
+        description: 'message edit target not found'
+      });
+      return;
+    }
     if (mapped && mapped.chatJid && mapped.chatJid !== chatJid) {
       logger.warn(
         { requestedChatJid: chatJid, mappedChatJid: mapped.chatJid, messageId: internalMessageId },
@@ -819,7 +869,7 @@ async function handleApiRequest(req, res) {
     try {
       const edited = await activeSock.sendMessage(effectiveChatJid, { text, edit: target });
       if (edited?.key?.id) {
-        rememberOutboundMessageKey(internalMessageId, effectiveChatJid, edited.key.id);
+        rememberMessageRef(internalMessageId, effectiveChatJid, edited.key.id, edited, true);
       }
       sendJson(res, 200, {
         ok: true,
