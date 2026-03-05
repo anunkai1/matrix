@@ -20,6 +20,7 @@ Last updated: 2026-03-06 (AEST, +10:00)
 - Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 - Runtime observer daily Telegram summary now appends a plain-English operator line indicating whether attention is needed.
+- Runtime observer daily health delivery is centralized through `staker_alerts_bot` to chat `211761499` (single destination).
 
 ## Operational Memory (Pinned)
 - Routing keywords:
