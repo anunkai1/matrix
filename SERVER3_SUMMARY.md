@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-05 (AEST, +10:00)
+Last updated: 2026-03-06 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -19,6 +19,7 @@ Last updated: 2026-03-05 (AEST, +10:00)
 - Runtime pattern: Telegram long polling + local `codex exec`
 - Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
+- Runtime observer daily Telegram summary now appends a plain-English operator line indicating whether attention is needed.
 
 ## Operational Memory (Pinned)
 - Routing keywords:

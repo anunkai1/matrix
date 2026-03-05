@@ -846,6 +846,40 @@ def format_triplet(stats: Dict[str, Optional[float]], suffix: str = "") -> str:
     return f"{min_value:.3f}/{avg_value:.3f}/{max_value:.3f}{suffix}"
 
 
+def format_operator_summary_line(kpis: Dict[str, Dict[str, object]]) -> str:
+    def worst(name: str) -> str:
+        metric = kpis.get(name, {})
+        if not isinstance(metric, dict):
+            return "unknown"
+        value = str(metric.get("worst_severity", "unknown"))
+        return value if value in SEVERITY_ORDER else "unknown"
+
+    issues: List[str] = []
+    if worst("telegram_edit_400_rate") in {"warn", "critical", "unknown"}:
+        issues.append("intermittent Telegram edit-400 spikes")
+    if worst("restart_count") in {"warn", "critical", "unknown"}:
+        issues.append("some restarts that triggered warnings")
+    if worst("telegram_retry_rate") in {"warn", "critical", "unknown"}:
+        issues.append("Telegram retry spikes")
+    if worst("wa_reconnect_rate") in {"warn", "critical", "unknown"}:
+        issues.append("WhatsApp reconnect spikes")
+    if worst("request_fail_rate") in {"warn", "critical", "unknown"}:
+        issues.append("request failures")
+    if worst("service_up") in {"warn", "critical", "unknown"}:
+        issues.append("service availability drops")
+
+    if not issues:
+        return "Summary: system is healthy overall, and no attention is needed right now."
+
+    high_attention = (
+        worst("service_up") in {"critical", "unknown"}
+        or worst("request_fail_rate") in {"critical", "unknown"}
+    )
+    if high_attention:
+        return f"Summary: attention needed now due to {', '.join(issues)}."
+    return f"Summary: system is healthy overall, but you had {', '.join(issues)}."
+
+
 def build_window_summary(hours: int) -> Dict[str, object]:
     since_dt = now_utc() - timedelta(hours=hours)
     rows = [
@@ -975,7 +1009,8 @@ def format_summary(summary: Dict[str, object]) -> str:
         return (
             "Runtime observer summary "
             f"(last {summary['hours']}h, timezone={summary['timezone']}): "
-            f"{summary.get('message', 'no data')}"
+            f"{summary.get('message', 'no data')}\n"
+            "Summary: no data in this window, so manual attention may be needed."
         )
     kpis = summary["kpis"]
     lines = [
@@ -1035,6 +1070,7 @@ def format_summary(summary: Dict[str, object]) -> str:
             f"{kpis['request_fail_rate']['severity_counts']['critical']} "
             f"min/avg/max={format_triplet(kpis['request_fail_rate']['rate_percent'], '%')}"
         ),
+        format_operator_summary_line(kpis),
     ]
     return "\n".join(lines)
 
