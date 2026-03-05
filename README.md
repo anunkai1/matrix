@@ -96,6 +96,9 @@ bash src/telegram_bridge/smoke_test.sh
   - Install timer: `bash ops/runtime_observer/install_systemd.sh apply`
   - Current KPI state: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py status`
   - Last 24h KPI summary: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py summary --hours 24`
+- Chat-routing drift guard (Govorun Telegram/WhatsApp):
+  - Manual check: `python3 ops/chat-routing/validate_chat_routing_contract.py`
+  - Install daily timer: `bash ops/chat-routing/install_contract_check_timer.sh apply`
 - HA on/off scheduling + climate set/schedule runbook: `docs/home-assistant-ops.md`
 - Server3 NordVPN rollout + rollback runbook: `docs/nordvpn-server3.md`
 

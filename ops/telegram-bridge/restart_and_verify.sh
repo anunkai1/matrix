@@ -2,6 +2,8 @@
 set -euo pipefail
 
 UNIT_NAME="${UNIT_NAME:-telegram-architect-bridge.service}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+CHAT_ROUTING_VALIDATOR="${REPO_ROOT}/ops/chat-routing/validate_chat_routing_contract.py"
 ALLOWED_UNITS=(
   "telegram-architect-bridge.service"
   "telegram-tank-bridge.service"
@@ -44,6 +46,15 @@ fi
 
 if [[ "$(id -u)" -ne 0 ]]; then
   exec sudo -n "$0" --unit "${UNIT_NAME}"
+fi
+
+if [[ "${UNIT_NAME}" == "govorun-whatsapp-bridge.service" ]]; then
+  if [[ ! -f "${CHAT_ROUTING_VALIDATOR}" ]]; then
+    echo "[restart_and_verify] contract validator not found: ${CHAT_ROUTING_VALIDATOR}" >&2
+    exit 1
+  fi
+  echo "[restart_and_verify] running chat-routing contract check"
+  /usr/bin/python3 "${CHAT_ROUTING_VALIDATOR}"
 fi
 
 show_prop() {

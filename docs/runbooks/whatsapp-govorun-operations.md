@@ -31,6 +31,24 @@
 - Logs:
   - `/home/govorun/whatsapp-govorun/state/logs/service.log`
   - `/home/govorun/whatsapp-govorun/state/logs/service.err.log`
+- Contract guardrails:
+  - `ops/whatsapp_govorun/start_service.sh` and `ops/whatsapp_govorun/install_user_service.sh` now run chat-routing contract validation before service operations.
+  - Temporary bypass for install flow only (not recommended): `SKIP_CHAT_ROUTING_CONTRACT_CHECK=1 ops/whatsapp_govorun/install_user_service.sh`
+
+## Chat Routing Contract Drift Check
+- Canonical contract file:
+  - `infra/contracts/server3-chat-routing.contract.env`
+- Manual check:
+  - `python3 ops/chat-routing/validate_chat_routing_contract.py`
+- Daily timer/unit:
+  - `server3-chat-routing-contract-check.service`
+  - `server3-chat-routing-contract-check.timer`
+- Installer:
+  - `ops/chat-routing/install_contract_check_timer.sh apply`
+  - `ops/chat-routing/install_contract_check_timer.sh status`
+  - `ops/chat-routing/install_contract_check_timer.sh run-now`
+- Alert behavior:
+  - On drift, the checker sends Telegram alerts when token/chat routing is available from runtime observer vars or `/etc/default/telegram-architect-bridge`.
 
 ## Daily Morning Message (09:00 AEST)
 - Purpose: send a Russian good-morning message with one uplifting fact to a target WhatsApp chat.

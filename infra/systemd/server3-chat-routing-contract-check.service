@@ -1,0 +1,10 @@
+[Unit]
+Description=Server3 Chat Routing Contract Drift Check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/architect/matrix/ops/chat-routing/validate_chat_routing_contract.py --telegram-alert-on-fail

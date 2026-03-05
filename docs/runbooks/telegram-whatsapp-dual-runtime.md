@@ -14,6 +14,7 @@
 - Telegram primary env: `/etc/default/telegram-architect-bridge`
 - Govorun WhatsApp env: `/etc/default/govorun-whatsapp-bridge`
 - WhatsApp API env: `/home/govorun/whatsapp-govorun/app/.env`
+- Chat-routing contract: `infra/contracts/server3-chat-routing.contract.env`
 
 ## Install / update Govorun WhatsApp service
 1. Follow canonical provisioning/auth/service controls in:
@@ -26,6 +27,9 @@
    - `sudo systemctl status whatsapp-govorun-bridge.service --no-pager -n 50`
    - `sudo systemctl status govorun-whatsapp-bridge.service --no-pager -n 50`
    - `sudo systemctl status telegram-architect-bridge.service --no-pager -n 50`
+5. Validate routing contract and enable daily drift checks:
+   - `python3 ops/chat-routing/validate_chat_routing_contract.py`
+   - `ops/chat-routing/install_contract_check_timer.sh apply`
 
 ## WhatsApp API requirements
 - API env keys and limits are defined in:

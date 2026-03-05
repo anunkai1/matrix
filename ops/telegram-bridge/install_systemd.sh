@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UNIT_NAME="${UNIT_NAME:-telegram-architect-bridge.service}"
 SOURCE_UNIT="${REPO_ROOT}/infra/systemd/${UNIT_NAME}"
 TARGET_UNIT="/etc/systemd/system/${UNIT_NAME}"
+CHAT_ROUTING_VALIDATOR="${REPO_ROOT}/ops/chat-routing/validate_chat_routing_contract.py"
 
 if [[ ! -f "${SOURCE_UNIT}" ]]; then
   echo "Unit file not found: ${SOURCE_UNIT}" >&2
@@ -14,6 +15,13 @@ fi
 
 case "${MODE}" in
   apply)
+    if [[ "${UNIT_NAME}" == "govorun-whatsapp-bridge.service" ]]; then
+      if [[ ! -f "${CHAT_ROUTING_VALIDATOR}" ]]; then
+        echo "Contract validator not found: ${CHAT_ROUTING_VALIDATOR}" >&2
+        exit 1
+      fi
+      sudo /usr/bin/python3 "${CHAT_ROUTING_VALIDATOR}"
+    fi
     sudo install -m 0644 "${SOURCE_UNIT}" "${TARGET_UNIT}"
     sudo systemctl daemon-reload
     sudo systemctl enable "${UNIT_NAME}"

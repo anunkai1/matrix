@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Server3 Chat Routing Contract Drift Check Daily
+
+[Timer]
+OnCalendar=*-*-* 06:15:00
+Persistent=true
+Unit=server3-chat-routing-contract-check.service
+
+[Install]
+WantedBy=timers.target
