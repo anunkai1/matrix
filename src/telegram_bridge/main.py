@@ -380,6 +380,13 @@ def load_config() -> Config:
         os.getenv("TELEGRAM_PROGRESS_ELAPSED_PREFIX", "Already").strip() or "Already"
     )
     progress_elapsed_suffix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_SUFFIX", "s")
+    busy_message = (
+        os.getenv(
+            "TELEGRAM_BUSY_MESSAGE",
+            "Another request is still running. Please wait.",
+        ).strip()
+        or "Another request is still running. Please wait."
+    )
     return Config(
         token=token,
         allowed_chat_ids=allowed_chat_ids,
@@ -502,6 +509,7 @@ def load_config() -> Config:
         progress_label=progress_label,
         progress_elapsed_prefix=progress_elapsed_prefix,
         progress_elapsed_suffix=progress_elapsed_suffix,
+        busy_message=busy_message,
         channel_plugin=parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram"),
         engine_plugin=parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
         whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),

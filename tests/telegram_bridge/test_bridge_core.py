@@ -347,6 +347,22 @@ class BridgeCoreTests(unittest.TestCase):
             config = bridge.load_config()
         self.assertTrue(config.allow_private_chats_unlisted)
 
+    def test_load_config_reads_busy_message_override(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_BUSY_MESSAGE": "Даю справку: уже занят предыдущим запросом.",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertEqual(
+            config.busy_message,
+            "Даю справку: уже занят предыдущим запросом.",
+        )
+
     def test_whatsapp_adapter_send_message_get_id_posts_json(self):
         class Response:
             def __enter__(self):
