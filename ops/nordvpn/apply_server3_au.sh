@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'HELP'
 Usage:
-  apply_server3_au.sh [--profile strict|online-recovery]
+  apply_server3_au.sh [--profile strict|online-recovery] [--dns "<ip1 ip2 ...>"|off]
 
 Applies the Server3 NordVPN target state:
 - technology nordlynx
@@ -12,6 +12,7 @@ Applies the Server3 NordVPN target state:
 - allowlist ports for Tailscale coexistence (443/tcp, 3478/udp, 41641/udp)
 - connect to au
 - autoconnect on
+- custom DNS (default: 1.1.1.1 1.0.0.1; use --dns off to disable)
 - profile strict: killswitch on + firewall on
 - profile online-recovery: killswitch off + firewall off
 
@@ -34,10 +35,15 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 PROFILE="online-recovery"
+DNS_SERVERS="1.1.1.1 1.0.0.1"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile)
       PROFILE="${2:-}"
+      shift 2
+      ;;
+    --dns)
+      DNS_SERVERS="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -73,6 +79,15 @@ run_privileged nordvpn allowlist add subnet 192.168.0.0/24 || true
 run_privileged nordvpn allowlist add port 443 protocol TCP || true
 run_privileged nordvpn allowlist add port 3478 protocol UDP || true
 run_privileged nordvpn allowlist add port 41641 protocol UDP || true
+if [[ -n "$DNS_SERVERS" ]]; then
+  if [[ "$DNS_SERVERS" == "off" ]]; then
+    run_privileged nordvpn set dns off || true
+  else
+    # nordvpn CLI expects DNS servers as positional IPv4 arguments.
+    read -r -a DNS_ARRAY <<<"$DNS_SERVERS"
+    run_privileged nordvpn set dns "${DNS_ARRAY[@]}" || true
+  fi
+fi
 run_privileged nordvpn connect au
 run_privileged nordvpn set autoconnect on || true
 CURRENT_FW="$(run_privileged nordvpn settings | awk -F': ' '/Firewall:/{print tolower($2)}')"

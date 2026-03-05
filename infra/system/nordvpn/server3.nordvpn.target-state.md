@@ -1,6 +1,6 @@
 # Server3 NordVPN Target State (Redacted)
 
-- Timestamp (Australia/Brisbane ISO-8601): 2026-02-25T11:36:27+10:00
+- Timestamp (Australia/Brisbane ISO-8601): 2026-03-05T16:58:00+10:00
 - Scope: Live NordVPN + Tailscale coexistence runtime configuration on Server3
 
 ## Live Paths / Components
@@ -15,6 +15,10 @@
 - Kill Switch: `disabled` (online-recovery coexistence profile)
 - LAN Discovery: `disabled`
 - Firewall: `disabled` (online-recovery coexistence profile)
+- DNS: `enabled` (custom)
+- Custom DNS servers:
+  - `1.1.1.1`
+  - `1.0.0.1`
 - Allowlisted subnets:
   - `192.168.0.0/24`
 - Allowlisted ports:
