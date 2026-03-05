@@ -188,9 +188,6 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/voice-alias approve <id>` approve one learned correction
 - `/voice-alias reject <id>` reject one learned correction
 - `/voice-alias add <source> => <target>` add manual correction
-- `/yt <youtube_or_media_url>` transcribe media URL via captions-or-Whisper fallback
-- `/yt-transcribe <url>` alias for `/yt`
-- `/transcribe-url <url>` alias for `/yt`
 - `server3-tv-start` start TV desktop mode from shell
 - `server3-tv-stop` stop TV desktop mode and return to CLI from shell
 - `/memory mode` show memory mode for this conversation key
