@@ -30,7 +30,7 @@ jobs:
       - name: Install QA tooling
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install ruff coverage
+          python3 -m pip install ruff coverage requests
 
       - name: Lint (lightweight)
         run: |
