@@ -725,12 +725,20 @@ def _find_usdt_balance(balances: List[Dict[str, Any]]) -> Tuple[Optional[Decimal
 
 def _render_preview(ticket_id: str, expires_at_ms: int, draft: DraftOrder) -> str:
     expires = datetime.fromtimestamp(expires_at_ms / 1000, timezone.utc).astimezone()
-    payload = json.dumps(draft.as_dict(), ensure_ascii=True, sort_keys=True)
+    price_value = format_decimal(draft.price) if draft.price is not None else "market"
     return (
         "ASTER trade preview (not executed yet):\n"
-        f"ticket={ticket_id}\n"
-        f"expires_at={expires.isoformat()}\n"
-        f"order={payload}\n\n"
+        f"ticket: {ticket_id}\n"
+        f"expires_at: {expires.isoformat()}\n"
+        f"symbol: {draft.symbol}\n"
+        f"side: {draft.side}\n"
+        f"type: {draft.order_type}\n"
+        f"leverage: {draft.leverage}x\n"
+        f"notional_usdt: {format_decimal(draft.notional_usdt)}\n"
+        f"quantity: {format_decimal(draft.quantity)}\n"
+        f"price: {price_value}\n"
+        f"reduce_only: {str(draft.reduce_only).lower()}\n"
+        f"inferred_from: {draft.inferred_from}\n\n"
         f"Confirm: Trade confirm {ticket_id}\n"
         f"Cancel: Trade cancel {ticket_id}"
     )
