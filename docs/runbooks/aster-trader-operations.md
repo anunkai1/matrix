@@ -72,7 +72,9 @@ sudo -u aster-trader bash -ic 'type astertrader'
 sudo -u aster-trader bash -ic 'cd /home/aster-trader/asterbot && astertrader --help'
 ```
 
-- `astertrader` uses full-access Codex and shared CLI memory namespace `aster-trader`.
+- `astertrader` uses full-access Codex and the same memory bucket as Telegram by default.
+- Server3 default shared conversation key: `tg:211761499`.
+- Override the shared bucket if needed: `export ASTERTRADER_SHARED_CONVERSATION_KEY=tg:<chat_id>`.
 - Shared memory path: `/home/aster-trader/.local/state/telegram-aster-trader-bridge/memory.sqlite3`
 
 ## Notes

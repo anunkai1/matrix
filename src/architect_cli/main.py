@@ -21,6 +21,7 @@ DEFAULT_STATE_DIR = "/home/architect/.local/state/telegram-architect-bridge"
 DEFAULT_LAUNCHER_NAME = os.getenv("CLI_LAUNCHER_NAME", "architect").strip() or "architect"
 DEFAULT_ASSISTANT_NAME = os.getenv("CLI_ASSISTANT_NAME", "Architect").strip() or "Architect"
 DEFAULT_MEMORY_NAMESPACE = os.getenv("CLI_MEMORY_NAMESPACE", "architect").strip() or "architect"
+DEFAULT_CONVERSATION_KEY = os.getenv("CLI_CONVERSATION_KEY", "").strip()
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,6 +42,11 @@ def parse_args() -> argparse.Namespace:
         "--memory-namespace",
         default=DEFAULT_MEMORY_NAMESPACE,
         help="CLI memory namespace (default: architect)",
+    )
+    parser.add_argument(
+        "--conversation-key",
+        default=DEFAULT_CONVERSATION_KEY,
+        help="Explicit shared memory conversation key override (for example tg:123456789)",
     )
     parser.add_argument(
         "--state-dir",
@@ -78,6 +84,12 @@ def build_memory_db_path(args: argparse.Namespace) -> str:
     if args.memory_db.strip():
         return args.memory_db.strip()
     return str(Path(args.state_dir).expanduser() / "memory.sqlite3")
+
+
+def build_conversation_key(args: argparse.Namespace) -> str:
+    if args.conversation_key.strip():
+        return args.conversation_key.strip()
+    return MemoryEngine.cli_key(args.profile, namespace=args.memory_namespace)
 
 
 def run_codex(codex_bin: str, prompt: str, thread_id: Optional[str], timeout_seconds: int) -> subprocess.CompletedProcess[str]:
@@ -133,7 +145,7 @@ def main() -> int:
 
     memory_db = build_memory_db_path(args)
     engine = MemoryEngine(memory_db)
-    conversation_key = MemoryEngine.cli_key(args.profile, namespace=args.memory_namespace)
+    conversation_key = build_conversation_key(args)
 
     cmd_result = handle_memory_command(engine, conversation_key, raw_input)
     if cmd_result.handled:
