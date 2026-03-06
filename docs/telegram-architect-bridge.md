@@ -260,10 +260,12 @@ Message handling:
 - Shared memory database path (Telegram + CLI): `/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3`
   - override with `TELEGRAM_MEMORY_SQLITE_PATH`
 - Conversation key model:
-  - Telegram chat: `tg:<chat_id>`
-  - CLI default profile: `cli:architect:default`
-  - CLI named profile: `cli:architect:<profile_name>`
-  - keys are isolated by default (no cross-key memory sharing)
+  - default Telegram chat key: `tg:<chat_id>`
+  - default CLI key: `cli:architect:<profile_name>`
+  - optional bridge-wide Telegram override: `TELEGRAM_SHARED_MEMORY_KEY=<shared_key>`
+  - optional CLI override: `CLI_CONVERSATION_KEY=<shared_key>`
+  - when both overrides use the same key, Telegram + CLI behave as one shared identity
+  - current Server3 Architect rollout uses `shared:architect:main`
 - Memory modes:
   - default mode for new keys: `all_context`
   - optional mode: `session_only`

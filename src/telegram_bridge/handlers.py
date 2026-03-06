@@ -168,6 +168,14 @@ def assistant_label(config) -> str:
     return value or "Architect"
 
 
+def resolve_memory_conversation_key(config, channel_name: str, chat_id: int) -> str:
+    shared_key = getattr(config, "shared_memory_key", "").strip()
+    normalized_channel = (channel_name or "telegram").strip().lower()
+    if shared_key and normalized_channel == "telegram":
+        return shared_key
+    return MemoryEngine.channel_key(channel_name, chat_id)
+
+
 def start_command_message(config) -> str:
     return f"Telegram {assistant_label(config)} bridge is online. Send a prompt to begin."
 
@@ -1635,7 +1643,7 @@ def build_status_text(state: State, config, chat_id: Optional[int] = None) -> st
             memory_channel = getattr(config, "channel_plugin", "telegram")
             try:
                 memory_status = memory_engine.get_status(
-                    MemoryEngine.channel_key(memory_channel, chat_id)
+                    resolve_memory_conversation_key(config, memory_channel, chat_id)
                 )
             except Exception:
                 logging.exception("Failed to query memory status for chat_id=%s", chat_id)
@@ -2066,7 +2074,7 @@ def process_prompt(
     active_engine = engine or CodexEngineAdapter()
     state_repo = StateRepository(state)
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
-    conversation_key = MemoryEngine.channel_key(channel_name, chat_id)
+    conversation_key = resolve_memory_conversation_key(config, channel_name, chat_id)
     previous_thread_id: Optional[str] = None
     turn_context: Optional[TurnContext] = None
     image_path: Optional[str] = None
@@ -2253,7 +2261,7 @@ def handle_reset_command(
     if memory_engine is not None:
         memory_channel = getattr(client, "channel_name", "telegram")
         try:
-            memory_engine.clear_session(MemoryEngine.channel_key(memory_channel, chat_id))
+            memory_engine.clear_session(resolve_memory_conversation_key(config, memory_channel, chat_id))
         except Exception:
             logging.exception("Failed to clear shared memory session for chat_id=%s", chat_id)
     if removed_thread or removed_worker:
@@ -2858,7 +2866,7 @@ def handle_update(
         memory_channel = getattr(client, "channel_name", "telegram")
         cmd_result = handle_memory_command(
             engine=memory_engine,
-            conversation_key=MemoryEngine.channel_key(memory_channel, chat_id),
+            conversation_key=resolve_memory_conversation_key(config, memory_channel, chat_id),
             text=prompt_input,
         )
         if cmd_result.handled:

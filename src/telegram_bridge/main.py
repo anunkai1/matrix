@@ -148,6 +148,7 @@ class Config:
     require_prefix_in_private: bool
     allow_private_chats_unlisted: bool
     assistant_name: str
+    shared_memory_key: str
     channel_plugin: str
     engine_plugin: str
     whatsapp_plugin_enabled: bool
@@ -375,6 +376,7 @@ def load_config() -> Config:
 
     allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids)
     assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
+    shared_memory_key = os.getenv("TELEGRAM_SHARED_MEMORY_KEY", "").strip()
     progress_label = os.getenv("TELEGRAM_PROGRESS_LABEL", "").strip()
     progress_elapsed_prefix = (
         os.getenv("TELEGRAM_PROGRESS_ELAPSED_PREFIX", "Already").strip() or "Already"
@@ -506,6 +508,7 @@ def load_config() -> Config:
             False,
         ),
         assistant_name=assistant_name,
+        shared_memory_key=shared_memory_key,
         progress_label=progress_label,
         progress_elapsed_prefix=progress_elapsed_prefix,
         progress_elapsed_suffix=progress_elapsed_suffix,

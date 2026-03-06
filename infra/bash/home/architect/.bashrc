@@ -16,5 +16,10 @@ architect() {
       ;;
   esac
 
+  CLI_LAUNCHER_NAME=architect \
+  CLI_ASSISTANT_NAME=Architect \
+  CLI_CONVERSATION_KEY=shared:architect:main \
+  TELEGRAM_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge \
+  TELEGRAM_MEMORY_SQLITE_PATH=/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3 \
   command python3 /home/architect/matrix/src/architect_cli/main.py "$@"
 }

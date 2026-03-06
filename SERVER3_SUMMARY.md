@@ -36,6 +36,7 @@ Last updated: 2026-03-07 (AEST, +10:00)
 - TV desktop/browser reliability is hardened with deterministic helpers, existing-window reuse, and autoplay fallback tooling (`wmctrl`, `xdotool`, `yt-dlp`).
 - Tank defaults are hardened: DM prefix bypass in private chats, isolated Joplin profile/path, reasoning effort `low`.
 - `astertrader` shell launcher is live for user `aster-trader`; it runs full-access Codex against ASTER Telegram memory bucket `tg:211761499` by default, backed by `/home/aster-trader/.local/state/telegram-aster-trader-bridge/memory.sqlite3`.
+- Architect Telegram + CLI now share one neutral memory identity on Server3 via `shared:architect:main`; the shared bucket merges the existing Architect Telegram chats and CLI history while starting a fresh unified Codex session thread.
 - Govorun WhatsApp behavior is env-tunable: progress wording, busy-lock wording, and reply-tone guidance are configured via `/etc/default/govorun-whatsapp-bridge`.
 - Architect Google runtime integration is removed/disabled.
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
