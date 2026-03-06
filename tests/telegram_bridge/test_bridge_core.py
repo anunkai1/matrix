@@ -912,6 +912,18 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(bridge_handlers.extract_nextcloud_keyword_request("nextcloud"), (True, ""))
         self.assertEqual(bridge_handlers.extract_nextcloud_keyword_request("nextcloudx"), (False, ""))
 
+    def test_extract_trade_keyword_request_variants(self):
+        self.assertEqual(
+            bridge_handlers.extract_trade_keyword_request("Trade long btc 2000 usdt"),
+            (True, "long btc 2000 usdt"),
+        )
+        self.assertEqual(
+            bridge_handlers.extract_trade_keyword_request("aster trade: short eth 1000 usdt"),
+            (True, "short eth 1000 usdt"),
+        )
+        self.assertEqual(bridge_handlers.extract_trade_keyword_request("trade"), (True, ""))
+        self.assertEqual(bridge_handlers.extract_trade_keyword_request("trademark"), (False, ""))
+
     def test_strip_required_prefix_variants(self):
         prefixes = ["@helper", "helper:"]
         self.assertEqual(
@@ -1731,6 +1743,50 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Home Assistant priority mode is active.", kwargs["prompt"])
         self.assertIn("User request: turn on masters AC to dry mode at 9:25am", kwargs["prompt"])
         self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_routes_trade_keyword_prompt_stateless(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 111,
+            "message": {
+                "message_id": 211,
+                "chat": {"id": 1},
+                "text": "Trade long btc 2000 usdt 10x market",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertTrue(kwargs["stateless"])
+        self.assertIn("ASTER trading priority mode is active.", kwargs["prompt"])
+        self.assertIn("Chat key: tg:1", kwargs["prompt"])
+        self.assertIn("User request: long btc 2000 usdt 10x market", kwargs["prompt"])
+        self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_rejects_trade_keyword_without_action(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 112,
+            "message": {
+                "message_id": 212,
+                "chat": {"id": 1},
+                "text": "Trade",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertFalse(start_message_worker.called)
+        self.assertEqual(len(client.messages), 1)
+        self.assertIn("Trade mode needs an action.", client.messages[0][1])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_server3_keyword_prompt_stateless(self, start_message_worker):

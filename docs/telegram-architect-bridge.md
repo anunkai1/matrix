@@ -50,6 +50,8 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Voice runtime installer: `ops/telegram-voice/install_faster_whisper.sh`
 - Voice env updater: `ops/telegram-voice/configure_env.sh`
 - Voice command wrapper: `ops/telegram-voice/transcribe_voice.sh`
+- ASTER trading assistant entrypoint: `ops/trading/aster/assistant_entry.py`
+- ASTER trading CLI wrapper: `ops/trading/aster/trade_cli.sh`
 
 ## Bot Setup
 
@@ -234,6 +236,12 @@ Message handling:
     - `ops/nextcloud/nextcloud-file-delete.sh`
     - `ops/nextcloud/nextcloud-calendars-list.sh`
     - `ops/nextcloud/nextcloud-calendar-create-event.sh`
+  - empty keyword-only messages are rejected with a usage hint
+- Messages starting with `Trade` or `Aster Trade` are routed into ASTER trading mode:
+  - requests run stateless (no memory/session carryover)
+  - free-form request text is passed to deterministic backend:
+    - `python3 ops/trading/aster/assistant_entry.py --chat-id tg:<chat_id> --request '<user request>'`
+  - backend enforces two-step confirmation tickets and configured risk limits
   - empty keyword-only messages are rejected with a usage hint
 - Text, photo, voice, and document/file inputs are supported.
 - Photo without caption uses: `Please analyze this image.`

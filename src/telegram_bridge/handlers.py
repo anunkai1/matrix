@@ -79,6 +79,9 @@ SERVER3_KEYWORD_HELP_MESSAGE = (
 NEXTCLOUD_KEYWORD_HELP_MESSAGE = (
     "Nextcloud mode needs an action. Example: `Nextcloud create event tomorrow 3pm dentist in Personal calendar`."
 )
+TRADE_KEYWORD_HELP_MESSAGE = (
+    "Trade mode needs an action. Example: `Trade long BTC 2000 USDT 10x market`."
+)
 PREFIX_HELP_MESSAGE = (
     "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
 )
@@ -152,6 +155,14 @@ def build_nextcloud_routing_script_allowlist() -> List[str]:
     ]
 
 
+def build_trade_routing_script_allowlist() -> List[str]:
+    repo_root = build_repo_root()
+    return [
+        os.path.join(repo_root, "ops", "trading", "aster", "assistant_entry.py"),
+        os.path.join(repo_root, "ops", "trading", "aster", "trade_cli.sh"),
+    ]
+
+
 def assistant_label(config) -> str:
     value = getattr(config, "assistant_name", "").strip()
     return value or "Architect"
@@ -222,6 +233,23 @@ def extract_nextcloud_keyword_request(text: str) -> tuple[bool, str]:
 
     lowered = stripped.lower()
     for keyword in ("nextcloud",):
+        if lowered == keyword:
+            return True, ""
+        if lowered.startswith(keyword):
+            remainder = stripped[len(keyword):]
+            if remainder and remainder[0] not in (" ", ":", "-"):
+                continue
+            return True, remainder.lstrip(" :-\t")
+    return False, ""
+
+
+def extract_trade_keyword_request(text: str) -> tuple[bool, str]:
+    stripped = text.strip()
+    if not stripped:
+        return False, ""
+
+    lowered = stripped.lower()
+    for keyword in ("trade", "aster trade"):
         if lowered == keyword:
             return True, ""
         if lowered.startswith(keyword):
@@ -317,6 +345,24 @@ def build_nextcloud_keyword_prompt(user_request: str) -> str:
         "- Do not print or expose credentials.\n"
         "- If path/calendar/time is unclear, ask one concise clarification question.\n"
         "- After execution, report exact scripts used and final outcome."
+    )
+
+
+def build_trade_keyword_prompt(user_request: str, chat_id: int) -> str:
+    scripts = "\n".join(f"- {path}" for path in build_trade_routing_script_allowlist())
+    return (
+        "ASTER trading priority mode is active.\n"
+        "Treat this as a free-form ASTER futures trading request.\n"
+        f"Chat key: tg:{chat_id}\n"
+        f"User request: {user_request.strip()}\n\n"
+        "Mandatory execution policy:\n"
+        f"{scripts}\n"
+        "- Execute only via deterministic script:\n"
+        f"  python3 {build_trade_routing_script_allowlist()[0]} --chat-id tg:{chat_id} --request '<user request>'\n"
+        "- Do not place orders via direct curl/python snippets outside this script.\n"
+        "- The script enforces confirmation tickets and risk guards (max notional, max leverage, daily loss).\n"
+        "- If the script errors, report the error exactly and stop.\n"
+        "- Return script output to the user verbatim.\n"
     )
 
 
@@ -2682,88 +2728,115 @@ def handle_update(
     command = normalize_command(prompt_input or "")
     priority_keyword_mode = False
     if prompt_input:
-        nextcloud_keyword_mode, nextcloud_request = extract_nextcloud_keyword_request(prompt_input)
-        if nextcloud_keyword_mode:
-            if not nextcloud_request.strip():
+        trade_keyword_mode, trade_request = extract_trade_keyword_request(prompt_input)
+        if trade_keyword_mode:
+            if not trade_request.strip():
                 emit_event(
                     "bridge.request_rejected",
                     level=logging.WARNING,
                     fields={
                         "chat_id": chat_id,
                         "message_id": message_id,
-                        "reason": "nextcloud_keyword_missing_action",
+                        "reason": "trade_keyword_missing_action",
                     },
                 )
                 client.send_message(
                     chat_id,
-                    NEXTCLOUD_KEYWORD_HELP_MESSAGE,
+                    TRADE_KEYWORD_HELP_MESSAGE,
                     reply_to_message_id=message_id,
                 )
                 return
-            prompt_input = build_nextcloud_keyword_prompt(nextcloud_request)
+            prompt_input = build_trade_keyword_prompt(trade_request, chat_id)
             command = None
             stateless = True
             priority_keyword_mode = True
             emit_event(
-                "bridge.nextcloud_keyword_routed",
+                "bridge.trade_keyword_routed",
                 fields={"chat_id": chat_id, "message_id": message_id},
             )
         else:
-            server3_keyword_mode, server3_request = extract_server3_keyword_request(prompt_input)
-            if server3_keyword_mode:
-                if not server3_request.strip():
+            nextcloud_keyword_mode, nextcloud_request = extract_nextcloud_keyword_request(prompt_input)
+            if nextcloud_keyword_mode:
+                if not nextcloud_request.strip():
                     emit_event(
                         "bridge.request_rejected",
                         level=logging.WARNING,
                         fields={
                             "chat_id": chat_id,
                             "message_id": message_id,
-                            "reason": "server3_keyword_missing_action",
+                            "reason": "nextcloud_keyword_missing_action",
                         },
                     )
                     client.send_message(
                         chat_id,
-                        SERVER3_KEYWORD_HELP_MESSAGE,
+                        NEXTCLOUD_KEYWORD_HELP_MESSAGE,
                         reply_to_message_id=message_id,
                     )
                     return
-                prompt_input = build_server3_keyword_prompt(server3_request)
+                prompt_input = build_nextcloud_keyword_prompt(nextcloud_request)
                 command = None
                 stateless = True
                 priority_keyword_mode = True
                 emit_event(
-                    "bridge.server3_keyword_routed",
+                    "bridge.nextcloud_keyword_routed",
                     fields={"chat_id": chat_id, "message_id": message_id},
                 )
             else:
-                ha_keyword_mode, ha_request = extract_ha_keyword_request(prompt_input)
-                if not ha_keyword_mode:
-                    ha_request = ""
-                if ha_keyword_mode:
-                    if not ha_request.strip():
+                server3_keyword_mode, server3_request = extract_server3_keyword_request(prompt_input)
+                if server3_keyword_mode:
+                    if not server3_request.strip():
                         emit_event(
                             "bridge.request_rejected",
                             level=logging.WARNING,
                             fields={
                                 "chat_id": chat_id,
                                 "message_id": message_id,
-                                "reason": "ha_keyword_missing_action",
+                                "reason": "server3_keyword_missing_action",
                             },
                         )
                         client.send_message(
                             chat_id,
-                            HA_KEYWORD_HELP_MESSAGE,
+                            SERVER3_KEYWORD_HELP_MESSAGE,
                             reply_to_message_id=message_id,
                         )
                         return
-                    prompt_input = build_ha_keyword_prompt(ha_request)
+                    prompt_input = build_server3_keyword_prompt(server3_request)
                     command = None
                     stateless = True
                     priority_keyword_mode = True
                     emit_event(
-                        "bridge.ha_keyword_routed",
+                        "bridge.server3_keyword_routed",
                         fields={"chat_id": chat_id, "message_id": message_id},
                     )
+                else:
+                    ha_keyword_mode, ha_request = extract_ha_keyword_request(prompt_input)
+                    if not ha_keyword_mode:
+                        ha_request = ""
+                    if ha_keyword_mode:
+                        if not ha_request.strip():
+                            emit_event(
+                                "bridge.request_rejected",
+                                level=logging.WARNING,
+                                fields={
+                                    "chat_id": chat_id,
+                                    "message_id": message_id,
+                                    "reason": "ha_keyword_missing_action",
+                                },
+                            )
+                            client.send_message(
+                                chat_id,
+                                HA_KEYWORD_HELP_MESSAGE,
+                                reply_to_message_id=message_id,
+                            )
+                            return
+                        prompt_input = build_ha_keyword_prompt(ha_request)
+                        command = None
+                        stateless = True
+                        priority_keyword_mode = True
+                        emit_event(
+                            "bridge.ha_keyword_routed",
+                            fields={"chat_id": chat_id, "message_id": message_id},
+                        )
 
     if prompt_input:
         maybe_process_voice_alias_learning_confirmation(
