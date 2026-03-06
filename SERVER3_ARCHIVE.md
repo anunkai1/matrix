@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-07 (Summary Roll-Forward Trim for Server3 Mental Model)
+
+Summary:
+- Added a new rolling-summary entry for the operator-facing Server3 mental model document.
+- Kept the rolling bound by migrating one oldest entry from summary into archive.
+
+Migrated out of summary during this trim:
+- 2026-03-05: finalized explicit tone rule for daily Govorun 09:00 WhatsApp message in code + runbook: fun/funny/light/warm/enjoyable, exactly one short fun fact, prefer funny/interesting history-culture, animals, science, space, wholesome stories, life hacks, avoid heavy topics, and no sarcasm at people; fixed short format `Доброе утро...` + `Даю справку: ...`.
+
 ## 2026-03-04 (Summary Roll-Forward Trim for Govorun Tone Control)
 
 Summary:

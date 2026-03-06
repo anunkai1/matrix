@@ -133,6 +133,7 @@ bash src/telegram_bridge/smoke_test.sh
 
 - `AGENTS.md`
 - `ARCHITECT_INSTRUCTION.md`
+- `docs/server3-mental-model.md`
 - `docs/home-assistant-ops.md`
 - `docs/telegram-architect-bridge.md`
 - `docs/telegram-bridge-debug-checklist.md`
