@@ -4,9 +4,11 @@ import re
 import sqlite3
 import threading
 import time
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
+from zoneinfo import ZoneInfo
 
 MODE_FULL = "all_context"
 MODE_FULL_LEGACY_ALIAS = "full"
@@ -20,6 +22,31 @@ FACT_LIMIT = 20
 DEFAULT_MAX_MESSAGES_PER_KEY = 4000
 DEFAULT_MAX_SUMMARIES_PER_KEY = 80
 DEFAULT_PRUNE_INTERVAL_SECONDS = 300
+MAX_NATURAL_LANGUAGE_RECALL_MESSAGES = 20
+BRISBANE_TZ = ZoneInfo("Australia/Brisbane")
+
+NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+}
 
 SENSITIVE_PATTERNS = (
     "password",
@@ -85,6 +112,14 @@ class RetentionPruneResult:
     scanned_keys: int
     pruned_messages: int
     pruned_summaries: int
+
+
+@dataclass(frozen=True)
+class NaturalLanguageMemoryIntent:
+    kind: str
+    role: Optional[str] = None
+    count: int = 0
+    window: Optional[str] = None
 
 
 class MemoryEngine:
@@ -421,6 +456,31 @@ class MemoryEngine:
         rows.reverse()
         return rows
 
+    def _load_recent_messages_for_role(
+        self,
+        conn: sqlite3.Connection,
+        conversation_key: str,
+        limit: int,
+        role: Optional[str],
+    ) -> List[sqlite3.Row]:
+        params: List[object] = [conversation_key]
+        query = """
+            SELECT sender_role, sender_name, text, ts
+            FROM messages
+            WHERE conversation_key = ?
+        """
+        if role:
+            query += " AND sender_role = ?"
+            params.append(role)
+        query += """
+            ORDER BY id DESC
+            LIMIT ?
+        """
+        params.append(limit)
+        rows = conn.execute(query, tuple(params)).fetchall()
+        rows.reverse()
+        return rows
+
     def _load_latest_summary(self, conn: sqlite3.Connection, conversation_key: str) -> Optional[sqlite3.Row]:
         return conn.execute(
             """
@@ -456,6 +516,219 @@ class MemoryEngine:
                 [(now, int(row["id"])) for row in rows],
             )
         return rows
+
+    def _load_latest_summary_in_window(
+        self,
+        conn: sqlite3.Connection,
+        conversation_key: str,
+        start_ts: float,
+        end_ts: float,
+    ) -> Optional[sqlite3.Row]:
+        return conn.execute(
+            """
+            SELECT summary_text, key_points_json, open_loops_json, created_at
+            FROM chat_summaries
+            WHERE conversation_key = ? AND created_at >= ? AND created_at < ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (conversation_key, start_ts, end_ts),
+        ).fetchone()
+
+    def _load_messages_in_window(
+        self,
+        conn: sqlite3.Connection,
+        conversation_key: str,
+        start_ts: float,
+        end_ts: float,
+    ) -> List[sqlite3.Row]:
+        return conn.execute(
+            """
+            SELECT id, sender_role, sender_name, text, token_estimate, is_bot, ts
+            FROM messages
+            WHERE conversation_key = ? AND ts >= ? AND ts < ?
+            ORDER BY id
+            """,
+            (conversation_key, start_ts, end_ts),
+        ).fetchall()
+
+    def _load_active_facts_in_window(
+        self,
+        conn: sqlite3.Connection,
+        conversation_key: str,
+        start_ts: float,
+        end_ts: float,
+        limit: int = FACT_LIMIT,
+    ) -> List[sqlite3.Row]:
+        return conn.execute(
+            """
+            SELECT mf.id, mf.fact_key, mf.fact_value, mf.explicit, mf.confidence
+            FROM memory_facts AS mf
+            LEFT JOIN messages AS m
+                ON m.id = mf.source_msg_id
+            WHERE mf.conversation_key = ?
+              AND mf.status = 'active'
+              AND (
+                    (
+                        mf.source_msg_id IS NOT NULL
+                        AND m.conversation_key = ?
+                        AND m.ts >= ?
+                        AND m.ts < ?
+                    )
+                    OR (
+                        mf.source_msg_id IS NULL
+                        AND mf.created_at >= ?
+                        AND mf.created_at < ?
+                    )
+              )
+            ORDER BY mf.explicit DESC, mf.confidence DESC, mf.id DESC
+            LIMIT ?
+            """,
+            (
+                conversation_key,
+                conversation_key,
+                start_ts,
+                end_ts,
+                start_ts,
+                end_ts,
+                limit,
+            ),
+        ).fetchall()
+
+    @staticmethod
+    def _format_timestamp(ts: float) -> str:
+        return datetime.fromtimestamp(float(ts), tz=BRISBANE_TZ).strftime("%Y-%m-%d %H:%M:%S AEST")
+
+    @staticmethod
+    def _parse_count_token(token: str) -> Optional[int]:
+        value = (token or "").strip().lower()
+        if not value:
+            return None
+        if value.isdigit():
+            return int(value)
+        return NUMBER_WORDS.get(value)
+
+    @staticmethod
+    def _window_bounds(window: str, now: Optional[datetime] = None) -> Tuple[datetime, datetime]:
+        current = now.astimezone(BRISBANE_TZ) if now else datetime.now(BRISBANE_TZ)
+        start_of_today = current.replace(hour=0, minute=0, second=0, microsecond=0)
+        normalized = (window or "").strip().lower().replace("-", "_").replace(" ", "_")
+        if normalized == "today":
+            return start_of_today, current
+        if normalized == "yesterday":
+            start = start_of_today - timedelta(days=1)
+            return start, start_of_today
+        if normalized == "this_week":
+            start = start_of_today - timedelta(days=start_of_today.weekday())
+            return start, current
+        raise ValueError(f"Unsupported window: {window}")
+
+    def _render_recent_messages_reply(
+        self,
+        conn: sqlite3.Connection,
+        conversation_key: str,
+        role: str,
+        count: int,
+    ) -> str:
+        safe_count = max(1, min(count, MAX_NATURAL_LANGUAGE_RECALL_MESSAGES))
+        rows = self._load_recent_messages_for_role(conn, conversation_key, safe_count, role)
+        if not rows:
+            if role == "assistant":
+                return "I couldn't find any of my stored messages for this conversation yet."
+            return "I couldn't find any of your stored messages for this conversation yet."
+
+        label = "My" if role == "assistant" else "Your"
+        if len(rows) == 1:
+            heading = f"{label} last message in memory is:"
+        else:
+            heading = f"{label} last {len(rows)} messages in memory are:"
+        lines = [heading]
+        for index, row in enumerate(rows, start=1):
+            text = self._sanitize_line(str(row["text"] or ""), 240)
+            lines.append(f"{index}. {self._format_timestamp(float(row['ts']))}: {text}")
+        return "\n".join(lines)
+
+    def _render_summary_window_reply(
+        self,
+        conn: sqlite3.Connection,
+        conversation_key: str,
+        window: str,
+        now: Optional[datetime] = None,
+    ) -> str:
+        start_dt, end_dt = self._window_bounds(window, now=now)
+        start_ts = start_dt.timestamp()
+        end_ts = end_dt.timestamp()
+        summary_row = self._load_latest_summary_in_window(conn, conversation_key, start_ts, end_ts)
+        fact_rows = self._load_active_facts_in_window(conn, conversation_key, start_ts, end_ts)
+
+        if summary_row is not None:
+            summary_text = str(summary_row["summary_text"] or "").strip()
+        else:
+            message_rows = self._load_messages_in_window(conn, conversation_key, start_ts, end_ts)
+            if not message_rows and not fact_rows:
+                window_label = (window or "").replace("_", " ")
+                return f"I couldn't find anything in memory for {window_label}."
+            if message_rows:
+                summary_text, _, _ = self._summarize_rows(message_rows)
+            else:
+                summary_text = "No stored messages were captured in that window."
+
+        window_label = (window or "").replace("_", " ")
+        lines = [f"From {window_label}, I remember:", summary_text.strip()]
+        if fact_rows:
+            lines.append("")
+            lines.append("Facts learned in that window:")
+            for row in fact_rows:
+                fact_key = str(row["fact_key"] or "").strip()
+                fact_value = self._sanitize_line(str(row["fact_value"] or ""), 140)
+                lines.append(f"- {fact_key}: {fact_value}")
+        return "\n".join(line for line in lines if line is not None).strip()
+
+    def _render_active_facts_reply(self, conversation_key: str) -> str:
+        rows = [row for row in self.export_facts(conversation_key) if str(row["status"]) == "active"]
+        if not rows:
+            return "I don't have any active facts stored for this conversation."
+
+        lines = ["What I currently remember as active facts is:"]
+        for row in rows:
+            lines.append(f"- {row['fact_key']}: {row['fact_value']}")
+        return "\n".join(lines)
+
+    def _render_latest_summary_reply(self, conn: sqlite3.Connection, conversation_key: str) -> str:
+        summary_row = self._load_latest_summary(conn, conversation_key)
+        if summary_row is None:
+            return "I don't have a stored summary for this conversation yet."
+        summary_text = str(summary_row["summary_text"] or "").strip()
+        if not summary_text:
+            return "I don't have a stored summary for this conversation yet."
+        return f"The latest stored summary is:\n{summary_text}"
+
+    def respond_to_natural_language_memory_query(
+        self,
+        conversation_key: str,
+        intent: NaturalLanguageMemoryIntent,
+        now: Optional[datetime] = None,
+    ) -> str:
+        with self._lock, self._connect() as conn:
+            if intent.kind == "recent_messages" and intent.role:
+                return self._render_recent_messages_reply(
+                    conn,
+                    conversation_key,
+                    intent.role,
+                    intent.count or 5,
+                )
+            if intent.kind == "summary_window" and intent.window:
+                return self._render_summary_window_reply(
+                    conn,
+                    conversation_key,
+                    intent.window,
+                    now=now,
+                )
+            if intent.kind == "active_facts":
+                return self._render_active_facts_reply(conversation_key)
+            if intent.kind == "latest_summary":
+                return self._render_latest_summary_reply(conn, conversation_key)
+        raise ValueError(f"Unsupported natural language intent: {intent.kind}")
 
     def _build_prompt(
         self,
@@ -1504,3 +1777,64 @@ def build_memory_help_lines() -> List[str]:
         "/hard-reset-memory - clear session + facts + summaries + messages for this key",
         "/ask <prompt> - run one stateless turn (no memory read/write)",
     ]
+
+
+def parse_natural_language_memory_intent(text: str) -> Optional[NaturalLanguageMemoryIntent]:
+    lowered = " ".join((text or "").strip().lower().split())
+    if not lowered or lowered.startswith("/"):
+        return None
+
+    recent_patterns = (
+        (r"\bmy\s+last\s+(?P<count>[a-z0-9]+)\s+messages\b", "user"),
+        (r"\bthe\s+last\s+(?P<count>[a-z0-9]+)\s+messages\s+i\s+sent(?:\s+you)?\b", "user"),
+        (r"\bwhat\s+(?:were|was)\s+the\s+last\s+(?P<count>[a-z0-9]+)\s+messages\s+i\s+sent(?:\s+you)?\b", "user"),
+        (r"\byour\s+last\s+(?P<count>[a-z0-9]+)\s+messages\b", "assistant"),
+        (r"\bthe\s+last\s+(?P<count>[a-z0-9]+)\s+messages\s+you\s+sent(?:\s+me)?\b", "assistant"),
+        (r"\bwhat\s+(?:were|was)\s+the\s+last\s+(?P<count>[a-z0-9]+)\s+messages\s+you\s+sent(?:\s+me)?\b", "assistant"),
+    )
+    for pattern, role in recent_patterns:
+        match = re.search(pattern, lowered)
+        if not match:
+            continue
+        count = MemoryEngine._parse_count_token(match.group("count"))
+        if count is None:
+            return None
+        return NaturalLanguageMemoryIntent(
+            kind="recent_messages",
+            role=role,
+            count=count,
+        )
+
+    summary_match = re.search(
+        r"\bwhat\s+do\s+you\s+remember\s+from\s+(?P<window>today|yesterday|this\s+week)\b",
+        lowered,
+    )
+    if summary_match:
+        return NaturalLanguageMemoryIntent(
+            kind="summary_window",
+            window=summary_match.group("window").replace(" ", "_"),
+        )
+
+    if re.search(r"\bwhat\s+facts\s+do\s+you\s+remember\b", lowered):
+        return NaturalLanguageMemoryIntent(kind="active_facts")
+
+    if re.search(r"\b(?:what(?:'s| is)\s+)?(?:the\s+)?latest\s+summary\b", lowered):
+        return NaturalLanguageMemoryIntent(kind="latest_summary")
+
+    return None
+
+
+def handle_natural_language_memory_query(
+    engine: MemoryEngine,
+    conversation_key: str,
+    text: str,
+    now: Optional[datetime] = None,
+) -> Optional[str]:
+    intent = parse_natural_language_memory_intent(text)
+    if intent is None:
+        return None
+    return engine.respond_to_natural_language_memory_query(
+        conversation_key,
+        intent,
+        now=now,
+    )

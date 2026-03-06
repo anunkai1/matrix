@@ -14,7 +14,12 @@ if str(TELEGRAM_BRIDGE_DIR) not in sys.path:
     sys.path.insert(0, str(TELEGRAM_BRIDGE_DIR))
 
 from executor import parse_executor_output  # type: ignore
-from memory_engine import MemoryEngine, build_memory_help_lines, handle_memory_command  # type: ignore
+from memory_engine import (  # type: ignore
+    MemoryEngine,
+    build_memory_help_lines,
+    handle_memory_command,
+    handle_natural_language_memory_query,
+)
 
 
 DEFAULT_STATE_DIR = "/home/architect/.local/state/telegram-architect-bridge"
@@ -158,6 +163,16 @@ def main() -> int:
     else:
         prompt_text = raw_input
         stateless = False
+
+    if not stateless:
+        recall_response = handle_natural_language_memory_query(
+            engine,
+            conversation_key,
+            prompt_text,
+        )
+        if recall_response:
+            print(recall_response)
+            return 0
 
     try:
         turn = engine.begin_turn(

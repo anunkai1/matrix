@@ -3,6 +3,7 @@ import re
 import tempfile
 import time
 import unittest
+from datetime import datetime
 from unittest import mock
 from pathlib import Path
 
@@ -201,6 +202,176 @@ class MemoryEngineTests(unittest.TestCase):
             status = engine.get_status(key)
             self.assertEqual(status.message_count, 0)
             self.assertFalse(status.session_active)
+
+    def test_natural_language_query_returns_recent_user_messages(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.telegram_key(55)
+            engine = memory.MemoryEngine(db_path)
+
+            for user_text in ("first note", "second note", "third note"):
+                turn = engine.begin_turn(
+                    conversation_key=key,
+                    channel="telegram",
+                    sender_name="User",
+                    user_input=user_text,
+                )
+                engine.finish_turn(
+                    turn,
+                    channel="telegram",
+                    assistant_text=f"reply to {user_text}",
+                    new_thread_id="thread-55",
+                )
+
+            response = memory.handle_natural_language_memory_query(
+                engine,
+                key,
+                "what were the last 2 messages i sent you?",
+            )
+
+            self.assertIsNotNone(response)
+            text = response or ""
+            self.assertIn("Your last 2 messages in memory are:", text)
+            self.assertIn("second note", text)
+            self.assertIn("third note", text)
+            self.assertLess(text.index("second note"), text.index("third note"))
+            self.assertNotIn("reply to third note", text)
+
+    def test_natural_language_today_query_prefers_same_day_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.telegram_key(56)
+            engine = memory.MemoryEngine(db_path)
+            now = datetime(2026, 3, 7, 12, 0, tzinfo=memory.BRISBANE_TZ)
+            msg_ts = datetime(2026, 3, 7, 9, 15, tzinfo=memory.BRISBANE_TZ).timestamp()
+
+            with engine._lock, engine._connect() as conn:
+                user_msg_id = engine._append_message(
+                    conn,
+                    conversation_key=key,
+                    channel="telegram",
+                    sender_role="user",
+                    sender_name="User",
+                    text="can you inspect the bridge logs today",
+                    is_bot=False,
+                )
+                assistant_msg_id = engine._append_message(
+                    conn,
+                    conversation_key=key,
+                    channel="telegram",
+                    sender_role="assistant",
+                    sender_name="Architect",
+                    text="I checked the bridge logs and they look stable",
+                    is_bot=True,
+                )
+                conn.execute(
+                    "UPDATE messages SET ts = ? WHERE id IN (?, ?)",
+                    (msg_ts, user_msg_id, assistant_msg_id),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO chat_summaries (
+                        conversation_key,
+                        start_msg_id,
+                        end_msg_id,
+                        summary_text,
+                        key_points_json,
+                        open_loops_json,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        key,
+                        user_msg_id,
+                        assistant_msg_id,
+                        "Objective:\n- inspect the bridge logs\n\nCurrent State:\n- logs looked stable",
+                        "[]",
+                        "[]",
+                        msg_ts,
+                    ),
+                )
+                engine._upsert_fact(
+                    conn,
+                    key,
+                    "pref:bridge_logs",
+                    "you care about bridge log stability",
+                    explicit=False,
+                    confidence=0.8,
+                    source_msg_id=user_msg_id,
+                )
+
+            response = memory.handle_natural_language_memory_query(
+                engine,
+                key,
+                "what do you remember from today?",
+                now=now,
+            )
+
+            self.assertIsNotNone(response)
+            text = response or ""
+            self.assertIn("From today, I remember:", text)
+            self.assertIn("inspect the bridge logs", text)
+            self.assertIn("Facts learned in that window:", text)
+            self.assertIn("pref:bridge_logs: you care about bridge log stability", text)
+
+    def test_natural_language_today_query_summarizes_messages_without_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.telegram_key(57)
+            engine = memory.MemoryEngine(db_path)
+            now = datetime(2026, 3, 7, 18, 0, tzinfo=memory.BRISBANE_TZ)
+            msg_ts = datetime(2026, 3, 7, 17, 30, tzinfo=memory.BRISBANE_TZ).timestamp()
+
+            with engine._lock, engine._connect() as conn:
+                user_msg_id = engine._append_message(
+                    conn,
+                    conversation_key=key,
+                    channel="telegram",
+                    sender_role="user",
+                    sender_name="User",
+                    text="can you review the memory behavior today",
+                    is_bot=False,
+                )
+                assistant_msg_id = engine._append_message(
+                    conn,
+                    conversation_key=key,
+                    channel="telegram",
+                    sender_role="assistant",
+                    sender_name="Architect",
+                    text="reviewed it and found no blocker",
+                    is_bot=True,
+                )
+                conn.execute(
+                    "UPDATE messages SET ts = ? WHERE id IN (?, ?)",
+                    (msg_ts, user_msg_id, assistant_msg_id),
+                )
+                engine._upsert_fact(
+                    conn,
+                    key,
+                    "pref:memory_behavior",
+                    "you care about memory behavior",
+                    explicit=False,
+                    confidence=0.8,
+                    source_msg_id=user_msg_id,
+                )
+
+            response = memory.handle_natural_language_memory_query(
+                engine,
+                key,
+                "what do you remember from today?",
+                now=now,
+            )
+
+            self.assertIsNotNone(response)
+            text = response or ""
+            self.assertIn("From today, I remember:", text)
+            self.assertIn("Objective:", text)
+            self.assertIn("Current State:", text)
+            self.assertIn("Facts learned in that window:", text)
+            self.assertIn("pref:memory_behavior: you care about memory behavior", text)
+
+    def test_natural_language_memory_intent_falls_through_when_ambiguous(self):
+        self.assertIsNone(memory.parse_natural_language_memory_intent("last 5 messages"))
 
     def test_summarization_trigger_and_prompt_sections(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -1918,6 +1918,56 @@ class BridgeCoreTests(unittest.TestCase):
             self.assertTrue(client.messages)
             self.assertIn("Memory status:", client.messages[-1][1])
 
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_routes_natural_language_memory_recall(self, start_message_worker):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
+            key = bridge.MemoryEngine.telegram_key(1)
+            turn = memory_engine.begin_turn(
+                conversation_key=key,
+                channel="telegram",
+                sender_name="User",
+                user_input="first note",
+            )
+            memory_engine.finish_turn(
+                turn,
+                channel="telegram",
+                assistant_text="reply one",
+                new_thread_id="thread-1",
+            )
+            turn = memory_engine.begin_turn(
+                conversation_key=key,
+                channel="telegram",
+                sender_name="User",
+                user_input="second note",
+            )
+            memory_engine.finish_turn(
+                turn,
+                channel="telegram",
+                assistant_text="reply two",
+                new_thread_id="thread-1",
+            )
+
+            state = bridge.State(memory_engine=memory_engine)
+            client = FakeTelegramClient()
+            config = make_config()
+            update = {
+                "update_id": 46,
+                "message": {
+                    "message_id": 453,
+                    "chat": {"id": 1, "type": "private"},
+                    "text": "what were the last 2 messages i sent you?",
+                },
+            }
+
+            bridge.handle_update(state, config, client, update)
+
+            self.assertFalse(start_message_worker.called)
+            self.assertTrue(client.messages)
+            self.assertIn("Your last 2 messages in memory are:", client.messages[-1][1])
+            self.assertIn("first note", client.messages[-1][1])
+            self.assertIn("second note", client.messages[-1][1])
+
     def test_handle_update_rejects_too_long_input_before_worker_dispatch(self):
         state = bridge.State()
         client = FakeTelegramClient()

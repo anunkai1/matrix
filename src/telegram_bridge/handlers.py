@@ -21,7 +21,13 @@ try:
     from .channel_adapter import ChannelAdapter
     from .engine_adapter import CodexEngineAdapter, EngineAdapter
     from .media import TelegramFileDownloadSpec, download_telegram_file_to_temp
-    from .memory_engine import MemoryEngine, TurnContext, build_memory_help_lines, handle_memory_command
+    from .memory_engine import (
+        MemoryEngine,
+        TurnContext,
+        build_memory_help_lines,
+        handle_memory_command,
+        handle_natural_language_memory_query,
+    )
     from .session_manager import (
         ensure_chat_worker_session,
         finalize_chat_work,
@@ -43,7 +49,13 @@ except ImportError:
     from channel_adapter import ChannelAdapter
     from engine_adapter import CodexEngineAdapter, EngineAdapter
     from media import TelegramFileDownloadSpec, download_telegram_file_to_temp
-    from memory_engine import MemoryEngine, TurnContext, build_memory_help_lines, handle_memory_command
+    from memory_engine import (
+        MemoryEngine,
+        TurnContext,
+        build_memory_help_lines,
+        handle_memory_command,
+        handle_natural_language_memory_query,
+    )
     from session_manager import (
         ensure_chat_worker_session,
         finalize_chat_work,
@@ -2900,6 +2912,28 @@ def handle_update(
             fields={"chat_id": chat_id, "message_id": message_id, "command": command or ""},
         )
         return
+
+    if memory_engine is not None and prompt_input and not priority_keyword_mode and not stateless:
+        recall_response = handle_natural_language_memory_query(
+            memory_engine,
+            resolve_memory_conversation_key(config, memory_channel, chat_id),
+            prompt_input,
+        )
+        if recall_response:
+            client.send_message(
+                chat_id,
+                recall_response,
+                reply_to_message_id=message_id,
+            )
+            emit_event(
+                "bridge.command_handled",
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "command": "natural_language_memory_recall",
+                },
+            )
+            return
 
     reply_context_prompt = build_reply_context_prompt(message)
     prompt = (prompt_input or "").strip()

@@ -1,7 +1,9 @@
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / 'src' / 'architect_cli' / 'main.py'
@@ -33,3 +35,46 @@ class ArchitectCliMainTests(unittest.TestCase):
             memory_namespace='ignored',
         )
         self.assertEqual(module.build_conversation_key(args), 'shared:architect:main')
+
+    def test_main_routes_natural_language_memory_query_without_running_codex(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / 'memory.sqlite3')
+            engine = module.MemoryEngine(db_path)
+            key = module.MemoryEngine.cli_key('default', namespace='architect')
+
+            for user_text in ('first note', 'second note'):
+                turn = engine.begin_turn(
+                    conversation_key=key,
+                    channel='cli',
+                    sender_name='CLI User',
+                    user_input=user_text,
+                )
+                engine.finish_turn(
+                    turn,
+                    channel='cli',
+                    assistant_text=f'reply to {user_text}',
+                    new_thread_id='thread-cli',
+                )
+
+            args = SimpleNamespace(
+                launcher_name='architect',
+                assistant_name='Architect',
+                memory_namespace='architect',
+                profile='default',
+                conversation_key='',
+                state_dir=tmpdir,
+                memory_db=db_path,
+                timeout_seconds=30,
+                codex_bin='codex',
+            )
+
+            with mock.patch.object(module, 'parse_args', return_value=args), \
+                mock.patch.object(module, 'resolve_input', return_value='what were the last 2 messages i sent you?'), \
+                mock.patch.object(module, 'run_codex') as run_codex, \
+                mock.patch('builtins.print') as print_mock:
+                rc = module.main()
+
+            self.assertEqual(rc, 0)
+            run_codex.assert_not_called()
+            print_mock.assert_called_once()
+            self.assertIn('Your last 2 messages in memory are:', print_mock.call_args[0][0])
