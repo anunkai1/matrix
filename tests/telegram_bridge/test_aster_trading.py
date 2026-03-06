@@ -23,6 +23,8 @@ class FakeClient:
     def get_ticker_price(self, symbol: str):
         if symbol == "BTCUSDT":
             return Decimal("50000")
+        if symbol == "ETHUSDT":
+            return Decimal("2080")
         return Decimal("100")
 
     def get_exchange_info(self):
@@ -36,7 +38,16 @@ class FakeClient:
                         {"filterType": "MARKET_LOT_SIZE", "minQty": "0.001", "stepSize": "0.001"},
                         {"filterType": "MIN_NOTIONAL", "notional": "5"},
                     ],
-                }
+                },
+                {
+                    "symbol": "ETHUSDT",
+                    "status": "TRADING",
+                    "filters": [
+                        {"filterType": "LOT_SIZE", "minQty": "0.001", "stepSize": "0.001"},
+                        {"filterType": "MARKET_LOT_SIZE", "minQty": "0.001", "stepSize": "0.001"},
+                        {"filterType": "MIN_NOTIONAL", "notional": "5"},
+                    ],
+                },
             ]
         }
 
@@ -110,6 +121,7 @@ class AsterTradingTests(unittest.TestCase):
                 recv_window_ms=5000,
                 http_timeout_seconds=5,
                 max_order_notional_usdt=Decimal("10000"),
+                notional_max_overshoot_pct=Decimal("0.15"),
                 max_leverage=20,
                 daily_max_realized_loss_usdt=Decimal("5000"),
                 confirm_ttl_seconds=60,
@@ -137,6 +149,59 @@ class AsterTradingTests(unittest.TestCase):
                 )
                 self.assertIn("ASTER order executed", executed)
                 self.assertIn("order_id=12345", executed)
+
+    def test_notional_rounds_to_nearest_step(self):
+        cfg = aster_trading.TradingConfig(
+            api_key="k",
+            api_secret="s",
+            api_base="https://fapi.asterdex.com",
+            recv_window_ms=5000,
+            http_timeout_seconds=5,
+            max_order_notional_usdt=Decimal("10000"),
+            notional_max_overshoot_pct=Decimal("0.15"),
+            max_leverage=20,
+            daily_max_realized_loss_usdt=Decimal("5000"),
+            confirm_ttl_seconds=60,
+            state_db_path="/tmp/unused.sqlite3",
+        )
+        intent = aster_trading.ParsedIntent(
+            action="draft",
+            symbol="ETHUSDT",
+            side="BUY",
+            order_type="MARKET",
+            notional_usdt=Decimal("10"),
+            leverage=2,
+        )
+        with mock.patch.object(aster_trading, "compute_daily_realized_loss", return_value=Decimal("0")):
+            draft = aster_trading._build_draft(FakeClient(cfg), cfg, intent)
+        self.assertEqual(draft.quantity, Decimal("0.005"))
+        self.assertEqual(draft.notional_usdt, Decimal("10.400"))
+
+    def test_notional_rejects_large_overshoot(self):
+        cfg = aster_trading.TradingConfig(
+            api_key="k",
+            api_secret="s",
+            api_base="https://fapi.asterdex.com",
+            recv_window_ms=5000,
+            http_timeout_seconds=5,
+            max_order_notional_usdt=Decimal("10000"),
+            notional_max_overshoot_pct=Decimal("0.15"),
+            max_leverage=20,
+            daily_max_realized_loss_usdt=Decimal("5000"),
+            confirm_ttl_seconds=60,
+            state_db_path="/tmp/unused.sqlite3",
+        )
+        intent = aster_trading.ParsedIntent(
+            action="draft",
+            symbol="BTCUSDT",
+            side="BUY",
+            order_type="MARKET",
+            notional_usdt=Decimal("20"),
+            leverage=2,
+        )
+        with mock.patch.object(aster_trading, "compute_daily_realized_loss", return_value=Decimal("0")):
+            with self.assertRaisesRegex(aster_trading.TradeError, "Requested notional is too small"):
+                aster_trading._build_draft(FakeClient(cfg), cfg, intent)
 
 
 if __name__ == "__main__":

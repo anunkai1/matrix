@@ -63,6 +63,7 @@ class TradingConfig:
     recv_window_ms: int
     http_timeout_seconds: float
     max_order_notional_usdt: Decimal
+    notional_max_overshoot_pct: Decimal
     max_leverage: int
     daily_max_realized_loss_usdt: Decimal
     confirm_ttl_seconds: int
@@ -134,6 +135,7 @@ def load_trading_config() -> TradingConfig:
     recv_window_ms = int(os.getenv("ASTER_RECV_WINDOW_MS", "5000").strip() or "5000")
     http_timeout_seconds = float(os.getenv("ASTER_HTTP_TIMEOUT_SECONDS", "15").strip() or "15")
     max_order_notional_usdt = _decimal_env("ASTER_MAX_ORDER_NOTIONAL_USDT", "10000")
+    notional_max_overshoot_pct = _decimal_env("ASTER_NOTIONAL_MAX_OVERSHOOT_PCT", "0.15")
     daily_max_realized_loss_usdt = _decimal_env("ASTER_DAILY_MAX_REALIZED_LOSS_USDT", "5000")
     max_leverage = int(os.getenv("ASTER_MAX_LEVERAGE", "20").strip() or "20")
     confirm_ttl_seconds = int(os.getenv("ASTER_CONFIRM_TTL_SECONDS", "60").strip() or "60")
@@ -152,6 +154,7 @@ def load_trading_config() -> TradingConfig:
         recv_window_ms=recv_window_ms,
         http_timeout_seconds=http_timeout_seconds,
         max_order_notional_usdt=max_order_notional_usdt,
+        notional_max_overshoot_pct=notional_max_overshoot_pct,
         max_leverage=max_leverage,
         daily_max_realized_loss_usdt=daily_max_realized_loss_usdt,
         confirm_ttl_seconds=confirm_ttl_seconds,
@@ -542,6 +545,61 @@ def _round_down_step(value: Decimal, step: Decimal) -> Decimal:
     return units * step
 
 
+def _round_up_step(value: Decimal, step: Decimal) -> Decimal:
+    if step <= 0:
+        return value
+    down = _round_down_step(value, step)
+    if down == value:
+        return value
+    return down + step
+
+
+def _pick_quantity_for_notional(
+    target_notional: Decimal,
+    reference_price: Decimal,
+    step_size: Decimal,
+    min_qty: Decimal,
+    min_notional: Decimal,
+    max_overshoot_pct: Decimal,
+) -> Decimal:
+    raw_qty = target_notional / reference_price
+    down_qty = _round_down_step(raw_qty, step_size)
+    up_qty = _round_up_step(raw_qty, step_size)
+
+    candidates: List[Decimal] = []
+    for qty in (down_qty, up_qty, min_qty):
+        if qty <= 0:
+            continue
+        if qty not in candidates:
+            candidates.append(qty)
+
+    valid: List[Tuple[Decimal, Decimal]] = []
+    for qty in candidates:
+        if min_qty > 0 and qty < min_qty:
+            continue
+        notional = qty * reference_price
+        if min_notional > 0 and notional < min_notional:
+            continue
+        valid.append((qty, notional))
+
+    if not valid:
+        raise TradeError("Could not compute a valid quantity for requested notional.")
+
+    best_qty, best_notional = min(
+        valid,
+        key=lambda item: (abs(item[1] - target_notional), item[1]),
+    )
+    if target_notional > 0 and best_notional > target_notional:
+        overshoot = (best_notional - target_notional) / target_notional
+        if overshoot > max_overshoot_pct:
+            raise TradeError(
+                "Requested notional is too small for symbol lot-size filters. "
+                f"Requested={format_decimal(target_notional)} USDT, "
+                f"minimum practical={format_decimal(best_notional)} USDT."
+            )
+    return best_qty
+
+
 def _build_draft(client: AsterFuturesClient, config: TradingConfig, intent: ParsedIntent) -> DraftOrder:
     assert intent.action == "draft"
     assert intent.symbol is not None
@@ -577,7 +635,14 @@ def _build_draft(client: AsterFuturesClient, config: TradingConfig, intent: Pars
         inferred_from = "quantity"
     else:
         assert intent.notional_usdt is not None
-        quantity = intent.notional_usdt / reference_price
+        quantity = _pick_quantity_for_notional(
+            target_notional=intent.notional_usdt,
+            reference_price=reference_price,
+            step_size=step_size,
+            min_qty=min_qty,
+            min_notional=min_notional,
+            max_overshoot_pct=config.notional_max_overshoot_pct,
+        )
         inferred_from = "notional"
 
     quantity = _round_down_step(quantity, step_size)
