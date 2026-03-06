@@ -21,6 +21,7 @@ Last updated: 2026-03-06 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 - Runtime observer daily Telegram summary now appends a plain-English operator line indicating whether attention is needed.
 - Runtime observer daily health delivery is centralized through `staker_alerts_bot` to chat `211761499` (single destination).
+- AsterTrader bot restart routing is pinned to `telegram-aster-trader-bridge.service` via `TELEGRAM_RESTART_UNIT` to prevent `/restart` from targeting Architect service defaults.
 
 ## Operational Memory (Pinned)
 - Routing keywords:
