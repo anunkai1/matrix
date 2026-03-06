@@ -134,13 +134,13 @@ class AsterTradingTests(unittest.TestCase):
                     config=cfg,
                 )
                 self.assertIn("ASTER trade preview", preview)
-                self.assertIn("ticket:", preview)
-                self.assertIn("leverage: 10x", preview)
-                self.assertIn("notional_usdt:", preview)
-                self.assertIn("quantity:", preview)
+                self.assertIn("𝐓𝐈𝐂𝐊𝐄𝐓:", preview)
+                self.assertIn("𝐋𝐄𝐕𝐄𝐑𝐀𝐆𝐄: 10x", preview)
+                self.assertIn("𝐍𝐎𝐓𝐈𝐎𝐍𝐀𝐋 𝐔𝐒𝐃𝐓:", preview)
+                self.assertIn("𝐐𝐔𝐀𝐍𝐓𝐈𝐓𝐘:", preview)
                 ticket = None
                 for line in preview.splitlines():
-                    if line.startswith("ticket:"):
+                    if line.startswith("𝐓𝐈𝐂𝐊𝐄𝐓:"):
                         ticket = line.split(":", 1)[1].strip()
                         break
                 self.assertIsNotNone(ticket)

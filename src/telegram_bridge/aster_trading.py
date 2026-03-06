@@ -138,7 +138,7 @@ def load_trading_config() -> TradingConfig:
     notional_max_overshoot_pct = _decimal_env("ASTER_NOTIONAL_MAX_OVERSHOOT_PCT", "0.15")
     daily_max_realized_loss_usdt = _decimal_env("ASTER_DAILY_MAX_REALIZED_LOSS_USDT", "5000")
     max_leverage = int(os.getenv("ASTER_MAX_LEVERAGE", "20").strip() or "20")
-    confirm_ttl_seconds = int(os.getenv("ASTER_CONFIRM_TTL_SECONDS", "60").strip() or "60")
+    confirm_ttl_seconds = int(os.getenv("ASTER_CONFIRM_TTL_SECONDS", "120").strip() or "120")
 
     state_db_path = os.getenv("ASTER_STATE_DB_PATH", "").strip()
     if not state_db_path:
@@ -728,17 +728,17 @@ def _render_preview(ticket_id: str, expires_at_ms: int, draft: DraftOrder) -> st
     price_value = format_decimal(draft.price) if draft.price is not None else "market"
     return (
         "ASTER trade preview (not executed yet):\n"
-        f"ticket: {ticket_id}\n"
-        f"expires_at: {expires.isoformat()}\n"
-        f"symbol: {draft.symbol}\n"
-        f"side: {draft.side}\n"
-        f"type: {draft.order_type}\n"
-        f"leverage: {draft.leverage}x\n"
-        f"notional_usdt: {format_decimal(draft.notional_usdt)}\n"
-        f"quantity: {format_decimal(draft.quantity)}\n"
-        f"price: {price_value}\n"
-        f"reduce_only: {str(draft.reduce_only).lower()}\n"
-        f"inferred_from: {draft.inferred_from}\n\n"
+        f"𝐓𝐈𝐂𝐊𝐄𝐓: {ticket_id}\n"
+        f"𝐄𝐗𝐏𝐈𝐑𝐄𝐒_𝐀𝐓: {expires.isoformat()}\n"
+        f"𝐒𝐘𝐌𝐁𝐎𝐋: {draft.symbol}\n"
+        f"𝐒𝐈𝐃𝐄: {draft.side}\n"
+        f"𝐓𝐘𝐏𝐄: {draft.order_type}\n"
+        f"𝐋𝐄𝐕𝐄𝐑𝐀𝐆𝐄: {draft.leverage}x\n"
+        f"𝐍𝐎𝐓𝐈𝐎𝐍𝐀𝐋 𝐔𝐒𝐃𝐓: {format_decimal(draft.notional_usdt)}\n"
+        f"𝐐𝐔𝐀𝐍𝐓𝐈𝐓𝐘: {format_decimal(draft.quantity)}\n"
+        f"𝐏𝐑𝐈𝐂𝐄: {price_value}\n"
+        f"𝐑𝐄𝐃𝐔𝐂𝐄_𝐎𝐍𝐋𝐘: {str(draft.reduce_only).lower()}\n"
+        f"𝐈𝐍𝐅𝐄𝐑𝐑𝐄𝐃_𝐅𝐑𝐎𝐌: {draft.inferred_from}\n\n"
         f"Confirm: Trade confirm {ticket_id}\n"
         f"Cancel: Trade cancel {ticket_id}"
     )
