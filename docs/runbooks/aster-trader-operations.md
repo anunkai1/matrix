@@ -64,6 +64,17 @@ Run as `aster-trader`:
 sudo -u aster-trader bash /home/aster-trader/asterbot/ops/trading/aster/trade_cli.sh "Trade long BTC 1000 USDT 5x market"
 ```
 
+Optional shared-memory Codex launcher:
+
+```bash
+sudo BASHRC_PROFILE=aster-trader TARGET_BASHRC=/home/aster-trader/.bashrc bash /home/architect/matrix/ops/bash/deploy-bashrc.sh apply
+sudo -u aster-trader bash -ic 'type astertrader'
+sudo -u aster-trader bash -ic 'cd /home/aster-trader/asterbot && astertrader --help'
+```
+
+- `astertrader` uses full-access Codex and shared CLI memory namespace `aster-trader`.
+- Shared memory path: `/home/aster-trader/.local/state/telegram-aster-trader-bridge/memory.sqlite3`
+
 ## Notes
 
 - Confirmation tickets are single-use and expire by `ASTER_CONFIRM_TTL_SECONDS`.

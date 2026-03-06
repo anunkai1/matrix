@@ -45,7 +45,7 @@ case "${MODE}" in
     ;;
   *)
     echo "Usage: $0 [apply|rollback]" >&2
-    echo "Optional overrides: BASHRC_PROFILE=architect|tank TARGET_BASHRC=/custom/path/.bashrc SNIPPET_PATH=/custom/snippet" >&2
+    echo "Optional overrides: BASHRC_PROFILE=<profile> TARGET_BASHRC=/custom/path/.bashrc SNIPPET_PATH=/custom/snippet" >&2
     rm -f "${tmp}"
     exit 1
     ;;
