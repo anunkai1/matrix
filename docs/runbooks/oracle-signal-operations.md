@@ -30,7 +30,7 @@
 - Memory is isolated by channel key (`sig:<chat_id>`)
 
 ## Health checks
-- Transport: `curl http://127.0.0.1:8797/health`
+- Transport: `curl http://127.0.0.1:18797/health`
 - Bridge status:
   - `sudo systemctl status signal-oracle-bridge.service --no-pager -n 50`
   - `sudo systemctl status oracle-signal-bridge.service --no-pager -n 50`
