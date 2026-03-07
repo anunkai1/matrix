@@ -88,6 +88,34 @@ class SignalOracleBridgeTests(unittest.TestCase):
         self.assertEqual(message["caption"], "@oracle transcribe this")
         self.assertEqual(message["voice"]["file_id"].startswith("sig-"), True)
 
+    def test_normalize_envelope_for_dm_aac_voice_note(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bridge = signal_bridge.SignalOracleBridge(make_config(tmp))
+            update = bridge._normalize_envelope(
+                {
+                    "sourceNumber": "+15554445555",
+                    "sourceName": "Bob",
+                    "timestamp": 1730000000200,
+                    "dataMessage": {
+                        "attachments": [
+                            {
+                                "id": "att-aac-1",
+                                "contentType": "audio/aac",
+                                "filename": "voice-note.aac",
+                                "size": 10573,
+                            }
+                        ],
+                    },
+                }
+            )
+
+        self.assertIsNotNone(update)
+        message = update["message"]
+        self.assertEqual(message["chat"]["type"], "private")
+        self.assertIn("voice", message)
+        self.assertNotIn("document", message)
+        self.assertTrue(message["voice"]["file_id"].startswith("sig-"))
+
     def test_get_file_meta_returns_cached_attachment_mapping(self):
         with tempfile.TemporaryDirectory() as tmp:
             bridge = signal_bridge.SignalOracleBridge(make_config(tmp))

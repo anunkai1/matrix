@@ -72,7 +72,12 @@ def detect_media_kind(content_type: str, file_name: str) -> str:
     if normalized.startswith("image/"):
         return "photo"
     if normalized.startswith("audio/"):
-        if suffix in {".ogg", ".oga", ".opus"} or "ogg" in normalized or "opus" in normalized:
+        if (
+            suffix in {".ogg", ".oga", ".opus", ".aac", ".m4a"}
+            or "ogg" in normalized
+            or "opus" in normalized
+            or normalized in {"audio/aac", "audio/mp4", "audio/x-m4a", "audio/m4a"}
+        ):
             return "voice"
         return "document"
     return "document"

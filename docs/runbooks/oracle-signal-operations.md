@@ -32,6 +32,8 @@
    - register mode: `ops/signal_oracle/run_auth.sh register`
    - verify mode: `ops/signal_oracle/run_auth.sh verify <CODE>`
 7. Start services: `ops/signal_oracle/start_service.sh`
+8. For Signal voice-note transcription, install Oracle's local whisper runtime:
+   - `sudo -iu oracle env TELEGRAM_VOICE_WHISPER_VENV=/home/oracle/.local/share/telegram-voice/venv bash /home/architect/matrix/ops/telegram-voice/install_faster_whisper.sh`
 
 ## Trigger policy
 - DM behavior: always respond
@@ -57,5 +59,9 @@
 - `ops/signal_oracle/install_user_service.sh` installs a least-privilege sudoers rule so Oracle can run in-chat `/restart` against `oracle-signal-bridge.service` only.
 - `ops/signal_oracle/start_service.sh` now fails fast if `/home/oracle/.codex/auth.json` is missing.
 - Signal message edits are not supported in v1. The bridge uses a single progress message plus typing updates.
-- Voice-note transcription uses the same optional `TELEGRAM_VOICE_TRANSCRIBE_CMD` path as other bridge runtimes.
+- Signal voice-note transcription uses Oracle's own faster-whisper runtime under `/home/oracle/.local/share/telegram-voice/venv` and the shared script `/home/architect/matrix/ops/telegram-voice/transcribe_voice.sh`.
+- Recommended Oracle Signal voice defaults on Server3:
+  - `HF_HOME=/home/oracle/.cache/huggingface`
+  - `TELEGRAM_VOICE_WHISPER_MODEL=tiny.en`
+  - `TELEGRAM_VOICE_WHISPER_LANGUAGE=en`
 - Group messages are accepted in joined groups only when the summon prefix is present.
