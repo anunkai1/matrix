@@ -11,6 +11,7 @@ WorkingDirectory=/home/oracle/oraclebot
 Environment=PYTHONUNBUFFERED=1
 Environment=TELEGRAM_EXECUTOR_CMD=/home/oracle/oraclebot/src/telegram_bridge/executor.sh
 EnvironmentFile=-/etc/default/oracle-signal-bridge
+ExecStartPre=/usr/bin/python3 /home/oracle/oraclebot/src/telegram_bridge/wait_for_signal_transport.py
 ExecStart=/usr/bin/python3 /home/oracle/oraclebot/src/telegram_bridge/main.py
 Restart=on-failure
 RestartSec=3

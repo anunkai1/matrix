@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-08 (Summary Roll-Forward Trim for Oracle Signal Readiness Gate)
+
+Summary:
+- Added a new rolling-summary entry for Oracle Signal startup hardening with an explicit transport readiness gate plus dependency-safe live restart flow.
+- Re-trimmed `SERVER3_SUMMARY.md` to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-07: reduced the deployed Oracle Signal workspace at `/home/oracle/oraclebot` to a minimal runtime layout by changing `ops/signal_oracle/deploy_bridge.sh` to deploy only `src/telegram_bridge` while preserving Oracle's live `AGENTS.md` as the runtime persona/identity truth file, removing inherited Architect docs/tests/ops/instructions from the live Oracle workspace; documented the intentional minimal layout in `docs/runbooks/oracle-signal-operations.md`.
+
 ## 2026-03-08 (Summary Roll-Forward Trim for Residual Boot Cleanup)
 
 Summary:

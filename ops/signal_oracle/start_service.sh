@@ -10,7 +10,8 @@ if ! sudo -u oracle test -s "${CODEX_AUTH_PATH}"; then
   exit 1
 fi
 
+sudo systemctl stop oracle-signal-bridge.service || true
 sudo systemctl restart signal-oracle-bridge.service
-sudo systemctl restart oracle-signal-bridge.service
+sudo systemctl start oracle-signal-bridge.service
 sudo systemctl status signal-oracle-bridge.service --no-pager -n 30
 sudo systemctl status oracle-signal-bridge.service --no-pager -n 30
