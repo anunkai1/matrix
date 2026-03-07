@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-08 (Summary Roll-Forward Trim for Local-Only Runtime Restore)
+
+Summary:
+- Added a new rolling-summary entry for restoration of a local-only runtime stack from retained host data outside git after live availability was removed too broadly.
+- Re-trimmed `SERVER3_SUMMARY.md` to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-07: fixed Oracle Signal in-chat `/restart` by adding `oracle-signal-bridge.service` to the shared restart-helper allowlist, adding Oracle-specific `TELEGRAM_RESTART_SCRIPT`/`TELEGRAM_RESTART_UNIT` env defaults, and provisioning a least-privilege sudoers rule for user `oracle` so restart requests no longer fall back to the removed local workspace path or the Architect unit.
+
 ## 2026-03-08 (Summary Roll-Forward Trim for ASTER Backburner Leverage)
 
 Summary:
