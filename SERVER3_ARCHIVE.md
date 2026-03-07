@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-08 (Summary Roll-Forward Trim for Off-Repo Runtime Path Compatibility Fix)
+
+Summary:
+- Added a new rolling-summary entry for the off-repo runtime path-compatibility fix after local-only service restore.
+- Re-trimmed `SERVER3_SUMMARY.md` to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-07: fixed Oracle Signal identity persistence bugs by making memory reset actually delete conversation messages/facts/summaries (not just the thread row), removing the hard-coded `Architect` assistant label from memory writes, and removing the Oracle-specific `TELEGRAM_RESPONSE_STYLE_HINT` override so persona/identity now come only from Oracle's `AGENTS.md`.
+
 ## 2026-03-08 (Summary Roll-Forward Trim for Local-Only Runtime Restore)
 
 Summary:
