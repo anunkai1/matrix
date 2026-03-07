@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-08 (Summary Roll-Forward Trim for ASTER Backburner Leverage)
+
+Summary:
+- Added a new rolling-summary entry for the live ASTER leverage env change on Server3.
+- Re-trimmed `SERVER3_SUMMARY.md` to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-07: adjusted Oracle Signal compact progress rendering so blank `TELEGRAM_PROGRESS_ELAPSED_PREFIX`/`TELEGRAM_PROGRESS_ELAPSED_SUFFIX` now suppress the stale elapsed text entirely; Oracle Signal defaults now show `Oracle is thinking...` instead of `Oracle is thinking... Already 1s` on channels like Signal where progress edits do not update in-place.
+
 ## 2026-03-08 (Summary Roll-Forward Trim for Oracle Signal Readiness Gate)
 
 Summary:
