@@ -328,6 +328,11 @@ class MemoryEngine:
     def clear_session(self, conversation_key: str) -> None:
         with self._lock, self._connect() as conn:
             conn.execute("DELETE FROM sessions WHERE conversation_key = ?", (conversation_key,))
+            conn.execute("DELETE FROM messages WHERE conversation_key = ?", (conversation_key,))
+            conn.execute("DELETE FROM memory_facts WHERE conversation_key = ?", (conversation_key,))
+            conn.execute("DELETE FROM chat_summaries WHERE conversation_key = ?", (conversation_key,))
+            conn.execute("DELETE FROM memory_state WHERE conversation_key = ?", (conversation_key,))
+            conn.execute("DELETE FROM memory_config WHERE conversation_key = ?", (conversation_key,))
 
     def _append_message(
         self,
@@ -1072,12 +1077,14 @@ class MemoryEngine:
         channel: str,
         assistant_text: str,
         new_thread_id: Optional[str],
+        assistant_name: str = "Architect",
     ) -> None:
         if turn.stateless:
             return
+        normalized_assistant_name = (assistant_name or "").strip() or "Architect"
         text = (assistant_text or "").strip()
         if not text:
-            text = "(No output from Architect)"
+            text = f"(No output from {normalized_assistant_name})"
 
         with self._lock, self._connect() as conn:
             self._append_message(
@@ -1085,7 +1092,7 @@ class MemoryEngine:
                 conversation_key=turn.conversation_key,
                 channel=channel,
                 sender_role="assistant",
-                sender_name="Architect",
+                sender_name=normalized_assistant_name,
                 text=text,
                 is_bot=True,
             )

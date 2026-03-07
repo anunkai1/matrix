@@ -2210,6 +2210,7 @@ def process_prompt(
                     channel=channel_name,
                     assistant_text=output,
                     new_thread_id=new_thread_id,
+                    assistant_name=assistant_label(config),
                 )
             except Exception:
                 logging.exception("Failed to finish shared memory turn for chat_id=%s", chat_id)

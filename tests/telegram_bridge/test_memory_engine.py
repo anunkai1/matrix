@@ -69,6 +69,86 @@ class MemoryEngineTests(unittest.TestCase):
             self.assertEqual(status.message_count, 2)
             self.assertTrue(status.session_active)
 
+    def test_clear_session_removes_messages_facts_summaries_and_session(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.telegram_key(333)
+            engine = memory.MemoryEngine(db_path)
+
+            engine.remember_explicit(key, "identity: Oracle")
+            turn = engine.begin_turn(
+                conversation_key=key,
+                channel="signal",
+                sender_name="User",
+                user_input="who are you",
+            )
+            engine.finish_turn(
+                turn,
+                channel="signal",
+                assistant_text="I am Oracle.",
+                new_thread_id="thread-oracle",
+                assistant_name="Oracle",
+            )
+
+            with engine._lock, engine._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO chat_summaries (
+                        conversation_key,
+                        start_msg_id,
+                        end_msg_id,
+                        summary_text,
+                        key_points_json,
+                        open_loops_json,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (key, 1, 2, "summary", "[]", "[]", time.time()),
+                )
+
+            engine.clear_session(key)
+
+            status = engine.get_status(key)
+            self.assertEqual(status.message_count, 0)
+            self.assertEqual(status.active_fact_count, 0)
+            self.assertEqual(status.summary_count, 0)
+            self.assertFalse(status.session_active)
+            self.assertEqual(status.mode, memory.MODE_FULL)
+
+    def test_finish_turn_uses_supplied_assistant_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.telegram_key(334)
+            engine = memory.MemoryEngine(db_path)
+
+            turn = engine.begin_turn(
+                conversation_key=key,
+                channel="signal",
+                sender_name="User",
+                user_input="hello",
+            )
+            engine.finish_turn(
+                turn,
+                channel="signal",
+                assistant_text="",
+                new_thread_id="thread-oracle",
+                assistant_name="Oracle",
+            )
+
+            with engine._lock, engine._connect() as conn:
+                row = conn.execute(
+                    """
+                    SELECT sender_name, text
+                    FROM messages
+                    WHERE conversation_key = ? AND sender_role = 'assistant'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (key,),
+                ).fetchone()
+            self.assertEqual(str(row["sender_name"]), "Oracle")
+            self.assertEqual(str(row["text"]), "(No output from Oracle)")
+
     def test_session_only_skips_facts_and_summary_sections(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = str(Path(tmpdir) / "memory.sqlite3")
