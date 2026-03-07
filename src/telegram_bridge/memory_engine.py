@@ -148,6 +148,8 @@ class MemoryEngine:
         normalized = (channel or "telegram").strip().lower()
         if normalized == "whatsapp":
             prefix = "wa"
+        elif normalized == "signal":
+            prefix = "sig"
         elif normalized == "telegram":
             prefix = "tg"
         else:

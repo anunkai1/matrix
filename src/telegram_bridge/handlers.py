@@ -520,6 +520,10 @@ def is_whatsapp_channel(client: ChannelAdapter) -> bool:
     return getattr(client, "channel_name", "") == "whatsapp"
 
 
+def is_signal_channel(client: ChannelAdapter) -> bool:
+    return getattr(client, "channel_name", "") == "signal"
+
+
 def command_bypasses_required_prefix(client: ChannelAdapter, command: Optional[str]) -> bool:
     return is_whatsapp_channel(client) and command == "/voice-alias"
 
@@ -991,6 +995,8 @@ class ProgressReporter:
         message_id = self.progress_message_id
         if message_id is None:
             return
+        if not getattr(self.client, "supports_message_edits", True):
+            return
 
         with self._lock:
             pending_update = self.pending_update
@@ -1017,14 +1023,14 @@ class ProgressReporter:
                     self.pending_update = False
                 return
             self.edit_failures_other += 1
-            if getattr(self.client, "channel_name", "") == "whatsapp":
+            if getattr(self.client, "channel_name", "") in {"whatsapp", "signal"}:
                 # WhatsApp edit failures can create visible noise if retried aggressively.
                 self.progress_message_id = None
             logging.debug("Failed to edit progress message for chat_id=%s: %s", self.chat_id, exc)
             return
         except Exception:
             self.edit_failures_other += 1
-            if getattr(self.client, "channel_name", "") == "whatsapp":
+            if getattr(self.client, "channel_name", "") in {"whatsapp", "signal"}:
                 self.progress_message_id = None
             logging.debug("Failed to edit progress message for chat_id=%s", self.chat_id)
             return
@@ -1581,7 +1587,7 @@ def build_help_text(config) -> str:
         "/restart - queue a safe bridge restart\n"
         "/voice-alias add <source> => <target> - add approved alias manually"
     )
-    if getattr(config, "channel_plugin", "telegram") == "whatsapp":
+    if getattr(config, "channel_plugin", "telegram") in {"whatsapp", "signal"}:
         return minimal
 
     name = assistant_label(config)
@@ -1593,10 +1599,16 @@ def build_help_text(config) -> str:
         "server3-tv-start - start TV desktop mode (local shell command)\n"
         "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
-        "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
-        "Use `Server3 TV ...` for Server3 desktop/browser/UI operations.\n"
-        "Use `Nextcloud ...` for Nextcloud files/calendar operations.\n"
-        "Use `SRO ...` when referring to Server3 Runtime Observer checks/summaries."
+        + (
+            ""
+            if not getattr(config, "keyword_routing_enabled", True)
+            else (
+                "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
+                "Use `Server3 TV ...` for Server3 desktop/browser/UI operations.\n"
+                "Use `Nextcloud ...` for Nextcloud files/calendar operations.\n"
+                "Use `SRO ...` when referring to Server3 Runtime Observer checks/summaries."
+            )
+        )
     )
     return base + "\n\n" + "\n".join(build_memory_help_lines())
 
@@ -2685,8 +2697,11 @@ def handle_update(
     chat_type = chat_obj.get("type") if isinstance(chat_obj, dict) else None
     is_private_chat = isinstance(chat_type, str) and chat_type == "private"
     allow_private_unlisted = bool(getattr(config, "allow_private_chats_unlisted", False))
+    allow_group_unlisted = bool(getattr(config, "allow_group_chats_unlisted", False))
 
-    if chat_id not in config.allowed_chat_ids and not (allow_private_unlisted and is_private_chat):
+    if chat_id not in config.allowed_chat_ids and not (
+        (allow_private_unlisted and is_private_chat) or (allow_group_unlisted and not is_private_chat)
+    ):
         logging.warning("Denied non-allowlisted chat_id=%s", chat_id)
         emit_event(
             "bridge.request_denied",
@@ -2747,7 +2762,7 @@ def handle_update(
     stateless = False
     command = normalize_command(prompt_input or "")
     priority_keyword_mode = False
-    if prompt_input:
+    if prompt_input and getattr(config, "keyword_routing_enabled", True):
         trade_keyword_mode, trade_request = extract_trade_keyword_request(prompt_input)
         if trade_keyword_mode:
             if not trade_request.strip():

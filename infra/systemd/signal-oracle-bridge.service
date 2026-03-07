@@ -1,0 +1,18 @@
+[Unit]
+Description=Signal Oracle Transport Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=oracle
+Group=oracle
+WorkingDirectory=/home/oracle/signal-oracle/app
+Environment=HOME=/home/oracle
+EnvironmentFile=-/etc/default/signal-oracle-bridge
+ExecStart=/usr/bin/python3 /home/oracle/signal-oracle/app/signal_oracle_bridge.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

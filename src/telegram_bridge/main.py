@@ -147,6 +147,7 @@ class Config:
     required_prefix_ignore_case: bool
     require_prefix_in_private: bool
     allow_private_chats_unlisted: bool
+    allow_group_chats_unlisted: bool
     assistant_name: str
     shared_memory_key: str
     channel_plugin: str
@@ -155,6 +156,11 @@ class Config:
     whatsapp_bridge_api_base: str
     whatsapp_bridge_auth_token: str
     whatsapp_poll_timeout_seconds: int
+    signal_plugin_enabled: bool
+    signal_bridge_api_base: str
+    signal_bridge_auth_token: str
+    signal_poll_timeout_seconds: int
+    keyword_routing_enabled: bool
     progress_label: str = ""
     progress_elapsed_prefix: str = "Already"
     progress_elapsed_suffix: str = "s"
@@ -354,12 +360,13 @@ def parse_optional_cmd_env(name: str) -> List[str]:
 
 
 def load_config() -> Config:
+    channel_plugin = parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram")
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    if not token:
+    if channel_plugin == "telegram" and not token:
         raise ValueError("TELEGRAM_BOT_TOKEN is required")
 
     raw_chat_ids = os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "").strip()
-    if not raw_chat_ids:
+    if channel_plugin == "telegram" and not raw_chat_ids:
         raise ValueError("TELEGRAM_ALLOWED_CHAT_IDS is required")
     state_dir = os.getenv(
         "TELEGRAM_BRIDGE_STATE_DIR",
@@ -374,7 +381,7 @@ def load_config() -> Config:
     if not memory_sqlite_path:
         memory_sqlite_path = os.path.join(state_dir, "memory.sqlite3")
 
-    allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids)
+    allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids) if raw_chat_ids else set()
     assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
     shared_memory_key = os.getenv("TELEGRAM_SHARED_MEMORY_KEY", "").strip()
     progress_label = os.getenv("TELEGRAM_PROGRESS_LABEL", "").strip()
@@ -507,13 +514,17 @@ def load_config() -> Config:
             "TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED",
             False,
         ),
+        allow_group_chats_unlisted=parse_bool_env(
+            "TELEGRAM_ALLOW_GROUP_CHATS_UNLISTED",
+            False,
+        ),
         assistant_name=assistant_name,
         shared_memory_key=shared_memory_key,
         progress_label=progress_label,
         progress_elapsed_prefix=progress_elapsed_prefix,
         progress_elapsed_suffix=progress_elapsed_suffix,
         busy_message=busy_message,
-        channel_plugin=parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram"),
+        channel_plugin=channel_plugin,
         engine_plugin=parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
         whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),
         whatsapp_bridge_api_base=os.getenv(
@@ -525,6 +536,21 @@ def load_config() -> Config:
             "WHATSAPP_POLL_TIMEOUT_SECONDS",
             20,
             minimum=1,
+        ),
+        signal_plugin_enabled=parse_bool_env("SIGNAL_PLUGIN_ENABLED", False),
+        signal_bridge_api_base=os.getenv(
+            "SIGNAL_BRIDGE_API_BASE",
+            "http://127.0.0.1:8797",
+        ).strip(),
+        signal_bridge_auth_token=os.getenv("SIGNAL_BRIDGE_AUTH_TOKEN", "").strip(),
+        signal_poll_timeout_seconds=parse_int_env(
+            "SIGNAL_POLL_TIMEOUT_SECONDS",
+            20,
+            minimum=1,
+        ),
+        keyword_routing_enabled=parse_bool_env(
+            "TELEGRAM_KEYWORD_ROUTING_ENABLED",
+            True,
         ),
         empty_output_message=f"(No output from {assistant_name})",
     )

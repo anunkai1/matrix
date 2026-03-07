@@ -27,7 +27,9 @@ import executor as bridge_executor
 import handlers as bridge_handlers
 import channel_adapter as bridge_channel_adapter
 import engine_adapter as bridge_engine_adapter
+import http_channel as bridge_http_channel
 import plugin_registry as bridge_plugin_registry
+import signal_channel as bridge_signal_channel
 import whatsapp_channel as bridge_whatsapp_channel
 import session_manager as bridge_session_manager
 import structured_logging as bridge_structured_logging
@@ -81,12 +83,27 @@ class FakeDownloadClient:
 
 class FakeProgressEditClient:
     channel_name = "whatsapp"
+    supports_message_edits = True
 
     def send_message_get_id(self, chat_id, text, reply_to_message_id=None):
         return 101
 
     def edit_message(self, chat_id, message_id, text):
         raise RuntimeError("WhatsApp bridge HTTP 502: message edit failed")
+
+    def send_chat_action(self, chat_id, action="typing"):
+        return None
+
+
+class FakeSignalProgressClient:
+    channel_name = "signal"
+    supports_message_edits = False
+
+    def send_message_get_id(self, chat_id, text, reply_to_message_id=None):
+        return 202
+
+    def edit_message(self, chat_id, message_id, text):
+        raise AssertionError("edit_message should not be called for signal")
 
     def send_chat_action(self, chat_id, action="typing"):
         return None
@@ -135,6 +152,7 @@ def make_config(**overrides):
         "required_prefix_ignore_case": True,
         "require_prefix_in_private": True,
         "allow_private_chats_unlisted": False,
+        "allow_group_chats_unlisted": False,
         "assistant_name": "Architect",
         "shared_memory_key": "",
         "channel_plugin": "telegram",
@@ -143,6 +161,11 @@ def make_config(**overrides):
         "whatsapp_bridge_api_base": "http://127.0.0.1:8787",
         "whatsapp_bridge_auth_token": "",
         "whatsapp_poll_timeout_seconds": 20,
+        "signal_plugin_enabled": False,
+        "signal_bridge_api_base": "http://127.0.0.1:8797",
+        "signal_bridge_auth_token": "",
+        "signal_poll_timeout_seconds": 20,
+        "keyword_routing_enabled": True,
     }
     base.update(overrides)
     return bridge.Config(**base)
@@ -230,7 +253,7 @@ class BridgeCoreTests(unittest.TestCase):
 
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
-        self.assertEqual(registry.list_channels(), ["telegram", "whatsapp"])
+        self.assertEqual(registry.list_channels(), ["signal", "telegram", "whatsapp"])
         self.assertEqual(registry.list_engines(), ["codex"])
 
     def test_default_plugin_registry_builds_default_plugins(self):
@@ -254,6 +277,14 @@ class BridgeCoreTests(unittest.TestCase):
         )
         self.assertIsInstance(channel, bridge_whatsapp_channel.WhatsAppChannelAdapter)
 
+    def test_default_plugin_registry_builds_signal_adapter_when_enabled(self):
+        registry = bridge_plugin_registry.build_default_plugin_registry()
+        channel = registry.build_channel(
+            "signal",
+            make_config(signal_plugin_enabled=True),
+        )
+        self.assertIsInstance(channel, bridge_signal_channel.SignalChannelAdapter)
+
     def test_parse_plugin_name_env_uses_default_for_empty(self):
         with mock.patch.dict(os.environ, {"PLUGIN_TEST": "   "}):
             self.assertEqual(
@@ -271,6 +302,7 @@ class BridgeCoreTests(unittest.TestCase):
     def test_memory_engine_channel_key_namespaces_channels(self):
         self.assertEqual(bridge.MemoryEngine.channel_key("telegram", 42), "tg:42")
         self.assertEqual(bridge.MemoryEngine.channel_key("whatsapp", 42), "wa:42")
+        self.assertEqual(bridge.MemoryEngine.channel_key("signal", 42), "sig:42")
         self.assertEqual(bridge.MemoryEngine.channel_key("custom-bridge", 42), "custom_bridge:42")
 
     def test_load_config_defaults_plugin_selection(self):
@@ -319,6 +351,32 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.whatsapp_bridge_api_base, "http://localhost:9876")
         self.assertEqual(config.whatsapp_bridge_auth_token, "secret")
         self.assertEqual(config.whatsapp_poll_timeout_seconds, 33)
+
+    def test_load_config_reads_signal_plugin_settings(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_CHANNEL_PLUGIN": "signal",
+                "SIGNAL_PLUGIN_ENABLED": "true",
+                "SIGNAL_BRIDGE_API_BASE": "http://localhost:8797",
+                "SIGNAL_BRIDGE_AUTH_TOKEN": "signal-secret",
+                "SIGNAL_POLL_TIMEOUT_SECONDS": "21",
+                "TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED": "true",
+                "TELEGRAM_ALLOW_GROUP_CHATS_UNLISTED": "true",
+                "TELEGRAM_KEYWORD_ROUTING_ENABLED": "false",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertEqual(config.channel_plugin, "signal")
+        self.assertTrue(config.signal_plugin_enabled)
+        self.assertEqual(config.signal_bridge_api_base, "http://localhost:8797")
+        self.assertEqual(config.signal_bridge_auth_token, "signal-secret")
+        self.assertEqual(config.signal_poll_timeout_seconds, 21)
+        self.assertTrue(config.allow_private_chats_unlisted)
+        self.assertTrue(config.allow_group_chats_unlisted)
+        self.assertFalse(config.keyword_routing_enabled)
+        self.assertEqual(config.allowed_chat_ids, set())
 
     def test_load_config_reads_require_prefix_in_private_override(self):
         with mock.patch.dict(
@@ -381,7 +439,7 @@ class BridgeCoreTests(unittest.TestCase):
             whatsapp_bridge_auth_token="token-1",
         )
         adapter = bridge_whatsapp_channel.WhatsAppChannelAdapter(config)
-        with mock.patch.object(bridge_whatsapp_channel, "urlopen", return_value=Response()) as mocked:
+        with mock.patch.object(bridge_http_channel, "urlopen", return_value=Response()) as mocked:
             message_id = adapter.send_message_get_id(
                 chat_id=123,
                 text="hello",
@@ -415,7 +473,7 @@ class BridgeCoreTests(unittest.TestCase):
             whatsapp_bridge_auth_token="token-2",
         )
         adapter = bridge_whatsapp_channel.WhatsAppChannelAdapter(config)
-        with mock.patch.object(bridge_whatsapp_channel, "urlopen", return_value=Response()) as mocked:
+        with mock.patch.object(bridge_http_channel, "urlopen", return_value=Response()) as mocked:
             adapter.send_voice(
                 chat_id=123,
                 voice="https://example.com/note.ogg",
@@ -432,6 +490,39 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(payload["media_type"], "voice")
         self.assertEqual(payload["caption"], "voice caption")
         self.assertEqual(payload["reply_to_message_id"], "77")
+
+    def test_signal_adapter_send_message_get_id_posts_json(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"ok": true, "result": {"message_id": 987}}'
+
+        config = make_config(
+            signal_plugin_enabled=True,
+            signal_bridge_api_base="http://127.0.0.1:8797",
+            signal_bridge_auth_token="signal-token",
+        )
+        adapter = bridge_signal_channel.SignalChannelAdapter(config)
+        with mock.patch.object(bridge_http_channel, "urlopen", return_value=Response()) as mocked:
+            message_id = adapter.send_message_get_id(chat_id=33, text="hi")
+
+        self.assertEqual(message_id, 987)
+        request = mocked.call_args.args[0]
+        self.assertEqual(request.full_url, "http://127.0.0.1:8797/messages")
+        self.assertEqual(request.get_header("Authorization"), "Bearer signal-token")
+
+    def test_signal_adapter_disables_message_edits(self):
+        adapter = bridge_signal_channel.SignalChannelAdapter(
+            make_config(signal_plugin_enabled=True),
+        )
+        self.assertFalse(adapter.supports_message_edits)
+        with self.assertRaises(RuntimeError):
+            adapter.edit_message(chat_id=1, message_id=2, text="ignored")
 
     def test_parse_outbound_media_directive_extracts_media_and_voice_flag(self):
         text, directive = bridge_handlers.parse_outbound_media_directive(
@@ -978,6 +1069,21 @@ class BridgeCoreTests(unittest.TestCase):
         reporter._maybe_edit(force=True)
 
         self.assertIsNone(reporter.progress_message_id)
+
+    def test_progress_reporter_skips_signal_edits_when_unsupported(self):
+        client = FakeSignalProgressClient()
+        reporter = bridge_handlers.ProgressReporter(
+            client=client,
+            chat_id=1,
+            reply_to_message_id=5,
+            assistant_name="Oracle",
+        )
+        reporter.progress_message_id = 202
+        reporter.pending_update = True
+
+        reporter._maybe_edit(force=True)
+
+        self.assertEqual(reporter.progress_message_id, 202)
 
     def test_extract_prompt_and_media_prefers_media_payload_for_photo_with_caption(self):
         prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(

@@ -8,6 +8,7 @@ except ImportError:
 
 class ChannelAdapter(Protocol):
     channel_name: str
+    supports_message_edits: bool
 
     def get_updates(
         self,
@@ -89,6 +90,7 @@ class ChannelAdapter(Protocol):
 
 class TelegramChannelAdapter:
     channel_name = "telegram"
+    supports_message_edits = True
 
     def __init__(self, client: TelegramClient) -> None:
         self._client = client

@@ -1,0 +1,21 @@
+[Unit]
+Description=Oracle Signal Bridge
+After=network-online.target signal-oracle-bridge.service
+Wants=network-online.target signal-oracle-bridge.service
+
+[Service]
+Type=simple
+User=oracle
+Group=oracle
+WorkingDirectory=/home/oracle/oraclebot
+Environment=PYTHONUNBUFFERED=1
+Environment=TELEGRAM_EXECUTOR_CMD=/home/oracle/oraclebot/src/telegram_bridge/executor.sh
+EnvironmentFile=-/etc/default/oracle-signal-bridge
+ExecStart=/usr/bin/python3 /home/oracle/oraclebot/src/telegram_bridge/main.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
