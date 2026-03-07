@@ -7,7 +7,7 @@
 - Signal transport root: `/home/oracle/signal-oracle`
 - Oracle bridge root: `/home/oracle/oraclebot`
 - Oracle bridge workspace layout is intentionally minimal:
-  - `/home/oracle/oraclebot/AGENTS.md` is blank
+  - `/home/oracle/oraclebot/AGENTS.md` is the Oracle persona/identity truth file
   - `/home/oracle/oraclebot/src/telegram_bridge/` contains the runtime implementation files
 
 ## Provisioning flow
@@ -55,7 +55,7 @@
 
 ## Operational notes
 - Use a dedicated Signal account/device for Oracle. Do not reuse a personal Signal account.
-- `ops/signal_oracle/deploy_bridge.sh` intentionally does not copy the full Architect workspace into `/home/oracle/oraclebot`; it deploys only `src/telegram_bridge` and a blank `AGENTS.md`.
+- `ops/signal_oracle/deploy_bridge.sh` intentionally does not copy the full Architect workspace into `/home/oracle/oraclebot`; it deploys only `src/telegram_bridge` and preserves the existing Oracle `AGENTS.md`.
 - `ops/signal_oracle/install_user_service.sh` installs a least-privilege sudoers rule so Oracle can run in-chat `/restart` against `oracle-signal-bridge.service` only.
 - `ops/signal_oracle/start_service.sh` now fails fast if `/home/oracle/.codex/auth.json` is missing.
 - Signal message edits are not supported in v1. The bridge uses a single progress message plus typing updates.

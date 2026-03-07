@@ -23,7 +23,11 @@ mkdir -p "${STAGE_DIR}/src/telegram_bridge"
 rsync -a --delete \
   --exclude "__pycache__" \
   "${REPO_ROOT}/src/telegram_bridge/" "${STAGE_DIR}/src/telegram_bridge/"
-: > "${STAGE_DIR}/AGENTS.md"
+if sudo test -f "${WORK_ROOT}/AGENTS.md"; then
+  sudo cp "${WORK_ROOT}/AGENTS.md" "${STAGE_DIR}/AGENTS.md"
+else
+  : > "${STAGE_DIR}/AGENTS.md"
+fi
 
 sudo rsync -a --delete "${STAGE_DIR}/" "${WORK_ROOT}/"
 
