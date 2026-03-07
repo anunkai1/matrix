@@ -6,6 +6,9 @@
 - Python bridge service: `oracle-signal-bridge.service`
 - Signal transport root: `/home/oracle/signal-oracle`
 - Oracle bridge root: `/home/oracle/oraclebot`
+- Oracle bridge workspace layout is intentionally minimal:
+  - `/home/oracle/oraclebot/AGENTS.md` is blank
+  - `/home/oracle/oraclebot/src/telegram_bridge/` contains the runtime implementation files
 
 ## Provisioning flow
 1. `ops/signal_oracle/setup_runtime_user.sh`
@@ -47,6 +50,7 @@
 
 ## Operational notes
 - Use a dedicated Signal account/device for Oracle. Do not reuse a personal Signal account.
+- `ops/signal_oracle/deploy_bridge.sh` intentionally does not copy the full Architect workspace into `/home/oracle/oraclebot`; it deploys only `src/telegram_bridge` and a blank `AGENTS.md`.
 - `ops/signal_oracle/start_service.sh` now fails fast if `/home/oracle/.codex/auth.json` is missing.
 - Signal message edits are not supported in v1. The bridge uses a single progress message plus typing updates.
 - Voice-note transcription uses the same optional `TELEGRAM_VOICE_TRANSCRIBE_CMD` path as other bridge runtimes.
