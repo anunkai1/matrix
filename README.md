@@ -1,11 +1,12 @@
 # Matrix (Server3 Operations)
 
-Source-of-truth repository for Server3 automation and operations. The current primary workload is the Telegram Architect bridge that forwards Telegram prompts to local Codex execution on Server3.
+Source-of-truth repository for Server3 automation and operations. The current primary workload is the Telegram Architect bridge that forwards Telegram prompts to local Codex execution on Server3, alongside sibling Telegram, WhatsApp, and Signal runtimes that reuse the same bridge core.
 
 ## Current Status
 
 - Active component: `telegram-architect-bridge.service`
 - Runtime mode: Telegram long polling + local `codex exec` executor
+- Additional active runtimes: `telegram-tank-bridge.service`, `telegram-aster-trader-bridge.service`, `whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service`, `signal-oracle-bridge.service` + `oracle-signal-bridge.service`
 - Input modes: text, photo (image + optional caption), voice snippets (transcribed to text and echoed back), and generic files/documents for analysis
 - Context behavior: shared SQLite memory engine (Telegram + CLI) with per-conversation-key isolation and default `all_context` memory mode
 - Optional persistent worker-session manager via env flag (`TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`)
@@ -92,10 +93,12 @@ bash src/telegram_bridge/smoke_test.sh
 - Check status: `bash ops/telegram-bridge/status_service.sh`
 - Check logs: `sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager`
 - Roll back systemd install: `bash ops/telegram-bridge/install_systemd.sh rollback`
-- Runtime observer (Phase 1):
+- Runtime observer:
   - Install timer: `bash ops/runtime_observer/install_systemd.sh apply`
+  - Live daily-summary mode uses `RUNTIME_OBSERVER_MODE=telegram_daily_summary`
   - Current KPI state: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py status`
   - Last 24h KPI summary: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py summary --hours 24`
+  - Delivery-path test: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py notify-test`
 - Chat-routing drift guard (Govorun Telegram/WhatsApp):
   - Manual check: `python3 ops/chat-routing/validate_chat_routing_contract.py`
   - Install daily timer: `bash ops/chat-routing/install_contract_check_timer.sh apply`
@@ -137,6 +140,9 @@ bash src/telegram_bridge/smoke_test.sh
 - `docs/home-assistant-ops.md`
 - `docs/telegram-architect-bridge.md`
 - `docs/telegram-bridge-debug-checklist.md`
+- `docs/runbooks/aster-trader-operations.md`
+- `docs/runbooks/whatsapp-govorun-operations.md`
+- `docs/runbooks/oracle-signal-operations.md`
 - `docs/server-setup.md`
 - `SERVER3_SUMMARY.md`
 - `SERVER3_ARCHIVE.md`

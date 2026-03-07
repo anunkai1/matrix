@@ -17,6 +17,7 @@ These are the ways work enters the server.
 | Telegram Architect bot | General assistant and operator entry point | `telegram-architect-bridge.service` as `architect` |
 | Telegram Tank bot | Separate Telegram runtime/profile for Tank | `telegram-tank-bridge.service` as `tank` |
 | Telegram ASTER Trader bot | Dedicated futures trading assistant with hard risk rails | `telegram-aster-trader-bridge.service` as `aster-trader` |
+| Signal Oracle | Signal-facing assistant persona with its own transport sidecar | `signal-oracle-bridge.service` + `oracle-signal-bridge.service` as `oracle` |
 | WhatsApp Govorun | WhatsApp-facing assistant persona | `whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service` as `govorun` |
 | Local shell launchers | Direct CLI use with shared memory | `architect`, `tank`, `astertrader`, raw `codex` |
 
@@ -29,10 +30,11 @@ The main reusable runtime lives in [`src/telegram_bridge`](../src/telegram_bridg
 - [`executor.py`](../src/telegram_bridge/executor.py) and [`executor.sh`](../src/telegram_bridge/executor.sh): invoke local Codex safely and stream output back.
 - [`memory_engine.py`](../src/telegram_bridge/memory_engine.py): durable chat memory and summaries.
 - [`session_manager.py`](../src/telegram_bridge/session_manager.py): worker/session lifecycle, busy state, and safe restart coordination.
-- [`plugin_registry.py`](../src/telegram_bridge/plugin_registry.py): lets the same core speak Telegram or WhatsApp.
+- [`plugin_registry.py`](../src/telegram_bridge/plugin_registry.py): lets the same core speak Telegram, WhatsApp, or Signal.
 
 Mental shortcut:
 - Telegram Architect, Tank, and ASTER are all variations of the same bridge pattern.
+- Oracle reuses the same Python bridge core, but its transport is fronted by a local Signal sidecar around `signal-cli`.
 - Govorun reuses the same Python bridge core, but its transport is fronted by a Node WhatsApp API bridge.
 
 ### 3. Deterministic Operation Modules
@@ -113,6 +115,27 @@ Use ASTER when you want:
 - dedicated trade execution
 - shared trading memory between Telegram and CLI
 - risk rails around leverage/notional/loss
+
+### Oracle Signal
+
+Oracle is the Signal-facing sibling runtime.
+
+- Transport service: `signal-oracle-bridge.service`
+- Python bridge service: `oracle-signal-bridge.service`
+- User: `oracle`
+- Oracle bridge workspace: `/home/oracle/oraclebot`
+- Signal transport root: `/home/oracle/signal-oracle`
+- Purpose: run the shared bridge core behind a dedicated Signal account with isolated memory/state and Signal-specific progress behavior.
+- Runbook: [`docs/runbooks/oracle-signal-operations.md`](./runbooks/oracle-signal-operations.md)
+
+Use Oracle when you want:
+- a dedicated Signal-side assistant persona
+- isolated `sig:<chat_id>` memory/state
+- Signal voice-note transcription and in-chat `/restart`
+
+Key mental rule:
+- Oracle is split like Govorun: local transport sidecar plus the shared Python bridge core.
+- Keyword routing is intentionally disabled in v1; Oracle is a chat-focused runtime first.
 
 ### Govorun WhatsApp
 
@@ -216,6 +239,14 @@ Use it when you want:
 4. The same handler/memory/executor machinery processes it.
 5. Replies and media go back through the Node bridge to WhatsApp.
 
+### Oracle Signal request
+
+1. Signal message arrives in the local `signal-cli` sidecar.
+2. The Signal sidecar normalizes it through the local HTTP bridge API.
+3. `oracle-signal-bridge.service` polls that API using the Signal channel plugin.
+4. The shared handler/memory/executor flow processes it under `sig:<chat_id>` memory keys.
+5. Replies go back through the Signal sidecar; progress uses no-edit fallback behavior because Signal does not support message edits.
+
 ## Where To Look Depending On The Job
 
 | If you want to understand... | Start here |
@@ -243,6 +274,8 @@ Some runtimes are deployed as separate working copies under different Linux user
 - Architect: `/home/architect/matrix`
 - Tank: `/home/tank/tankbot`
 - ASTER: `/home/aster-trader/asterbot`
+- Oracle bridge: `/home/oracle/oraclebot`
+- Oracle Signal transport: `/home/oracle/signal-oracle/app`
 - Govorun Python bridge: `/home/govorun/govorunbot`
 - Govorun Node transport: `/home/govorun/whatsapp-govorun/app`
 
@@ -251,6 +284,7 @@ Some runtimes are deployed as separate working copies under different Linux user
 Secrets do not belong in git. Live secrets mainly live in:
 
 - `/etc/default/*` for systemd-managed runtimes
+- `/etc/default/oracle-signal-bridge` and `/etc/default/signal-oracle-bridge` for Oracle Signal runtime config
 - `/home/architect/.config/nextcloud/ops.env` for Nextcloud ops
 - `/home/govorun/whatsapp-govorun/app/.env` for WhatsApp transport
 
@@ -304,6 +338,6 @@ If you want current truth before acting:
 Think of Server3 as one reusable assistant engine surrounded by multiple identities and bounded tool corridors:
 
 - Architect is the main front door.
-- Tank, ASTER, and Govorun are specialized sibling runtimes.
+- Tank, ASTER, Oracle, and Govorun are specialized sibling runtimes.
 - HA, TV, Nextcloud, and Trade are the deterministic side corridors.
 - systemd timers, observer checks, and config contracts are the guard rails that keep the whole machine stable.

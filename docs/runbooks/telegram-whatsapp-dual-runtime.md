@@ -53,13 +53,20 @@
 - Purpose:
   - Compute KPI snapshots off-path without changing chat behavior.
   - Persist local snapshots for operator inspection (`status`, `summary`).
-  - Optional proactive Telegram alerts with cooldown and recovery notices.
+  - Optional Telegram delivery modes for daily summaries, proactive alerts, or both.
 - Install/enable timer:
   - `ops/runtime_observer/install_systemd.sh apply`
 - Optional env override file:
   - `/etc/default/server3-runtime-observer` (template: `infra/env/server3-runtime-observer.env.example`)
-- Enable proactive Telegram alerts (Phase 2):
-  - Set `RUNTIME_OBSERVER_MODE=telegram_alerts` in `/etc/default/server3-runtime-observer`
+- Current live Server3 delivery mode:
+  - `RUNTIME_OBSERVER_MODE=telegram_daily_summary`
+  - current routing is centralized through `staker_alerts_bot` to chat `211761499`
+- Supported Telegram delivery modes:
+  - `telegram_daily_summary`: daily summary only
+  - `telegram_alerts`: proactive alerts + recovery notices only
+  - `telegram_alerts_daily`: both alerts and daily summary
+- Enable Telegram delivery:
+  - Set the desired `RUNTIME_OBSERVER_MODE` in `/etc/default/server3-runtime-observer`
   - Optional: set `RUNTIME_OBSERVER_TELEGRAM_CHAT_IDS` for explicit routing
   - If explicit Telegram vars are not set, observer falls back to `/etc/default/telegram-architect-bridge` (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS`)
   - Reload/restart timer path:

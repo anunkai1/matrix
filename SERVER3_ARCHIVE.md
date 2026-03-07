@@ -2,6 +2,17 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-07 (Summary Roll-Forward Trim for Docs Consistency Pass)
+
+Summary:
+- Added a new rolling-summary entry for the 2026-03-07 docs consistency pass.
+- Re-trimmed `SERVER3_SUMMARY.md` to the rolling max-8 recent-change bound and max-10 pinned-memory bound.
+
+Migrated out of summary during this trim:
+- 2026-03-07: added natural-language shared-memory recall for Architect bridge + CLI so plain-English prompts like “what were my last 5 messages?”, “what were your last 5 messages?”, “what do you remember from today?”, “what facts do you remember?”, and “what’s the latest summary?” are intercepted before Codex execution and answered directly from SQLite shared memory using Brisbane-time windowing; added regression coverage in `tests/telegram_bridge/test_memory_engine.py`, `tests/telegram_bridge/test_bridge_core.py`, and `tests/architect_cli/test_main.py`.
+- 2026-03-07: added operator-facing mental map doc `docs/server3-mental-model.md` that explains Server3 by layers (entry points, shared bridge core, deterministic operation modes, platform/safety layer), documents the main runtimes/personas (Architect, Tank, ASTER, Govorun), shows how request routing works across Telegram/WhatsApp/CLI, and points to the canonical files/docs for each subsystem; linked from `README.md` as a primary orientation document.
+- 2026-03-06: added ASTER trading runtime support in repo with free-form `Trade ...` / `Aster Trade ...` keyword routing in bridge (`src/telegram_bridge/handlers.py`), deterministic backend (`src/telegram_bridge/aster_trading.py`, `ops/trading/aster/assistant_entry.py`, `ops/trading/aster/trade_cli.sh`) that enforces confirmation tickets + risk guards (max notional, max leverage, daily realized-loss stop), improved notional sizing to nearest valid lot-step with overshoot protection (`ASTER_NOTIONAL_MAX_OVERSHOOT_PCT`, default `0.15`) to reduce underfill while preventing oversized fills for tiny requests, Telegram-friendly line-by-line preview with bold-uppercase field labels, default confirmation timeout increased to 120 seconds (`ASTER_CONFIRM_TTL_SECONDS`), and live runtime speed tuning via low reasoning override (`ARCHITECT_EXEC_ARGS="--config model_reasoning_effort=\"low\""`), plus new service/env templates (`infra/systemd/telegram-aster-trader-bridge.service`, `infra/env/telegram-aster-trader-bridge.env.example`), operations runbook (`docs/runbooks/aster-trader-operations.md`), restart helper allowlist update (`ops/telegram-bridge/restart_and_verify.sh`), regression tests (`tests/telegram_bridge/test_bridge_core.py`, `tests/telegram_bridge/test_aster_trading.py`), CI fix to install `requests` in `.github/workflows/telegram-bridge-ci.yml` so unit tests can import `src/telegram_bridge/aster_trading.py` on GitHub runners, and live ASTER bot tuning change on Server3 to set `/etc/default/telegram-aster-trader-bridge` `ARCHITECT_EXEC_ARGS` from `model_reasoning_effort="low"` to `model_reasoning_effort="high"` with service restart.
+
 ## 2026-03-07 (Summary Roll-Forward Trim for Server3 Mental Model)
 
 Summary:
