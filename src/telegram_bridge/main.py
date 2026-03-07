@@ -385,10 +385,16 @@ def load_config() -> Config:
     assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
     shared_memory_key = os.getenv("TELEGRAM_SHARED_MEMORY_KEY", "").strip()
     progress_label = os.getenv("TELEGRAM_PROGRESS_LABEL", "").strip()
-    progress_elapsed_prefix = (
-        os.getenv("TELEGRAM_PROGRESS_ELAPSED_PREFIX", "Already").strip() or "Already"
-    )
-    progress_elapsed_suffix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_SUFFIX", "s")
+    raw_progress_elapsed_prefix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_PREFIX")
+    if raw_progress_elapsed_prefix is None:
+        progress_elapsed_prefix = "Already"
+    else:
+        progress_elapsed_prefix = raw_progress_elapsed_prefix.strip()
+    raw_progress_elapsed_suffix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_SUFFIX")
+    if raw_progress_elapsed_suffix is None:
+        progress_elapsed_suffix = "s"
+    else:
+        progress_elapsed_suffix = raw_progress_elapsed_suffix
     busy_message = (
         os.getenv(
             "TELEGRAM_BUSY_MESSAGE",

@@ -846,8 +846,14 @@ class ProgressReporter:
         self.reply_to_message_id = reply_to_message_id
         self.assistant_name = assistant_name
         self.progress_label = progress_label.strip()
-        self.compact_elapsed_prefix = (compact_elapsed_prefix or "Already").strip() or "Already"
-        self.compact_elapsed_suffix = compact_elapsed_suffix or "s"
+        if compact_elapsed_prefix is None:
+            self.compact_elapsed_prefix = "Already"
+        else:
+            self.compact_elapsed_prefix = compact_elapsed_prefix.strip()
+        if compact_elapsed_suffix is None:
+            self.compact_elapsed_suffix = "s"
+        else:
+            self.compact_elapsed_suffix = compact_elapsed_suffix
         self.started_at = time.time()
         self.progress_message_id: Optional[int] = None
         self.phase = ""
@@ -981,7 +987,13 @@ class ProgressReporter:
             completed = self.commands_completed
         label = self.progress_label or f"{self.assistant_name} is working"
         if self._is_compact_progress:
-            text = f"{label}... {self.compact_elapsed_prefix} {elapsed}{self.compact_elapsed_suffix}"
+            if not self.compact_elapsed_prefix and not self.compact_elapsed_suffix:
+                text = f"{label}..."
+            else:
+                elapsed_prefix = (
+                    f"{self.compact_elapsed_prefix} " if self.compact_elapsed_prefix else ""
+                )
+                text = f"{label}... {elapsed_prefix}{elapsed}{self.compact_elapsed_suffix}"
             return trim_output(text, TELEGRAM_LIMIT)
 
         text = f"{label}... {elapsed}s elapsed."

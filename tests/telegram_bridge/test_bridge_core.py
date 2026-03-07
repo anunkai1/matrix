@@ -1085,6 +1085,32 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertEqual(reporter.progress_message_id, 202)
 
+    def test_progress_reporter_can_hide_compact_elapsed_text(self):
+        client = FakeSignalProgressClient()
+        reporter = bridge_handlers.ProgressReporter(
+            client=client,
+            chat_id=1,
+            reply_to_message_id=5,
+            assistant_name="Oracle",
+            progress_label="Oracle is thinking",
+            compact_elapsed_prefix="",
+            compact_elapsed_suffix="",
+        )
+
+        self.assertEqual(reporter._render_progress_text(), "Oracle is thinking...")
+
+    def test_load_config_preserves_blank_progress_elapsed_fields(self):
+        env = {
+            "TELEGRAM_BOT_TOKEN": "token",
+            "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+            "TELEGRAM_PROGRESS_ELAPSED_PREFIX": "",
+            "TELEGRAM_PROGRESS_ELAPSED_SUFFIX": "",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            cfg = bridge.load_config()
+        self.assertEqual(cfg.progress_elapsed_prefix, "")
+        self.assertEqual(cfg.progress_elapsed_suffix, "")
+
     def test_extract_prompt_and_media_prefers_media_payload_for_photo_with_caption(self):
         prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
             {
