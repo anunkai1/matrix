@@ -9,6 +9,7 @@ ALLOWED_UNITS=(
   "telegram-aster-trader-bridge.service"
   "telegram-tank-bridge.service"
   "govorun-whatsapp-bridge.service"
+  "oracle-signal-bridge.service"
 )
 
 is_allowed_unit() {
