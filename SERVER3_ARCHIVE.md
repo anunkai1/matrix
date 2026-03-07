@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-08 (Summary Roll-Forward Trim for Residual Boot Cleanup)
+
+Summary:
+- Added a new rolling-summary entry for removal of stale local boot wiring that was still reappearing after restart from ignored local payload paths outside git.
+- Re-trimmed `SERVER3_SUMMARY.md` to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-07: fixed live Oracle Signal executor startup failure caused by the dedicated `oracle` runtime user missing Codex CLI auth (`~/.codex/auth.json`), provisioned the runtime auth on Server3, and hardened Oracle Signal ops so startup now fails fast with an explicit operator error when auth is absent; documented the required bootstrap step in `docs/runbooks/oracle-signal-operations.md` and enforced it in `ops/signal_oracle/start_service.sh`.
+
 ## 2026-03-07 (Summary Roll-Forward Trim for Oracle Signal Default Ports)
 
 Summary:

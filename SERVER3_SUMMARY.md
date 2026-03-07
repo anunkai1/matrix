@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-07 (AEST, +10:00)
+Last updated: 2026-03-08 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -41,6 +41,7 @@ Last updated: 2026-03-07 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-08: cleared residual decommissioned local boot wiring that was still loading after restart from ignored local payload paths outside git, removed the stale runtime residue, and verified core bridge services/timers recover cleanly without those old units re-entering the boot path.
 - 2026-03-07: fixed Oracle Signal default-port drift in code by aligning shared bridge defaults with the shipped env templates and runbooks: `src/telegram_bridge/main.py` now defaults `SIGNAL_BRIDGE_API_BASE` to `http://127.0.0.1:18797`, `ops/signal_oracle/bridge/signal_oracle_bridge.py` now defaults the transport/API ports to `18080/18797`, and regression tests now lock those defaults so partially configured Oracle deployments no longer silently fall back to the obsolete `8080/8797` ports.
 - 2026-03-07: cleaned active docs for drift by updating the top-level README and Server3 mental model to include the Oracle Signal runtime, correcting runtime observer documentation to the current delivery modes (`telegram_daily_summary`, `telegram_alerts`, `telegram_alerts_daily`) and live daily-summary posture, and refreshing the runtime observer env template comments so docs/config examples match the implemented modes.
 - 2026-03-07: fixed Oracle Signal voice-note handling by classifying Signal AAC/M4A voice-note attachments as `voice` instead of generic documents in `ops/signal_oracle/bridge/signal_oracle_bridge.py`, enabling Oracle voice transcription env defaults for `transcribe_voice.sh`, and standardizing Oracle's dedicated faster-whisper runtime on Server3 to `/home/oracle/.local/share/telegram-voice/venv` with local Hugging Face cache `/home/oracle/.cache/huggingface` and model `tiny.en`.
@@ -48,7 +49,6 @@ Last updated: 2026-03-07 (AEST, +10:00)
 - 2026-03-07: fixed Oracle Signal in-chat `/restart` by adding `oracle-signal-bridge.service` to the shared restart-helper allowlist, adding Oracle-specific `TELEGRAM_RESTART_SCRIPT`/`TELEGRAM_RESTART_UNIT` env defaults, and provisioning a least-privilege sudoers rule for user `oracle` so restart requests no longer fall back to the removed local workspace path or the Architect unit.
 - 2026-03-07: adjusted Oracle Signal compact progress rendering so blank `TELEGRAM_PROGRESS_ELAPSED_PREFIX`/`TELEGRAM_PROGRESS_ELAPSED_SUFFIX` now suppress the stale elapsed text entirely; Oracle Signal defaults now show `Oracle is thinking...` instead of `Oracle is thinking... Already 1s` on channels like Signal where progress edits do not update in-place.
 - 2026-03-07: reduced the deployed Oracle Signal workspace at `/home/oracle/oraclebot` to a minimal runtime layout by changing `ops/signal_oracle/deploy_bridge.sh` to deploy only `src/telegram_bridge` while preserving Oracle's live `AGENTS.md` as the runtime persona/identity truth file, removing inherited Architect docs/tests/ops/instructions from the live Oracle workspace; documented the intentional minimal layout in `docs/runbooks/oracle-signal-operations.md`.
-- 2026-03-07: fixed live Oracle Signal executor startup failure caused by the dedicated `oracle` runtime user missing Codex CLI auth (`~/.codex/auth.json`), provisioned the runtime auth on Server3, and hardened Oracle Signal ops so startup now fails fast with an explicit operator error when auth is absent; documented the required bootstrap step in `docs/runbooks/oracle-signal-operations.md` and enforced it in `ops/signal_oracle/start_service.sh`.
 
 ## Current Risks/Watchouts (Max 5)
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.
