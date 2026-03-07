@@ -14,11 +14,18 @@
 4. Copy env templates:
    - `/etc/default/signal-oracle-bridge`
    - `/etc/default/oracle-signal-bridge`
-5. Authenticate the dedicated Signal account:
+5. Provision Codex CLI auth for the `oracle` runtime user before first start:
+   - required file: `/home/oracle/.codex/auth.json`
+   - simplest bootstrap on Server3:
+     - `sudo install -d -m 700 -o oracle -g oracle /home/oracle/.codex`
+     - `sudo install -m 600 -o oracle -g oracle /home/architect/.codex/auth.json /home/oracle/.codex/auth.json`
+     - `sudo install -m 600 -o oracle -g oracle /home/architect/.codex/config.toml /home/oracle/.codex/config.toml`
+   - if this step is skipped, `oracle-signal-bridge.service` will accept chats but executor calls will fail with OpenAI `401 Unauthorized`
+6. Authenticate the dedicated Signal account:
    - link mode: `ops/signal_oracle/run_auth.sh link`
    - register mode: `ops/signal_oracle/run_auth.sh register`
    - verify mode: `ops/signal_oracle/run_auth.sh verify <CODE>`
-6. Start services: `ops/signal_oracle/start_service.sh`
+7. Start services: `ops/signal_oracle/start_service.sh`
 
 ## Trigger policy
 - DM behavior: always respond
@@ -40,6 +47,7 @@
 
 ## Operational notes
 - Use a dedicated Signal account/device for Oracle. Do not reuse a personal Signal account.
+- `ops/signal_oracle/start_service.sh` now fails fast if `/home/oracle/.codex/auth.json` is missing.
 - Signal message edits are not supported in v1. The bridge uses a single progress message plus typing updates.
 - Voice-note transcription uses the same optional `TELEGRAM_VOICE_TRANSCRIBE_CMD` path as other bridge runtimes.
 - Group messages are accepted in joined groups only when the summon prefix is present.
