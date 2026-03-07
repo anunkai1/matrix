@@ -546,7 +546,7 @@ def load_config() -> Config:
         signal_plugin_enabled=parse_bool_env("SIGNAL_PLUGIN_ENABLED", False),
         signal_bridge_api_base=os.getenv(
             "SIGNAL_BRIDGE_API_BASE",
-            "http://127.0.0.1:8797",
+            "http://127.0.0.1:18797",
         ).strip(),
         signal_bridge_auth_token=os.getenv("SIGNAL_BRIDGE_AUTH_TOKEN", "").strip(),
         signal_poll_timeout_seconds=parse_int_env(

@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-07 (Summary Roll-Forward Trim for Oracle Signal Default Ports)
+
+Summary:
+- Added a new rolling-summary entry for the Oracle Signal default-port correction in code/tests.
+- Re-trimmed `SERVER3_SUMMARY.md` to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-07: added repo support for a new dedicated Signal persona/runtime `oracle` using the existing shared Python bridge plus a new local Signal transport sidecar around `signal-cli`: new `signal` channel plugin and shared HTTP adapter (`src/telegram_bridge/signal_channel.py`, `src/telegram_bridge/http_channel.py`, `src/telegram_bridge/plugin_registry.py`), shared-bridge config/handler upgrades for `sig:` memory keys, optional unlisted Signal DM/group admission, chat-only keyword-routing disable, and no-edit progress fallback (`src/telegram_bridge/main.py`, `src/telegram_bridge/handlers.py`, `src/telegram_bridge/memory_engine.py`), transport service/runtime assets (`ops/signal_oracle/bridge/signal_oracle_bridge.py`, `infra/systemd/*signal-oracle*.service`, `infra/env/*signal-oracle*.env.example`, `ops/signal_oracle/*.sh`), new operations runbook (`docs/runbooks/oracle-signal-operations.md`), regression coverage in `tests/telegram_bridge/test_bridge_core.py`, `tests/telegram_bridge/test_memory_engine.py`, and `tests/signal_oracle_bridge/test_signal_oracle_bridge.py`, plus follow-up default-port correction in repo templates/runbook from `8080/8797` to dedicated local ports `18080/18797` after discovering Docker already occupied `8080` on Server3.
+
 ## 2026-03-07 (Summary Roll-Forward Trim for Docs Consistency Pass)
 
 Summary:

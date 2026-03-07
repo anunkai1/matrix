@@ -121,14 +121,14 @@ def load_config() -> Config:
         raise ValueError("SIGNAL_ACCOUNT is required")
     return Config(
         api_host=os.getenv("SIGNAL_API_HOST", "127.0.0.1").strip() or "127.0.0.1",
-        api_port=parse_int("SIGNAL_API_PORT", 8797),
+        api_port=parse_int("SIGNAL_API_PORT", 18797),
         api_auth_token=os.getenv("SIGNAL_API_AUTH_TOKEN", "").strip(),
         state_dir=state_dir,
         signal_cli_path=os.getenv("SIGNAL_CLI_PATH", "signal-cli").strip() or "signal-cli",
         signal_account=signal_account,
         signal_account_uuid=os.getenv("SIGNAL_ACCOUNT_UUID", "").strip(),
         signal_http_host=os.getenv("SIGNAL_HTTP_HOST", "127.0.0.1").strip() or "127.0.0.1",
-        signal_http_port=parse_int("SIGNAL_HTTP_PORT", 8080),
+        signal_http_port=parse_int("SIGNAL_HTTP_PORT", 18080),
         signal_receive_mode=os.getenv("SIGNAL_RECEIVE_MODE", "manual").strip() or "manual",
         signal_ignore_attachments=parse_bool("SIGNAL_IGNORE_ATTACHMENTS", False),
         signal_ignore_stories=parse_bool("SIGNAL_IGNORE_STORIES", True),

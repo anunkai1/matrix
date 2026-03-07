@@ -17,14 +17,14 @@ spec.loader.exec_module(signal_bridge)
 def make_config(state_dir: str):
     return signal_bridge.Config(
         api_host="127.0.0.1",
-        api_port=8797,
+        api_port=18797,
         api_auth_token="",
         state_dir=state_dir,
         signal_cli_path="signal-cli",
         signal_account="+15550001111",
         signal_account_uuid="",
         signal_http_host="127.0.0.1",
-        signal_http_port=8080,
+        signal_http_port=18080,
         signal_receive_mode="manual",
         signal_ignore_attachments=False,
         signal_ignore_stories=True,
@@ -40,6 +40,16 @@ def make_config(state_dir: str):
 
 
 class SignalOracleBridgeTests(unittest.TestCase):
+    def test_load_config_uses_current_default_ports(self):
+        with unittest.mock.patch.dict(
+            "os.environ",
+            {"SIGNAL_ACCOUNT": "+15550001111"},
+            clear=True,
+        ):
+            config = signal_bridge.load_config()
+        self.assertEqual(config.api_port, 18797)
+        self.assertEqual(config.signal_http_port, 18080)
+
     def test_normalize_envelope_for_text_dm(self):
         with tempfile.TemporaryDirectory() as tmp:
             bridge = signal_bridge.SignalOracleBridge(make_config(tmp))

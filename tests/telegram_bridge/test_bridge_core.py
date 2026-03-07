@@ -162,7 +162,7 @@ def make_config(**overrides):
         "whatsapp_bridge_auth_token": "",
         "whatsapp_poll_timeout_seconds": 20,
         "signal_plugin_enabled": False,
-        "signal_bridge_api_base": "http://127.0.0.1:8797",
+        "signal_bridge_api_base": "http://127.0.0.1:18797",
         "signal_bridge_auth_token": "",
         "signal_poll_timeout_seconds": 20,
         "keyword_routing_enabled": True,
@@ -378,6 +378,20 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertFalse(config.keyword_routing_enabled)
         self.assertEqual(config.allowed_chat_ids, set())
 
+    def test_load_config_defaults_signal_bridge_port_to_18797(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_CHANNEL_PLUGIN": "signal",
+                "SIGNAL_PLUGIN_ENABLED": "true",
+                "TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED": "true",
+                "TELEGRAM_ALLOW_GROUP_CHATS_UNLISTED": "true",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertEqual(config.signal_bridge_api_base, "http://127.0.0.1:18797")
+
     def test_load_config_reads_require_prefix_in_private_override(self):
         with mock.patch.dict(
             os.environ,
@@ -504,7 +518,7 @@ class BridgeCoreTests(unittest.TestCase):
 
         config = make_config(
             signal_plugin_enabled=True,
-            signal_bridge_api_base="http://127.0.0.1:8797",
+            signal_bridge_api_base="http://127.0.0.1:18797",
             signal_bridge_auth_token="signal-token",
         )
         adapter = bridge_signal_channel.SignalChannelAdapter(config)
@@ -513,7 +527,7 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertEqual(message_id, 987)
         request = mocked.call_args.args[0]
-        self.assertEqual(request.full_url, "http://127.0.0.1:8797/messages")
+        self.assertEqual(request.full_url, "http://127.0.0.1:18797/messages")
         self.assertEqual(request.get_header("Authorization"), "Bearer signal-token")
 
     def test_signal_adapter_disables_message_edits(self):
