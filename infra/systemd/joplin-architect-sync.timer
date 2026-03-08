@@ -1,0 +1,11 @@
+[Unit]
+Description=Architect Joplin Sync Timer
+
+[Timer]
+OnCalendar=*-*-* *:00/5:00
+RandomizedDelaySec=30
+Persistent=true
+Unit=joplin-architect-sync.service
+
+[Install]
+WantedBy=timers.target

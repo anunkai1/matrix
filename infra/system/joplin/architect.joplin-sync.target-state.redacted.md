@@ -17,4 +17,6 @@
 - `joplin version` returns installed version
 - `joplin config sync.target` returns `5`
 - `joplin sync --use-lock 0` completes without HTTP auth/path errors
+- `systemctl status joplin-architect-sync.timer` shows the timer active
+- `systemctl list-timers joplin-architect-sync.timer` shows the next 5-minute run
 - current remote dataset may still be empty (`0/0`) until source clients sync into this path

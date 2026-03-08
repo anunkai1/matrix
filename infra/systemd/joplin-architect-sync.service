@@ -1,0 +1,14 @@
+[Unit]
+Description=Architect Joplin Sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=architect
+Group=architect
+WorkingDirectory=/home/architect
+Environment=HOME=/home/architect
+Environment=PATH=/home/architect/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=JOPLIN_PROFILE=/home/architect/.config/joplin
+ExecStart=/bin/bash /home/architect/matrix/ops/joplin/sync_architect_profile.sh
