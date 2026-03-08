@@ -1,0 +1,490 @@
+"""Runtime configuration loading for the shared bridge core."""
+
+from __future__ import annotations
+
+import os
+import re
+import shlex
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Set, Tuple
+
+try:
+    from .transport import TELEGRAM_LIMIT
+except ImportError:
+    from transport import TELEGRAM_LIMIT
+
+
+@dataclass
+class Config:
+    token: str
+    allowed_chat_ids: Set[int]
+    api_base: str
+    poll_timeout_seconds: int
+    retry_sleep_seconds: float
+    exec_timeout_seconds: int
+    max_input_chars: int
+    max_output_chars: int
+    max_image_bytes: int
+    max_voice_bytes: int
+    max_document_bytes: int
+    rate_limit_per_minute: int
+    executor_cmd: List[str]
+    voice_transcribe_cmd: List[str]
+    voice_transcribe_timeout_seconds: int
+    voice_alias_replacements: List[Tuple[str, str]]
+    voice_alias_learning_enabled: bool
+    voice_alias_learning_path: str
+    voice_alias_learning_min_examples: int
+    voice_alias_learning_confirmation_window_seconds: int
+    voice_low_confidence_confirmation_enabled: bool
+    voice_low_confidence_threshold: float
+    voice_low_confidence_message: str
+    state_dir: str
+    persistent_workers_enabled: bool
+    persistent_workers_max: int
+    persistent_workers_idle_timeout_seconds: int
+    persistent_workers_policy_files: List[str]
+    canonical_sessions_enabled: bool
+    canonical_legacy_mirror_enabled: bool
+    canonical_sqlite_enabled: bool
+    canonical_sqlite_path: str
+    canonical_json_mirror_enabled: bool
+    memory_sqlite_path: str
+    memory_max_messages_per_key: int
+    memory_max_summaries_per_key: int
+    memory_prune_interval_seconds: int
+    required_prefixes: List[str]
+    required_prefix_ignore_case: bool
+    require_prefix_in_private: bool
+    allow_private_chats_unlisted: bool
+    allow_group_chats_unlisted: bool
+    assistant_name: str
+    shared_memory_key: str
+    channel_plugin: str
+    engine_plugin: str
+    whatsapp_plugin_enabled: bool
+    whatsapp_bridge_api_base: str
+    whatsapp_bridge_auth_token: str
+    whatsapp_poll_timeout_seconds: int
+    signal_plugin_enabled: bool
+    signal_bridge_api_base: str
+    signal_bridge_auth_token: str
+    signal_poll_timeout_seconds: int
+    keyword_routing_enabled: bool
+    blocked_prompt_pattern: Optional[re.Pattern[str]] = None
+    blocked_prompt_message: str = ""
+    progress_label: str = ""
+    progress_elapsed_prefix: str = "Already"
+    progress_elapsed_suffix: str = "s"
+    busy_message: str = "Another request is still running. Please wait."
+    denied_message: str = "Access denied for this chat."
+    timeout_message: str = "Request timed out. Please try a shorter prompt."
+    generic_error_message: str = "Execution failed. Please try again later."
+    image_download_error_message: str = "Image download failed. Please send another image."
+    voice_download_error_message: str = "Voice download failed. Please send another voice message."
+    document_download_error_message: str = "File download failed. Please send another file."
+    voice_not_configured_message: str = (
+        "Voice transcription is not configured. Please ask admin to set TELEGRAM_VOICE_TRANSCRIBE_CMD."
+    )
+    voice_transcribe_error_message: str = "Voice transcription failed. Please send clearer audio."
+    voice_transcribe_empty_message: str = (
+        "Voice transcription was empty. Please send clearer audio."
+    )
+    empty_output_message: str = "(No output from Architect)"
+
+
+def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if parsed < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    return parsed
+
+
+def parse_bool_env(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in ("1", "true", "yes", "on"):
+        return True
+    if normalized in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"{name} must be a boolean value")
+
+
+def parse_float_env(
+    name: str,
+    default: float,
+    *,
+    minimum: Optional[float] = None,
+    maximum: Optional[float] = None,
+) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a float") from exc
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f"{name} must be <= {maximum}")
+    return parsed
+
+
+def parse_optional_regex_env(name: str) -> Optional[re.Pattern[str]]:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return None
+    try:
+        return re.compile(value, re.IGNORECASE)
+    except re.error as exc:
+        raise ValueError(f"{name} must be a valid regular expression") from exc
+
+
+def parse_allowed_chat_ids(raw: str) -> Set[int]:
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    if not values:
+        raise ValueError("TELEGRAM_ALLOWED_CHAT_IDS is empty")
+    parsed: Set[int] = set()
+    for value in values:
+        try:
+            parsed.add(int(value))
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid TELEGRAM_ALLOWED_CHAT_IDS value: {value!r}"
+            ) from exc
+    return parsed
+
+
+def parse_prefixes_env(name: str) -> List[str]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    seen: Set[str] = set()
+    parsed: List[str] = []
+    for value in values:
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        parsed.append(value)
+    return parsed
+
+
+def parse_plugin_name_env(name: str, default: str) -> str:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if not value:
+        return default
+    return value
+
+
+def default_voice_alias_replacements() -> List[Tuple[str, str]]:
+    return [
+        ("master broom", "master bedroom"),
+        ("master room", "master bedroom"),
+        ("air con", "aircon"),
+        ("air conditioner", "aircon"),
+        ("clode code", "claude code"),
+        ("hall way", "hallway"),
+    ]
+
+
+def parse_voice_alias_replacements_env(name: str) -> List[Tuple[str, str]]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    parsed: List[Tuple[str, str]] = []
+    entries = [item.strip() for item in raw.split(";") if item.strip()]
+    for entry in entries:
+        if "=>" not in entry:
+            raise ValueError(
+                f"{name} entry must use 'source=>target' format: {entry!r}"
+            )
+        source, target = entry.split("=>", 1)
+        source = source.strip()
+        target = target.strip()
+        if not source or not target:
+            raise ValueError(
+                f"{name} entry must include non-empty source and target: {entry!r}"
+            )
+        parsed.append((source, target))
+    return parsed
+
+
+def build_voice_alias_replacements() -> List[Tuple[str, str]]:
+    merged: Dict[str, Tuple[str, str]] = {}
+    for source, target in default_voice_alias_replacements():
+        merged[source.casefold()] = (source, target)
+    for source, target in parse_voice_alias_replacements_env(
+        "TELEGRAM_VOICE_ALIAS_REPLACEMENTS"
+    ):
+        merged[source.casefold()] = (source, target)
+    return list(merged.values())
+
+
+def build_repo_root() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+
+def build_policy_watch_files() -> List[str]:
+    raw_override = os.getenv("TELEGRAM_POLICY_WATCH_FILES")
+    if raw_override is not None:
+        return [item.strip() for item in raw_override.split(",") if item.strip()]
+
+    mode = os.getenv("TELEGRAM_POLICY_WATCH_MODE", "").strip().lower()
+    if mode in ("none", "off", "disabled", "empty"):
+        return []
+
+    repo_root = build_repo_root()
+    return [
+        os.path.join(repo_root, "AGENTS.md"),
+        os.path.join(repo_root, "ARCHITECT_INSTRUCTION.md"),
+        os.path.join(repo_root, "SERVER3_ARCHIVE.md"),
+    ]
+
+
+def build_default_executor() -> str:
+    repo_root = build_repo_root()
+    return os.path.join(repo_root, "src", "telegram_bridge", "executor.sh")
+
+
+def parse_executor_cmd() -> List[str]:
+    raw = os.getenv("TELEGRAM_EXECUTOR_CMD", "").strip()
+    if raw:
+        cmd = shlex.split(raw)
+        if not cmd:
+            raise ValueError("TELEGRAM_EXECUTOR_CMD cannot be blank")
+        return cmd
+    return [build_default_executor()]
+
+
+def parse_optional_cmd_env(name: str) -> List[str]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    cmd = shlex.split(raw)
+    if not cmd:
+        raise ValueError(f"{name} cannot be blank")
+    return cmd
+
+
+def load_config() -> Config:
+    channel_plugin = parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram")
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    if channel_plugin == "telegram" and not token:
+        raise ValueError("TELEGRAM_BOT_TOKEN is required")
+
+    raw_chat_ids = os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "").strip()
+    if channel_plugin == "telegram" and not raw_chat_ids:
+        raise ValueError("TELEGRAM_ALLOWED_CHAT_IDS is required")
+    state_dir = os.getenv(
+        "TELEGRAM_BRIDGE_STATE_DIR",
+        "/home/architect/.local/state/telegram-architect-bridge",
+    ).strip()
+    if not state_dir:
+        raise ValueError("TELEGRAM_BRIDGE_STATE_DIR cannot be empty")
+    canonical_sqlite_path = os.getenv("TELEGRAM_CANONICAL_SQLITE_PATH", "").strip()
+    if not canonical_sqlite_path:
+        canonical_sqlite_path = os.path.join(state_dir, "chat_sessions.sqlite3")
+    memory_sqlite_path = os.getenv("TELEGRAM_MEMORY_SQLITE_PATH", "").strip()
+    if not memory_sqlite_path:
+        memory_sqlite_path = os.path.join(state_dir, "memory.sqlite3")
+
+    allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids) if raw_chat_ids else set()
+    assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
+    shared_memory_key = os.getenv("TELEGRAM_SHARED_MEMORY_KEY", "").strip()
+    progress_label = os.getenv("TELEGRAM_PROGRESS_LABEL", "").strip()
+    raw_progress_elapsed_prefix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_PREFIX")
+    if raw_progress_elapsed_prefix is None:
+        progress_elapsed_prefix = "Already"
+    else:
+        progress_elapsed_prefix = raw_progress_elapsed_prefix.strip()
+    raw_progress_elapsed_suffix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_SUFFIX")
+    if raw_progress_elapsed_suffix is None:
+        progress_elapsed_suffix = "s"
+    else:
+        progress_elapsed_suffix = raw_progress_elapsed_suffix
+    busy_message = (
+        os.getenv(
+            "TELEGRAM_BUSY_MESSAGE",
+            "Another request is still running. Please wait.",
+        ).strip()
+        or "Another request is still running. Please wait."
+    )
+    return Config(
+        token=token,
+        allowed_chat_ids=allowed_chat_ids,
+        api_base=os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/"),
+        poll_timeout_seconds=parse_int_env("TELEGRAM_POLL_TIMEOUT_SECONDS", 30),
+        retry_sleep_seconds=float(os.getenv("TELEGRAM_RETRY_SLEEP_SECONDS", "3")),
+        exec_timeout_seconds=parse_int_env("TELEGRAM_EXEC_TIMEOUT_SECONDS", 36000),
+        max_input_chars=parse_int_env("TELEGRAM_MAX_INPUT_CHARS", TELEGRAM_LIMIT),
+        max_output_chars=parse_int_env("TELEGRAM_MAX_OUTPUT_CHARS", 20000),
+        max_image_bytes=parse_int_env("TELEGRAM_MAX_IMAGE_BYTES", 10 * 1024 * 1024, minimum=1024),
+        max_voice_bytes=parse_int_env("TELEGRAM_MAX_VOICE_BYTES", 20 * 1024 * 1024, minimum=1024),
+        max_document_bytes=parse_int_env("TELEGRAM_MAX_DOCUMENT_BYTES", 50 * 1024 * 1024, minimum=1024),
+        rate_limit_per_minute=parse_int_env("TELEGRAM_RATE_LIMIT_PER_MINUTE", 12),
+        executor_cmd=parse_executor_cmd(),
+        voice_transcribe_cmd=parse_optional_cmd_env("TELEGRAM_VOICE_TRANSCRIBE_CMD"),
+        voice_transcribe_timeout_seconds=parse_int_env(
+            "TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS",
+            120,
+        ),
+        voice_alias_replacements=build_voice_alias_replacements(),
+        voice_alias_learning_enabled=parse_bool_env(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_ENABLED",
+            True,
+        ),
+        voice_alias_learning_path=os.getenv(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_PATH",
+            os.path.join(state_dir, "voice_alias_learning.json"),
+        ).strip()
+        or os.path.join(state_dir, "voice_alias_learning.json"),
+        voice_alias_learning_min_examples=parse_int_env(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_MIN_EXAMPLES",
+            2,
+            minimum=1,
+        ),
+        voice_alias_learning_confirmation_window_seconds=parse_int_env(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_CONFIRMATION_WINDOW_SECONDS",
+            900,
+            minimum=30,
+        ),
+        voice_low_confidence_confirmation_enabled=parse_bool_env(
+            "TELEGRAM_VOICE_LOW_CONFIDENCE_CONFIRMATION_ENABLED",
+            True,
+        ),
+        voice_low_confidence_threshold=parse_float_env(
+            "TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD",
+            0.45,
+            minimum=0.0,
+            maximum=1.0,
+        ),
+        voice_low_confidence_message=(
+            os.getenv(
+                "TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE",
+                "Voice transcript confidence is low, resend",
+            ).strip()
+            or "Voice transcript confidence is low, resend"
+        ),
+        state_dir=state_dir,
+        persistent_workers_enabled=parse_bool_env(
+            "TELEGRAM_PERSISTENT_WORKERS_ENABLED",
+            False,
+        ),
+        persistent_workers_max=parse_int_env(
+            "TELEGRAM_PERSISTENT_WORKERS_MAX",
+            4,
+            minimum=1,
+        ),
+        persistent_workers_idle_timeout_seconds=parse_int_env(
+            "TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS",
+            45 * 60,
+            minimum=60,
+        ),
+        persistent_workers_policy_files=build_policy_watch_files(),
+        canonical_sessions_enabled=parse_bool_env(
+            "TELEGRAM_CANONICAL_SESSIONS_ENABLED",
+            False,
+        ),
+        canonical_legacy_mirror_enabled=parse_bool_env(
+            "TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED",
+            False,
+        ),
+        canonical_sqlite_enabled=parse_bool_env(
+            "TELEGRAM_CANONICAL_SQLITE_ENABLED",
+            False,
+        ),
+        canonical_sqlite_path=canonical_sqlite_path,
+        canonical_json_mirror_enabled=parse_bool_env(
+            "TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED",
+            False,
+        ),
+        memory_sqlite_path=memory_sqlite_path,
+        memory_max_messages_per_key=parse_int_env(
+            "TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY",
+            4000,
+            minimum=0,
+        ),
+        memory_max_summaries_per_key=parse_int_env(
+            "TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY",
+            80,
+            minimum=0,
+        ),
+        memory_prune_interval_seconds=parse_int_env(
+            "TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS",
+            300,
+            minimum=0,
+        ),
+        required_prefixes=parse_prefixes_env("TELEGRAM_REQUIRED_PREFIXES"),
+        required_prefix_ignore_case=parse_bool_env(
+            "TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE",
+            True,
+        ),
+        require_prefix_in_private=parse_bool_env(
+            "TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE",
+            True,
+        ),
+        allow_private_chats_unlisted=parse_bool_env(
+            "TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED",
+            False,
+        ),
+        allow_group_chats_unlisted=parse_bool_env(
+            "TELEGRAM_ALLOW_GROUP_CHATS_UNLISTED",
+            False,
+        ),
+        assistant_name=assistant_name,
+        shared_memory_key=shared_memory_key,
+        progress_label=progress_label,
+        progress_elapsed_prefix=progress_elapsed_prefix,
+        progress_elapsed_suffix=progress_elapsed_suffix,
+        busy_message=busy_message,
+        channel_plugin=channel_plugin,
+        engine_plugin=parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
+        whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),
+        whatsapp_bridge_api_base=os.getenv(
+            "WHATSAPP_BRIDGE_API_BASE",
+            "http://127.0.0.1:8787",
+        ).strip(),
+        whatsapp_bridge_auth_token=os.getenv("WHATSAPP_BRIDGE_AUTH_TOKEN", "").strip(),
+        whatsapp_poll_timeout_seconds=parse_int_env(
+            "WHATSAPP_POLL_TIMEOUT_SECONDS",
+            20,
+            minimum=1,
+        ),
+        signal_plugin_enabled=parse_bool_env("SIGNAL_PLUGIN_ENABLED", False),
+        signal_bridge_api_base=os.getenv(
+            "SIGNAL_BRIDGE_API_BASE",
+            "http://127.0.0.1:18797",
+        ).strip(),
+        signal_bridge_auth_token=os.getenv("SIGNAL_BRIDGE_AUTH_TOKEN", "").strip(),
+        signal_poll_timeout_seconds=parse_int_env(
+            "SIGNAL_POLL_TIMEOUT_SECONDS",
+            20,
+            minimum=1,
+        ),
+        keyword_routing_enabled=parse_bool_env(
+            "TELEGRAM_KEYWORD_ROUTING_ENABLED",
+            True,
+        ),
+        blocked_prompt_pattern=parse_optional_regex_env(
+            "TELEGRAM_BLOCKED_PROMPT_REGEX"
+        ),
+        blocked_prompt_message=os.getenv(
+            "TELEGRAM_BLOCKED_PROMPT_MESSAGE",
+            "",
+        ).strip(),
+        empty_output_message=f"(No output from {assistant_name})",
+    )

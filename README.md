@@ -34,7 +34,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 ## Repository Structure
 
 - `src/` runtime code
-  - Telegram bridge modules now split into `main.py` (bootstrap/poll loop), `handlers.py`, `transport.py`, `executor.py`, `state_store.py`, `session_manager.py`, `media.py`, `memory_engine.py`
+  - Telegram bridge modules now split into `main.py` (bootstrap/poll loop), `runtime_config.py`, `handlers.py`, `transport.py`, `executor.py`, `state_store.py`, `session_manager.py`, `media.py`, `memory_engine.py`
   - Shared-memory CLI wrapper: `src/architect_cli/main.py`
 - `infra/` source-of-truth mirrors for live server state (systemd units, env templates, managed shell profile content)
 - `ops/` apply/rollback/restart/status scripts for live rollout

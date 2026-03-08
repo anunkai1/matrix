@@ -26,6 +26,7 @@ These are the ways work enters the server.
 The main reusable runtime lives in [`src/telegram_bridge`](../src/telegram_bridge):
 
 - [`main.py`](../src/telegram_bridge/main.py): bootstraps config, channel plugin, polling loop, and state loading.
+- [`runtime_config.py`](../src/telegram_bridge/runtime_config.py): centralizes env parsing and runtime config defaults for the shared bridge core.
 - [`handlers.py`](../src/telegram_bridge/handlers.py): command handling, keyword routing, media handling, progress updates, and restart/cancel flows.
 - [`executor.py`](../src/telegram_bridge/executor.py) and [`executor.sh`](../src/telegram_bridge/executor.sh): invoke local Codex safely and stream output back.
 - [`memory_engine.py`](../src/telegram_bridge/memory_engine.py): durable chat memory and summaries.
