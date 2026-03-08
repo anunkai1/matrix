@@ -25,6 +25,21 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Google integration in Architect bridge: removed from live runtime
 - CI checks: `.github/workflows/telegram-bridge-ci.yml` (compile + unit tests + self/smoke tests)
 
+## Runtime Inventory
+
+| Category | Runtime | Unit(s) | Expected default state | Purpose / Dependency |
+| --- | --- | --- | --- | --- |
+| primary | Architect | `telegram-architect-bridge.service` | active | Main Telegram + CLI runtime; depends on local repo/workspace and authenticated Codex executor |
+| secondary | Tank | `telegram-tank-bridge.service` | active | Sibling Telegram assistant; depends on isolated Tank runtime |
+| secondary | ASTER | `telegram-aster-trader-bridge.service` | active | Futures trading runtime; depends on ASTER env and risk-script path |
+| secondary | Govorun transport | `whatsapp-govorun-bridge.service` | active | WhatsApp API/runtime; dependency for Govorun bridge |
+| secondary | Govorun bridge | `govorun-whatsapp-bridge.service` | active | WhatsApp-facing assistant; depends on WhatsApp transport + Codex executor |
+| secondary | Oracle transport | `signal-oracle-bridge.service` | active | Signal transport sidecar; dependency for Oracle bridge |
+| secondary | Oracle bridge | `oracle-signal-bridge.service` | active | Signal-facing assistant; depends on Signal transport health + Codex executor |
+| infra | Network layer | `nordvpnd`, `tailscaled` | active | VPN + mesh baseline for remote continuity |
+| infra | Guardrail timers | `server3-runtime-observer.timer`, `server3-chat-routing-contract-check.timer`, `server3-monthly-apt-upgrade.timer` | active (waiting) | Health summary, routing drift checks, monthly package maintenance |
+| optional | UI layer | `lightdm.service` | inactive unless TV mode is in use | Local desktop/browser UI for Server3 TV mode |
+
 ## Repository Structure
 
 - `src/` runtime code
