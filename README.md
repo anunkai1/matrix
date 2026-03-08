@@ -111,6 +111,7 @@ bash src/telegram_bridge/smoke_test.sh
 - Runtime observer:
   - Install timer: `bash ops/runtime_observer/install_systemd.sh apply`
   - Live daily-summary mode uses `RUNTIME_OBSERVER_MODE=telegram_daily_summary`
+  - Live Server3 schedule is once daily at `08:05 AEST`
   - Current KPI state: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py status`
   - Last 24h KPI summary: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py summary --hours 24`
   - Delivery-path test: `sudo /home/architect/matrix/ops/runtime_observer/runtime_observer.py notify-test`

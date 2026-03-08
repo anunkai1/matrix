@@ -2,7 +2,7 @@
 Description=Server3 Runtime KPI Observer Timer
 
 [Timer]
-OnCalendar=*:0/5
+OnCalendar=*-*-* 08:05:00
 RandomizedDelaySec=30
 Persistent=true
 Unit=server3-runtime-observer.service

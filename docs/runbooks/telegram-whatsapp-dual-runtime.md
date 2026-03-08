@@ -60,6 +60,7 @@
   - `/etc/default/server3-runtime-observer` (template: `infra/env/server3-runtime-observer.env.example`)
 - Current live Server3 delivery mode:
   - `RUNTIME_OBSERVER_MODE=telegram_daily_summary`
+  - current Server3 timer cadence is once daily at `08:05 AEST`
   - current routing is centralized through `staker_alerts_bot` to chat `211761499`
 - Supported Telegram delivery modes:
   - `telegram_daily_summary`: daily summary only
