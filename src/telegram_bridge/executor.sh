@@ -64,22 +64,10 @@ if [[ "${runtime_root}" != /* ]]; then
 fi
 runtime_root="$(cd "${runtime_root}" && pwd)"
 
-cd "${shared_core_root}"
-
-policy_file="${CODEX_POLICY_FILE:-${runtime_root}/AGENTS.md}"
-if [[ "${policy_file}" != /* ]]; then
-  policy_file="${runtime_root}/${policy_file}"
-fi
-policy_text=""
-if [[ -f "${policy_file}" ]]; then
-  policy_text="$(cat "${policy_file}")"
-fi
+cd "${runtime_root}"
 
 style_hint="${TELEGRAM_RESPONSE_STYLE_HINT:-}"
 assembled_prompt=""
-if [[ -n "${policy_text//[[:space:]]/}" ]]; then
-  assembled_prompt+=$'Assistant policy (authoritative):\n'"${policy_text}"$'\n\n'
-fi
 if [[ -n "${style_hint//[[:space:]]/}" ]]; then
   assembled_prompt+=$'Response style guidance:\n'"${style_hint}"$'\n\n'
 fi

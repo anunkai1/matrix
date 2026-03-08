@@ -1630,6 +1630,25 @@ class MemoryEngine:
             conn.execute("DELETE FROM memory_config WHERE conversation_key = ?", (conversation_key,))
             self._next_prune_deadline.pop(conversation_key, None)
 
+    def hard_reset_all_memory(self) -> Dict[str, int]:
+        with self._lock, self._connect() as conn:
+            counts = {
+                "sessions": int(conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]),
+                "facts": int(conn.execute("SELECT COUNT(*) FROM memory_facts").fetchone()[0]),
+                "summaries": int(conn.execute("SELECT COUNT(*) FROM chat_summaries").fetchone()[0]),
+                "states": int(conn.execute("SELECT COUNT(*) FROM memory_state").fetchone()[0]),
+                "messages": int(conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]),
+                "configs": int(conn.execute("SELECT COUNT(*) FROM memory_config").fetchone()[0]),
+            }
+            conn.execute("DELETE FROM sessions")
+            conn.execute("DELETE FROM memory_facts")
+            conn.execute("DELETE FROM chat_summaries")
+            conn.execute("DELETE FROM memory_state")
+            conn.execute("DELETE FROM messages")
+            conn.execute("DELETE FROM memory_config")
+            self._next_prune_deadline.clear()
+            return counts
+
     def get_status(self, conversation_key: str) -> MemoryStatus:
         with self._lock, self._connect() as conn:
             self._ensure_memory_rows(conn, conversation_key)

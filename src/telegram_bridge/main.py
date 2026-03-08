@@ -555,6 +555,23 @@ def run_bridge(config: Config) -> int:
                     "canonical_session_count": counts["canonical_sessions"],
                 },
             )
+            if getattr(config, "policy_reset_memory_on_change", False):
+                memory_reset_counts = memory_engine.hard_reset_all_memory()
+                logging.warning(
+                    "Policy fingerprint changed; hard-reset bridge memory "
+                    "(sessions=%s facts=%s summaries=%s states=%s messages=%s configs=%s).",
+                    memory_reset_counts["sessions"],
+                    memory_reset_counts["facts"],
+                    memory_reset_counts["summaries"],
+                    memory_reset_counts["states"],
+                    memory_reset_counts["messages"],
+                    memory_reset_counts["configs"],
+                )
+                emit_event(
+                    "bridge.memory_reset_for_policy_change",
+                    level=logging.WARNING,
+                    fields=memory_reset_counts,
+                )
 
     if config.persistent_workers_enabled:
         now = time.time()

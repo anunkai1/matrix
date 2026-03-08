@@ -34,10 +34,6 @@ PREFIX_HELP_MESSAGE = (
 WHATSAPP_REPLY_PREFIX = "Даю справку:"
 WHATSAPP_REPLY_PREFIX_RE = re.compile(r"^\s*даю\s+справку\s*:\s*", re.IGNORECASE)
 WHATSAPP_LEGACY_REPLY_PREFIX_RE = re.compile(r"^\s*говорун\s*:\s*", re.IGNORECASE)
-BLOCKED_PROMPT_MESSAGE = (
-    "Птица Говорун отличается умом и сообразительностью, а потому политику сейчас "
-    "обойдет стороной. Давай лучше о чем-то полезном, спокойном или веселом."
-)
 
 
 def build_repo_root() -> str:

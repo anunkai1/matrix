@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 import shlex
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
@@ -83,8 +82,7 @@ class Config:
     signal_bridge_auth_token: str
     signal_poll_timeout_seconds: int
     keyword_routing_enabled: bool
-    blocked_prompt_pattern: Optional[re.Pattern[str]] = None
-    blocked_prompt_message: str = ""
+    policy_reset_memory_on_change: bool = False
     progress_label: str = ""
     progress_elapsed_prefix: str = "Already"
     progress_elapsed_suffix: str = "s"
@@ -149,16 +147,6 @@ def parse_float_env(
     if maximum is not None and parsed > maximum:
         raise ValueError(f"{name} must be <= {maximum}")
     return parsed
-
-
-def parse_optional_regex_env(name: str) -> Optional[re.Pattern[str]]:
-    value = os.getenv(name, "").strip()
-    if not value:
-        return None
-    try:
-        return re.compile(value, re.IGNORECASE)
-    except re.error as exc:
-        raise ValueError(f"{name} must be a valid regular expression") from exc
 
 
 def parse_allowed_chat_ids(raw: str) -> Set[int]:
@@ -491,12 +479,9 @@ def load_config() -> Config:
             "TELEGRAM_KEYWORD_ROUTING_ENABLED",
             True,
         ),
-        blocked_prompt_pattern=parse_optional_regex_env(
-            "TELEGRAM_BLOCKED_PROMPT_REGEX"
+        policy_reset_memory_on_change=parse_bool_env(
+            "TELEGRAM_POLICY_RESET_MEMORY_ON_CHANGE",
+            False,
         ),
-        blocked_prompt_message=os.getenv(
-            "TELEGRAM_BLOCKED_PROMPT_MESSAGE",
-            "",
-        ).strip(),
         empty_output_message=f"(No output from {assistant_name})",
     )

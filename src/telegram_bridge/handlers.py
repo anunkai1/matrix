@@ -29,7 +29,6 @@ try:
         handle_natural_language_memory_query,
     )
     from .runtime_profile import (
-        BLOCKED_PROMPT_MESSAGE,
         HA_KEYWORD_HELP_MESSAGE,
         HELP_COMMAND_ALIASES,
         NEXTCLOUD_KEYWORD_HELP_MESSAGE,
@@ -89,7 +88,6 @@ except ImportError:
         handle_natural_language_memory_query,
     )
     from runtime_profile import (
-        BLOCKED_PROMPT_MESSAGE,
         HA_KEYWORD_HELP_MESSAGE,
         HELP_COMMAND_ALIASES,
         NEXTCLOUD_KEYWORD_HELP_MESSAGE,
@@ -170,20 +168,6 @@ class PreparedPromptInput:
 class OutboundMediaDirective:
     media_ref: str
     as_voice: bool
-
-
-def find_blocked_prompt_match(config, text: str) -> Optional[str]:
-    pattern = getattr(config, "blocked_prompt_pattern", None)
-    if pattern is None:
-        return None
-    normalized = (text or "").strip()
-    if not normalized:
-        return None
-    match = pattern.search(normalized)
-    if match is None:
-        return None
-    return match.group(0) or "<blocked>"
-
 
 def resolve_memory_conversation_key(config, channel_name: str, chat_id: int) -> str:
     shared_key = getattr(config, "shared_memory_key", "").strip()
@@ -1669,30 +1653,6 @@ def prepare_prompt_input(
             message_id=message_id,
             actual_length=len(prompt_text),
             max_input_chars=config.max_input_chars,
-        )
-        return None
-
-    blocked_match = find_blocked_prompt_match(config, prompt_text)
-    if blocked_match is not None:
-        progress.mark_failure("Prompt blocked by topic policy.")
-        blocked_message = (
-            getattr(config, "blocked_prompt_message", "").strip()
-            or BLOCKED_PROMPT_MESSAGE
-        )
-        emit_event(
-            "bridge.request_rejected",
-            level=logging.INFO,
-            fields={
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "reason": "blocked_prompt_topic",
-                "blocked_match": blocked_match[:80],
-            },
-        )
-        client.send_message(
-            chat_id,
-            blocked_message,
-            reply_to_message_id=message_id,
         )
         return None
 
