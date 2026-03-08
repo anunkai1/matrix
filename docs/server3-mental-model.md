@@ -28,6 +28,7 @@ The main reusable runtime lives in [`src/telegram_bridge`](../src/telegram_bridg
 - [`main.py`](../src/telegram_bridge/main.py): bootstraps config, channel plugin, polling loop, and state loading.
 - [`runtime_config.py`](../src/telegram_bridge/runtime_config.py): centralizes env parsing and runtime config defaults for the shared bridge core.
 - [`runtime_profile.py`](../src/telegram_bridge/runtime_profile.py): centralizes runtime-facing profile helpers such as assistant labels, keyword routing prompts, and channel reply conventions.
+- [`runtime_routing.py`](../src/telegram_bridge/runtime_routing.py): centralizes prefix gating and keyword-route resolution before handlers dispatch work.
 - [`handlers.py`](../src/telegram_bridge/handlers.py): command handling, keyword routing, media handling, progress updates, and restart/cancel flows.
 - [`executor.py`](../src/telegram_bridge/executor.py) and [`executor.sh`](../src/telegram_bridge/executor.sh): invoke local Codex safely and stream output back.
 - [`memory_engine.py`](../src/telegram_bridge/memory_engine.py): durable chat memory and summaries.

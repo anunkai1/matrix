@@ -59,6 +59,7 @@ try:
         resume_retry_phase,
         start_command_message,
     )
+    from .runtime_routing import apply_priority_keyword_routing, apply_required_prefix_gate
     from .session_manager import (
         ensure_chat_worker_session,
         finalize_chat_work,
@@ -118,6 +119,7 @@ except ImportError:
         resume_retry_phase,
         start_command_message,
     )
+    from runtime_routing import apply_priority_keyword_routing, apply_required_prefix_gate
     from session_manager import (
         ensure_chat_worker_session,
         finalize_chat_work,
@@ -2588,160 +2590,68 @@ def handle_update(
     if prompt_input is None and voice_file_id is None and document is None:
         return
 
-    requires_prefix_for_message = bool(config.required_prefixes) and (
-        config.require_prefix_in_private or not is_private_chat
+    prefix_result = apply_required_prefix_gate(
+        client=client,
+        config=config,
+        prompt_input=prompt_input,
+        voice_file_id=voice_file_id,
+        document=document,
+        is_private_chat=is_private_chat,
+        normalize_command=normalize_command,
+        strip_required_prefix=strip_required_prefix,
     )
-    prefix_bypass_command = normalize_command(prompt_input or "")
-
-    enforce_voice_prefix_from_transcript = False
-    if (
-        prompt_input is not None
-        and requires_prefix_for_message
-        and not command_bypasses_required_prefix(client, prefix_bypass_command)
-    ):
-        voice_without_caption = bool(voice_file_id) and not prompt_input.strip()
-        if voice_without_caption:
-            enforce_voice_prefix_from_transcript = True
-        else:
-            has_required_prefix, stripped_prompt = strip_required_prefix(
-                prompt_input,
-                config.required_prefixes,
-                config.required_prefix_ignore_case,
-            )
-            if not has_required_prefix:
-                emit_event(
-                    "bridge.request_ignored",
-                    fields={"chat_id": chat_id, "message_id": message_id, "reason": "prefix_required"},
-                )
-                return
-            prompt_input = stripped_prompt
-            if not prompt_input and voice_file_id is None and document is None:
-                emit_event(
-                    "bridge.request_rejected",
-                    level=logging.WARNING,
-                    fields={"chat_id": chat_id, "message_id": message_id, "reason": "prefix_missing_action"},
-                )
-                client.send_message(
-                    chat_id,
-                    PREFIX_HELP_MESSAGE,
-                    reply_to_message_id=message_id,
-                )
-                return
+    enforce_voice_prefix_from_transcript = prefix_result.enforce_voice_prefix_from_transcript
+    prompt_input = prefix_result.prompt_input
+    if prefix_result.ignored:
+        emit_event(
+            "bridge.request_ignored",
+            fields={"chat_id": chat_id, "message_id": message_id, "reason": prefix_result.rejection_reason},
+        )
+        return
+    if prefix_result.rejection_reason:
+        emit_event(
+            "bridge.request_rejected",
+            level=logging.WARNING,
+            fields={"chat_id": chat_id, "message_id": message_id, "reason": prefix_result.rejection_reason},
+        )
+        client.send_message(
+            chat_id,
+            prefix_result.rejection_message or PREFIX_HELP_MESSAGE,
+            reply_to_message_id=message_id,
+        )
+        return
 
     sender_name = extract_sender_name(message)
     stateless = False
     command = normalize_command(prompt_input or "")
     priority_keyword_mode = False
-    if prompt_input and getattr(config, "keyword_routing_enabled", True):
-        trade_keyword_mode, trade_request = extract_trade_keyword_request(prompt_input)
-        if trade_keyword_mode:
-            if not trade_request.strip():
-                emit_event(
-                    "bridge.request_rejected",
-                    level=logging.WARNING,
-                    fields={
-                        "chat_id": chat_id,
-                        "message_id": message_id,
-                        "reason": "trade_keyword_missing_action",
-                    },
-                )
-                client.send_message(
-                    chat_id,
-                    TRADE_KEYWORD_HELP_MESSAGE,
-                    reply_to_message_id=message_id,
-                )
-                return
-            prompt_input = build_trade_keyword_prompt(trade_request, chat_id)
-            command = None
-            stateless = True
-            priority_keyword_mode = True
-            emit_event(
-                "bridge.trade_keyword_routed",
-                fields={"chat_id": chat_id, "message_id": message_id},
-            )
-        else:
-            nextcloud_keyword_mode, nextcloud_request = extract_nextcloud_keyword_request(prompt_input)
-            if nextcloud_keyword_mode:
-                if not nextcloud_request.strip():
-                    emit_event(
-                        "bridge.request_rejected",
-                        level=logging.WARNING,
-                        fields={
-                            "chat_id": chat_id,
-                            "message_id": message_id,
-                            "reason": "nextcloud_keyword_missing_action",
-                        },
-                    )
-                    client.send_message(
-                        chat_id,
-                        NEXTCLOUD_KEYWORD_HELP_MESSAGE,
-                        reply_to_message_id=message_id,
-                    )
-                    return
-                prompt_input = build_nextcloud_keyword_prompt(nextcloud_request)
-                command = None
-                stateless = True
-                priority_keyword_mode = True
-                emit_event(
-                    "bridge.nextcloud_keyword_routed",
-                    fields={"chat_id": chat_id, "message_id": message_id},
-                )
-            else:
-                server3_keyword_mode, server3_request = extract_server3_keyword_request(prompt_input)
-                if server3_keyword_mode:
-                    if not server3_request.strip():
-                        emit_event(
-                            "bridge.request_rejected",
-                            level=logging.WARNING,
-                            fields={
-                                "chat_id": chat_id,
-                                "message_id": message_id,
-                                "reason": "server3_keyword_missing_action",
-                            },
-                        )
-                        client.send_message(
-                            chat_id,
-                            SERVER3_KEYWORD_HELP_MESSAGE,
-                            reply_to_message_id=message_id,
-                        )
-                        return
-                    prompt_input = build_server3_keyword_prompt(server3_request)
-                    command = None
-                    stateless = True
-                    priority_keyword_mode = True
-                    emit_event(
-                        "bridge.server3_keyword_routed",
-                        fields={"chat_id": chat_id, "message_id": message_id},
-                    )
-                else:
-                    ha_keyword_mode, ha_request = extract_ha_keyword_request(prompt_input)
-                    if not ha_keyword_mode:
-                        ha_request = ""
-                    if ha_keyword_mode:
-                        if not ha_request.strip():
-                            emit_event(
-                                "bridge.request_rejected",
-                                level=logging.WARNING,
-                                fields={
-                                    "chat_id": chat_id,
-                                    "message_id": message_id,
-                                    "reason": "ha_keyword_missing_action",
-                                },
-                            )
-                            client.send_message(
-                                chat_id,
-                                HA_KEYWORD_HELP_MESSAGE,
-                                reply_to_message_id=message_id,
-                            )
-                            return
-                        prompt_input = build_ha_keyword_prompt(ha_request)
-                        command = None
-                        stateless = True
-                        priority_keyword_mode = True
-                        emit_event(
-                            "bridge.ha_keyword_routed",
-                            fields={"chat_id": chat_id, "message_id": message_id},
-                        )
+    keyword_result = apply_priority_keyword_routing(
+        config=config,
+        prompt_input=prompt_input,
+        command=command,
+        chat_id=chat_id,
+    )
+    if keyword_result.rejection_reason:
+        emit_event(
+            "bridge.request_rejected",
+            level=logging.WARNING,
+            fields={"chat_id": chat_id, "message_id": message_id, "reason": keyword_result.rejection_reason},
+        )
+        client.send_message(
+            chat_id,
+            keyword_result.rejection_message or PREFIX_HELP_MESSAGE,
+            reply_to_message_id=message_id,
+        )
+        return
+    prompt_input = keyword_result.prompt_input
+    command = keyword_result.command
+    if keyword_result.priority_keyword_mode:
+        stateless = keyword_result.stateless
+        priority_keyword_mode = True
+        emit_event(
+            keyword_result.routed_event or "bridge.keyword_routed",
+            fields={"chat_id": chat_id, "message_id": message_id},
+        )
 
     if prompt_input:
         maybe_process_voice_alias_learning_confirmation(
