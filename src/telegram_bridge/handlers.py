@@ -106,6 +106,10 @@ REQUEST_CANCELED_MESSAGE = "Request canceled."
 WHATSAPP_REPLY_PREFIX = "Даю справку:"
 WHATSAPP_REPLY_PREFIX_RE = re.compile(r"^\s*даю\s+справку\s*:\s*", re.IGNORECASE)
 WHATSAPP_LEGACY_REPLY_PREFIX_RE = re.compile(r"^\s*говорун\s*:\s*", re.IGNORECASE)
+BLOCKED_PROMPT_MESSAGE = (
+    "Птица Говорун отличается умом и сообразительностью, а потому политику сейчас "
+    "обойдет стороной. Давай лучше о чем-то полезном, спокойном или веселом."
+)
 
 
 @dataclass
@@ -130,6 +134,19 @@ class OutboundMediaDirective:
 
 def build_repo_root() -> str:
     return str(Path(__file__).resolve().parents[2])
+
+
+def find_blocked_prompt_match(config, text: str) -> Optional[str]:
+    pattern = getattr(config, "blocked_prompt_pattern", None)
+    if pattern is None:
+        return None
+    normalized = (text or "").strip()
+    if not normalized:
+        return None
+    match = pattern.search(normalized)
+    if match is None:
+        return None
+    return match.group(0) or "<blocked>"
 
 
 def build_ha_routing_script_allowlist() -> List[str]:
@@ -1834,6 +1851,30 @@ def prepare_prompt_input(
             message_id=message_id,
             actual_length=len(prompt_text),
             max_input_chars=config.max_input_chars,
+        )
+        return None
+
+    blocked_match = find_blocked_prompt_match(config, prompt_text)
+    if blocked_match is not None:
+        progress.mark_failure("Prompt blocked by topic policy.")
+        blocked_message = (
+            getattr(config, "blocked_prompt_message", "").strip()
+            or BLOCKED_PROMPT_MESSAGE
+        )
+        emit_event(
+            "bridge.request_rejected",
+            level=logging.INFO,
+            fields={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "reason": "blocked_prompt_topic",
+                "blocked_match": blocked_match[:80],
+            },
+        )
+        client.send_message(
+            chat_id,
+            blocked_message,
+            reply_to_message_id=message_id,
         )
         return None
 

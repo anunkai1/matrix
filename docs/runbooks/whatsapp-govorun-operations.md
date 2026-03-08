@@ -94,6 +94,7 @@
 - Optional tone control: set `TELEGRAM_RESPONSE_STYLE_HINT` in `/etc/default/govorun-whatsapp-bridge` to keep replies informative with light humor.
 - Politics boundary: Govorun should decline political discussion in a warm, casual, slightly tired tone, avoid advocacy/persuasion/debate, and redirect toward something better, lighter, or positive.
 - Enforcement detail: `/home/govorun/govorunbot/src/telegram_bridge/executor.sh` now anchors execution to `/home/govorun/govorunbot` and prepends the local `/home/govorun/govorunbot/AGENTS.md` policy to every request, so Govorun uses its own workspace policy even if invoked from another current directory.
+- Hard guardrail option: set `TELEGRAM_BLOCKED_PROMPT_REGEX` plus `TELEGRAM_BLOCKED_PROMPT_MESSAGE` in `/etc/default/govorun-whatsapp-bridge` to refuse politics before the executor runs; this is the reliable enforcement path when model prompt-following alone is too soft.
 - Policy refresh guardrail: set `TELEGRAM_POLICY_WATCH_FILES=/home/govorun/govorunbot/AGENTS.md` so when Govorun's policy file changes, stored resumed chat threads are cleared automatically on the next bridge start instead of continuing under stale pre-change thread context.
 - Optional busy-lock wording: set `TELEGRAM_BUSY_MESSAGE` (for example `Даю справку: уже занят предыдущим запросом. Скоро вернусь.`).
 - Optional speed/profile override: set `ARCHITECT_EXEC_ARGS` (for example `--model gpt-5.3-codex --config model_reasoning_effort="high"`). This is applied by `executor.sh` to both new and resumed chats.
