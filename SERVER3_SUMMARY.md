@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-08 (AEST, +10:00)
+Last updated: 2026-03-09 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -48,6 +48,7 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-09: fixed `telegram-bridge-ci` after the Govorun AGENTS-only executor change by updating the executor regression tests to assert the new contract: prompts no longer embed `AGENTS.md` text and overlay executions now run from `TELEGRAM_RUNTIME_ROOT`.
 - 2026-03-08: corrected the ASTER runbook CLI examples to use the canonical shared-core trading wrapper under `/home/architect/matrix/ops/trading/aster/` instead of the old overlay-local path.
 - 2026-03-08: completed the shared-core overlay cutover for Server3 bridge runtimes by adding `src/telegram_bridge/runtime_paths.py`, teaching the bridge/executor to separate shared-core paths from per-runtime roots, adding `ops/runtime_overlays/sync_server3_runtime_overlays.py`, updating overlay unit env to carry `TELEGRAM_RUNTIME_ROOT`/`TELEGRAM_SHARED_CORE_ROOT`, live-syncing ASTER/Govorun/Oracle overlays, handling Tank's existing `/home/tank/tankbot/src -> /home/architect/matrix/src` symlink layout safely, and verifying all major runtimes remained at expected state.
 - 2026-03-08: continued the Phase 2 shared-core cleanup without live behavior changes by extracting pure prefix-gating and keyword-route resolution from `src/telegram_bridge/handlers.py` into `src/telegram_bridge/runtime_routing.py`, adding focused routing tests, and keeping handler behavior and exports compatible.

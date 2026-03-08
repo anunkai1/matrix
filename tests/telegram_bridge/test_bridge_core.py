@@ -220,7 +220,7 @@ class BridgeCoreTests(unittest.TestCase):
             )
         )
 
-    def test_executor_script_anchors_repo_root_and_policy_file(self):
+    def test_executor_script_uses_default_runtime_root_without_embedding_policy(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             temp_root = Path(tmpdir)
             repo_root = temp_root / "govorunbot"
@@ -275,10 +275,10 @@ class BridgeCoreTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, msg=result.stderr)
             self.assertIn(f"PWD={repo_root}", result.stdout)
-            self.assertIn("TEMP_GOVORUN_POLICY", result.stdout)
+            self.assertNotIn("TEMP_GOVORUN_POLICY", result.stdout)
             self.assertIn("User request:\\nhello from test", result.stdout)
 
-    def test_executor_script_supports_runtime_root_overlay_policy(self):
+    def test_executor_script_runs_from_runtime_root_overlay_without_embedding_policy(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             temp_root = Path(tmpdir)
             shared_root = temp_root / "matrix"
@@ -336,8 +336,8 @@ class BridgeCoreTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(result.returncode, 0, msg=result.stderr)
-            self.assertIn(f"PWD={shared_root}", result.stdout)
-            self.assertIn("TEMP_ORACLE_POLICY", result.stdout)
+            self.assertIn(f"PWD={runtime_root}", result.stdout)
+            self.assertNotIn("TEMP_ORACLE_POLICY", result.stdout)
             self.assertIn("User request:\\nhello from overlay test", result.stdout)
 
     def test_normalize_command_and_trim_output_helpers(self):
