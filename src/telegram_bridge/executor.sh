@@ -51,7 +51,14 @@ if [[ -z "${prompt}" ]]; then
   exit 2
 fi
 
-policy_file="${CODEX_POLICY_FILE:-AGENTS.md}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/../.." && pwd)"
+cd "${repo_root}"
+
+policy_file="${CODEX_POLICY_FILE:-${repo_root}/AGENTS.md}"
+if [[ "${policy_file}" != /* ]]; then
+  policy_file="${repo_root}/${policy_file}"
+fi
 policy_text=""
 if [[ -f "${policy_file}" ]]; then
   policy_text="$(cat "${policy_file}")"

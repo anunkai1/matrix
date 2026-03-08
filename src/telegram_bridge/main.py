@@ -36,6 +36,7 @@ try:
         State,
         StateRepository,
         WorkerSession,
+        canonical_session_is_empty,
         build_canonical_sessions_from_legacy,
         build_legacy_from_canonical,
         ensure_state_dir,
@@ -82,6 +83,7 @@ except ImportError:
         State,
         StateRepository,
         WorkerSession,
+        canonical_session_is_empty,
         build_canonical_sessions_from_legacy,
         build_legacy_from_canonical,
         ensure_state_dir,
@@ -337,6 +339,117 @@ def build_policy_watch_files() -> List[str]:
 def build_default_executor() -> str:
     repo_root = build_repo_root()
     return os.path.join(repo_root, "src", "telegram_bridge", "executor.sh")
+
+
+def build_policy_fingerprint_state_path(state_dir: str) -> str:
+    return os.path.join(state_dir, "policy_fingerprint.txt")
+
+
+def load_saved_policy_fingerprint(path: str) -> str:
+    if not path:
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except FileNotFoundError:
+        return ""
+    except OSError:
+        logging.exception("Failed to read policy fingerprint state from %s", path)
+        return ""
+
+
+def persist_saved_policy_fingerprint(path: str, fingerprint: str) -> None:
+    if not path:
+        return
+    directory = os.path.dirname(path)
+    if directory:
+        ensure_state_dir(directory)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        handle.write(fingerprint.strip())
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp_path, path)
+
+
+def clear_thread_state_for_policy_change(
+    loaded_threads: Dict[int, str],
+    loaded_worker_sessions: Dict[int, WorkerSession],
+    loaded_canonical_sessions: Dict[int, CanonicalSession],
+) -> Dict[str, int]:
+    cleared_thread_count = sum(1 for thread_id in loaded_threads.values() if thread_id.strip())
+    cleared_worker_session_count = len(loaded_worker_sessions)
+    cleared_canonical_session_count = 0
+
+    if loaded_threads:
+        loaded_threads.clear()
+    if loaded_worker_sessions:
+        loaded_worker_sessions.clear()
+
+    for chat_id in list(loaded_canonical_sessions):
+        session = loaded_canonical_sessions[chat_id]
+        changed = False
+        if session.thread_id.strip():
+            session.thread_id = ""
+            changed = True
+        if (
+            session.worker_created_at is not None
+            or session.worker_last_used_at is not None
+            or session.worker_policy_fingerprint.strip()
+        ):
+            session.worker_created_at = None
+            session.worker_last_used_at = None
+            session.worker_policy_fingerprint = ""
+            changed = True
+        if changed:
+            cleared_canonical_session_count += 1
+        if canonical_session_is_empty(session):
+            del loaded_canonical_sessions[chat_id]
+
+    return {
+        "threads": cleared_thread_count,
+        "worker_sessions": cleared_worker_session_count,
+        "canonical_sessions": cleared_canonical_session_count,
+    }
+
+
+def apply_policy_change_thread_reset(
+    state_dir: str,
+    current_policy_fingerprint: str,
+    loaded_threads: Dict[int, str],
+    loaded_worker_sessions: Dict[int, WorkerSession],
+    loaded_canonical_sessions: Dict[int, CanonicalSession],
+) -> Dict[str, object]:
+    if not current_policy_fingerprint.strip():
+        return {
+            "applied": False,
+            "previous_policy_fingerprint": "",
+            "counts": {"threads": 0, "worker_sessions": 0, "canonical_sessions": 0},
+        }
+
+    state_path = build_policy_fingerprint_state_path(state_dir)
+    previous_policy_fingerprint = load_saved_policy_fingerprint(state_path)
+    reset_counts = {"threads": 0, "worker_sessions": 0, "canonical_sessions": 0}
+    applied = False
+
+    if (
+        previous_policy_fingerprint
+        and previous_policy_fingerprint != current_policy_fingerprint
+    ):
+        reset_counts = clear_thread_state_for_policy_change(
+            loaded_threads,
+            loaded_worker_sessions,
+            loaded_canonical_sessions,
+        )
+        applied = any(reset_counts.values())
+
+    persist_saved_policy_fingerprint(state_path, current_policy_fingerprint)
+    return {
+        "applied": applied,
+        "previous_policy_fingerprint": previous_policy_fingerprint,
+        "counts": reset_counts,
+    }
 
 
 def parse_executor_cmd() -> List[str]:
@@ -855,9 +968,48 @@ def run_bridge(config: Config) -> int:
                 loaded_in_flight,
             ) = build_legacy_from_canonical(loaded_canonical_sessions)
 
+    current_policy_fingerprint = ""
+    policy_reset_result = {
+        "applied": False,
+        "previous_policy_fingerprint": "",
+        "counts": {"threads": 0, "worker_sessions": 0, "canonical_sessions": 0},
+    }
+    if config.persistent_workers_policy_files:
+        current_policy_fingerprint = compute_policy_fingerprint(
+            config.persistent_workers_policy_files
+        )
+        policy_reset_result = apply_policy_change_thread_reset(
+            state_dir=config.state_dir,
+            current_policy_fingerprint=current_policy_fingerprint,
+            loaded_threads=loaded_threads,
+            loaded_worker_sessions=loaded_worker_sessions,
+            loaded_canonical_sessions=loaded_canonical_sessions,
+        )
+        if policy_reset_result["applied"]:
+            counts = policy_reset_result["counts"]
+            logging.warning(
+                "Policy fingerprint changed; cleared stored thread state "
+                "(threads=%s worker_sessions=%s canonical_sessions=%s).",
+                counts["threads"],
+                counts["worker_sessions"],
+                counts["canonical_sessions"],
+            )
+            emit_event(
+                "bridge.thread_state_reset_for_policy_change",
+                level=logging.WARNING,
+                fields={
+                    "thread_count": counts["threads"],
+                    "worker_session_count": counts["worker_sessions"],
+                    "canonical_session_count": counts["canonical_sessions"],
+                },
+            )
+
     if config.persistent_workers_enabled:
         now = time.time()
-        current_policy_fingerprint = compute_policy_fingerprint(config.persistent_workers_policy_files)
+        if not current_policy_fingerprint:
+            current_policy_fingerprint = compute_policy_fingerprint(
+                config.persistent_workers_policy_files
+            )
         if not loaded_worker_sessions and loaded_threads:
             loaded_worker_sessions = {
                 chat_id: WorkerSession(

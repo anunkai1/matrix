@@ -3,6 +3,7 @@ import io
 import json
 import logging
 import os
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -218,6 +219,64 @@ class BridgeCoreTests(unittest.TestCase):
                 "generic error",
             )
         )
+
+    def test_executor_script_anchors_repo_root_and_policy_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            repo_root = temp_root / "govorunbot"
+            script_dir = repo_root / "src" / "telegram_bridge"
+            script_dir.mkdir(parents=True)
+            script_path = script_dir / "executor.sh"
+            script_path.write_text(
+                (ROOT / "src" / "telegram_bridge" / "executor.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            script_path.chmod(0o755)
+            (repo_root / "AGENTS.md").write_text("TEMP_GOVORUN_POLICY\n", encoding="utf-8")
+
+            bin_dir = temp_root / "bin"
+            bin_dir.mkdir()
+            fake_codex = bin_dir / "codex"
+            fake_codex.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env python3",
+                        "import json",
+                        "import os",
+                        "import sys",
+                        "payload = sys.stdin.read()",
+                        "print(json.dumps({",
+                        "    'type': 'item.completed',",
+                        "    'item': {",
+                        "        'type': 'agent_message',",
+                        "        'text': f'PWD={os.getcwd()}\\n{payload}',",
+                        "    },",
+                        "}))",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            fake_codex.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+            env["CODEX_BIN"] = str(fake_codex)
+            env["CODEX_POLICY_FILE"] = "AGENTS.md"
+
+            result = subprocess.run(
+                ["bash", str(script_path), "new"],
+                input="hello from test\n",
+                text=True,
+                capture_output=True,
+                cwd=str(ROOT),
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertIn(f"PWD={repo_root}", result.stdout)
+            self.assertIn("TEMP_GOVORUN_POLICY", result.stdout)
+            self.assertIn("User request:\\nhello from test", result.stdout)
 
     def test_normalize_command_and_trim_output_helpers(self):
         self.assertEqual(bridge_handlers.normalize_command("/h@architect_bot now"), "/h")
@@ -1535,6 +1594,53 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(second, "fp-a")
         self.assertEqual(third, "fp-b")
         self.assertEqual(compute.call_count, 2)
+
+    def test_apply_policy_change_thread_reset_clears_stale_threads_and_persists_fingerprint(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir)
+            fingerprint_path = Path(bridge.build_policy_fingerprint_state_path(str(state_dir)))
+            fingerprint_path.write_text("old-fingerprint\n", encoding="utf-8")
+            loaded_threads = {1: "thread-1", 2: "thread-2"}
+            loaded_worker_sessions = {
+                2: bridge.WorkerSession(
+                    created_at=1.0,
+                    last_used_at=2.0,
+                    thread_id="thread-2",
+                    policy_fingerprint="old-fingerprint",
+                )
+            }
+            loaded_canonical_sessions = {
+                1: bridge.CanonicalSession(thread_id="thread-1"),
+                2: bridge.CanonicalSession(
+                    thread_id="thread-2",
+                    worker_created_at=10.0,
+                    worker_last_used_at=20.0,
+                    worker_policy_fingerprint="old-fingerprint",
+                ),
+                3: bridge.CanonicalSession(in_flight_started_at=30.0, in_flight_message_id=300),
+            }
+
+            result = bridge.apply_policy_change_thread_reset(
+                state_dir=str(state_dir),
+                current_policy_fingerprint="new-fingerprint",
+                loaded_threads=loaded_threads,
+                loaded_worker_sessions=loaded_worker_sessions,
+                loaded_canonical_sessions=loaded_canonical_sessions,
+            )
+
+            self.assertTrue(result["applied"])
+            self.assertEqual(result["counts"]["threads"], 2)
+            self.assertEqual(result["counts"]["worker_sessions"], 1)
+            self.assertEqual(result["counts"]["canonical_sessions"], 2)
+            self.assertEqual(loaded_threads, {})
+            self.assertEqual(loaded_worker_sessions, {})
+            self.assertNotIn(1, loaded_canonical_sessions)
+            self.assertNotIn(2, loaded_canonical_sessions)
+            self.assertIn(3, loaded_canonical_sessions)
+            self.assertEqual(
+                fingerprint_path.read_text(encoding="utf-8").strip(),
+                "new-fingerprint",
+            )
 
     def test_handle_update_routes_status_command(self):
         state = bridge.State()
