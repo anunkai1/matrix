@@ -61,7 +61,7 @@ UNIT_NAME=telegram-aster-trader-bridge.service bash /home/architect/matrix/ops/t
 Run as `aster-trader`:
 
 ```bash
-sudo -u aster-trader bash /home/aster-trader/asterbot/ops/trading/aster/trade_cli.sh "Trade long BTC 1000 USDT 5x market"
+sudo -u aster-trader bash /home/architect/matrix/ops/trading/aster/trade_cli.sh "Trade long BTC 1000 USDT 5x market"
 ```
 
 Optional shared-memory Codex launcher:
@@ -69,7 +69,7 @@ Optional shared-memory Codex launcher:
 ```bash
 sudo BASHRC_PROFILE=aster-trader TARGET_BASHRC=/home/aster-trader/.bashrc bash /home/architect/matrix/ops/bash/deploy-bashrc.sh apply
 sudo -u aster-trader bash -ic 'type astertrader'
-sudo -u aster-trader bash -ic 'cd /home/aster-trader/asterbot && astertrader --help'
+sudo -u aster-trader bash -ic 'astertrader --help'
 ```
 
 - `astertrader` uses full-access Codex and the same memory bucket as Telegram by default.
