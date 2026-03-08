@@ -53,6 +53,7 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-08: made Govorun's live `/home/govorun/govorunbot/AGENTS.md` authoritative on every request by prepending it in the executor wrapper, cleared stored thread IDs in the Govorun session stores so stale pre-policy threads could not bypass the new boundary, and verified a direct politics prompt now declines and redirects instead of answering.
 - 2026-03-08: simplified the runtime observer cadence from every 5 minutes to once daily at `08:05` AEST while keeping `telegram_daily_summary` delivery mode, and updated the timer source-of-truth plus active docs to match the lower-noise operating model.
 - 2026-03-08: added a compact operator-first runtime inventory to `SERVER3_SUMMARY.md` and mirrored it in `README.md` so fast health/readiness checks cover Architect, Tank, ASTER, Govorun, Oracle Signal, network, timers, and optional UI state without relying on scattered docs.
 - 2026-03-08: refined the Govorun runtime politics boundary to use a warm, casual "tired of politics, let's talk about something better" tone, documented the rule in the WhatsApp Govorun runbook, and updated the live `/home/govorun/govorunbot/AGENTS.md` prompt file that the service watches for policy changes.

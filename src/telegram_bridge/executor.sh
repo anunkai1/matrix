@@ -51,10 +51,22 @@ if [[ -z "${prompt}" ]]; then
   exit 2
 fi
 
-style_hint="${TELEGRAM_RESPONSE_STYLE_HINT:-}"
-if [[ -n "${style_hint//[[:space:]]/}" ]]; then
-  prompt=$'Response style guidance:\n'"${style_hint}"$'\n\nUser request:\n'"${prompt}"
+policy_file="${CODEX_POLICY_FILE:-AGENTS.md}"
+policy_text=""
+if [[ -f "${policy_file}" ]]; then
+  policy_text="$(cat "${policy_file}")"
 fi
+
+style_hint="${TELEGRAM_RESPONSE_STYLE_HINT:-}"
+assembled_prompt=""
+if [[ -n "${policy_text//[[:space:]]/}" ]]; then
+  assembled_prompt+=$'Assistant policy (authoritative):\n'"${policy_text}"$'\n\n'
+fi
+if [[ -n "${style_hint//[[:space:]]/}" ]]; then
+  assembled_prompt+=$'Response style guidance:\n'"${style_hint}"$'\n\n'
+fi
+assembled_prompt+=$'User request:\n'"${prompt}"
+prompt="${assembled_prompt}"
 
 CODEX_BIN="${CODEX_BIN:-codex}"
 if ! command -v "${CODEX_BIN}" >/dev/null 2>&1; then
