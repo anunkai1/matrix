@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "runtimes": [
+    {
+      "name": "Architect",
+      "category": "primary",
+      "purpose": "Main Telegram and CLI runtime for Server3 operations.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "local repo workspace",
+        "authenticated Codex executor"
+      ],
+      "owner_user": "architect",
+      "notes": [
+        "Primary operator entry point on Server3."
+      ],
+      "units": [
+        {
+          "name": "telegram-architect-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
+      "name": "Tank",
+      "category": "secondary",
+      "purpose": "Sibling Telegram assistant with isolated runtime state.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "isolated Tank workspace",
+        "Tank runtime environment"
+      ],
+      "owner_user": "tank",
+      "notes": [
+        "Uses the shared bridge pattern with its own workspace and memory."
+      ],
+      "units": [
+        {
+          "name": "telegram-tank-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
+      "name": "ASTER",
+      "category": "secondary",
+      "purpose": "Dedicated Telegram trading runtime with hard risk rails.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "ASTER env file",
+        "risk-script path"
+      ],
+      "owner_user": "aster-trader",
+      "notes": [
+        "Keep service name and trading runtime topology unchanged in Phase 1."
+      ],
+      "units": [
+        {
+          "name": "telegram-aster-trader-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
+      "name": "Govorun transport",
+      "category": "secondary",
+      "purpose": "WhatsApp transport/API runtime used by the Govorun bridge.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "WhatsApp auth state",
+        "local transport API"
+      ],
+      "owner_user": "govorun",
+      "notes": [
+        "Node transport sidecar for the Python Govorun bridge."
+      ],
+      "units": [
+        {
+          "name": "whatsapp-govorun-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
+      "name": "Govorun bridge",
+      "category": "secondary",
+      "purpose": "WhatsApp-facing assistant bridge runtime.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "whatsapp-govorun-bridge.service",
+        "authenticated Codex executor"
+      ],
+      "owner_user": "govorun",
+      "notes": [
+        "Python bridge layer behind the Govorun WhatsApp persona."
+      ],
+      "units": [
+        {
+          "name": "govorun-whatsapp-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
+      "name": "Oracle transport",
+      "category": "secondary",
+      "purpose": "Signal transport sidecar used by the Oracle bridge.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "signal-cli transport state",
+        "local health endpoint"
+      ],
+      "owner_user": "oracle",
+      "notes": [
+        "Transport sidecar for the Oracle Signal runtime."
+      ],
+      "units": [
+        {
+          "name": "signal-oracle-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
+      "name": "Oracle bridge",
+      "category": "secondary",
+      "purpose": "Signal-facing assistant bridge runtime.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "signal-oracle-bridge.service",
+        "authenticated Codex executor"
+      ],
+      "owner_user": "oracle",
+      "notes": [
+        "Python bridge layer behind the Oracle Signal persona."
+      ],
+      "units": [
+        {
+          "name": "oracle-signal-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
+      "name": "Network layer",
+      "category": "infra",
+      "purpose": "VPN and mesh baseline for remote continuity.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "NordVPN service",
+        "Tailscale service"
+      ],
+      "owner_user": null,
+      "notes": [
+        "Preserve current live network posture in this phase."
+      ],
+      "units": [
+        {
+          "name": "nordvpnd.service",
+          "kind": "service",
+          "expected_state": "active"
+        },
+        {
+          "name": "tailscaled.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
+      "name": "Guardrail timers",
+      "category": "infra",
+      "purpose": "Health summary, routing drift checks, and monthly package maintenance.",
+      "expected_default_state": "active (waiting)",
+      "dependencies": [
+        "systemd timer scheduler",
+        "matching service units"
+      ],
+      "owner_user": null,
+      "notes": [
+        "Timers should be active with waiting substate during normal idle operation."
+      ],
+      "units": [
+        {
+          "name": "server3-runtime-observer.timer",
+          "kind": "timer",
+          "expected_state": "active",
+          "expected_substate": "waiting"
+        },
+        {
+          "name": "server3-chat-routing-contract-check.timer",
+          "kind": "timer",
+          "expected_state": "active",
+          "expected_substate": "waiting"
+        },
+        {
+          "name": "server3-monthly-apt-upgrade.timer",
+          "kind": "timer",
+          "expected_state": "active",
+          "expected_substate": "waiting"
+        }
+      ]
+    },
+    {
+      "name": "UI layer",
+      "category": "optional",
+      "purpose": "Local desktop/browser UI for Server3 TV mode.",
+      "expected_default_state": "inactive",
+      "dependencies": [
+        "TV mode requests",
+        "lightdm desktop session"
+      ],
+      "owner_user": null,
+      "notes": [
+        "Expected to stay inactive unless Server3 TV desktop mode is intentionally in use."
+      ],
+      "units": [
+        {
+          "name": "lightdm.service",
+          "kind": "service",
+          "expected_state": "inactive"
+        }
+      ]
+    }
+  ]
+}

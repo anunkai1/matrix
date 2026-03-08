@@ -27,18 +27,9 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 
 ## Runtime Inventory
 
-| Category | Runtime | Unit(s) | Expected default state | Purpose / Dependency |
-| --- | --- | --- | --- | --- |
-| primary | Architect | `telegram-architect-bridge.service` | active | Main Telegram + CLI runtime; depends on local repo/workspace and authenticated Codex executor |
-| secondary | Tank | `telegram-tank-bridge.service` | active | Sibling Telegram assistant; depends on isolated Tank runtime |
-| secondary | ASTER | `telegram-aster-trader-bridge.service` | active | Futures trading runtime; depends on ASTER env and risk-script path |
-| secondary | Govorun transport | `whatsapp-govorun-bridge.service` | active | WhatsApp API/runtime; dependency for Govorun bridge |
-| secondary | Govorun bridge | `govorun-whatsapp-bridge.service` | active | WhatsApp-facing assistant; depends on WhatsApp transport + Codex executor |
-| secondary | Oracle transport | `signal-oracle-bridge.service` | active | Signal transport sidecar; dependency for Oracle bridge |
-| secondary | Oracle bridge | `oracle-signal-bridge.service` | active | Signal-facing assistant; depends on Signal transport health + Codex executor |
-| infra | Network layer | `nordvpnd`, `tailscaled` | active | VPN + mesh baseline for remote continuity |
-| infra | Guardrail timers | `server3-runtime-observer.timer`, `server3-chat-routing-contract-check.timer`, `server3-monthly-apt-upgrade.timer` | active (waiting) | Health summary, routing drift checks, monthly package maintenance |
-| optional | UI layer | `lightdm.service` | inactive unless TV mode is in use | Local desktop/browser UI for Server3 TV mode |
+- Canonical runtime inventory: `infra/server3-runtime-manifest.json`
+- Shared live inspection command: `python3 ops/server3_runtime_status.py`
+- Major runtime groups tracked there: Architect, Tank, ASTER, Govorun transport/bridge, Oracle transport/bridge, network layer, guardrail timers, optional UI
 
 ## Repository Structure
 
@@ -83,7 +74,7 @@ Install and start service:
 ```bash
 bash ops/telegram-bridge/install_systemd.sh apply
 bash ops/telegram-bridge/restart_and_verify.sh
-bash ops/telegram-bridge/status_service.sh
+python3 ops/server3_runtime_status.py
 ```
 
 Enable voice transcription runtime:
@@ -105,7 +96,8 @@ bash src/telegram_bridge/smoke_test.sh
 ## Operations
 
 - Restart bridge (verified): `bash ops/telegram-bridge/restart_and_verify.sh`
-- Check status: `bash ops/telegram-bridge/status_service.sh`
+- Check shared Server3 runtime status: `python3 ops/server3_runtime_status.py`
+- Check Architect-only unit detail: `bash ops/telegram-bridge/status_service.sh`
 - Check logs: `sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager`
 - Roll back systemd install: `bash ops/telegram-bridge/install_systemd.sh rollback`
 - Runtime observer:

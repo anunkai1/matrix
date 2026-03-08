@@ -18,6 +18,7 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - Primary active component: `telegram-architect-bridge.service`
 - Runtime pattern: Telegram long polling + local `codex exec`
 - Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
+- Canonical runtime inventory now lives in `infra/server3-runtime-manifest.json`, with shared live inspection via `python3 ops/server3_runtime_status.py`
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 - Runtime observer daily Telegram summary now appends a plain-English operator line indicating whether attention is needed.
 - Runtime observer daily health delivery is centralized through `staker_alerts_bot` to chat `211761499` (single destination).
@@ -25,16 +26,9 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - AsterTrader `/restart` now works in-chat with least-privilege sudoers allowlist (`/etc/sudoers.d/aster-trader-bridge-restart`) scoped to `restart_and_verify.sh --unit telegram-aster-trader-bridge.service`.
 
 ## Runtime Inventory
-- `primary`: Architect -> `telegram-architect-bridge.service`; main Telegram + CLI runtime; expected state `active`; depends on local repo/workspace and authenticated Codex executor.
-- `secondary`: Tank -> `telegram-tank-bridge.service`; sibling Telegram assistant; expected state `active`; depends on isolated Tank workspace/runtime.
-- `secondary`: ASTER -> `telegram-aster-trader-bridge.service`; futures trading runtime; expected state `active`; depends on ASTER env/risk-script path.
-- `secondary`: Govorun transport -> `whatsapp-govorun-bridge.service`; WhatsApp API/runtime; expected state `active`; dependency for Govorun bridge.
-- `secondary`: Govorun bridge -> `govorun-whatsapp-bridge.service`; WhatsApp-facing assistant; expected state `active`; depends on WhatsApp transport + Codex executor.
-- `secondary`: Oracle transport -> `signal-oracle-bridge.service`; Signal transport sidecar; expected state `active`; dependency for Oracle bridge.
-- `secondary`: Oracle bridge -> `oracle-signal-bridge.service`; Signal-facing assistant; expected state `active`; depends on Signal transport health + Codex executor.
-- `infra`: Network layer -> `nordvpnd`, `tailscaled`; expected state `active`; provides VPN + mesh baseline for remote continuity.
-- `infra`: Guardrail timers -> `server3-runtime-observer.timer`, `server3-chat-routing-contract-check.timer`, `server3-monthly-apt-upgrade.timer`; expected state `active (waiting)`; provide health summary, routing drift checks, and monthly package maintenance.
-- `optional`: UI layer -> `lightdm.service`; expected state `inactive` unless Server3 TV desktop mode is intentionally in use.
+- Canonical manifest: `infra/server3-runtime-manifest.json`
+- Shared live status command: `python3 ops/server3_runtime_status.py`
+- Covered runtime groups: Architect, Tank, ASTER, Govorun transport/bridge, Oracle transport/bridge, network layer, guardrail timers, optional UI.
 
 ## Operational Memory (Pinned)
 - Routing keywords:
@@ -53,6 +47,7 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-08: added the canonical runtime manifest at `infra/server3-runtime-manifest.json` plus shared read-only inspection command `python3 ops/server3_runtime_status.py`, then repointed active docs to that operator-first inventory/status path without changing live runtime behavior.
 - 2026-03-08: hardened Govorun politics enforcement after logs showed a fresh post-patch WhatsApp request still answered current affairs; added a pre-executor `TELEGRAM_BLOCKED_PROMPT_REGEX`/`TELEGRAM_BLOCKED_PROMPT_MESSAGE` gate in the bridge, synced the full live `src/telegram_bridge` runtime back to repo parity after a partial-file deploy exposed version skew, and verified the blocked-topic path now refuses `What happened in israel` before Codex execution.
 - 2026-03-08: simplified the runtime observer cadence from every 5 minutes to once daily at `08:05` AEST while keeping `telegram_daily_summary` delivery mode, and updated the timer source-of-truth plus active docs to match the lower-noise operating model.
 - 2026-03-08: added a compact operator-first runtime inventory to `SERVER3_SUMMARY.md` and mirrored it in `README.md` so fast health/readiness checks cover Architect, Tank, ASTER, Govorun, Oracle Signal, network, timers, and optional UI state without relying on scattered docs.
@@ -60,7 +55,6 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - 2026-03-08: fixed a post-restore off-repo runtime path-compatibility issue by restoring a legacy in-container download path alongside the current mount, then recreating the affected service and verifying retained payload metadata resumes cleanly against the host data again.
 - 2026-03-08: restored a local-only runtime stack from retained on-disk host data/config outside git after earlier cleanup removed live availability too broadly; recreated the off-repo compose + boot path, verified the requested local web endpoints respond again, and kept the runtime separate from tracked project source.
 - 2026-03-08: applied live ASTER trader env tuning by setting `ASTER_BACKBURNER_LEVERAGE=10` in `/etc/default/telegram-aster-trader-bridge`, restarting `telegram-aster-trader-bridge.service`, and verifying the new process environment loaded the updated value.
-- 2026-03-08: hardened Oracle Signal startup by adding a transport readiness helper in `src/telegram_bridge/wait_for_signal_transport.py`, wiring `oracle-signal-bridge.service` to wait on the local `/health` endpoint before launch, and updating `ops/signal_oracle/start_service.sh` to stop Oracle before cycling the transport; live reboot verification on Server3 showed the bridge waited for health and started without the earlier boot-time `Connection refused` burst.
 
 ## Current Risks/Watchouts (Max 5)
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.

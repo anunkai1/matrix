@@ -29,6 +29,8 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Install/rollback unit: `ops/telegram-bridge/install_systemd.sh`
 - Restart + verification helper: `ops/telegram-bridge/restart_and_verify.sh`
 - Restart helper: `ops/telegram-bridge/restart_service.sh`
+- Shared Server3 runtime manifest: `infra/server3-runtime-manifest.json`
+- Shared Server3 runtime status helper: `ops/server3_runtime_status.py`
 - Status helper: `ops/telegram-bridge/status_service.sh`
 - Memory maintenance helper: `ops/telegram-bridge/memory_maintenance.sh`
 - Memory restore helper: `ops/telegram-bridge/memory_restore.sh`
@@ -136,7 +138,7 @@ ENV
 ```bash
 bash ops/telegram-bridge/install_systemd.sh apply
 bash ops/telegram-bridge/restart_and_verify.sh
-bash ops/telegram-bridge/status_service.sh
+python3 ops/server3_runtime_status.py
 ```
 
 Install/start the tank service profile:
@@ -146,7 +148,7 @@ sudo cp infra/env/telegram-tank-bridge.env.example /etc/default/telegram-tank-br
 sudo nano /etc/default/telegram-tank-bridge
 UNIT_NAME=telegram-tank-bridge.service bash ops/telegram-bridge/install_systemd.sh apply
 UNIT_NAME=telegram-tank-bridge.service bash ops/telegram-bridge/restart_and_verify.sh
-UNIT_NAME=telegram-tank-bridge.service bash ops/telegram-bridge/status_service.sh
+python3 ops/server3_runtime_status.py
 ```
 
 Tank profile note:
@@ -348,6 +350,7 @@ Message handling:
 Service status and logs:
 
 ```bash
+python3 ops/server3_runtime_status.py
 bash ops/telegram-bridge/status_service.sh
 sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 ```

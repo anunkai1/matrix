@@ -58,8 +58,10 @@ This is the infrastructure around the assistant runtimes.
 | --- | --- | --- |
 | `infra/systemd` | Live service and timer definitions | [`infra/systemd`](../infra/systemd) |
 | `infra/env` | Example/redacted env shapes | [`infra/env`](../infra/env) |
+| `infra/server3-runtime-manifest.json` | Canonical operator-first runtime inventory | [`infra/server3-runtime-manifest.json`](../infra/server3-runtime-manifest.json) |
 | `infra/contracts` | Cross-runtime config contracts | [`infra/contracts/server3-chat-routing.contract.env`](../infra/contracts/server3-chat-routing.contract.env) |
 | `ops/runtime_observer` | Daily health/KPI observer | [`ops/runtime_observer`](../ops/runtime_observer) |
+| `ops/server3_runtime_status.py` | Shared live runtime inspection command | [`ops/server3_runtime_status.py`](../ops/server3_runtime_status.py) |
 | `ops/chat-routing` | Routing drift validation | [`ops/chat-routing`](../ops/chat-routing) |
 | `ops/system-maintenance` | Monthly apt maintenance | [`ops/system-maintenance`](../ops/system-maintenance) |
 | `ops/nordvpn`, `ops/tailscale` | Network posture and coexistence | [`docs/nordvpn-server3.md`](./nordvpn-server3.md), [`docs/tailscale-server3.md`](./tailscale-server3.md) |
