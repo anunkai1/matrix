@@ -28,6 +28,37 @@ try:
         handle_memory_command,
         handle_natural_language_memory_query,
     )
+    from .runtime_profile import (
+        BLOCKED_PROMPT_MESSAGE,
+        HA_KEYWORD_HELP_MESSAGE,
+        HELP_COMMAND_ALIASES,
+        NEXTCLOUD_KEYWORD_HELP_MESSAGE,
+        PREFIX_HELP_MESSAGE,
+        RETRY_WITH_NEW_SESSION_PHASE,
+        SERVER3_KEYWORD_HELP_MESSAGE,
+        TRADE_KEYWORD_HELP_MESSAGE,
+        WHATSAPP_REPLY_PREFIX,
+        WHATSAPP_REPLY_PREFIX_RE,
+        apply_outbound_reply_prefix,
+        assistant_label,
+        build_ha_keyword_prompt,
+        build_ha_routing_script_allowlist,
+        build_nextcloud_keyword_prompt,
+        build_nextcloud_routing_script_allowlist,
+        build_server3_keyword_prompt,
+        build_server3_routing_script_allowlist,
+        build_trade_keyword_prompt,
+        build_trade_routing_script_allowlist,
+        command_bypasses_required_prefix,
+        extract_ha_keyword_request,
+        extract_nextcloud_keyword_request,
+        extract_server3_keyword_request,
+        extract_trade_keyword_request,
+        is_signal_channel,
+        is_whatsapp_channel,
+        resume_retry_phase,
+        start_command_message,
+    )
     from .session_manager import (
         ensure_chat_worker_session,
         finalize_chat_work,
@@ -56,6 +87,37 @@ except ImportError:
         handle_memory_command,
         handle_natural_language_memory_query,
     )
+    from runtime_profile import (
+        BLOCKED_PROMPT_MESSAGE,
+        HA_KEYWORD_HELP_MESSAGE,
+        HELP_COMMAND_ALIASES,
+        NEXTCLOUD_KEYWORD_HELP_MESSAGE,
+        PREFIX_HELP_MESSAGE,
+        RETRY_WITH_NEW_SESSION_PHASE,
+        SERVER3_KEYWORD_HELP_MESSAGE,
+        TRADE_KEYWORD_HELP_MESSAGE,
+        WHATSAPP_REPLY_PREFIX,
+        WHATSAPP_REPLY_PREFIX_RE,
+        apply_outbound_reply_prefix,
+        assistant_label,
+        build_ha_keyword_prompt,
+        build_ha_routing_script_allowlist,
+        build_nextcloud_keyword_prompt,
+        build_nextcloud_routing_script_allowlist,
+        build_server3_keyword_prompt,
+        build_server3_routing_script_allowlist,
+        build_trade_keyword_prompt,
+        build_trade_routing_script_allowlist,
+        command_bypasses_required_prefix,
+        extract_ha_keyword_request,
+        extract_nextcloud_keyword_request,
+        extract_server3_keyword_request,
+        extract_trade_keyword_request,
+        is_signal_channel,
+        is_whatsapp_channel,
+        resume_retry_phase,
+        start_command_message,
+    )
     from session_manager import (
         ensure_chat_worker_session,
         finalize_chat_work,
@@ -78,38 +140,14 @@ PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 AUDIO_EXTENSIONS = {".ogg", ".oga", ".opus", ".mp3", ".m4a", ".aac", ".wav", ".flac"}
 VOICE_COMPATIBLE_EXTENSIONS = {".ogg", ".oga", ".opus", ".mp3", ".m4a"}
 
-HELP_COMMAND_ALIASES = ("/help", "/h")
 RATE_LIMIT_MESSAGE = "Rate limit exceeded. Please wait a minute and retry."
-RETRY_WITH_NEW_SESSION_PHASE = "Execution failed. Retrying once with a new session."
 RETRY_FAILED_MESSAGE = "Execution failed after an automatic retry. Please resend your request."
-HA_KEYWORD_HELP_MESSAGE = (
-    "HA mode needs an action. Example: `HA turn on masters AC to dry mode at 9:25am`."
-)
-SERVER3_KEYWORD_HELP_MESSAGE = (
-    "Server3 TV mode needs an action. Example: `Server3 TV open desktop and play top YouTube result for deep house 2026`."
-)
-NEXTCLOUD_KEYWORD_HELP_MESSAGE = (
-    "Nextcloud mode needs an action. Example: `Nextcloud create event tomorrow 3pm dentist in Personal calendar`."
-)
-TRADE_KEYWORD_HELP_MESSAGE = (
-    "Trade mode needs an action. Example: `Trade long BTC 2000 USDT 10x market`."
-)
-PREFIX_HELP_MESSAGE = (
-    "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
-)
 CANCEL_REQUESTED_MESSAGE = "Cancel requested. Stopping current request."
 CANCEL_ALREADY_REQUESTED_MESSAGE = (
     "Cancel is already in progress. Waiting for current request to stop."
 )
 CANCEL_NO_ACTIVE_MESSAGE = "No active request to cancel."
 REQUEST_CANCELED_MESSAGE = "Request canceled."
-WHATSAPP_REPLY_PREFIX = "Даю справку:"
-WHATSAPP_REPLY_PREFIX_RE = re.compile(r"^\s*даю\s+справку\s*:\s*", re.IGNORECASE)
-WHATSAPP_LEGACY_REPLY_PREFIX_RE = re.compile(r"^\s*говорун\s*:\s*", re.IGNORECASE)
-BLOCKED_PROMPT_MESSAGE = (
-    "Птица Говорун отличается умом и сообразительностью, а потому политику сейчас "
-    "обойдет стороной. Давай лучше о чем-то полезном, спокойном или веселом."
-)
 
 
 @dataclass
@@ -132,10 +170,6 @@ class OutboundMediaDirective:
     as_voice: bool
 
 
-def build_repo_root() -> str:
-    return str(Path(__file__).resolve().parents[2])
-
-
 def find_blocked_prompt_match(config, text: str) -> Optional[str]:
     pattern = getattr(config, "blocked_prompt_pattern", None)
     if pattern is None:
@@ -149,68 +183,12 @@ def find_blocked_prompt_match(config, text: str) -> Optional[str]:
     return match.group(0) or "<blocked>"
 
 
-def build_ha_routing_script_allowlist() -> List[str]:
-    repo_root = build_repo_root()
-    return [
-        os.path.join(repo_root, "ops", "ha", "turn_entity_power.sh"),
-        os.path.join(repo_root, "ops", "ha", "schedule_entity_power.sh"),
-        os.path.join(repo_root, "ops", "ha", "set_climate_temperature.sh"),
-        os.path.join(repo_root, "ops", "ha", "schedule_climate_temperature.sh"),
-        os.path.join(repo_root, "ops", "ha", "set_climate_mode.sh"),
-        os.path.join(repo_root, "ops", "ha", "schedule_climate_mode.sh"),
-    ]
-
-
-def build_server3_routing_script_allowlist() -> List[str]:
-    repo_root = build_repo_root()
-    return [
-        "/usr/local/bin/server3-tv-start",
-        "/usr/local/bin/server3-tv-stop",
-        os.path.join(repo_root, "ops", "tv-desktop", "server3-tv-open-browser-url.sh"),
-        os.path.join(repo_root, "ops", "tv-desktop", "server3-youtube-open-top-result.sh"),
-        os.path.join(repo_root, "ops", "tv-desktop", "server3-tv-browser-youtube-pause.sh"),
-        os.path.join(repo_root, "ops", "tv-desktop", "server3-tv-browser-youtube-play.sh"),
-    ]
-
-
-def build_nextcloud_routing_script_allowlist() -> List[str]:
-    repo_root = build_repo_root()
-    return [
-        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-files-list.sh"),
-        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-file-upload.sh"),
-        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-file-delete.sh"),
-        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-calendars-list.sh"),
-        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-calendar-create-event.sh"),
-    ]
-
-
-def build_trade_routing_script_allowlist() -> List[str]:
-    repo_root = build_repo_root()
-    return [
-        os.path.join(repo_root, "ops", "trading", "aster", "assistant_entry.py"),
-        os.path.join(repo_root, "ops", "trading", "aster", "trade_cli.sh"),
-    ]
-
-
-def assistant_label(config) -> str:
-    value = getattr(config, "assistant_name", "").strip()
-    return value or "Architect"
-
-
 def resolve_memory_conversation_key(config, channel_name: str, chat_id: int) -> str:
     shared_key = getattr(config, "shared_memory_key", "").strip()
     normalized_channel = (channel_name or "telegram").strip().lower()
     if shared_key and normalized_channel == "telegram":
         return shared_key
     return MemoryEngine.channel_key(channel_name, chat_id)
-
-
-def start_command_message(config) -> str:
-    return f"Telegram {assistant_label(config)} bridge is online. Send a prompt to begin."
-
-
-def resume_retry_phase(config) -> str:
-    return f"Retrying as a new {assistant_label(config)} session."
 
 
 def normalize_command(text: str) -> Optional[str]:
@@ -227,74 +205,6 @@ def normalize_command(text: str) -> Optional[str]:
     if not head:
         return None
     return head.split("@", maxsplit=1)[0]
-
-
-def extract_ha_keyword_request(text: str) -> tuple[bool, str]:
-    stripped = text.strip()
-    if not stripped:
-        return False, ""
-
-    lowered = stripped.lower()
-    for keyword in ("ha", "home assistant"):
-        if lowered == keyword:
-            return True, ""
-        if lowered.startswith(keyword):
-            remainder = stripped[len(keyword):]
-            if remainder and remainder[0] not in (" ", ":", "-"):
-                continue
-            return True, remainder.lstrip(" :-\t")
-    return False, ""
-
-
-def extract_server3_keyword_request(text: str) -> tuple[bool, str]:
-    stripped = text.strip()
-    if not stripped:
-        return False, ""
-
-    lowered = stripped.lower()
-    for keyword in ("server3 tv",):
-        if lowered == keyword:
-            return True, ""
-        if lowered.startswith(keyword):
-            remainder = stripped[len(keyword):]
-            if remainder and remainder[0] not in (" ", ":", "-"):
-                continue
-            return True, remainder.lstrip(" :-\t")
-    return False, ""
-
-
-def extract_nextcloud_keyword_request(text: str) -> tuple[bool, str]:
-    stripped = text.strip()
-    if not stripped:
-        return False, ""
-
-    lowered = stripped.lower()
-    for keyword in ("nextcloud",):
-        if lowered == keyword:
-            return True, ""
-        if lowered.startswith(keyword):
-            remainder = stripped[len(keyword):]
-            if remainder and remainder[0] not in (" ", ":", "-"):
-                continue
-            return True, remainder.lstrip(" :-\t")
-    return False, ""
-
-
-def extract_trade_keyword_request(text: str) -> tuple[bool, str]:
-    stripped = text.strip()
-    if not stripped:
-        return False, ""
-
-    lowered = stripped.lower()
-    for keyword in ("trade", "aster trade"):
-        if lowered == keyword:
-            return True, ""
-        if lowered.startswith(keyword):
-            remainder = stripped[len(keyword):]
-            if remainder and remainder[0] not in (" ", ":", "-"):
-                continue
-            return True, remainder.lstrip(" :-\t")
-    return False, ""
 
 
 def strip_required_prefix(
@@ -334,73 +244,6 @@ def strip_required_prefix(
             continue
         return True, strip_prefix_separators(remainder)
     return False, stripped
-
-
-def build_ha_keyword_prompt(user_request: str) -> str:
-    scripts = "\n".join(f"- {path}" for path in build_ha_routing_script_allowlist())
-    return (
-        "Home Assistant priority mode is active.\n"
-        "Treat this as a Home Assistant action request.\n"
-        f"User request: {user_request.strip()}\n\n"
-        "Mandatory execution policy:\n"
-        f"{scripts}\n"
-        "- For scheduling, only use the schedule_* scripts with --at or --in.\n"
-        "- Do not use inline systemd-run, /bin/bash -lc, or direct curl commands for HA actions.\n"
-        "- If entity/time/mode is unclear, ask one concise clarification question instead of guessing.\n"
-        "- After execution, report the result with state or timer/service unit names."
-    )
-
-
-def build_server3_keyword_prompt(user_request: str) -> str:
-    scripts = "\n".join(f"- {path}" for path in build_server3_routing_script_allowlist())
-    return (
-        "Server3 TV operations priority mode is active.\n"
-        "Treat this as a Server3 TV desktop/browser/UI action request.\n"
-        f"User request: {user_request.strip()}\n\n"
-        "Mandatory execution policy:\n"
-        f"{scripts}\n"
-        "- Prefer deterministic script execution over ad-hoc shell steps.\n"
-        "- For browser navigation, use server3-tv-open-browser-url.sh with firefox or brave and explicit URL.\n"
-        "- For YouTube top-result playback, use server3-youtube-open-top-result.sh with quoted query.\n"
-        "- Respect optional min-duration constraints when explicitly requested.\n"
-        "- If intent is unclear, ask one concise clarification question instead of guessing.\n"
-        "- After execution, report exact scripts/commands used and final outcome."
-    )
-
-
-def build_nextcloud_keyword_prompt(user_request: str) -> str:
-    scripts = "\n".join(f"- {path}" for path in build_nextcloud_routing_script_allowlist())
-    return (
-        "Nextcloud operations priority mode is active.\n"
-        "Treat this as a Nextcloud file/calendar action request.\n"
-        f"User request: {user_request.strip()}\n\n"
-        "Mandatory execution policy:\n"
-        f"{scripts}\n"
-        "- Prefer deterministic script execution over ad-hoc shell or direct curl commands.\n"
-        "- For file browsing use nextcloud-files-list.sh.\n"
-        "- For calendar discovery use nextcloud-calendars-list.sh before creating events if unsure.\n"
-        "- Do not print or expose credentials.\n"
-        "- If path/calendar/time is unclear, ask one concise clarification question.\n"
-        "- After execution, report exact scripts used and final outcome."
-    )
-
-
-def build_trade_keyword_prompt(user_request: str, chat_id: int) -> str:
-    scripts = "\n".join(f"- {path}" for path in build_trade_routing_script_allowlist())
-    return (
-        "ASTER trading priority mode is active.\n"
-        "Treat this as a free-form ASTER futures trading request.\n"
-        f"Chat key: tg:{chat_id}\n"
-        f"User request: {user_request.strip()}\n\n"
-        "Mandatory execution policy:\n"
-        f"{scripts}\n"
-        "- Execute only via deterministic script:\n"
-        f"  python3 {build_trade_routing_script_allowlist()[0]} --chat-id tg:{chat_id} --request '<user request>'\n"
-        "- Do not place orders via direct curl/python snippets outside this script.\n"
-        "- The script enforces confirmation tickets and risk guards (max notional, max leverage, daily loss).\n"
-        "- If the script errors, report the error exactly and stop.\n"
-        "- Return script output to the user verbatim.\n"
-    )
 
 
 def trim_output(text: str, limit: int) -> str:
@@ -516,33 +359,6 @@ def send_chat_action_safe(client: ChannelAdapter, chat_id: int, action: str) -> 
         client.send_chat_action(chat_id, action=action)
     except Exception:
         logging.debug("Failed to send %s action for chat_id=%s", action, chat_id)
-
-
-def apply_outbound_reply_prefix(client: ChannelAdapter, text: str) -> str:
-    if not is_whatsapp_channel(client):
-        return text
-    stripped = (text or "").strip()
-    if not stripped:
-        return text
-    if WHATSAPP_REPLY_PREFIX_RE.match(stripped):
-        body = WHATSAPP_REPLY_PREFIX_RE.sub("", stripped, count=1).strip()
-    else:
-        body = WHATSAPP_LEGACY_REPLY_PREFIX_RE.sub("", stripped, count=1).strip()
-    if not body:
-        return WHATSAPP_REPLY_PREFIX
-    return f"{WHATSAPP_REPLY_PREFIX} {body}"
-
-
-def is_whatsapp_channel(client: ChannelAdapter) -> bool:
-    return getattr(client, "channel_name", "") == "whatsapp"
-
-
-def is_signal_channel(client: ChannelAdapter) -> bool:
-    return getattr(client, "channel_name", "") == "signal"
-
-
-def command_bypasses_required_prefix(client: ChannelAdapter, command: Optional[str]) -> bool:
-    return is_whatsapp_channel(client) and command == "/voice-alias"
 
 
 def send_executor_output(

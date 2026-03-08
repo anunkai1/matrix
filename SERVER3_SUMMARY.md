@@ -47,6 +47,7 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-08: continued the Phase 2 shared-core cleanup without live behavior changes by extracting assistant/profile and keyword-routing policy helpers from `src/telegram_bridge/handlers.py` into `src/telegram_bridge/runtime_profile.py`, keeping handler exports compatible, adding focused runtime-profile tests, and preserving the current env/routing/service contracts.
 - 2026-03-08: started Phase 2 shared-core cleanup without changing live behavior by extracting bridge env parsing and runtime defaults from `src/telegram_bridge/main.py` into `src/telegram_bridge/runtime_config.py`, keeping `main.py` as the bootstrap path, adding focused config tests, and documenting the clearer shared-core boundary.
 - 2026-03-08: added the canonical runtime manifest at `infra/server3-runtime-manifest.json` plus shared read-only inspection command `python3 ops/server3_runtime_status.py`, then repointed active docs to that operator-first inventory/status path without changing live runtime behavior.
 - 2026-03-08: hardened Govorun politics enforcement after logs showed a fresh post-patch WhatsApp request still answered current affairs; added a pre-executor `TELEGRAM_BLOCKED_PROMPT_REGEX`/`TELEGRAM_BLOCKED_PROMPT_MESSAGE` gate in the bridge, synced the full live `src/telegram_bridge` runtime back to repo parity after a partial-file deploy exposed version skew, and verified the blocked-topic path now refuses `What happened in israel` before Codex execution.
@@ -54,7 +55,6 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - 2026-03-08: added a compact operator-first runtime inventory to `SERVER3_SUMMARY.md` and mirrored it in `README.md` so fast health/readiness checks cover Architect, Tank, ASTER, Govorun, Oracle Signal, network, timers, and optional UI state without relying on scattered docs.
 - 2026-03-08: refined the Govorun runtime politics boundary to use a warm, casual "tired of politics, let's talk about something better" tone, documented the rule in the WhatsApp Govorun runbook, and updated the live `/home/govorun/govorunbot/AGENTS.md` prompt file that the service watches for policy changes.
 - 2026-03-08: fixed a post-restore off-repo runtime path-compatibility issue by restoring a legacy in-container download path alongside the current mount, then recreating the affected service and verifying retained payload metadata resumes cleanly against the host data again.
-- 2026-03-08: restored a local-only runtime stack from retained on-disk host data/config outside git after earlier cleanup removed live availability too broadly; recreated the off-repo compose + boot path, verified the requested local web endpoints respond again, and kept the runtime separate from tracked project source.
 
 ## Current Risks/Watchouts (Max 5)
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.

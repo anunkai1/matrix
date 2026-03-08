@@ -13,6 +13,7 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 
 - Bridge bootstrap/poll loop: `src/telegram_bridge/main.py`
 - Runtime config loader: `src/telegram_bridge/runtime_config.py`
+- Runtime profile/routing helpers: `src/telegram_bridge/runtime_profile.py`
 - Message/command routing: `src/telegram_bridge/handlers.py`
 - Telegram API transport: `src/telegram_bridge/transport.py`
 - Executor invocation + stream handling: `src/telegram_bridge/executor.py`
