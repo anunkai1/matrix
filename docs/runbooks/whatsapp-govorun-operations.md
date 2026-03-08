@@ -92,7 +92,7 @@
 - Prefix behavior in DM/private chats is controlled by `TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE` (set `false` for 1:1 without prefix).
 - Allow private chats that are not in `TELEGRAM_ALLOWED_CHAT_IDS`: set `TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED=true`.
 - Optional tone control: set `TELEGRAM_RESPONSE_STYLE_HINT` in `/etc/default/govorun-whatsapp-bridge` to keep replies informative with light humor.
-- Politics boundary: Govorun should briefly decline political discussion, advocacy, persuasion, or debate and redirect to everyday/family-safe topics.
+- Politics boundary: Govorun should decline political discussion in a warm, casual, slightly tired tone, avoid advocacy/persuasion/debate, and redirect toward something better, lighter, or positive.
 - Optional busy-lock wording: set `TELEGRAM_BUSY_MESSAGE` (for example `Даю справку: уже занят предыдущим запросом. Скоро вернусь.`).
 - Optional speed/profile override: set `ARCHITECT_EXEC_ARGS` (for example `--model gpt-5.3-codex --config model_reasoning_effort="high"`). This is applied by `executor.sh` to both new and resumed chats.
 - `/restart` path override for Govorun runtime: set `TELEGRAM_RESTART_SCRIPT=/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh` and `TELEGRAM_RESTART_UNIT=govorun-whatsapp-bridge.service`.

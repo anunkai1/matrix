@@ -41,7 +41,7 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
-- 2026-03-08: added a Govorun runtime policy boundary to decline political discussion briefly and neutrally, documented the rule in the WhatsApp Govorun runbook, and updated the live `/home/govorun/govorunbot/AGENTS.md` prompt file that the service watches for policy changes.
+- 2026-03-08: refined the Govorun runtime politics boundary to use a warm, casual "tired of politics, let's talk about something better" tone, documented the rule in the WhatsApp Govorun runbook, and updated the live `/home/govorun/govorunbot/AGENTS.md` prompt file that the service watches for policy changes.
 - 2026-03-08: fixed a post-restore off-repo runtime path-compatibility issue by restoring a legacy in-container download path alongside the current mount, then recreating the affected service and verifying retained payload metadata resumes cleanly against the host data again.
 - 2026-03-08: restored a local-only runtime stack from retained on-disk host data/config outside git after earlier cleanup removed live availability too broadly; recreated the off-repo compose + boot path, verified the requested local web endpoints respond again, and kept the runtime separate from tracked project source.
 - 2026-03-08: applied live ASTER trader env tuning by setting `ASTER_BACKBURNER_LEVERAGE=10` in `/etc/default/telegram-aster-trader-bridge`, restarting `telegram-aster-trader-bridge.service`, and verifying the new process environment loaded the updated value.
