@@ -6,6 +6,9 @@
 - Services (system-level):
   - `whatsapp-govorun-bridge.service` (Node WhatsApp API runtime)
   - `govorun-whatsapp-bridge.service` (Python Govorun bridge)
+- Govorun bridge model:
+  - shared core at `/home/architect/matrix/src/telegram_bridge`
+  - Govorun runtime root/persona at `/home/govorun/govorunbot`
 
 ## Provisioning flow
 1. `ops/whatsapp_govorun/setup_runtime_user.sh`
@@ -93,9 +96,9 @@
 - Allow private chats that are not in `TELEGRAM_ALLOWED_CHAT_IDS`: set `TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED=true`.
 - Optional tone control: set `TELEGRAM_RESPONSE_STYLE_HINT` in `/etc/default/govorun-whatsapp-bridge` to keep replies informative with light humor.
 - Politics boundary: Govorun should decline political discussion in a warm, casual, slightly tired tone, avoid advocacy/persuasion/debate, and redirect toward something better, lighter, or positive.
-- Enforcement detail: `/home/govorun/govorunbot/src/telegram_bridge/executor.sh` now anchors execution to `/home/govorun/govorunbot` and prepends the local `/home/govorun/govorunbot/AGENTS.md` policy to every request, so Govorun uses its own workspace policy even if invoked from another current directory.
+- Enforcement detail: Govorun now runs the shared executor/core from `/home/architect/matrix` while keeping policy/runtime identity anchored to `/home/govorun/govorunbot` via `TELEGRAM_RUNTIME_ROOT` and the local `AGENTS.md`.
 - Hard guardrail option: set `TELEGRAM_BLOCKED_PROMPT_REGEX` plus `TELEGRAM_BLOCKED_PROMPT_MESSAGE` in `/etc/default/govorun-whatsapp-bridge` to refuse politics before the executor runs; this is the reliable enforcement path when model prompt-following alone is too soft.
-- Policy refresh guardrail: set `TELEGRAM_POLICY_WATCH_FILES=/home/govorun/govorunbot/AGENTS.md` so when Govorun's policy file changes, stored resumed chat threads are cleared automatically on the next bridge start instead of continuing under stale pre-change thread context.
+- Policy refresh guardrail: by default the bridge watches `/home/govorun/govorunbot/AGENTS.md` plus the shared policy files in `/home/architect/matrix`, so persona/policy changes clear stale resumed chat threads on the next bridge start.
 - Optional busy-lock wording: set `TELEGRAM_BUSY_MESSAGE` (for example `Даю справку: уже занят предыдущим запросом. Скоро вернусь.`).
 - Optional speed/profile override: set `ARCHITECT_EXEC_ARGS` (for example `--model gpt-5.3-codex --config model_reasoning_effort="high"`). This is applied by `executor.sh` to both new and resumed chats.
 - `/restart` path override for Govorun runtime: set `TELEGRAM_RESTART_SCRIPT=/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh` and `TELEGRAM_RESTART_UNIT=govorun-whatsapp-bridge.service`.

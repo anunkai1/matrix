@@ -1,8 +1,10 @@
 import importlib.util
+import os
 import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,6 +46,21 @@ class RuntimeProfileTests(unittest.TestCase):
     def test_start_command_message_uses_assistant_name(self) -> None:
         config = SimpleNamespace(assistant_name="HelperBot")
         self.assertIn("HelperBot", runtime_profile.start_command_message(config))
+
+    def test_trade_allowlist_uses_shared_core_root_override(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {"TELEGRAM_SHARED_CORE_ROOT": "/srv/shared-core"},
+            clear=True,
+        ):
+            allowlist = runtime_profile.build_trade_routing_script_allowlist()
+        self.assertEqual(
+            allowlist,
+            [
+                "/srv/shared-core/ops/trading/aster/assistant_entry.py",
+                "/srv/shared-core/ops/trading/aster/trade_cli.sh",
+            ],
+        )
 
 
 if __name__ == "__main__":

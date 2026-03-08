@@ -9,8 +9,20 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 try:
+    from .runtime_paths import (
+        build_shared_core_root,
+        dedupe_paths,
+        runtime_path,
+        shared_core_path,
+    )
     from .transport import TELEGRAM_LIMIT
 except ImportError:
+    from runtime_paths import (
+        build_shared_core_root,
+        dedupe_paths,
+        runtime_path,
+        shared_core_path,
+    )
     from transport import TELEGRAM_LIMIT
 
 
@@ -235,7 +247,7 @@ def build_voice_alias_replacements() -> List[Tuple[str, str]]:
 
 
 def build_repo_root() -> str:
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return build_shared_core_root()
 
 
 def build_policy_watch_files() -> List[str]:
@@ -247,17 +259,17 @@ def build_policy_watch_files() -> List[str]:
     if mode in ("none", "off", "disabled", "empty"):
         return []
 
-    repo_root = build_repo_root()
-    return [
-        os.path.join(repo_root, "AGENTS.md"),
-        os.path.join(repo_root, "ARCHITECT_INSTRUCTION.md"),
-        os.path.join(repo_root, "SERVER3_ARCHIVE.md"),
-    ]
+    return dedupe_paths(
+        [
+            runtime_path("AGENTS.md"),
+            shared_core_path("ARCHITECT_INSTRUCTION.md"),
+            shared_core_path("SERVER3_ARCHIVE.md"),
+        ]
+    )
 
 
 def build_default_executor() -> str:
-    repo_root = build_repo_root()
-    return os.path.join(repo_root, "src", "telegram_bridge", "executor.sh")
+    return shared_core_path("src", "telegram_bridge", "executor.sh")
 
 
 def parse_executor_cmd() -> List[str]:

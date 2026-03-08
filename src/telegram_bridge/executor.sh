@@ -52,12 +52,23 @@ if [[ -z "${prompt}" ]]; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "${script_dir}/../.." && pwd)"
-cd "${repo_root}"
+shared_core_root="${TELEGRAM_SHARED_CORE_ROOT:-$(cd "${script_dir}/../.." && pwd)}"
+if [[ "${shared_core_root}" != /* ]]; then
+  shared_core_root="${script_dir}/../../${shared_core_root}"
+fi
+shared_core_root="$(cd "${shared_core_root}" && pwd)"
 
-policy_file="${CODEX_POLICY_FILE:-${repo_root}/AGENTS.md}"
+runtime_root="${TELEGRAM_RUNTIME_ROOT:-${shared_core_root}}"
+if [[ "${runtime_root}" != /* ]]; then
+  runtime_root="${shared_core_root}/${runtime_root}"
+fi
+runtime_root="$(cd "${runtime_root}" && pwd)"
+
+cd "${shared_core_root}"
+
+policy_file="${CODEX_POLICY_FILE:-${runtime_root}/AGENTS.md}"
 if [[ "${policy_file}" != /* ]]; then
-  policy_file="${repo_root}/${policy_file}"
+  policy_file="${runtime_root}/${policy_file}"
 fi
 policy_text=""
 if [[ -f "${policy_file}" ]]; then

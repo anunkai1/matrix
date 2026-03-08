@@ -10,6 +10,8 @@ Group=tank
 WorkingDirectory=/home/tank/tankbot
 Environment=PYTHONUNBUFFERED=1
 Environment=UNIT_NAME=telegram-tank-bridge.service
+Environment=TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot
+Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix
 Environment=TELEGRAM_EXECUTOR_CMD=/home/tank/tankbot/src/telegram_bridge/executor.sh
 EnvironmentFile=-/etc/default/telegram-tank-bridge
 ExecStart=/usr/bin/python3 /home/tank/tankbot/src/telegram_bridge/main.py

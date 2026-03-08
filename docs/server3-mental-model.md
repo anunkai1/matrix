@@ -98,6 +98,7 @@ Tank is a separate Telegram runtime/profile, not just a command inside Architect
 - User: `tank`
 - Workspace: `/home/tank/tankbot`
 - Purpose: isolated bot identity/profile with its own env, memory, Joplin path, and sudo scope.
+- Runtime model: shared core from `/home/architect/matrix` plus Tank runtime root identity at `/home/tank/tankbot`
 
 Mental shortcut:
 - Tank uses the same bridge architecture as Architect.
@@ -111,6 +112,7 @@ ASTER is a dedicated trading runtime with tighter boundaries than a normal assis
 - User: `aster-trader`
 - Workspace: `/home/aster-trader/asterbot`
 - Purpose: parse free-form trading requests, generate execution previews, require explicit confirmation tickets, and enforce risk limits before placing orders.
+- Runtime model: shared core from `/home/architect/matrix` plus ASTER overlay root at `/home/aster-trader/asterbot`
 - Backend:
   - [`ops/trading/aster/assistant_entry.py`](../ops/trading/aster/assistant_entry.py)
   - [`ops/trading/aster/trade_cli.sh`](../ops/trading/aster/trade_cli.sh)
@@ -131,6 +133,7 @@ Oracle is the Signal-facing sibling runtime.
 - Oracle bridge workspace: `/home/oracle/oraclebot`
 - Signal transport root: `/home/oracle/signal-oracle`
 - Purpose: run the shared bridge core behind a dedicated Signal account with isolated memory/state and Signal-specific progress behavior.
+- Runtime model: shared core from `/home/architect/matrix` plus Oracle overlay root at `/home/oracle/oraclebot`
 - Runbook: [`docs/runbooks/oracle-signal-operations.md`](./runbooks/oracle-signal-operations.md)
 
 Use Oracle when you want:
@@ -153,6 +156,7 @@ Govorun is the WhatsApp-facing persona. It is two pieces, not one.
 2. `govorun-whatsapp-bridge.service`
    - Python bridge core
    - applies routing, memory, Codex execution, prefix rules, and response policy
+   - runs the shared bridge core with Govorun identity/state rooted at `/home/govorun/govorunbot`
 
 Why it is split:
 - Node handles the WhatsApp protocol and media plumbing.
@@ -272,16 +276,16 @@ Use it when you want:
 - This repo, `/home/architect/matrix`, is the source-of-truth definition set.
 - It contains code, service units, env templates, runbooks, ops scripts, and target-state docs.
 
-### Deployed workspace copies
+### Deployed runtime roots
 
-Some runtimes are deployed as separate working copies under different Linux users:
+Server3 now uses one shared bridge core in `/home/architect/matrix` plus per-runtime roots under different Linux users:
 
 - Architect: `/home/architect/matrix`
-- Tank: `/home/tank/tankbot`
-- ASTER: `/home/aster-trader/asterbot`
-- Oracle bridge: `/home/oracle/oraclebot`
+- Tank: `/home/tank/tankbot` (runtime root; `/home/tank/tankbot/src` points at the shared core tree)
+- ASTER: `/home/aster-trader/asterbot` (overlay root)
+- Oracle bridge: `/home/oracle/oraclebot` (overlay root)
 - Oracle Signal transport: `/home/oracle/signal-oracle/app`
-- Govorun Python bridge: `/home/govorun/govorunbot`
+- Govorun Python bridge: `/home/govorun/govorunbot` (overlay root)
 - Govorun Node transport: `/home/govorun/whatsapp-govorun/app`
 
 ### Secrets

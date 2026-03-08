@@ -13,19 +13,19 @@ Run a dedicated Telegram + CLI runtime for ASTER futures trading with confirmati
 
 ## Provisioning Checklist
 
-1. Create dedicated runtime user and working copy:
+1. Create dedicated runtime user and overlay root:
 
 ```bash
 sudo useradd -m -s /bin/bash aster-trader || true
 sudo mkdir -p /home/aster-trader/asterbot
-sudo rsync -a --delete --exclude '.git' /home/architect/matrix/ /home/aster-trader/asterbot/
 sudo chown -R aster-trader:aster-trader /home/aster-trader
+sudo python3 /home/architect/matrix/ops/runtime_overlays/sync_server3_runtime_overlays.py --runtime ASTER
 ```
 
 2. Install bridge environment file:
 
 ```bash
-sudo cp /home/aster-trader/asterbot/infra/env/telegram-aster-trader-bridge.env.example /etc/default/telegram-aster-trader-bridge
+sudo cp /home/architect/matrix/infra/env/telegram-aster-trader-bridge.env.example /etc/default/telegram-aster-trader-bridge
 sudo chmod 600 /etc/default/telegram-aster-trader-bridge
 sudo chown root:root /etc/default/telegram-aster-trader-bridge
 sudo nano /etc/default/telegram-aster-trader-bridge
@@ -41,8 +41,8 @@ sudo nano /etc/default/telegram-aster-trader-bridge
 4. Install and start the systemd service:
 
 ```bash
-UNIT_NAME=telegram-aster-trader-bridge.service bash /home/aster-trader/asterbot/ops/telegram-bridge/install_systemd.sh apply
-UNIT_NAME=telegram-aster-trader-bridge.service bash /home/aster-trader/asterbot/ops/telegram-bridge/restart_and_verify.sh
+UNIT_NAME=telegram-aster-trader-bridge.service bash /home/architect/matrix/ops/telegram-bridge/install_systemd.sh apply
+UNIT_NAME=telegram-aster-trader-bridge.service bash /home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh
 ```
 
 ## Telegram Usage
@@ -79,6 +79,7 @@ sudo -u aster-trader bash -ic 'cd /home/aster-trader/asterbot && astertrader --h
 
 ## Notes
 
+- ASTER now runs as a thin overlay root over the shared bridge core in `/home/architect/matrix/src/telegram_bridge`.
 - Confirmation tickets are single-use and expire by `ASTER_CONFIRM_TTL_SECONDS`.
 - Trading backend persists state in `ASTER_STATE_DB_PATH`.
 - API secrets must never be stored in git-tracked files.

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 try:
+    from .runtime_paths import build_shared_core_root, shared_core_path
     from .state_store import (
         CanonicalSession,
         State,
@@ -22,6 +23,7 @@ try:
     )
     from .structured_logging import emit_event
 except ImportError:
+    from runtime_paths import build_shared_core_root, shared_core_path
     from state_store import (
         CanonicalSession,
         State,
@@ -38,15 +40,14 @@ except ImportError:
 
 
 def build_repo_root() -> str:
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    return build_shared_core_root()
 
 
 def build_restart_script_path() -> str:
     configured = os.getenv("TELEGRAM_RESTART_SCRIPT", "").strip()
     if configured:
         return configured
-    repo_root = build_repo_root()
-    return os.path.join(repo_root, "ops", "telegram-bridge", "restart_and_verify.sh")
+    return shared_core_path("ops", "telegram-bridge", "restart_and_verify.sh")
 
 
 def build_restart_unit_name() -> str:

@@ -155,7 +155,8 @@ python3 ops/server3_runtime_status.py
 ```
 
 Tank profile note:
-- Runtime code path is `/home/tank/tankbot`.
+- Runtime root is `/home/tank/tankbot`.
+- Server3 keeps `/home/tank/tankbot/src` linked to the shared bridge core under `/home/architect/matrix/src`; runtime identity is preserved via `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot`.
 
 ## Voice Runtime Setup (Required for Voice Notes)
 

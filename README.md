@@ -34,10 +34,11 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 ## Repository Structure
 
 - `src/` runtime code
-  - Telegram bridge modules now split into `main.py` (bootstrap/poll loop), `runtime_config.py`, `runtime_profile.py`, `runtime_routing.py`, `handlers.py`, `transport.py`, `executor.py`, `state_store.py`, `session_manager.py`, `media.py`, `memory_engine.py`
+  - Telegram bridge modules now split into `main.py` (bootstrap/poll loop), `runtime_paths.py`, `runtime_config.py`, `runtime_profile.py`, `runtime_routing.py`, `handlers.py`, `transport.py`, `executor.py`, `state_store.py`, `session_manager.py`, `media.py`, `memory_engine.py`
   - Shared-memory CLI wrapper: `src/architect_cli/main.py`
 - `infra/` source-of-truth mirrors for live server state (systemd units, env templates, managed shell profile content)
 - `ops/` apply/rollback/restart/status scripts for live rollout
+  - `ops/runtime_overlays/sync_server3_runtime_overlays.py` installs thin per-runtime overlay shims over the shared bridge core
 - `docs/` operator runbooks
 - `logs/` repo-tracked execution/change records
 - `SERVER3_SUMMARY.md` summary-first session context log
@@ -97,6 +98,7 @@ bash src/telegram_bridge/smoke_test.sh
 
 - Restart bridge (verified): `bash ops/telegram-bridge/restart_and_verify.sh`
 - Check shared Server3 runtime status: `python3 ops/server3_runtime_status.py`
+- Sync shared-core overlay shims into sibling runtime roots: `sudo python3 ops/runtime_overlays/sync_server3_runtime_overlays.py`
 - Check Architect-only unit detail: `bash ops/telegram-bridge/status_service.sh`
 - Check logs: `sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager`
 - Roll back systemd install: `bash ops/telegram-bridge/install_systemd.sh rollback`

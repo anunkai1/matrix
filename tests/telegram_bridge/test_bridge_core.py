@@ -278,6 +278,68 @@ class BridgeCoreTests(unittest.TestCase):
             self.assertIn("TEMP_GOVORUN_POLICY", result.stdout)
             self.assertIn("User request:\\nhello from test", result.stdout)
 
+    def test_executor_script_supports_runtime_root_overlay_policy(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            shared_root = temp_root / "matrix"
+            script_dir = shared_root / "src" / "telegram_bridge"
+            script_dir.mkdir(parents=True)
+            script_path = script_dir / "executor.sh"
+            script_path.write_text(
+                (ROOT / "src" / "telegram_bridge" / "executor.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            script_path.chmod(0o755)
+
+            runtime_root = temp_root / "oraclebot"
+            runtime_root.mkdir(parents=True)
+            (runtime_root / "AGENTS.md").write_text("TEMP_ORACLE_POLICY\n", encoding="utf-8")
+
+            bin_dir = temp_root / "bin"
+            bin_dir.mkdir()
+            fake_codex = bin_dir / "codex"
+            fake_codex.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env python3",
+                        "import json",
+                        "import os",
+                        "import sys",
+                        "payload = sys.stdin.read()",
+                        "print(json.dumps({",
+                        "    'type': 'item.completed',",
+                        "    'item': {",
+                        "        'type': 'agent_message',",
+                        "        'text': f'PWD={os.getcwd()}\\n{payload}',",
+                        "    },",
+                        "}))",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            fake_codex.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+            env["CODEX_BIN"] = str(fake_codex)
+            env["CODEX_POLICY_FILE"] = "AGENTS.md"
+            env["TELEGRAM_RUNTIME_ROOT"] = str(runtime_root)
+
+            result = subprocess.run(
+                ["bash", str(script_path), "new"],
+                input="hello from overlay test\n",
+                text=True,
+                capture_output=True,
+                cwd=str(ROOT),
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertIn(f"PWD={shared_root}", result.stdout)
+            self.assertIn("TEMP_ORACLE_POLICY", result.stdout)
+            self.assertIn("User request:\\nhello from overlay test", result.stdout)
+
     def test_normalize_command_and_trim_output_helpers(self):
         self.assertEqual(bridge_handlers.normalize_command("/h@architect_bot now"), "/h")
         self.assertIsNone(bridge_handlers.normalize_command("hello"))

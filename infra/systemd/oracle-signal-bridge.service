@@ -9,6 +9,8 @@ User=oracle
 Group=oracle
 WorkingDirectory=/home/oracle/oraclebot
 Environment=PYTHONUNBUFFERED=1
+Environment=TELEGRAM_RUNTIME_ROOT=/home/oracle/oraclebot
+Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix
 Environment=TELEGRAM_EXECUTOR_CMD=/home/oracle/oraclebot/src/telegram_bridge/executor.sh
 EnvironmentFile=-/etc/default/oracle-signal-bridge
 ExecStartPre=/usr/bin/python3 /home/oracle/oraclebot/src/telegram_bridge/wait_for_signal_transport.py

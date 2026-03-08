@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
 from typing import List, Optional
 
 try:
     from .channel_adapter import ChannelAdapter
+    from .runtime_paths import build_shared_core_root, shared_core_path
 except ImportError:
     from channel_adapter import ChannelAdapter
+    from runtime_paths import build_shared_core_root, shared_core_path
 
 
 HELP_COMMAND_ALIASES = ("/help", "/h")
@@ -40,49 +41,45 @@ BLOCKED_PROMPT_MESSAGE = (
 
 
 def build_repo_root() -> str:
-    return str(Path(__file__).resolve().parents[2])
+    return build_shared_core_root()
 
 
 def build_ha_routing_script_allowlist() -> List[str]:
-    repo_root = build_repo_root()
     return [
-        os.path.join(repo_root, "ops", "ha", "turn_entity_power.sh"),
-        os.path.join(repo_root, "ops", "ha", "schedule_entity_power.sh"),
-        os.path.join(repo_root, "ops", "ha", "set_climate_temperature.sh"),
-        os.path.join(repo_root, "ops", "ha", "schedule_climate_temperature.sh"),
-        os.path.join(repo_root, "ops", "ha", "set_climate_mode.sh"),
-        os.path.join(repo_root, "ops", "ha", "schedule_climate_mode.sh"),
+        shared_core_path("ops", "ha", "turn_entity_power.sh"),
+        shared_core_path("ops", "ha", "schedule_entity_power.sh"),
+        shared_core_path("ops", "ha", "set_climate_temperature.sh"),
+        shared_core_path("ops", "ha", "schedule_climate_temperature.sh"),
+        shared_core_path("ops", "ha", "set_climate_mode.sh"),
+        shared_core_path("ops", "ha", "schedule_climate_mode.sh"),
     ]
 
 
 def build_server3_routing_script_allowlist() -> List[str]:
-    repo_root = build_repo_root()
     return [
         "/usr/local/bin/server3-tv-start",
         "/usr/local/bin/server3-tv-stop",
-        os.path.join(repo_root, "ops", "tv-desktop", "server3-tv-open-browser-url.sh"),
-        os.path.join(repo_root, "ops", "tv-desktop", "server3-youtube-open-top-result.sh"),
-        os.path.join(repo_root, "ops", "tv-desktop", "server3-tv-browser-youtube-pause.sh"),
-        os.path.join(repo_root, "ops", "tv-desktop", "server3-tv-browser-youtube-play.sh"),
+        shared_core_path("ops", "tv-desktop", "server3-tv-open-browser-url.sh"),
+        shared_core_path("ops", "tv-desktop", "server3-youtube-open-top-result.sh"),
+        shared_core_path("ops", "tv-desktop", "server3-tv-browser-youtube-pause.sh"),
+        shared_core_path("ops", "tv-desktop", "server3-tv-browser-youtube-play.sh"),
     ]
 
 
 def build_nextcloud_routing_script_allowlist() -> List[str]:
-    repo_root = build_repo_root()
     return [
-        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-files-list.sh"),
-        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-file-upload.sh"),
-        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-file-delete.sh"),
-        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-calendars-list.sh"),
-        os.path.join(repo_root, "ops", "nextcloud", "nextcloud-calendar-create-event.sh"),
+        shared_core_path("ops", "nextcloud", "nextcloud-files-list.sh"),
+        shared_core_path("ops", "nextcloud", "nextcloud-file-upload.sh"),
+        shared_core_path("ops", "nextcloud", "nextcloud-file-delete.sh"),
+        shared_core_path("ops", "nextcloud", "nextcloud-calendars-list.sh"),
+        shared_core_path("ops", "nextcloud", "nextcloud-calendar-create-event.sh"),
     ]
 
 
 def build_trade_routing_script_allowlist() -> List[str]:
-    repo_root = build_repo_root()
     return [
-        os.path.join(repo_root, "ops", "trading", "aster", "assistant_entry.py"),
-        os.path.join(repo_root, "ops", "trading", "aster", "trade_cli.sh"),
+        shared_core_path("ops", "trading", "aster", "assistant_entry.py"),
+        shared_core_path("ops", "trading", "aster", "trade_cli.sh"),
     ]
 
 

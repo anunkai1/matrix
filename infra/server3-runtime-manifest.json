@@ -1,9 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "runtimes": [
     {
       "name": "Architect",
       "category": "primary",
+      "runtime_layout": "shared-core-root",
+      "workspace_root": "/home/architect/matrix",
+      "shared_core_root": "/home/architect/matrix",
       "purpose": "Main Telegram and CLI runtime for Server3 operations.",
       "expected_default_state": "active",
       "dependencies": [
@@ -25,6 +28,9 @@
     {
       "name": "Tank",
       "category": "secondary",
+      "runtime_layout": "shared-core-overlay",
+      "workspace_root": "/home/tank/tankbot",
+      "shared_core_root": "/home/architect/matrix",
       "purpose": "Sibling Telegram assistant with isolated runtime state.",
       "expected_default_state": "active",
       "dependencies": [
@@ -33,7 +39,8 @@
       ],
       "owner_user": "tank",
       "notes": [
-        "Uses the shared bridge pattern with its own workspace and memory."
+        "Uses the shared bridge pattern with its own workspace and memory.",
+        "Server3 keeps /home/tank/tankbot/src linked to the shared core tree, so runtime identity comes from its runtime root and env."
       ],
       "units": [
         {
@@ -46,6 +53,9 @@
     {
       "name": "ASTER",
       "category": "secondary",
+      "runtime_layout": "shared-core-overlay",
+      "workspace_root": "/home/aster-trader/asterbot",
+      "shared_core_root": "/home/architect/matrix",
       "purpose": "Dedicated Telegram trading runtime with hard risk rails.",
       "expected_default_state": "active",
       "dependencies": [
@@ -67,6 +77,8 @@
     {
       "name": "Govorun transport",
       "category": "secondary",
+      "runtime_layout": "transport-app",
+      "workspace_root": "/home/govorun/whatsapp-govorun/app",
       "purpose": "WhatsApp transport/API runtime used by the Govorun bridge.",
       "expected_default_state": "active",
       "dependencies": [
@@ -88,6 +100,9 @@
     {
       "name": "Govorun bridge",
       "category": "secondary",
+      "runtime_layout": "shared-core-overlay",
+      "workspace_root": "/home/govorun/govorunbot",
+      "shared_core_root": "/home/architect/matrix",
       "purpose": "WhatsApp-facing assistant bridge runtime.",
       "expected_default_state": "active",
       "dependencies": [
@@ -109,6 +124,8 @@
     {
       "name": "Oracle transport",
       "category": "secondary",
+      "runtime_layout": "transport-app",
+      "workspace_root": "/home/oracle/signal-oracle/app",
       "purpose": "Signal transport sidecar used by the Oracle bridge.",
       "expected_default_state": "active",
       "dependencies": [
@@ -130,6 +147,9 @@
     {
       "name": "Oracle bridge",
       "category": "secondary",
+      "runtime_layout": "shared-core-overlay",
+      "workspace_root": "/home/oracle/oraclebot",
+      "shared_core_root": "/home/architect/matrix",
       "purpose": "Signal-facing assistant bridge runtime.",
       "expected_default_state": "active",
       "dependencies": [
@@ -151,6 +171,7 @@
     {
       "name": "Network layer",
       "category": "infra",
+      "runtime_layout": "system-service",
       "purpose": "VPN and mesh baseline for remote continuity.",
       "expected_default_state": "active",
       "dependencies": [
@@ -177,6 +198,7 @@
     {
       "name": "Guardrail timers",
       "category": "infra",
+      "runtime_layout": "timer-set",
       "purpose": "Health summary, routing drift checks, and monthly package maintenance.",
       "expected_default_state": "active (waiting)",
       "dependencies": [
@@ -211,6 +233,7 @@
     {
       "name": "UI layer",
       "category": "optional",
+      "runtime_layout": "optional-service",
       "purpose": "Local desktop/browser UI for Server3 TV mode.",
       "expected_default_state": "inactive",
       "dependencies": [

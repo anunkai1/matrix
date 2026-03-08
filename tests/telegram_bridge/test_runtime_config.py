@@ -33,6 +33,25 @@ class RuntimeConfigTests(unittest.TestCase):
             ],
         )
 
+    def test_build_policy_watch_files_uses_runtime_root_agents_and_shared_docs(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_RUNTIME_ROOT": "/srv/runtime-overlay",
+                "TELEGRAM_SHARED_CORE_ROOT": str(ROOT),
+            },
+            clear=True,
+        ):
+            files = runtime_config.build_policy_watch_files()
+        self.assertEqual(
+            files,
+            [
+                "/srv/runtime-overlay/AGENTS.md",
+                str(ROOT / "ARCHITECT_INSTRUCTION.md"),
+                str(ROOT / "SERVER3_ARCHIVE.md"),
+            ],
+        )
+
     def test_build_policy_watch_files_honors_override(self):
         with mock.patch.dict(
             os.environ,

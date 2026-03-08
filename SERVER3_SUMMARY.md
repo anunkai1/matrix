@@ -19,6 +19,7 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - Runtime pattern: Telegram long polling + local `codex exec`
 - Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
 - Canonical runtime inventory now lives in `infra/server3-runtime-manifest.json`, with shared live inspection via `python3 ops/server3_runtime_status.py`
+- Shared runtime core now lives in `/home/architect/matrix/src/telegram_bridge`; Tank/ASTER/Govorun/Oracle run as per-runtime overlays with preserved service names, env paths, AGENTS, and state roots.
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 - Runtime observer daily Telegram summary now appends a plain-English operator line indicating whether attention is needed.
 - Runtime observer daily health delivery is centralized through `staker_alerts_bot` to chat `211761499` (single destination).
@@ -47,6 +48,7 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-08: completed the shared-core overlay cutover for Server3 bridge runtimes by adding `src/telegram_bridge/runtime_paths.py`, teaching the bridge/executor to separate shared-core paths from per-runtime roots, adding `ops/runtime_overlays/sync_server3_runtime_overlays.py`, updating overlay unit env to carry `TELEGRAM_RUNTIME_ROOT`/`TELEGRAM_SHARED_CORE_ROOT`, live-syncing ASTER/Govorun/Oracle overlays, handling Tank's existing `/home/tank/tankbot/src -> /home/architect/matrix/src` symlink layout safely, and verifying all major runtimes remained at expected state.
 - 2026-03-08: continued the Phase 2 shared-core cleanup without live behavior changes by extracting pure prefix-gating and keyword-route resolution from `src/telegram_bridge/handlers.py` into `src/telegram_bridge/runtime_routing.py`, adding focused routing tests, and keeping handler behavior and exports compatible.
 - 2026-03-08: continued the Phase 2 shared-core cleanup without live behavior changes by extracting assistant/profile and keyword-routing policy helpers from `src/telegram_bridge/handlers.py` into `src/telegram_bridge/runtime_profile.py`, keeping handler exports compatible, adding focused runtime-profile tests, and preserving the current env/routing/service contracts.
 - 2026-03-08: started Phase 2 shared-core cleanup without changing live behavior by extracting bridge env parsing and runtime defaults from `src/telegram_bridge/main.py` into `src/telegram_bridge/runtime_config.py`, keeping `main.py` as the bootstrap path, adding focused config tests, and documenting the clearer shared-core boundary.
@@ -57,6 +59,7 @@ Last updated: 2026-03-08 (AEST, +10:00)
 - 2026-03-08: fixed a post-restore off-repo runtime path-compatibility issue by restoring a legacy in-container download path alongside the current mount, then recreating the affected service and verifying retained payload metadata resumes cleanly against the host data again.
 
 ## Current Risks/Watchouts (Max 5)
+- Tank keeps `/home/tank/tankbot/src` linked to the shared repo source tree; preserve `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot` in its unit/env so runtime identity does not collapse back to the shared repo root.
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.
 - WhatsApp progress edit behavior relies on valid outbound key mappings; mismatch paths should be treated as warning conditions.
 - Keep group allowlists aligned (`WA_ALLOWED_CHAT_IDS`/`WA_ALLOWED_GROUPS` with `TELEGRAM_ALLOWED_CHAT_IDS`) while managing DM admission separately via `WA_ALLOWED_DMS` and `TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED`.

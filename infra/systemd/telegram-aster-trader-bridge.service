@@ -10,6 +10,8 @@ Group=aster-trader
 WorkingDirectory=/home/aster-trader/asterbot
 Environment=PYTHONUNBUFFERED=1
 Environment=UNIT_NAME=telegram-aster-trader-bridge.service
+Environment=TELEGRAM_RUNTIME_ROOT=/home/aster-trader/asterbot
+Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix
 Environment=TELEGRAM_EXECUTOR_CMD=/home/aster-trader/asterbot/src/telegram_bridge/executor.sh
 EnvironmentFile=-/etc/default/telegram-aster-trader-bridge
 ExecStart=/usr/bin/python3 /home/aster-trader/asterbot/src/telegram_bridge/main.py
