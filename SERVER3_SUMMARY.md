@@ -48,6 +48,7 @@ Last updated: 2026-03-09 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-09: granted `aster-trader` full passwordless sudo via `/etc/sudoers.d/aster-trader-full` and verified `sudo -n true` succeeds under that account.
 - 2026-03-09: installed the persistent ASTER BackBurner systemd unit and narrow helper path (`aster-backburner.service`, `/usr/local/bin/update-aster-backburner-service`, `/etc/default/aster-backburner`, sudoers allowlist for `aster-trader`), with systemd reloaded and the unit visible but inactive until explicitly activated.
 - 2026-03-09: installed the narrow ASTER bridge env helper as `/usr/local/bin/update-aster-bridge-env` with a sudoers allowlist for user `aster-trader`, enabling `--show` and approved BackBurner/tradable env updates without broad root access.
 - 2026-03-09: aligned ASTER BackBurner leverage to `4x` across the live bridge env and strategy defaults, with `telegram-aster-trader-bridge.service` restarted and verified to be running with `ASTER_BACKBURNER_LEVERAGE=4`.
