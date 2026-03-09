@@ -48,6 +48,7 @@ Last updated: 2026-03-09 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-09: installed the narrow ASTER bridge env helper as `/usr/local/bin/update-aster-bridge-env` with a sudoers allowlist for user `aster-trader`, enabling `--show` and approved BackBurner/tradable env updates without broad root access.
 - 2026-03-09: aligned ASTER BackBurner leverage to `4x` across the live bridge env and strategy defaults, with `telegram-aster-trader-bridge.service` restarted and verified to be running with `ASTER_BACKBURNER_LEVERAGE=4`.
 - 2026-03-09: enabled always-on Architect Joplin sync by adding the `joplin-architect-sync` systemd service/timer, with the local profile `/home/architect/.config/joplin` now syncing to Nextcloud every 5 minutes even when no Joplin client is open.
 - 2026-03-09: fixed `telegram-bridge-ci` after the Govorun AGENTS-only executor change by updating the executor regression tests to assert the new contract: prompts no longer embed `AGENTS.md` text and overlay executions now run from `TELEGRAM_RUNTIME_ROOT`.
