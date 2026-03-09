@@ -42,21 +42,6 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertTrue(result.ignored)
         self.assertEqual(result.rejection_reason, "prefix_required")
 
-    def test_apply_priority_keyword_routing_builds_trade_prompt(self) -> None:
-        config = SimpleNamespace(keyword_routing_enabled=True)
-
-        result = runtime_routing.apply_priority_keyword_routing(
-            config=config,
-            prompt_input="Trade long btc 2000 usdt 10x market",
-            command=None,
-            chat_id=7,
-        )
-
-        self.assertTrue(result.priority_keyword_mode)
-        self.assertTrue(result.stateless)
-        self.assertEqual(result.routed_event, "bridge.trade_keyword_routed")
-        self.assertIn("Chat key: tg:7", result.prompt_input)
-
     def test_apply_priority_keyword_routing_rejects_empty_server3_request(self) -> None:
         config = SimpleNamespace(keyword_routing_enabled=True)
 

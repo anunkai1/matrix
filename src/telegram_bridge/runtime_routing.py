@@ -11,16 +11,13 @@ try:
         NEXTCLOUD_KEYWORD_HELP_MESSAGE,
         PREFIX_HELP_MESSAGE,
         SERVER3_KEYWORD_HELP_MESSAGE,
-        TRADE_KEYWORD_HELP_MESSAGE,
         build_ha_keyword_prompt,
         build_nextcloud_keyword_prompt,
         build_server3_keyword_prompt,
-        build_trade_keyword_prompt,
         command_bypasses_required_prefix,
         extract_ha_keyword_request,
         extract_nextcloud_keyword_request,
         extract_server3_keyword_request,
-        extract_trade_keyword_request,
     )
 except ImportError:
     from runtime_profile import (
@@ -28,16 +25,13 @@ except ImportError:
         NEXTCLOUD_KEYWORD_HELP_MESSAGE,
         PREFIX_HELP_MESSAGE,
         SERVER3_KEYWORD_HELP_MESSAGE,
-        TRADE_KEYWORD_HELP_MESSAGE,
         build_ha_keyword_prompt,
         build_nextcloud_keyword_prompt,
         build_server3_keyword_prompt,
-        build_trade_keyword_prompt,
         command_bypasses_required_prefix,
         extract_ha_keyword_request,
         extract_nextcloud_keyword_request,
         extract_server3_keyword_request,
-        extract_trade_keyword_request,
     )
 
 
@@ -120,25 +114,6 @@ def apply_priority_keyword_routing(
             command=command,
             stateless=False,
             priority_keyword_mode=False,
-        )
-
-    trade_keyword_mode, trade_request = extract_trade_keyword_request(prompt_input)
-    if trade_keyword_mode:
-        if not trade_request.strip():
-            return KeywordRouteResult(
-                prompt_input=prompt_input,
-                command=command,
-                stateless=False,
-                priority_keyword_mode=False,
-                rejection_reason="trade_keyword_missing_action",
-                rejection_message=TRADE_KEYWORD_HELP_MESSAGE,
-            )
-        return KeywordRouteResult(
-            prompt_input=build_trade_keyword_prompt(trade_request, chat_id),
-            command=None,
-            stateless=True,
-            priority_keyword_mode=True,
-            routed_event="bridge.trade_keyword_routed",
         )
 
     nextcloud_keyword_mode, nextcloud_request = extract_nextcloud_keyword_request(prompt_input)

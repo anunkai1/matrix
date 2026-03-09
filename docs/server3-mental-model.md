@@ -16,10 +16,9 @@ These are the ways work enters the server.
 | --- | --- | --- |
 | Telegram Architect bot | General assistant and operator entry point | `telegram-architect-bridge.service` as `architect` |
 | Telegram Tank bot | Separate Telegram runtime/profile for Tank | `telegram-tank-bridge.service` as `tank` |
-| Telegram ASTER Trader bot | Dedicated futures trading assistant with hard risk rails | `telegram-aster-trader-bridge.service` as `aster-trader` |
 | Signal Oracle | Signal-facing assistant persona with its own transport sidecar | `signal-oracle-bridge.service` + `oracle-signal-bridge.service` as `oracle` |
 | WhatsApp Govorun | WhatsApp-facing assistant persona | `whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service` as `govorun` |
-| Local shell launchers | Direct CLI use with shared memory | `architect`, `tank`, `astertrader`, raw `codex` |
+| Local shell launchers | Direct CLI use with shared memory | `architect`, `tank`, raw `codex` |
 
 ### 2. Shared Bridge Core
 
@@ -36,7 +35,7 @@ The main reusable runtime lives in [`src/telegram_bridge`](../src/telegram_bridg
 - [`plugin_registry.py`](../src/telegram_bridge/plugin_registry.py): lets the same core speak Telegram, WhatsApp, or Signal.
 
 Mental shortcut:
-- Telegram Architect, Tank, and ASTER are all variations of the same bridge pattern.
+- Telegram Architect and Tank are variations of the same bridge pattern.
 - Oracle reuses the same Python bridge core, but its transport is fronted by a local Signal sidecar around `signal-cli`.
 - Govorun reuses the same Python bridge core, but its transport is fronted by a Node WhatsApp API bridge.
 
@@ -49,7 +48,6 @@ When a request should not be handled as open-ended assistant chat, the bridge ca
 | Home Assistant | `HA ...` or `Home Assistant ...` | Stateless HA control/scheduling | [`ops/ha`](../ops/ha) |
 | TV/Desktop | `Server3 TV ...` | Start desktop, open browser, control YouTube | [`ops/tv-desktop`](../ops/tv-desktop) |
 | Nextcloud | `Nextcloud ...` | File and calendar operations | [`ops/nextcloud`](../ops/nextcloud) |
-| ASTER trading | `Trade ...` or `Aster Trade ...` | Trade preview, confirmation ticket, guarded execution | [`ops/trading/aster`](../ops/trading/aster) |
 
 These modes are meant to be predictable and script-bounded. They are the "do the known thing" paths, not the "figure out anything" path.
 
@@ -79,7 +77,7 @@ This is the primary Server3 brain.
 - Service: `telegram-architect-bridge.service`
 - User: `architect`
 - Workspace: `/home/architect/matrix`
-- Purpose: general assistant, file/image/voice handling, memory-backed conversation, and operator routing into HA/TV/Nextcloud/Trade modes.
+- Purpose: general assistant, file/image/voice handling, memory-backed conversation, and operator routing into HA/TV/Nextcloud modes.
 - Main docs:
   - [`docs/telegram-architect-bridge.md`](./telegram-architect-bridge.md)
   - [`SERVER3_SUMMARY.md`](../SERVER3_SUMMARY.md)
@@ -103,25 +101,6 @@ Tank is a separate Telegram runtime/profile, not just a command inside Architect
 Mental shortcut:
 - Tank uses the same bridge architecture as Architect.
 - Tank is separated because identity, memory, and permissions matter.
-
-### ASTER Trader
-
-ASTER is a dedicated trading runtime with tighter boundaries than a normal assistant.
-
-- Service: `telegram-aster-trader-bridge.service`
-- User: `aster-trader`
-- Workspace: `/home/aster-trader/asterbot`
-- Purpose: parse free-form trading requests, generate execution previews, require explicit confirmation tickets, and enforce risk limits before placing orders.
-- Runtime model: shared core from `/home/architect/matrix` plus ASTER overlay root at `/home/aster-trader/asterbot`
-- Backend:
-  - [`ops/trading/aster/assistant_entry.py`](../ops/trading/aster/assistant_entry.py)
-  - [`ops/trading/aster/trade_cli.sh`](../ops/trading/aster/trade_cli.sh)
-- Runbook: [`docs/runbooks/aster-trader-operations.md`](./runbooks/aster-trader-operations.md)
-
-Use ASTER when you want:
-- dedicated trade execution
-- shared trading memory between Telegram and CLI
-- risk rails around leverage/notional/loss
 
 ### Oracle Signal
 
@@ -235,7 +214,7 @@ Use it when you want:
 
 ### Keyword-routed request
 
-1. Message starts with `HA`, `Server3 TV`, `Nextcloud`, `Trade`, or `Aster Trade`.
+1. Message starts with `HA`, `Server3 TV`, or `Nextcloud`.
 2. Bridge strips the keyword and switches to the bounded mode.
 3. Request runs stateless with a script allowlist or deterministic backend.
 4. Result is returned without carrying open-ended conversational memory.
@@ -282,7 +261,6 @@ Server3 now uses one shared bridge core in `/home/architect/matrix` plus per-run
 
 - Architect: `/home/architect/matrix`
 - Tank: `/home/tank/tankbot` (runtime root; `/home/tank/tankbot/src` points at the shared core tree)
-- ASTER: `/home/aster-trader/asterbot` (overlay root)
 - Oracle bridge: `/home/oracle/oraclebot` (overlay root)
 - Oracle Signal transport: `/home/oracle/signal-oracle/app`
 - Govorun Python bridge: `/home/govorun/govorunbot` (overlay root)
@@ -328,7 +306,7 @@ If you want a general assistant:
 - use Architect
 
 If you want a separate persona/profile:
-- use Tank, Govorun, or ASTER depending on domain
+- use Tank, Govorun, or Oracle depending on domain
 
 If you want a bounded operational action:
 - use the keyword modes: `HA`, `Server3 TV`, `Nextcloud`, `Trade`
@@ -347,6 +325,6 @@ If you want current truth before acting:
 Think of Server3 as one reusable assistant engine surrounded by multiple identities and bounded tool corridors:
 
 - Architect is the main front door.
-- Tank, ASTER, Oracle, and Govorun are specialized sibling runtimes.
-- HA, TV, Nextcloud, and Trade are the deterministic side corridors.
+- Tank, Oracle, and Govorun are specialized sibling runtimes.
+- HA, TV, and Nextcloud are the deterministic side corridors.
 - systemd timers, observer checks, and config contracts are the guard rails that keep the whole machine stable.

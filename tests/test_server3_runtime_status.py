@@ -27,7 +27,6 @@ class Server3RuntimeStatusTests(unittest.TestCase):
             {
                 "telegram-architect-bridge.service",
                 "telegram-tank-bridge.service",
-                "telegram-aster-trader-bridge.service",
                 "whatsapp-govorun-bridge.service",
                 "govorun-whatsapp-bridge.service",
                 "signal-oracle-bridge.service",

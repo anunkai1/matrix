@@ -6,7 +6,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 
 - Active component: `telegram-architect-bridge.service`
 - Runtime mode: Telegram long polling + local `codex exec` executor
-- Additional active runtimes: `telegram-tank-bridge.service`, `telegram-aster-trader-bridge.service`, `whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service`, `signal-oracle-bridge.service` + `oracle-signal-bridge.service`
+- Additional active runtimes: `telegram-tank-bridge.service`, `whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service`, `signal-oracle-bridge.service` + `oracle-signal-bridge.service`
 - Input modes: text, photo (image + optional caption), voice snippets (transcribed to text and echoed back), and generic files/documents for analysis
 - Context behavior: shared SQLite memory engine (Telegram + CLI) with per-conversation-key isolation and default `all_context` memory mode
 - Optional persistent worker-session manager via env flag (`TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`)
@@ -29,7 +29,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 
 - Canonical runtime inventory: `infra/server3-runtime-manifest.json`
 - Shared live inspection command: `python3 ops/server3_runtime_status.py`
-- Major runtime groups tracked there: Architect, Tank, ASTER, Govorun transport/bridge, Oracle transport/bridge, network layer, guardrail timers, optional UI
+- Major runtime groups tracked there: Architect, Tank, Govorun transport/bridge, Oracle transport/bridge, network layer, guardrail timers, optional UI
 
 ## Repository Structure
 
@@ -150,7 +150,6 @@ bash src/telegram_bridge/smoke_test.sh
 - `docs/home-assistant-ops.md`
 - `docs/telegram-architect-bridge.md`
 - `docs/telegram-bridge-debug-checklist.md`
-- `docs/runbooks/aster-trader-operations.md`
 - `docs/runbooks/whatsapp-govorun-operations.md`
 - `docs/runbooks/oracle-signal-operations.md`
 - `docs/server-setup.md`

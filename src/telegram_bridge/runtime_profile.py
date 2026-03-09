@@ -25,9 +25,6 @@ SERVER3_KEYWORD_HELP_MESSAGE = (
 NEXTCLOUD_KEYWORD_HELP_MESSAGE = (
     "Nextcloud mode needs an action. Example: `Nextcloud create event tomorrow 3pm dentist in Personal calendar`."
 )
-TRADE_KEYWORD_HELP_MESSAGE = (
-    "Trade mode needs an action. Example: `Trade long BTC 2000 USDT 10x market`."
-)
 PREFIX_HELP_MESSAGE = (
     "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
 )
@@ -72,13 +69,6 @@ def build_nextcloud_routing_script_allowlist() -> List[str]:
     ]
 
 
-def build_trade_routing_script_allowlist() -> List[str]:
-    return [
-        shared_core_path("ops", "trading", "aster", "assistant_entry.py"),
-        shared_core_path("ops", "trading", "aster", "trade_cli.sh"),
-    ]
-
-
 def assistant_label(config) -> str:
     value = getattr(config, "assistant_name", "").strip()
     return value or "Architect"
@@ -119,10 +109,6 @@ def extract_server3_keyword_request(text: str) -> tuple[bool, str]:
 
 def extract_nextcloud_keyword_request(text: str) -> tuple[bool, str]:
     return extract_keyword_request(text, ["nextcloud"])
-
-
-def extract_trade_keyword_request(text: str) -> tuple[bool, str]:
-    return extract_keyword_request(text, ["trade", "aster trade"])
 
 
 def build_ha_keyword_prompt(user_request: str) -> str:
@@ -171,25 +157,6 @@ def build_nextcloud_keyword_prompt(user_request: str) -> str:
         "- Do not print or expose credentials.\n"
         "- If path/calendar/time is unclear, ask one concise clarification question.\n"
         "- After execution, report exact scripts used and final outcome."
-    )
-
-
-def build_trade_keyword_prompt(user_request: str, chat_id: int) -> str:
-    scripts = "\n".join(f"- {path}" for path in build_trade_routing_script_allowlist())
-    entrypoint = build_trade_routing_script_allowlist()[0]
-    return (
-        "ASTER trading priority mode is active.\n"
-        "Treat this as a free-form ASTER futures trading request.\n"
-        f"Chat key: tg:{chat_id}\n"
-        f"User request: {user_request.strip()}\n\n"
-        "Mandatory execution policy:\n"
-        f"{scripts}\n"
-        "- Execute only via deterministic script:\n"
-        f"  python3 {entrypoint} --chat-id tg:{chat_id} --request '<user request>'\n"
-        "- Do not place orders via direct curl/python snippets outside this script.\n"
-        "- The script enforces confirmation tickets and risk guards (max notional, max leverage, daily loss).\n"
-        "- If the script errors, report the error exactly and stop.\n"
-        "- Return script output to the user verbatim.\n"
     )
 
 

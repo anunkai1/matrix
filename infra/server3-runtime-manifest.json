@@ -51,30 +51,6 @@
       ]
     },
     {
-      "name": "ASTER",
-      "category": "secondary",
-      "runtime_layout": "shared-core-overlay",
-      "workspace_root": "/home/aster-trader/asterbot",
-      "shared_core_root": "/home/architect/matrix",
-      "purpose": "Dedicated Telegram trading runtime with hard risk rails.",
-      "expected_default_state": "active",
-      "dependencies": [
-        "ASTER env file",
-        "risk-script path"
-      ],
-      "owner_user": "aster-trader",
-      "notes": [
-        "Keep service name and trading runtime topology unchanged in Phase 1."
-      ],
-      "units": [
-        {
-          "name": "telegram-aster-trader-bridge.service",
-          "kind": "service",
-          "expected_state": "active"
-        }
-      ]
-    },
-    {
       "name": "Govorun transport",
       "category": "secondary",
       "runtime_layout": "transport-app",
