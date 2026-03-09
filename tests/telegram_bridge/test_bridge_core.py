@@ -1280,6 +1280,42 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(voice_file_id, "voice-3")
         self.assertIsNone(document)
 
+    def test_extract_prompt_and_media_uses_replied_photo_when_current_message_has_no_media(self):
+        prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+            {
+                "text": "what about the window?",
+                "reply_to_message": {
+                    "photo": [
+                        {"file_id": "p-small", "file_size": 10},
+                        {"file_id": "p-large", "file_size": 20},
+                    ],
+                },
+            }
+        )
+        self.assertEqual(prompt, "what about the window?")
+        self.assertEqual(photo_file_id, "p-large")
+        self.assertIsNone(voice_file_id)
+        self.assertIsNone(document)
+
+    def test_extract_prompt_and_media_uses_replied_document_when_current_message_has_no_media(self):
+        prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+            {
+                "text": "summarize the quoted file",
+                "reply_to_message": {
+                    "document": {
+                        "file_id": "doc-reply-1",
+                        "file_name": "quoted.txt",
+                        "mime_type": "text/plain",
+                    }
+                },
+            }
+        )
+        self.assertEqual(prompt, "summarize the quoted file")
+        self.assertIsNone(photo_file_id)
+        self.assertIsNone(voice_file_id)
+        self.assertIsNotNone(document)
+        self.assertEqual(document.file_id, "doc-reply-1")
+
     def test_build_reply_context_prompt_from_reply_to_message_text(self):
         prompt = bridge_handlers.build_reply_context_prompt(
             {
@@ -1294,6 +1330,19 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Автор исходного сообщения: Govorun TPG 2026", prompt)
         self.assertIn("Сообщение, на которое пользователь ответил:", prompt)
         self.assertIn("Доброе утро, Путиловы!", prompt)
+
+    def test_build_reply_context_prompt_mentions_reply_media_without_text(self):
+        prompt = bridge_handlers.build_reply_context_prompt(
+            {
+                "text": "А это что?",
+                "reply_to_message": {
+                    "photo": [{"file_id": "photo-1", "file_size": 100}],
+                    "from": {"username": "Telegram User"},
+                },
+            }
+        )
+        self.assertIn("Контекст ответа:", prompt)
+        self.assertIn("В исходном сообщении было изображение.", prompt)
 
     def test_apply_voice_alias_replacements(self):
         transcript, changed = bridge_handlers.apply_voice_alias_replacements(

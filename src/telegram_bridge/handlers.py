@@ -896,7 +896,8 @@ def build_reply_context_prompt(message: Dict[str, object]) -> str:
     reply_text = normalize_optional_text(reply_to.get("text"))
     reply_caption = normalize_optional_text(reply_to.get("caption"))
     quoted_text = reply_text or reply_caption or ""
-    if not quoted_text:
+    media_context = describe_message_media(reply_to)
+    if not quoted_text and not media_context:
         return ""
 
     sender_name = extract_sender_name(reply_to)
@@ -904,12 +905,16 @@ def build_reply_context_prompt(message: Dict[str, object]) -> str:
     if sender_name != "Telegram User":
         sender_line = f"Автор исходного сообщения: {sender_name}\n"
 
-    return (
-        "Контекст ответа:\n"
-        f"{sender_line}"
-        "Сообщение, на которое пользователь ответил:\n"
-        f"{quoted_text}"
-    )
+    body_parts: List[str] = []
+    if quoted_text:
+        body_parts.append(
+            "Сообщение, на которое пользователь ответил:\n"
+            f"{quoted_text}"
+        )
+    if media_context:
+        body_parts.append(media_context)
+
+    return "Контекст ответа:\n" + sender_line + "\n\n".join(body_parts)
 
 
 def select_media_prompt(text: Optional[str], caption: Optional[str], default_prompt: str) -> str:
@@ -924,39 +929,94 @@ def select_media_prompt(text: Optional[str], caption: Optional[str], default_pro
     return default_prompt
 
 
+def extract_document_payload(message: Dict[str, object]) -> Optional[DocumentPayload]:
+    document = message.get("document")
+    if not isinstance(document, dict):
+        return None
+
+    file_id = document.get("file_id")
+    if not isinstance(file_id, str) or not file_id.strip():
+        return None
+
+    file_name = document.get("file_name")
+    mime_type = document.get("mime_type")
+    return DocumentPayload(
+        file_id=file_id.strip(),
+        file_name=file_name.strip() if isinstance(file_name, str) and file_name.strip() else "unnamed",
+        mime_type=mime_type.strip() if isinstance(mime_type, str) and mime_type.strip() else "unknown",
+    )
+
+
+def extract_message_media_payload(
+    message: Dict[str, object]
+) -> tuple[Optional[str], Optional[str], Optional[DocumentPayload]]:
+    photo_items = message.get("photo")
+    if isinstance(photo_items, list) and photo_items:
+        file_id = pick_largest_photo_file_id(photo_items)
+        if file_id:
+            return file_id, None, None
+
+    voice = message.get("voice")
+    if isinstance(voice, dict):
+        voice_file_id = voice.get("file_id")
+        if isinstance(voice_file_id, str) and voice_file_id.strip():
+            return None, voice_file_id.strip(), None
+
+    document = extract_document_payload(message)
+    if document is not None:
+        return None, None, document
+
+    return None, None, None
+
+
+def describe_message_media(message: Dict[str, object]) -> str:
+    photo_file_id, voice_file_id, document = extract_message_media_payload(message)
+    if photo_file_id:
+        return "В исходном сообщении было изображение."
+    if voice_file_id:
+        return "В исходном сообщении было голосовое сообщение."
+    if document is not None:
+        if document.file_name and document.file_name != "unnamed":
+            return f"В исходном сообщении был файл: {document.file_name}."
+        return "В исходном сообщении был файл."
+    return ""
+
+
 def extract_prompt_and_media(
     message: Dict[str, object]
 ) -> tuple[Optional[str], Optional[str], Optional[str], Optional[DocumentPayload]]:
     text = normalize_optional_text(message.get("text"))
     caption = normalize_optional_text(message.get("caption"))
 
-    photo_items = message.get("photo")
-    if isinstance(photo_items, list) and photo_items:
-        file_id = pick_largest_photo_file_id(photo_items)
-        if file_id:
-            prompt = select_media_prompt(text, caption, "Please analyze this image.")
-            return prompt, file_id, None, None
+    photo_file_id, voice_file_id, document = extract_message_media_payload(message)
+    if photo_file_id:
+        prompt = select_media_prompt(text, caption, "Please analyze this image.")
+        return prompt, photo_file_id, None, None
+    if voice_file_id:
+        prompt = select_media_prompt(text, caption, "")
+        return prompt, None, voice_file_id, None
+    if document is not None:
+        prompt = select_media_prompt(text, caption, "Please analyze this file.")
+        return prompt, None, None, document
 
-    voice = message.get("voice")
-    if isinstance(voice, dict):
-        voice_file_id = voice.get("file_id")
-        if isinstance(voice_file_id, str) and voice_file_id.strip():
-            prompt = select_media_prompt(text, caption, "")
-            return prompt, None, voice_file_id.strip(), None
-
-    document = message.get("document")
-    if isinstance(document, dict):
-        file_id = document.get("file_id")
-        if isinstance(file_id, str) and file_id.strip():
-            file_name = document.get("file_name")
-            mime_type = document.get("mime_type")
-            payload = DocumentPayload(
-                file_id=file_id.strip(),
-                file_name=file_name.strip() if isinstance(file_name, str) and file_name.strip() else "unnamed",
-                mime_type=mime_type.strip() if isinstance(mime_type, str) and mime_type.strip() else "unknown",
+    reply_to = message.get("reply_to_message")
+    if isinstance(reply_to, dict):
+        reply_photo_file_id, reply_voice_file_id, reply_document = extract_message_media_payload(
+            reply_to
+        )
+        if reply_photo_file_id:
+            prompt = select_media_prompt(text, caption, "Please analyze the referenced image.")
+            return prompt, reply_photo_file_id, None, None
+        if reply_voice_file_id:
+            prompt = select_media_prompt(
+                text,
+                caption,
+                "Please transcribe the referenced voice message.",
             )
-            prompt = select_media_prompt(text, caption, "Please analyze this file.")
-            return prompt, None, None, payload
+            return prompt, None, reply_voice_file_id, None
+        if reply_document is not None:
+            prompt = select_media_prompt(text, caption, "Please analyze the referenced file.")
+            return prompt, None, None, reply_document
 
     if text is not None:
         return text, None, None, None

@@ -44,6 +44,7 @@ Last updated: 2026-03-10 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-10: hardened follow-up handling for replied media by teaching the shared bridge to reuse photo/document/voice payloads from replied-to messages, and teaching the Govorun WhatsApp Node transport to preserve quoted media metadata so later questions about the same image/file no longer depend only on a one-shot temp download.
 - 2026-03-10: tightened Govorun WhatsApp reply brevity by updating the live Govorun runtime `AGENTS.md` plus the bridge `TELEGRAM_RESPONSE_STYLE_HINT`, with the tracked WhatsApp env example aligned to keep replies short by default unless more detail is requested.
 - 2026-03-09: fully purged ASTER from Server3 by removing the live `aster-trader` runtime/user artifacts and the shared-core ASTER routing/code/docs/tests/templates so the remaining Telegram, Signal, and WhatsApp runtimes no longer carry dormant ASTER baggage.
 - 2026-03-09: enabled always-on Architect Joplin sync by adding the `joplin-architect-sync` systemd service/timer, with the local profile `/home/architect/.config/joplin` now syncing to Nextcloud every 5 minutes even when no Joplin client is open.

@@ -47,6 +47,9 @@ const storedFileOrder = [];
 const outboundMessageKeys = new Map();
 const outboundMessageOrder = [];
 const MAX_OUTBOUND_MESSAGE_KEYS = 2000;
+const inboundReplyContexts = new Map();
+const inboundReplyContextOrder = [];
+const MAX_INBOUND_REPLY_CONTEXTS = 2000;
 const STORED_FILES_CLEANUP_INTERVAL_MS = 60 * 1000;
 
 let nextInternalMessageId = 1;
@@ -136,6 +139,73 @@ function rememberMessageRef(internalMessageId, chatJid, waMessageId, waMessage =
       outboundMessageKeys.delete(victim);
     }
   }
+}
+
+function buildInboundReplyContext(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const context = {};
+  if (typeof payload.text === 'string' && payload.text.trim()) {
+    context.text = payload.text.trim();
+  }
+  if (typeof payload.caption === 'string' && payload.caption.trim()) {
+    context.caption = payload.caption.trim();
+  }
+  if (Array.isArray(payload.photo) && payload.photo.length > 0) {
+    context.photo = payload.photo
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => ({ ...item }));
+  }
+  if (payload.voice && typeof payload.voice === 'object') {
+    context.voice = { ...payload.voice };
+  }
+  if (payload.document && typeof payload.document === 'object') {
+    context.document = { ...payload.document };
+  }
+  if (payload.from && typeof payload.from === 'object') {
+    context.from = { ...payload.from };
+  }
+  if (Object.keys(context).length === 0) {
+    return null;
+  }
+  return context;
+}
+
+function rememberInboundReplyContext(waMessageId, payload) {
+  const normalizedWaMessageId = String(waMessageId || '').trim();
+  if (!normalizedWaMessageId) return;
+  const context = buildInboundReplyContext(payload);
+  if (!context) return;
+
+  inboundReplyContexts.set(normalizedWaMessageId, context);
+  const existingIndex = inboundReplyContextOrder.indexOf(normalizedWaMessageId);
+  if (existingIndex >= 0) {
+    inboundReplyContextOrder.splice(existingIndex, 1);
+  }
+  inboundReplyContextOrder.push(normalizedWaMessageId);
+  while (inboundReplyContextOrder.length > MAX_INBOUND_REPLY_CONTEXTS) {
+    const victim = inboundReplyContextOrder.shift();
+    if (victim) {
+      inboundReplyContexts.delete(victim);
+    }
+  }
+}
+
+function hydrateInboundReplyContext(reply) {
+  if (!reply || typeof reply !== 'object') return reply;
+  const waMessageId = String(reply.wa_message_id || '').trim();
+  if (!waMessageId) return reply;
+  const stored = inboundReplyContexts.get(waMessageId);
+  if (!stored) return reply;
+  return {
+    ...stored,
+    ...reply,
+    from: reply.from || stored.from,
+    text: reply.text || stored.text,
+    caption: reply.caption || stored.caption,
+    photo: reply.photo || stored.photo,
+    voice: reply.voice || stored.voice,
+    document: reply.document || stored.document
+  };
 }
 
 function resolveReplyMessage(chatJid, replyToMessageIdRaw) {
@@ -482,7 +552,7 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
   if (text) payload.text = text;
 
   const message = extractNormalizedMessageContent(msg);
-  const replyToMessage = extractReplyContextFromBaileysMessage(msg);
+  const replyToMessage = hydrateInboundReplyContext(extractReplyContextFromBaileysMessage(msg));
   if (replyToMessage) {
     payload.reply_to_message = replyToMessage;
   }
@@ -567,6 +637,7 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
     return null;
   }
   rememberMessageRef(internalMessageId, chatJid, msg?.key?.id || null, msg, false);
+  rememberInboundReplyContext(msg?.key?.id || null, payload);
   return payload;
 }
 
