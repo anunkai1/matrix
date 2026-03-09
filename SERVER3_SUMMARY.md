@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-09 (AEST, +10:00)
+Last updated: 2026-03-10 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -44,6 +44,7 @@ Last updated: 2026-03-09 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-10: tightened Govorun WhatsApp reply brevity by updating the live Govorun runtime `AGENTS.md` plus the bridge `TELEGRAM_RESPONSE_STYLE_HINT`, with the tracked WhatsApp env example aligned to keep replies short by default unless more detail is requested.
 - 2026-03-09: fully purged ASTER from Server3 by removing the live `aster-trader` runtime/user artifacts and the shared-core ASTER routing/code/docs/tests/templates so the remaining Telegram, Signal, and WhatsApp runtimes no longer carry dormant ASTER baggage.
 - 2026-03-09: enabled always-on Architect Joplin sync by adding the `joplin-architect-sync` systemd service/timer, with the local profile `/home/architect/.config/joplin` now syncing to Nextcloud every 5 minutes even when no Joplin client is open.
 - 2026-03-09: fixed `telegram-bridge-ci` after the Govorun AGENTS-only executor change by updating the executor regression tests to assert the new contract: prompts no longer embed `AGENTS.md` text and overlay executions now run from `TELEGRAM_RUNTIME_ROOT`.
