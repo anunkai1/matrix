@@ -4,207 +4,185 @@ Status: planning-only
 
 ## Document Role
 
-This file is the human-readable planning spec for an OpenClaw-style browser automation layer on Server3.
+This file is the planning and operator document for a Server3 browser-automation runtime modeled after the useful parts of OpenClaw browser control.
 
 It should contain:
 
-- current planning decisions
+- decisions already made
 - rationale for those decisions
 - next actions before implementation
 
 ## Purpose
 
-Define the first usable version of a Server3 browser-control layer that a bot can use through Telegram or CLI.
+Define a robust browser-control layer on Server3 that a bot can use to operate a real browser reliably.
 
-The goal is not screenshot-only automation. The goal is a reliable browser operator that can:
+The goal is not a screenshot-only click bot. The goal is a browser service that:
 
-- open websites
-- read what is on the page in a structured way
-- click elements
-- type into forms
-- switch tabs
-- take screenshots for verification
+- opens and controls a real browser on Server3
+- reads the page in a structured way
+- acts on identified page elements
+- survives normal web friction such as popups, waits, login state, and page changes better than image-only automation
+
+## Decisions
 
 ## Product Shape
 
-The MVP should behave like this:
+The browser-automation MVP should be:
 
-- Server3 runs a real browser under a dedicated profile
-- a local control service can drive that browser
-- a bot-facing tool can call that service
-- screenshots are optional verification, not the primary control method
-- page structure should be used when possible instead of coordinate guessing
+- a dedicated browser runtime on Server3
+- controlled by a local service
+- callable by higher-level bot runtimes later
+- based on structured page inspection first, with screenshots as supporting evidence
+- separate from any personal browser profile
 
-## Why This Exists
+This is explicitly closer to OpenClaw-style browser control than to coordinate-click automation.
 
-This gives Server3 a reusable browser capability that can later be shared by multiple agents or runtime modules.
+## What "OpenClaw-style" Means Here
 
-Good uses for this layer:
+For this project, "OpenClaw-style" means:
 
-- website login and navigation
-- reading web pages that have no clean API
-- filling simple forms
-- taking screenshots after an action
-- letting a chat-controlled assistant use a browser more reliably
+- operate a real browser, not a fake DOM-only simulator
+- expose a small browser action surface such as open, navigate, inspect page, click, type, screenshot, and manage tabs
+- inspect page structure in a stable way instead of relying only on screenshots
+- identify and act on page elements deliberately instead of approximate visual clicking
+- maintain a clean browser session and profile boundary
+- aim for reliability across real-world browser issues such as popups, timing delays, tab state, and login flows
 
 ## MVP Scope
 
 Included:
 
-- one dedicated browser runtime on Server3
-- one isolated browser profile
-- one local browser control service
-- one simple action surface for:
-  - open URL
-  - list tabs
-  - switch tab
-  - close tab
-  - read page structure
-  - click
-  - type
-  - capture screenshot
-- bot/CLI integration point for calling those actions
+- launch a dedicated browser on Server3 under its own profile
+- navigate to pages
+- inspect the current page in a structured form
+- list and track tabs
+- click identified elements
+- type into identified fields
+- take screenshots for verification
+- keep browser state isolated from normal user browsing
+- expose the browser runtime behind a local control service
 
 Excluded from MVP:
 
-- full visual-only automation
-- OCR-first control loops
-- complex login/session persistence across many unrelated accounts
-- arbitrary desktop automation outside the browser
-- autonomous multi-step browser tasks without user direction
-- broad multi-user shared browsing
+- full general web-agent autonomy
+- account/password vaulting
+- arbitrary multi-site workflow execution without supervision
+- visual-only coordinate clicking as the primary control method
+- support for every browser family from day one
+- broad multi-user browser tenancy
 
-## High-Level Architecture
+## Runtime Shape
 
-The MVP has four parts:
+Recommended runtime model:
 
-1. Browser runtime
-   - a real Chromium/Chrome browser running on Server3
-   - isolated profile, separate from any personal browsing state
+- one isolated Linux user for browser control
+- one dedicated browser profile
+- one long-running browser-control service
+- one local API or IPC surface for higher-level bot/runtime callers
+- one state/log directory separate from existing chat runtimes
 
+High-level components:
+
+1. Browser process
 2. Browser control service
-   - a local service that can talk to the browser
-   - exposes actions like open, read page, click, type, screenshot
-
-3. Structured page-reading layer
-   - returns page structure in a stable way
-   - gives the bot identifiable elements to act on
-   - avoids relying only on screenshots
-
-4. Bot/CLI adapter
-   - lets a bot or CLI request browser actions
-   - returns readable results and screenshots when useful
-
-## Runtime and Isolation
-
-Recommended runtime shape:
-
-- dedicated Linux user for the browser service
-- dedicated browser profile directory
-- dedicated env/state/logs
-- dedicated systemd unit(s)
-- shared main repo for code
-
-This should follow the same broad Server3 pattern already used for isolated bot runtimes.
+3. Structured page-inspection layer
+4. Action executor
+5. Optional screenshot capture for audit/verification
+6. Bot/tool wrapper later
 
 ## Control Model
 
-The browser layer should not decide tasks on its own.
+The browser-control service should expose a small stable action set, for example:
 
-For MVP:
+- open or navigate to URL
+- inspect current page structure
+- list tabs
+- switch tabs
+- click element
+- type into element
+- capture screenshot
+- close tab
 
-- the user or calling bot issues the instruction
-- the browser layer executes a narrow requested action
-- multi-step tasks should still be driven by an external controller
+The key requirement is that actions should be based on identified page elements from structured inspection, not approximate screen coordinates.
 
-Examples:
+## Reliability Goals
 
-- "open example.com"
-- "read this page"
-- "click element 12"
-- "type this text into the email field"
-- "take a screenshot"
+The MVP should aim to handle:
 
-## Reliability Principles
+- ordinary page loads and reloads
+- delayed rendering
+- simple popups and overlays
+- tab changes
+- login-state continuity inside the dedicated browser profile
+- basic retries when a page changes between inspection and action
 
-The implementation should prefer:
+The MVP should avoid:
 
-- structured page reading over screenshot guessing
-- element-targeted actions over coordinate clicking
-- isolated browser profile over personal profile reuse
-- simple deterministic actions over broad autonomy
-- screenshots for verification after actions, not as the main control surface
+- "click somewhere near the blue button" behavior
+- brittle dependence on screenshots alone
+- mixing browser state with personal browsing
+- leaving the browser profile in a dirty or ambiguous state between runs
 
-## Why Not Screenshot-Only
+## Safety Goals
 
-Screenshot-only browser control is faster to build, but it is much less reliable.
+The browser layer should be safe enough that higher-level bots do not act randomly through it.
 
-Problems with screenshot-only control:
+That means:
 
-- buttons move
-- pages resize
-- popups shift layout
-- the bot guesses where to click
-- text entry targets are easier to miss
+- explicit action surface
+- explicit target selection
+- structured page reading before acting
+- bounded retries
+- no silent free-form browser improvisation
+- clear logs of what was opened, inspected, clicked, or typed
 
-Using page structure is more reliable because the bot can target specific elements rather than guessing from pixels.
+## Why This Is Hard
 
-## Server3 Fit
+The hard part is not opening a browser. The hard part is reliability.
 
-This can be implemented on Server3 because Server3 already has:
+The complexity comes from:
 
-- systemd-managed runtimes
-- isolated Linux users for services
-- bot-control patterns
-- desktop/browser operational tooling
-- a shared repo plus per-runtime isolation model
-
-So the hosting model fits well. The harder part is making the browser-control logic reliable.
-
-## Example Interaction Shape
-
-User:
-`Open bbc.com and tell me the main headlines`
-
-Bot:
-`Opened bbc.com. I found 8 major headline elements. The top headlines are: ...`
-
-User:
-`Click the first headline and take a screenshot`
-
-Bot:
-`Clicked the first headline and captured a screenshot.`
+- pages changing after inspection
+- popups and overlays intercepting clicks
+- timing and async rendering
+- login/session persistence
+- stale element references
+- pages that look simple in screenshots but are structurally messy underneath
+- keeping the browser profile clean and reusable across sessions
 
 ## Rationale
 
 Key rationale behind this MVP shape:
 
-- build a reusable browser capability instead of one-off page scripts
-- keep the first version local to Server3 instead of adding remote browser complexity
-- avoid image-only automation because it creates brittle behavior
-- keep the browser runtime isolated so state and failures do not bleed into other services
-- make the browser layer a tool that other bots can call later
+- a screenshot-only browser bot is fast to build but too brittle to be a good foundation
+- structured page inspection is the core step that makes browser automation meaningfully more reliable
+- isolating the browser profile and runtime prevents pollution of personal browsing state and reduces debugging confusion
+- a small action surface is easier to trust, test, and harden than open-ended browser freedom
+- keeping the browser layer separate from any one bot lets it become reusable infrastructure for Server3 later
 
 ## Next Actions
 
 Before implementation starts, tighten these planning points:
 
-1. Decide whether the browser service is shared by multiple bots or private to one caller in the first cut.
-2. Decide the exact browser choice for MVP: Chromium or Chrome.
-3. Define the page-structure format returned to the bot.
-4. Define how screenshots are stored, retained, and exposed back to the caller.
-5. Decide whether the first caller is Architect, a dedicated bot, or CLI-first.
-6. Decide whether login/session persistence is in scope for the first cut or explicitly delayed.
-7. Define the minimal action set that is actually required for the first milestone.
+1. Decide the exact browser engine for MVP, likely Chromium or Chrome.
+2. Decide the control method, likely CDP-backed local control.
+3. Define the exact structured inspection format the service will return.
+4. Define the initial action schema for click, type, navigate, screenshot, and tab operations.
+5. Decide how the service should recover from stale page state between inspect and act.
+6. Decide whether screenshots are stored only temporarily or retained for audit/debug.
+7. Decide which higher-level runtime will call this first, if any, or whether it starts as a standalone local service.
 
 ## Expansion Path After MVP
 
-After the first working version, possible extensions are:
+Planned expansion order:
 
-1. better page summarization
-2. more robust element discovery
-3. session persistence controls
-4. support for more complex workflows
-5. multi-runtime callers
-6. optional remote browser host support
-7. higher-level browser task planning
+1. robust page inspection and action targeting
+2. better popup and overlay handling
+3. session persistence hardening
+4. higher-level workflow composition
+5. integration into one or more chat runtimes
+6. support for more complex multi-step web tasks
+
+## Source of Truth
+
+This file is the current planning source for the browser-automation MVP on Server3 until a stricter contract is needed.
