@@ -1,0 +1,118 @@
+version: 1
+status: planning_only
+
+runtime:
+  name: mavali_eth
+  linux_user: mavali_eth
+  telegram_bot_name: mavali_eth_bot
+  dedicated_runtime: true
+  shared_core_repo: true
+  private_chat_only: true
+  required_prefix_private_chat: false
+
+wallet:
+  network: ethereum_mainnet
+  create_fresh_on_server3: true
+  wallet_role: primary_long_lived
+  encrypted_key_file: true
+  unlock_mode: auto_at_service_start
+  unlock_passphrase_source: env
+  address_format_mvp: raw_0x_only
+  ens_resolution: false
+
+surfaces:
+  telegram:
+    enabled: true
+    same_command_model_as_cli: true
+  cli:
+    enabled: true
+    same_command_model_as_telegram: true
+
+state:
+  shared_wallet: true
+  shared_transaction_ledger: true
+  shared_wallet_state: true
+  separate_chat_threads: true
+  separate_session_threads: true
+
+interaction:
+  natural_language_only: true
+  read_only_questions_supported: true
+  ask_follow_up_on_ambiguity: true
+  ask_for_advice_when_uncertain: true
+  plan_restatement_before_execution: plain_english
+  confirmation_token: confirm
+  confirmation_binding: immediate_pending_action_only
+  pending_action_expiry_minutes: 10
+  max_pending_actions_per_session: 1
+
+startup_reporting:
+  proactive_message: true
+  fields:
+    - wallet_address
+    - current_eth_balance
+
+mvp_scope:
+  included:
+    - create_wallet
+    - show_wallet_address
+    - show_eth_balance
+    - estimate_eth_funding_guidance
+    - send_native_eth
+    - report_confirmed_inbound_native_eth
+  excluded:
+    - erc20_send
+    - swaps
+    - approvals
+    - revoke_approvals
+    - uniswap_execution
+    - bridging
+    - non_ethereum_chains
+    - arbitrary_contract_calls
+    - autonomous_trading
+
+execution:
+  owner_command_only: true
+  full_bot_signing: true
+  malformed_tx_prevention: true
+  wrong_chain_prevention: true
+  hallucinated_param_prevention: true
+  user_surprising_action_prevention: true
+  allowed_address_scope: any_raw_0x_address_from_user
+
+limits:
+  gas_cap:
+    enabled: true
+    unit: gwei
+    behavior_on_exceed: ask_owner
+  slippage_cap:
+    enabled: true
+    apply_in_mvp: false
+    retained_for_future_swaps: true
+  other_allowlists: false
+  bankroll_is_primary_risk_control: true
+
+receipt_monitoring:
+  enabled: true
+  network: ethereum_mainnet
+  asset_scope: native_eth_only
+  confirmation_scope: confirmed_only
+  polling_interval_minutes: 30
+  notify_only_on_new_receipts: true
+  notification_fields:
+    - sender_address
+    - amount
+    - tx_hash
+
+rpc:
+  provider: alchemy
+  network: ethereum_mainnet
+
+expansion_path:
+  - erc20_balance_and_send
+  - exact_amount_approvals
+  - revoke_approvals
+  - uniswap_swaps
+  - broader_ethereum_wallet_actions
+  - additional_evm_chains
+  - protocol_modules
