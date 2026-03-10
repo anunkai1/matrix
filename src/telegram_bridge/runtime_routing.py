@@ -60,6 +60,7 @@ def apply_required_prefix_gate(
     client,
     config,
     prompt_input: Optional[str],
+    has_reply_context: bool,
     voice_file_id: Optional[str],
     document,
     is_private_chat: bool,
@@ -92,7 +93,7 @@ def apply_required_prefix_gate(
     )
     if not has_required_prefix:
         return PrefixGateResult(prompt_input=prompt_input, ignored=True, rejection_reason="prefix_required")
-    if not stripped_prompt and voice_file_id is None and document is None:
+    if not stripped_prompt and voice_file_id is None and document is None and not has_reply_context:
         return PrefixGateResult(
             prompt_input=stripped_prompt,
             rejection_reason="prefix_missing_action",

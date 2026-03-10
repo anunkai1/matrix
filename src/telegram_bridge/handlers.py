@@ -2861,10 +2861,13 @@ def handle_update(
         message=message,
     )
 
+    reply_context_prompt = build_reply_context_prompt(message)
+
     prefix_result = apply_required_prefix_gate(
         client=client,
         config=config,
         prompt_input=prompt_input,
+        has_reply_context=bool(reply_context_prompt),
         voice_file_id=voice_file_id,
         document=document,
         is_private_chat=is_private_chat,
@@ -3001,7 +3004,6 @@ def handle_update(
             )
             return
 
-    reply_context_prompt = build_reply_context_prompt(message)
     prompt = (prompt_input or "").strip()
     if reply_context_prompt:
         if prompt:

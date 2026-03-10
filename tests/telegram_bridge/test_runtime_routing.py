@@ -32,6 +32,7 @@ class RuntimeRoutingTests(unittest.TestCase):
             client=client,
             config=config,
             prompt_input="hello there",
+            has_reply_context=False,
             voice_file_id=None,
             document=None,
             is_private_chat=False,
@@ -41,6 +42,29 @@ class RuntimeRoutingTests(unittest.TestCase):
 
         self.assertTrue(result.ignored)
         self.assertEqual(result.rejection_reason, "prefix_required")
+
+    def test_apply_required_prefix_gate_allows_prefix_only_reply_when_context_exists(self) -> None:
+        client = SimpleNamespace(channel_name="whatsapp")
+        config = SimpleNamespace(
+            required_prefixes=["govorun"],
+            required_prefix_ignore_case=True,
+            require_prefix_in_private=True,
+        )
+
+        result = runtime_routing.apply_required_prefix_gate(
+            client=client,
+            config=config,
+            prompt_input="govorun",
+            has_reply_context=True,
+            voice_file_id=None,
+            document=None,
+            is_private_chat=False,
+            normalize_command=lambda text: None,
+            strip_required_prefix=lambda text, prefixes, ignore_case: (True, ""),
+        )
+
+        self.assertEqual(result.prompt_input, "")
+        self.assertIsNone(result.rejection_reason)
 
     def test_apply_priority_keyword_routing_rejects_empty_server3_request(self) -> None:
         config = SimpleNamespace(keyword_routing_enabled=True)

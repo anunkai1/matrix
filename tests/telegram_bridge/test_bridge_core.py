@@ -1906,6 +1906,33 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Helper mode needs a prefixed prompt.", client.messages[0][1])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_allows_prefix_only_reply_to_use_reply_context(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient(channel_name="whatsapp")
+        config = make_config(required_prefixes=["говорун"], channel_plugin="whatsapp")
+        update = {
+            "update_id": 1024,
+            "message": {
+                "message_id": 2024,
+                "chat": {"id": 1, "type": "group"},
+                "text": "говорун",
+                "reply_to_message": {
+                    "text": "Посмотри на это и ответь по сути.",
+                    "from": {"username": "Vlad"},
+                },
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertIn("Контекст ответа:", kwargs["prompt"])
+        self.assertIn("Автор исходного сообщения: Vlad", kwargs["prompt"])
+        self.assertIn("Посмотри на это и ответь по сути.", kwargs["prompt"])
+        self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
     @mock.patch.object(bridge_handlers, "archive_media_path", return_value="/tmp/archive.jpg")
     @mock.patch.object(bridge_handlers, "download_photo_to_temp", return_value="/tmp/incoming.jpg")
     @mock.patch("handlers.os.remove")
