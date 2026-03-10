@@ -44,6 +44,7 @@ Last updated: 2026-03-10 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-10: fixed a live WhatsApp quoted-image gap after transport restarts by teaching the Govorun Node transport to reconstruct quoted media directly from Baileys `quotedMessage` payloads instead of depending only on in-memory reply-context cache.
 - 2026-03-10: added a bounded attachment archive to the shared bridge so image/file follow-ups can reuse previously seen media for about 14 days by default, with archived-summary fallback after binary expiry and live activation on `govorun-whatsapp-bridge.service`.
 - 2026-03-10: hardened follow-up handling for replied media by teaching the shared bridge to reuse photo/document/voice payloads from replied-to messages, and teaching the Govorun WhatsApp Node transport to preserve quoted media metadata so later questions about the same image/file no longer depend only on a one-shot temp download.
 - 2026-03-10: tightened Govorun WhatsApp reply brevity by updating the live Govorun runtime `AGENTS.md` plus the bridge `TELEGRAM_RESPONSE_STYLE_HINT`, with the tracked WhatsApp env example aligned to keep replies short by default unless more detail is requested.

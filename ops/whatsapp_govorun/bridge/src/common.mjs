@@ -127,16 +127,28 @@ export function extractPlainTextFromBaileysMessage(msg) {
   return getMessageText(msg?.message, false).trim();
 }
 
-export function extractReplyContextFromBaileysMessage(msg) {
+function hasQuotedMedia(normalizedMessage) {
+  if (!normalizedMessage || typeof normalizedMessage !== 'object') return false;
+  return Boolean(
+    normalizedMessage.imageMessage ||
+    normalizedMessage.audioMessage ||
+    normalizedMessage.documentMessage ||
+    normalizedMessage.videoMessage
+  );
+}
+
+export function extractReplyContextInfoFromBaileysMessage(msg) {
   const normalized = unwrapMessageContent(msg?.message);
   const contextInfo = extractContextInfo(normalized);
   if (!contextInfo) return null;
 
+  const quotedMessage = unwrapMessageContent(contextInfo.quotedMessage);
   const quotedText = getMessageText(contextInfo.quotedMessage, true).trim();
   const waMessageId = String(contextInfo.stanzaId || '').trim();
   const participant = String(contextInfo.participant || '').trim();
+  const quotedHasMedia = hasQuotedMedia(quotedMessage);
 
-  if (!quotedText && !waMessageId && !participant) {
+  if (!quotedText && !waMessageId && !participant && !quotedHasMedia) {
     return null;
   }
 
@@ -150,7 +162,14 @@ export function extractReplyContextFromBaileysMessage(msg) {
   if (participant) {
     reply.from = { username: participant };
   }
-  return reply;
+  return {
+    reply,
+    quotedMessage: quotedHasMedia ? quotedMessage : null
+  };
+}
+
+export function extractReplyContextFromBaileysMessage(msg) {
+  return extractReplyContextInfoFromBaileysMessage(msg)?.reply || null;
 }
 
 export function createConfig() {

@@ -17,7 +17,7 @@ import {
   createQueuedCredsSaver,
   ensureDir,
   extractNormalizedMessageContent,
-  extractReplyContextFromBaileysMessage,
+  extractReplyContextInfoFromBaileysMessage,
   extractPlainTextFromBaileysMessage,
   extractTextFromBaileysMessage,
   parseInteger,
@@ -534,6 +534,103 @@ async function downloadIncomingMedia(sock, msg) {
   }
 }
 
+function buildSyntheticQuotedMessage(msg, replyInfo) {
+  const quotedMessage = replyInfo?.quotedMessage;
+  if (!quotedMessage || typeof quotedMessage !== 'object') return null;
+
+  const key = {
+    remoteJid: msg?.key?.remoteJid || '',
+    fromMe: false
+  };
+  const waMessageId = String(replyInfo?.reply?.wa_message_id || '').trim();
+  const participant = String(replyInfo?.reply?.from?.username || '').trim();
+  if (waMessageId) key.id = waMessageId;
+  if (participant) key.participant = participant;
+  return { key, message: quotedMessage };
+}
+
+async function materializeQuotedReplyMedia(sock, msg, replyInfo) {
+  const reply = replyInfo?.reply && typeof replyInfo.reply === 'object' ? { ...replyInfo.reply } : {};
+  if (reply.photo || reply.voice || reply.document) {
+    return Object.keys(reply).length > 0 ? reply : null;
+  }
+
+  const quotedMessage = replyInfo?.quotedMessage;
+  if (!quotedMessage || typeof quotedMessage !== 'object') {
+    return Object.keys(reply).length > 0 ? reply : null;
+  }
+
+  const syntheticMessage = buildSyntheticQuotedMessage(msg, replyInfo);
+  if (!syntheticMessage) {
+    return Object.keys(reply).length > 0 ? reply : null;
+  }
+
+  if (quotedMessage.imageMessage) {
+    const buffer = await downloadIncomingMedia(sock, syntheticMessage);
+    if (buffer) {
+      const mimeType = quotedMessage.imageMessage.mimetype || 'image/jpeg';
+      const metadata = storeMediaBuffer(buffer, mimeType, `quoted-image-${Date.now()}.jpg`, 'quoted-img');
+      if (metadata) {
+        reply.photo = [
+          { file_id: metadata.fileId, file_size: metadata.fileSize, mime_type: metadata.mimeType }
+        ];
+      }
+    }
+    const caption = String(quotedMessage.imageMessage.caption || '').trim();
+    if (caption && !reply.caption) {
+      reply.caption = caption;
+    }
+  } else if (quotedMessage.audioMessage) {
+    const buffer = await downloadIncomingMedia(sock, syntheticMessage);
+    if (buffer) {
+      const mimeType = quotedMessage.audioMessage.mimetype || 'audio/ogg';
+      const metadata = storeMediaBuffer(
+        buffer,
+        mimeType,
+        `quoted-audio-${Date.now()}.ogg`,
+        quotedMessage.audioMessage.ptt ? 'quoted-voice' : 'quoted-audio'
+      );
+      if (metadata) {
+        if (quotedMessage.audioMessage.ptt) {
+          reply.voice = {
+            file_id: metadata.fileId,
+            file_size: metadata.fileSize,
+            mime_type: metadata.mimeType
+          };
+        } else {
+          reply.document = {
+            file_id: metadata.fileId,
+            file_name: metadata.fileName,
+            file_size: metadata.fileSize,
+            mime_type: metadata.mimeType
+          };
+        }
+      }
+    }
+  } else if (quotedMessage.documentMessage) {
+    const buffer = await downloadIncomingMedia(sock, syntheticMessage);
+    if (buffer) {
+      const mimeType = quotedMessage.documentMessage.mimetype || 'application/octet-stream';
+      const fileName = quotedMessage.documentMessage.fileName || `quoted-document-${Date.now()}.bin`;
+      const metadata = storeMediaBuffer(buffer, mimeType, fileName, 'quoted-doc');
+      if (metadata) {
+        reply.document = {
+          file_id: metadata.fileId,
+          file_name: metadata.fileName,
+          file_size: metadata.fileSize,
+          mime_type: metadata.mimeType
+        };
+      }
+    }
+    const caption = String(quotedMessage.documentMessage.caption || '').trim();
+    if (caption && !reply.caption) {
+      reply.caption = caption;
+    }
+  }
+
+  return Object.keys(reply).length > 0 ? reply : null;
+}
+
 async function buildIncomingMessagePayload(sock, msg, chatJid) {
   const chatId = getOrCreateChatId(chatJid);
   const isGroup = chatJid.endsWith('@g.us');
@@ -552,7 +649,17 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
   if (text) payload.text = text;
 
   const message = extractNormalizedMessageContent(msg);
-  const replyToMessage = hydrateInboundReplyContext(extractReplyContextFromBaileysMessage(msg));
+  const replyContextInfo = extractReplyContextInfoFromBaileysMessage(msg);
+  const replyToMessage = await materializeQuotedReplyMedia(
+    sock,
+    msg,
+    replyContextInfo
+      ? {
+          ...replyContextInfo,
+          reply: hydrateInboundReplyContext(replyContextInfo.reply)
+        }
+      : null
+  );
   if (replyToMessage) {
     payload.reply_to_message = replyToMessage;
   }
