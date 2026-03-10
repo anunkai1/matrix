@@ -44,6 +44,7 @@ Last updated: 2026-03-10 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-10: added a new dry-run-first `web3_substrate` package plus example planner and tests so future Polymarket, Uniswap, CoW, and broader Web3 work can share one constrained execution/policy base instead of being built as isolated bot-specific logic.
 - 2026-03-10: fixed Govorun reply-prefix behavior so a prefix-only reply like `говорун` on WhatsApp now uses the quoted/replied-to message as the actionable prompt instead of rejecting with the generic prefixed-prompt help text.
 - 2026-03-10: fixed a live WhatsApp quoted-image gap after transport restarts by teaching the Govorun Node transport to reconstruct quoted media directly from Baileys `quotedMessage` payloads instead of depending only on in-memory reply-context cache.
 - 2026-03-10: added a bounded attachment archive to the shared bridge so image/file follow-ups can reuse previously seen media for about 14 days by default, with archived-summary fallback after binary expiry and live activation on `govorun-whatsapp-bridge.service`.
