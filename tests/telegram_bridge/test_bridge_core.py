@@ -123,6 +123,8 @@ def make_config(**overrides):
         "max_image_bytes": 4096,
         "max_voice_bytes": 4096,
         "max_document_bytes": 4096,
+        "attachment_retention_seconds": 14 * 24 * 60 * 60,
+        "attachment_max_total_bytes": 10 * 1024 * 1024 * 1024,
         "rate_limit_per_minute": 12,
         "executor_cmd": ["/bin/echo"],
         "voice_transcribe_cmd": [],
@@ -1902,6 +1904,39 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertEqual(len(client.messages), 1)
         self.assertIn("Helper mode needs a prefixed prompt.", client.messages[0][1])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    @mock.patch.object(bridge_handlers, "archive_media_path", return_value="/tmp/archive.jpg")
+    @mock.patch.object(bridge_handlers, "download_photo_to_temp", return_value="/tmp/incoming.jpg")
+    @mock.patch("handlers.os.remove")
+    def test_handle_update_prewarms_attachment_archive_for_unprefixed_photo(
+        self,
+        remove_mock,
+        download_photo_to_temp,
+        archive_media_path,
+        start_message_worker,
+    ):
+        attachment_store = mock.Mock()
+        attachment_store.get_record.return_value = None
+        attachment_store.get_summary.return_value = ""
+        state = bridge.State(attachment_store=attachment_store)
+        client = FakeTelegramClient(channel_name="whatsapp")
+        config = make_config(required_prefixes=["govorun"], channel_plugin="whatsapp")
+        update = {
+            "update_id": 1025,
+            "message": {
+                "message_id": 2025,
+                "chat": {"id": 1, "type": "group"},
+                "photo": [{"file_id": "photo-archive-1", "file_size": 100}],
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertFalse(start_message_worker.called)
+        download_photo_to_temp.assert_called_once()
+        archive_media_path.assert_called_once()
+        remove_mock.assert_called_once_with("/tmp/incoming.jpg")
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_defers_voice_prefix_check_to_transcript_when_required(

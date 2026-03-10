@@ -50,6 +50,7 @@ class State:
     restart_chat_id: Optional[int] = None
     restart_reply_to_message_id: Optional[int] = None
     memory_engine: Optional[object] = None
+    attachment_store: Optional[object] = None
     voice_alias_learning_store: Optional[object] = None
     cancel_events: Dict[int, threading.Event] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)

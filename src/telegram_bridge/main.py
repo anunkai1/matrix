@@ -9,6 +9,7 @@ from typing import Dict, Optional
 from urllib.error import HTTPError, URLError
 
 try:
+    from .attachment_store import AttachmentStore
     from .channel_adapter import ChannelAdapter
     from .executor import (
         ExecutorProgressEvent,
@@ -62,6 +63,7 @@ try:
     from .transport import TELEGRAM_LIMIT, TelegramClient, to_telegram_chunks
     from .voice_alias_learning import VoiceAliasLearningStore
 except ImportError:
+    from attachment_store import AttachmentStore
     from channel_adapter import ChannelAdapter
     from executor import (
         ExecutorProgressEvent,
@@ -336,6 +338,12 @@ def run_bridge(config: Config) -> int:
         },
     )
     ensure_state_dir(config.state_dir)
+    attachment_store = AttachmentStore(
+        os.path.join(config.state_dir, "attachments.sqlite3"),
+        os.path.join(config.state_dir, "attachments"),
+        retention_seconds=config.attachment_retention_seconds,
+        max_total_bytes=config.attachment_max_total_bytes,
+    )
     memory_engine = MemoryEngine(
         config.memory_sqlite_path,
         max_messages_per_key=config.memory_max_messages_per_key,
@@ -625,6 +633,7 @@ def run_bridge(config: Config) -> int:
         chat_sessions=loaded_canonical_sessions,
         chat_sessions_path=chat_sessions_path,
         memory_engine=memory_engine,
+        attachment_store=attachment_store,
         voice_alias_learning_store=voice_alias_learning_store,
     )
     state_repo = StateRepository(state)
@@ -731,6 +740,12 @@ def run_bridge(config: Config) -> int:
     logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
     logging.info("Memory SQLite path=%s", config.memory_sqlite_path)
     logging.info(
+        "Attachment archive path=%s retention_seconds=%s max_total_bytes=%s",
+        os.path.join(config.state_dir, "attachments.sqlite3"),
+        config.attachment_retention_seconds,
+        config.attachment_max_total_bytes,
+    )
+    logging.info(
         "Memory retention max_messages_per_key=%s max_summaries_per_key=%s prune_interval_seconds=%s",
         config.memory_max_messages_per_key,
         config.memory_max_summaries_per_key,
@@ -778,6 +793,8 @@ def run_bridge(config: Config) -> int:
             "memory_max_messages_per_key": config.memory_max_messages_per_key,
             "memory_max_summaries_per_key": config.memory_max_summaries_per_key,
             "memory_prune_interval_seconds": config.memory_prune_interval_seconds,
+            "attachment_retention_seconds": config.attachment_retention_seconds,
+            "attachment_max_total_bytes": config.attachment_max_total_bytes,
             "channel_plugin": config.channel_plugin,
             "engine_plugin": config.engine_plugin,
             "whatsapp_plugin_enabled": config.whatsapp_plugin_enabled,

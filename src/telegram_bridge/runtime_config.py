@@ -38,6 +38,8 @@ class Config:
     max_image_bytes: int
     max_voice_bytes: int
     max_document_bytes: int
+    attachment_retention_seconds: int
+    attachment_max_total_bytes: int
     rate_limit_per_minute: int
     executor_cmd: List[str]
     voice_transcribe_cmd: List[str]
@@ -335,6 +337,16 @@ def load_config() -> Config:
         max_image_bytes=parse_int_env("TELEGRAM_MAX_IMAGE_BYTES", 10 * 1024 * 1024, minimum=1024),
         max_voice_bytes=parse_int_env("TELEGRAM_MAX_VOICE_BYTES", 20 * 1024 * 1024, minimum=1024),
         max_document_bytes=parse_int_env("TELEGRAM_MAX_DOCUMENT_BYTES", 50 * 1024 * 1024, minimum=1024),
+        attachment_retention_seconds=parse_int_env(
+            "TELEGRAM_ATTACHMENT_RETENTION_SECONDS",
+            14 * 24 * 60 * 60,
+            minimum=0,
+        ),
+        attachment_max_total_bytes=parse_int_env(
+            "TELEGRAM_ATTACHMENT_MAX_TOTAL_BYTES",
+            10 * 1024 * 1024 * 1024,
+            minimum=1024 * 1024,
+        ),
         rate_limit_per_minute=parse_int_env("TELEGRAM_RATE_LIMIT_PER_MINUTE", 12),
         executor_cmd=parse_executor_cmd(),
         voice_transcribe_cmd=parse_optional_cmd_env("TELEGRAM_VOICE_TRANSCRIBE_CMD"),

@@ -6,7 +6,7 @@ import subprocess
 import threading
 import time
 from difflib import SequenceMatcher
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -154,6 +154,8 @@ class PreparedPromptInput:
     prompt_text: str
     image_path: Optional[str] = None
     document_path: Optional[str] = None
+    cleanup_paths: List[str] = field(default_factory=list)
+    attachment_file_ids: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -1108,6 +1110,67 @@ def build_document_analysis_context(
     )
 
 
+def build_archived_attachment_summary_context(media_label: str, summary: str) -> str:
+    clean_summary = (summary or "").strip()
+    if not clean_summary:
+        return ""
+    return (
+        f"Archived {media_label} context:\n"
+        f"- Fresh {media_label} bytes are no longer available.\n"
+        f"- Prior analysis summary: {clean_summary}"
+    )
+
+
+def archive_media_path(
+    attachment_store,
+    *,
+    channel_name: str,
+    file_id: str,
+    media_kind: str,
+    source_path: str,
+    file_name: str = "",
+    mime_type: str = "",
+) -> Optional[str]:
+    if attachment_store is None:
+        return None
+    try:
+        record = attachment_store.remember_file(
+            channel=channel_name,
+            file_id=file_id,
+            media_kind=media_kind,
+            source_path=source_path,
+            file_name=file_name,
+            mime_type=mime_type,
+        )
+    except Exception:
+        logging.exception(
+            "Failed to archive inbound %s for channel=%s file_id=%s",
+            media_kind,
+            channel_name,
+            file_id,
+        )
+        return None
+    return record.local_path
+
+
+def resolve_attachment_binary_or_summary(
+    attachment_store,
+    *,
+    channel_name: str,
+    file_id: str,
+    media_label: str,
+) -> tuple[Optional[str], str]:
+    if attachment_store is None:
+        return None, ""
+    record = attachment_store.get_record(channel_name, file_id)
+    if record is not None:
+        return record.local_path, ""
+    summary = attachment_store.get_summary(channel_name, file_id)
+    if not summary:
+        return None, ""
+    return None, build_archived_attachment_summary_context(media_label, summary)
+
+
 def build_voice_transcribe_command(cmd_template: List[str], voice_path: str) -> List[str]:
     cmd: List[str] = []
     used_placeholder = False
@@ -1576,28 +1639,75 @@ def prepare_prompt_input(
     progress: ProgressReporter,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> Optional[PreparedPromptInput]:
+    channel_name = getattr(client, "channel_name", "telegram")
+    attachment_store = getattr(state, "attachment_store", None)
     prompt_text = prompt.strip()
     image_path: Optional[str] = None
     document_path: Optional[str] = None
+    cleanup_paths: List[str] = []
+    attachment_file_ids: List[str] = []
 
     if photo_file_id:
-        progress.set_phase("Downloading image from Telegram.")
-        try:
-            image_path = download_photo_to_temp(client, config, photo_file_id)
-        except ValueError as exc:
-            logging.warning("Photo rejected for chat_id=%s: %s", chat_id, exc)
-            progress.mark_failure("Image request rejected.")
-            client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
-            return None
-        except Exception:
-            logging.exception("Photo download failed for chat_id=%s", chat_id)
-            progress.mark_failure("Image download failed.")
-            client.send_message(
-                chat_id,
-                config.image_download_error_message,
-                reply_to_message_id=message_id,
-            )
-            return None
+        attachment_file_ids.append(photo_file_id)
+        image_path, archived_summary_context = resolve_attachment_binary_or_summary(
+            attachment_store,
+            channel_name=channel_name,
+            file_id=photo_file_id,
+            media_label="image",
+        )
+        if image_path is None:
+            progress.set_phase("Downloading image from Telegram.")
+            try:
+                downloaded_image_path = download_photo_to_temp(client, config, photo_file_id)
+                archived_image_path = archive_media_path(
+                    attachment_store,
+                    channel_name=channel_name,
+                    file_id=photo_file_id,
+                    media_kind="photo",
+                    source_path=downloaded_image_path,
+                )
+                if archived_image_path:
+                    image_path = archived_image_path
+                    try:
+                        os.remove(downloaded_image_path)
+                    except OSError:
+                        logging.warning(
+                            "Failed to remove temporary image after archiving: %s",
+                            downloaded_image_path,
+                        )
+                else:
+                    image_path = downloaded_image_path
+                    cleanup_paths.append(downloaded_image_path)
+            except ValueError as exc:
+                if archived_summary_context:
+                    if prompt_text:
+                        prompt_text = f"{prompt_text}\n\n{archived_summary_context}"
+                    else:
+                        prompt_text = archived_summary_context
+                else:
+                    logging.warning("Photo rejected for chat_id=%s: %s", chat_id, exc)
+                    progress.mark_failure("Image request rejected.")
+                    client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+                    return None
+            except Exception:
+                if archived_summary_context:
+                    logging.warning(
+                        "Photo redownload failed for chat_id=%s; using archived summary fallback.",
+                        chat_id,
+                    )
+                    if prompt_text:
+                        prompt_text = f"{prompt_text}\n\n{archived_summary_context}"
+                    else:
+                        prompt_text = archived_summary_context
+                else:
+                    logging.exception("Photo download failed for chat_id=%s", chat_id)
+                    progress.mark_failure("Image download failed.")
+                    client.send_message(
+                        chat_id,
+                        config.image_download_error_message,
+                        reply_to_message_id=message_id,
+                    )
+                    return None
 
     if voice_file_id:
         progress.set_phase("Transcribing voice message.")
@@ -1669,29 +1779,88 @@ def prepare_prompt_input(
             prompt_text = transcript
 
     if document:
-        progress.set_phase("Downloading file from Telegram.")
-        try:
-            document_path, file_size = download_document_to_temp(client, config, document)
-        except ValueError as exc:
-            logging.warning("Document rejected for chat_id=%s: %s", chat_id, exc)
-            progress.mark_failure("File request rejected.")
-            client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
-            return None
-        except Exception:
-            logging.exception("Document download failed for chat_id=%s", chat_id)
-            progress.mark_failure("File download failed.")
-            client.send_message(
-                chat_id,
-                config.document_download_error_message,
-                reply_to_message_id=message_id,
+        attachment_file_ids.append(document.file_id)
+        archived_document_summary = ""
+        if attachment_store is not None:
+            archived_document_summary = build_archived_attachment_summary_context(
+                "file",
+                attachment_store.get_summary(channel_name, document.file_id),
             )
-            return None
-
-        context = build_document_analysis_context(document_path, document, file_size)
-        if prompt_text:
-            prompt_text = f"{prompt_text}\n\n{context}"
+        document_record_path, _ = resolve_attachment_binary_or_summary(
+            attachment_store,
+            channel_name=channel_name,
+            file_id=document.file_id,
+            media_label="file",
+        )
+        if document_record_path is not None:
+            document_path = document_record_path
+            file_size = os.path.getsize(document_path)
+            context = build_document_analysis_context(document_path, document, file_size)
+            if prompt_text:
+                prompt_text = f"{prompt_text}\n\n{context}"
+            else:
+                prompt_text = context
         else:
-            prompt_text = context
+            progress.set_phase("Downloading file from Telegram.")
+            try:
+                downloaded_document_path, file_size = download_document_to_temp(client, config, document)
+                archived_document_path = archive_media_path(
+                    attachment_store,
+                    channel_name=channel_name,
+                    file_id=document.file_id,
+                    media_kind="document",
+                    source_path=downloaded_document_path,
+                    file_name=document.file_name,
+                    mime_type=document.mime_type,
+                )
+                if archived_document_path:
+                    document_path = archived_document_path
+                    try:
+                        os.remove(downloaded_document_path)
+                    except OSError:
+                        logging.warning(
+                            "Failed to remove temporary document after archiving: %s",
+                            downloaded_document_path,
+                        )
+                    file_size = os.path.getsize(document_path)
+                else:
+                    document_path = downloaded_document_path
+                    cleanup_paths.append(downloaded_document_path)
+                context = build_document_analysis_context(document_path, document, file_size)
+                if prompt_text:
+                    prompt_text = f"{prompt_text}\n\n{context}"
+                else:
+                    prompt_text = context
+            except ValueError as exc:
+                if archived_document_summary:
+                    if prompt_text:
+                        prompt_text = f"{prompt_text}\n\n{archived_document_summary}"
+                    else:
+                        prompt_text = archived_document_summary
+                else:
+                    logging.warning("Document rejected for chat_id=%s: %s", chat_id, exc)
+                    progress.mark_failure("File request rejected.")
+                    client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+                    return None
+            except Exception:
+                if archived_document_summary:
+                    logging.warning(
+                        "Document redownload failed for chat_id=%s; using archived summary fallback.",
+                        chat_id,
+                    )
+                    if prompt_text:
+                        prompt_text = f"{prompt_text}\n\n{archived_document_summary}"
+                    else:
+                        prompt_text = archived_document_summary
+                else:
+                    logging.exception("Document download failed for chat_id=%s", chat_id)
+                    progress.mark_failure("File download failed.")
+                    client.send_message(
+                        chat_id,
+                        config.document_download_error_message,
+                        reply_to_message_id=message_id,
+                    )
+                    return None
 
     if not prompt_text:
         progress.mark_failure("No prompt content to execute.")
@@ -1712,7 +1881,79 @@ def prepare_prompt_input(
         prompt_text=prompt_text,
         image_path=image_path,
         document_path=document_path,
+        cleanup_paths=cleanup_paths,
+        attachment_file_ids=attachment_file_ids,
     )
+
+
+def prewarm_attachment_archive_for_message(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    chat_id: int,
+    message: Dict[str, object],
+) -> None:
+    attachment_store = getattr(state, "attachment_store", None)
+    if attachment_store is None:
+        return
+    channel_name = getattr(client, "channel_name", "telegram")
+
+    photo_file_id, _, document = extract_message_media_payload(message)
+    if photo_file_id:
+        record, _ = resolve_attachment_binary_or_summary(
+            attachment_store,
+            channel_name=channel_name,
+            file_id=photo_file_id,
+            media_label="image",
+        )
+        if record is None:
+            try:
+                temp_path = download_photo_to_temp(client, config, photo_file_id)
+                archived_path = archive_media_path(
+                    attachment_store,
+                    channel_name=channel_name,
+                    file_id=photo_file_id,
+                    media_kind="photo",
+                    source_path=temp_path,
+                )
+                if archived_path:
+                    os.remove(temp_path)
+            except Exception:
+                logging.warning(
+                    "Failed to prewarm attachment archive for chat_id=%s photo_file_id=%s",
+                    chat_id,
+                    photo_file_id,
+                    exc_info=True,
+                )
+
+    if document is not None:
+        record, _ = resolve_attachment_binary_or_summary(
+            attachment_store,
+            channel_name=channel_name,
+            file_id=document.file_id,
+            media_label="file",
+        )
+        if record is None:
+            try:
+                temp_path, _ = download_document_to_temp(client, config, document)
+                archived_path = archive_media_path(
+                    attachment_store,
+                    channel_name=channel_name,
+                    file_id=document.file_id,
+                    media_kind="document",
+                    source_path=temp_path,
+                    file_name=document.file_name,
+                    mime_type=document.mime_type,
+                )
+                if archived_path:
+                    os.remove(temp_path)
+            except Exception:
+                logging.warning(
+                    "Failed to prewarm attachment archive for chat_id=%s document_file_id=%s",
+                    chat_id,
+                    document.file_id,
+                    exc_info=True,
+                )
 
 
 def execute_prompt_with_retry(
@@ -1986,6 +2227,9 @@ def process_prompt(
     turn_context: Optional[TurnContext] = None
     image_path: Optional[str] = None
     document_path: Optional[str] = None
+    cleanup_paths: List[str] = []
+    attachment_file_ids: List[str] = []
+    attachment_store = getattr(state, "attachment_store", None)
     progress = ProgressReporter(
         client,
         chat_id,
@@ -2014,6 +2258,8 @@ def process_prompt(
             return
         image_path = prepared.image_path
         document_path = prepared.document_path
+        cleanup_paths = list(prepared.cleanup_paths)
+        attachment_file_ids = list(prepared.attachment_file_ids)
         prompt_text = prepared.prompt_text
         if memory_engine is not None:
             try:
@@ -2072,6 +2318,16 @@ def process_prompt(
         )
         if stateless:
             state_repo.clear_thread_id(chat_id)
+        if attachment_store is not None:
+            for attachment_file_id in attachment_file_ids:
+                try:
+                    attachment_store.update_summary(channel_name, attachment_file_id, output)
+                except Exception:
+                    logging.exception(
+                        "Failed to persist attachment summary for channel=%s file_id=%s",
+                        channel_name,
+                        attachment_file_id,
+                    )
         if memory_engine is not None and turn_context is not None:
             if stateless:
                 state_repo.clear_thread_id(chat_id)
@@ -2088,16 +2344,11 @@ def process_prompt(
     finally:
         progress.close()
         clear_cancel_event(state, chat_id, expected_event=cancel_event)
-        if image_path:
+        for cleanup_path in cleanup_paths:
             try:
-                os.remove(image_path)
+                os.remove(cleanup_path)
             except OSError:
-                logging.warning("Failed to remove temp image file: %s", image_path)
-        if document_path:
-            try:
-                os.remove(document_path)
-            except OSError:
-                logging.warning("Failed to remove temp file: %s", document_path)
+                logging.warning("Failed to remove temp file: %s", cleanup_path)
         finalize_chat_work(state, client, chat_id)
         emit_event(
             "bridge.request_processing_finished",
@@ -2601,6 +2852,14 @@ def handle_update(
     prompt_input, photo_file_id, voice_file_id, document = extract_prompt_and_media(message)
     if prompt_input is None and voice_file_id is None and document is None:
         return
+
+    prewarm_attachment_archive_for_message(
+        state=state,
+        config=config,
+        client=client,
+        chat_id=chat_id,
+        message=message,
+    )
 
     prefix_result = apply_required_prefix_gate(
         client=client,
