@@ -44,6 +44,7 @@ Last updated: 2026-03-10 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-10: repaired a Server3 download/import path drift by restoring legacy `/data/...` compatibility mounts for the local library importers, then backfilled previously downloaded valid episodes into the live library paths so the catalog can see them again.
 - 2026-03-10: added a planning-only spec at `docs/specs/server3-browser-automation-mvp.md` for an OpenClaw-style browser-control layer on Server3, capturing the intended scope, architecture, rationale, and next actions before any implementation work starts.
 - 2026-03-10: clarified the `mavali_eth` planning split so `docs/specs/mavali-eth-mvp.md` now acts as the human/operator planning doc with decisions, rationale, and next actions, while `infra/contracts/mavali-eth-mvp.contract.yaml` stays limited to the current agreed runtime behavior.
 - 2026-03-10: added planning-only `mavali_eth` MVP artifacts at `docs/specs/mavali-eth-mvp.md` and `infra/contracts/mavali-eth-mvp.contract.yaml` so the human/operator spec and the stricter LLM/runtime contract are pinned before implementation starts.
