@@ -1,5 +1,6 @@
 version: 1
 status: planning_only
+document_role: current_agreed_behavior_only
 
 runtime:
   name: mavali_eth

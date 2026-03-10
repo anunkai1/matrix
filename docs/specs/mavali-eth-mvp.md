@@ -2,11 +2,25 @@
 
 Status: planning-only
 
+## Document Role
+
+This file is the planning and operator document for `mavali_eth`.
+
+It should contain:
+
+- decisions already made
+- rationale for those decisions
+- next actions before implementation
+
+It should not try to act as the strict machine contract. That role belongs to [`infra/contracts/mavali-eth-mvp.contract.yaml`](/home/architect/matrix/infra/contracts/mavali-eth-mvp.contract.yaml).
+
 ## Purpose
 
 Define the first usable version of `mavali_eth`: a dedicated Ethereum mainnet wallet bot/operator that is controlled through Telegram and CLI, uses plain-English interaction, and is designed to grow into a broader Web3 execution system later.
 
 This document is human-readable and operator-focused. The strict runtime contract lives in [`infra/contracts/mavali-eth-mvp.contract.yaml`](/home/architect/matrix/infra/contracts/mavali-eth-mvp.contract.yaml).
+
+## Decisions
 
 ## Product Shape
 
@@ -88,7 +102,7 @@ Execution confirmation rules:
 - a pending action expires after 10 minutes
 - only one pending action may exist per session at a time
 
-## Safety and Correctness Contract
+## Safety and Correctness
 
 The owner explicitly wants a permissive wallet operator, but still requires correctness and predictability.
 
@@ -169,6 +183,27 @@ Owner:
 Bot:
 `Sent. Tx hash: 0x...`
 
+## Rationale
+
+Key rationale behind the MVP shape:
+
+- keep the first cut narrow so implementation does not sprawl into a partial general Web3 system
+- isolate runtime concerns early so wallet state, logs, env, and bot identity do not get entangled with existing bots
+- use natural language plus explicit confirmation so the bot remains easy to operate remotely without silent execution
+- keep the first financial surface to native ETH on Ethereum mainnet so the parser, signer, and receipt monitor stay simple
+- treat bankroll size as the main risk boundary while still enforcing correctness, gas awareness, and confirmation discipline
+- preserve expansion room so ERC20 support, approvals, swaps, and other EVM actions can be layered on later without replacing the core control model
+
+## Next Actions
+
+Before implementation starts, tighten the planning artifacts by resolving these points explicitly:
+
+1. Define what `confirmed` means for inbound ETH reporting.
+2. Define the exact gas-cap meaning, preferably `maxFeePerGas` in gwei.
+3. Pin the Telegram owner allowlist field and where it will be supplied from.
+4. Define strict raw-address parsing rules for natural-language send requests.
+5. Define the mandatory fields that must appear in the bot's plain-English confirmation prompt.
+
 ## Expansion Path After MVP
 
 The MVP is intentionally narrow so it can become the base for a broader Web3 execution system later.
@@ -186,3 +221,10 @@ Planned expansion order:
 ## Source of Truth
 
 For implementation behavior, prefer the structured contract in [`infra/contracts/mavali-eth-mvp.contract.yaml`](/home/architect/matrix/infra/contracts/mavali-eth-mvp.contract.yaml).
+
+Use this spec for:
+
+- planning discussion
+- operator review
+- rationale
+- next actions and continuation context

@@ -44,6 +44,7 @@ Last updated: 2026-03-10 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-10: clarified the `mavali_eth` planning split so `docs/specs/mavali-eth-mvp.md` now acts as the human/operator planning doc with decisions, rationale, and next actions, while `infra/contracts/mavali-eth-mvp.contract.yaml` stays limited to the current agreed runtime behavior.
 - 2026-03-10: added planning-only `mavali_eth` MVP artifacts at `docs/specs/mavali-eth-mvp.md` and `infra/contracts/mavali-eth-mvp.contract.yaml` so the human/operator spec and the stricter LLM/runtime contract are pinned before implementation starts.
 - 2026-03-10: fixed Govorun reply-prefix behavior so a prefix-only reply like `говорун` on WhatsApp now uses the quoted/replied-to message as the actionable prompt instead of rejecting with the generic prefixed-prompt help text.
 - 2026-03-10: fixed a live WhatsApp quoted-image gap after transport restarts by teaching the Govorun Node transport to reconstruct quoted media directly from Baileys `quotedMessage` payloads instead of depending only on in-memory reply-context cache.
