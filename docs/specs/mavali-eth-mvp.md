@@ -115,7 +115,7 @@ The MVP must prevent:
 
 The only hard execution caps requested for MVP are:
 
-- gas cap, expressed in gwei
+- gas cap, defined as `maxFeePerGas = 5 gwei`
 - slippage cap, retained in the contract for later swap support
 
 When the gas cap would be exceeded:
@@ -175,7 +175,7 @@ Owner:
 `Send 0.03 ETH to 0xabc...`
 
 Bot:
-`I am about to send 0.03 ETH on Ethereum mainnet to 0xabc.... Estimated gas is X gwei / about Y ETH. Reply confirm within 10 minutes to execute.`
+`I am about to send 0.03 ETH on Ethereum mainnet to 0xabc.... Estimated gas is X gwei / about Y ETH. The configured maxFeePerGas cap is 5 gwei. Reply confirm within 10 minutes to execute.`
 
 Owner:
 `confirm`
@@ -199,10 +199,9 @@ Key rationale behind the MVP shape:
 Before implementation starts, tighten the planning artifacts by resolving these points explicitly:
 
 1. Define what `confirmed` means for inbound ETH reporting.
-2. Define the exact gas-cap meaning, preferably `maxFeePerGas` in gwei.
-3. Pin the Telegram owner allowlist field and where it will be supplied from.
-4. Define strict raw-address parsing rules for natural-language send requests.
-5. Define the mandatory fields that must appear in the bot's plain-English confirmation prompt.
+2. Pin the Telegram owner allowlist field and where it will be supplied from.
+3. Define strict raw-address parsing rules for natural-language send requests.
+4. Define the mandatory fields that must appear in the bot's plain-English confirmation prompt.
 
 ## Expansion Path After MVP
 

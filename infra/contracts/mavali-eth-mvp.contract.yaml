@@ -84,7 +84,9 @@ execution:
 limits:
   gas_cap:
     enabled: true
+    meaning: maxFeePerGas
     unit: gwei
+    value: 5
     behavior_on_exceed: ask_owner
   slippage_cap:
     enabled: true
