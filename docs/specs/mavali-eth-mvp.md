@@ -78,6 +78,7 @@ Recommended runtime behavior:
 
 - no prefix required in the owner's private Telegram chat
 - only the owner's personal Telegram chat is allowlisted
+- the Telegram owner allowlist is supplied through `MAVALI_ETH_TELEGRAM_OWNER_CHAT_ID`
 - bot starts unlocked for remote usability
 - bot can proactively report wallet address and current ETH balance on startup
 
@@ -92,7 +93,11 @@ Command handling rules:
 - if the request is ambiguous, ask follow-up questions
 - if execution parameters are uncertain, ask for advice instead of guessing
 - use raw `0x...` addresses only in MVP
+- exactly one valid raw `0x...` address must appear in a send request
+- if zero or more than one address appears, ask follow-up instead of guessing
+- validate address length and hex strictly
 - do not infer or resolve ENS names yet
+- checksum is not required for MVP
 
 Execution confirmation rules:
 
@@ -153,7 +158,7 @@ Inbound monitoring behavior:
 
 - Ethereum mainnet only
 - native ETH only
-- confirmed receipts only
+- confirmed receipts only, defined as 2 confirmations
 - polling cadence: every 30 minutes
 - send a message only when a new confirmed inbound transfer is detected
 - report:
@@ -175,7 +180,7 @@ Owner:
 `Send 0.03 ETH to 0xabc...`
 
 Bot:
-`I am about to send 0.03 ETH on Ethereum mainnet to 0xabc.... Estimated gas is X gwei / about Y ETH. The configured maxFeePerGas cap is 5 gwei. Reply confirm within 10 minutes to execute.`
+`I am about to send 0.03 ETH on Ethereum mainnet to 0xabc.... Estimated gas is X gwei / about Y ETH. The configured maxFeePerGas cap is 5 gwei. This confirmation expires in 10 minutes. Reply confirm to execute.`
 
 Owner:
 `confirm`
@@ -194,14 +199,25 @@ Key rationale behind the MVP shape:
 - treat bankroll size as the main risk boundary while still enforcing correctness, gas awareness, and confirmation discipline
 - preserve expansion room so ERC20 support, approvals, swaps, and other EVM actions can be layered on later without replacing the core control model
 
+## Confirmation Prompt Contract
+
+Every state-changing confirmation prompt must include:
+
+- action
+- amount
+- asset
+- chain
+- destination address
+- estimated gas
+- configured gas cap
+- expiry time
+- the literal confirmation word `confirm`
+
 ## Next Actions
 
-Before implementation starts, tighten the planning artifacts by resolving these points explicitly:
+Planning is now pinned closely enough to begin implementation.
 
-1. Define what `confirmed` means for inbound ETH reporting.
-2. Pin the Telegram owner allowlist field and where it will be supplied from.
-3. Define strict raw-address parsing rules for natural-language send requests.
-4. Define the mandatory fields that must appear in the bot's plain-English confirmation prompt.
+The next action is to build the MVP from the contract rather than continue open-ended planning.
 
 ## Expansion Path After MVP
 

@@ -9,6 +9,7 @@ runtime:
   dedicated_runtime: true
   shared_core_repo: true
   private_chat_only: true
+  telegram_owner_allowlist_env: MAVALI_ETH_TELEGRAM_OWNER_CHAT_ID
   required_prefix_private_chat: false
 
 wallet:
@@ -19,6 +20,12 @@ wallet:
   unlock_mode: auto_at_service_start
   unlock_passphrase_source: env
   address_format_mvp: raw_0x_only
+  raw_address_parsing:
+    exact_address_count_required: 1
+    ask_follow_up_on_zero_addresses: true
+    ask_follow_up_on_multiple_addresses: true
+    validate_hex_and_length_strictly: true
+    checksum_required: false
   ens_resolution: false
 
 surfaces:
@@ -46,6 +53,16 @@ interaction:
   confirmation_binding: immediate_pending_action_only
   pending_action_expiry_minutes: 10
   max_pending_actions_per_session: 1
+  confirmation_prompt_fields:
+    - action
+    - amount
+    - asset
+    - chain
+    - destination_address
+    - estimated_gas
+    - configured_gas_cap
+    - expiry_time
+    - confirmation_token
 
 startup_reporting:
   proactive_message: true
@@ -100,6 +117,7 @@ receipt_monitoring:
   network: ethereum_mainnet
   asset_scope: native_eth_only
   confirmation_scope: confirmed_only
+  confirmation_count: 2
   polling_interval_minutes: 30
   notify_only_on_new_receipts: true
   notification_fields:
