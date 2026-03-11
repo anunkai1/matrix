@@ -45,6 +45,7 @@ Last updated: 2026-03-11 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-11: implemented the first `mavali_eth` MVP code path in the shared repo by adding a deterministic Ethereum wallet engine plugin, shared SQLite pending/ledger state, JSON-RPC wallet reads, signer-helper integration, a CLI surface, a receipt-monitor script, runtime env/unit/timer templates, and an operator runbook; this is repo-ready but not yet deployed live on Server3.
 - 2026-03-11: pinned the remaining `mavali_eth` planning decisions by defining inbound ETH as `2` confirmations, pinning the Telegram owner env field, defining strict raw `0x...` address parsing, and defining the mandatory transaction-confirmation prompt fields in both the human spec and the contract.
 - 2026-03-11: completed a final local media cleanup pass by aligning the downloader's remaining default save-path fields with `/data/downloads`, removing an empty orphan movie-library folder, and pruning stale duplicate catalog rows so the active library tree now has one row per live media path.
 - 2026-03-11: completed the local media path normalization end to end by moving the catalog service from `/media` to `/data/media`, updating persisted library paths, and verifying the downloader, importers, request service, and catalog all respond cleanly with the library now indexed only under `/data/media/...`.
@@ -56,12 +57,11 @@ Last updated: 2026-03-11 (AEST, +10:00)
 - 2026-03-10: fixed Govorun reply-prefix behavior so a prefix-only reply like `говорун` on WhatsApp now uses the quoted/replied-to message as the actionable prompt instead of rejecting with the generic prefixed-prompt help text.
 
 ## Current Risks/Watchouts (Max 5)
+- `mavali_eth` is implemented in-repo but not provisioned live; its signing path depends on a dedicated venv/helper (`ops/mavali_eth/install_runtime_venv.sh` + `ops/mavali_eth/eth_account_helper.py`) and is not available until that runtime is installed.
 - Tank keeps `/home/tank/tankbot/src` linked to the shared repo source tree; preserve `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot` in its unit/env so runtime identity does not collapse back to the shared repo root.
 - Browser autoplay can still be blocked by client policy and may require UI fallback interactions.
 - WhatsApp progress edit behavior relies on valid outbound key mappings; mismatch paths should be treated as warning conditions.
 - Keep group allowlists aligned (`WA_ALLOWED_CHAT_IDS`/`WA_ALLOWED_GROUPS` with `TELEGRAM_ALLOWED_CHAT_IDS`) while managing DM admission separately via `WA_ALLOWED_DMS` and `TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED`.
-- Telegram/WhatsApp channels can still show transient API retries or reconnect churn; DNS-side retry risk is reduced via custom NordVPN DNS but should still be monitored during network instability.
-- Runtime observer alert routing depends on `RUNTIME_OBSERVER_TELEGRAM_CHAT_IDS` (or Telegram env fallback) remaining valid for the active bot token.
 
 ## Archive Pointer
 - `SERVER3_ARCHIVE.md` is the canonical long-term detailed history.

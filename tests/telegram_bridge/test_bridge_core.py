@@ -377,7 +377,7 @@ class BridgeCoreTests(unittest.TestCase):
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
         self.assertEqual(registry.list_channels(), ["signal", "telegram", "whatsapp"])
-        self.assertEqual(registry.list_engines(), ["codex"])
+        self.assertEqual(registry.list_engines(), ["codex", "mavali_eth"])
 
     def test_default_plugin_registry_builds_default_plugins(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()

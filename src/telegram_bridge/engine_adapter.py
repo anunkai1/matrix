@@ -1,5 +1,7 @@
 import subprocess
 import threading
+import sys
+from pathlib import Path
 from typing import Callable, Optional, Protocol
 
 try:
@@ -18,6 +20,8 @@ class EngineAdapter(Protocol):
         config,
         prompt: str,
         thread_id: Optional[str],
+        session_key: Optional[str] = None,
+        channel_name: Optional[str] = None,
         image_path: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
@@ -33,6 +37,8 @@ class CodexEngineAdapter:
         config,
         prompt: str,
         thread_id: Optional[str],
+        session_key: Optional[str] = None,
+        channel_name: Optional[str] = None,
         image_path: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
@@ -44,4 +50,52 @@ class CodexEngineAdapter:
             image_path=image_path,
             progress_callback=progress_callback,
             cancel_event=cancel_event,
+        )
+
+
+class MavaliEthEngineAdapter:
+    engine_name = "mavali_eth"
+
+    def run(
+        self,
+        config,
+        prompt: str,
+        thread_id: Optional[str],
+        session_key: Optional[str] = None,
+        channel_name: Optional[str] = None,
+        image_path: Optional[str] = None,
+        progress_callback: Optional[ProgressCallback] = None,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> subprocess.CompletedProcess[str]:
+        del thread_id, progress_callback, cancel_event
+        src_root = Path(__file__).resolve().parents[1]
+        if str(src_root) not in sys.path:
+            sys.path.insert(0, str(src_root))
+        try:
+            from mavali_eth.config import MavaliEthConfig
+            from mavali_eth.service import MavaliEthService
+        except ImportError as exc:
+            return subprocess.CompletedProcess(
+                args=["mavali_eth"],
+                returncode=0,
+                stdout=f"mavali_eth runtime is unavailable: {exc}",
+                stderr="",
+            )
+
+        if image_path:
+            output = "This wallet runtime does not support images or files yet."
+        else:
+            try:
+                runtime_config = MavaliEthConfig.from_env(getattr(config, "state_dir", None))
+                service = MavaliEthService(runtime_config)
+                resolved_session_key = session_key or f"{channel_name or 'telegram'}:default"
+                output = service.handle_prompt(resolved_session_key, prompt)
+            except Exception as exc:
+                output = str(exc) or "mavali_eth execution failed."
+
+        return subprocess.CompletedProcess(
+            args=["mavali_eth"],
+            returncode=0,
+            stdout=output,
+            stderr="",
         )

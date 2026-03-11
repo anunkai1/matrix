@@ -2002,14 +2002,28 @@ def execute_prompt_with_retry(
             },
         )
         try:
-            result = engine.run(
-                config=config,
-                prompt=prompt_text,
-                thread_id=attempt_thread_id,
-                image_path=image_path,
-                progress_callback=progress.handle_executor_event,
-                cancel_event=cancel_event,
-            )
+            try:
+                result = engine.run(
+                    config=config,
+                    prompt=prompt_text,
+                    thread_id=attempt_thread_id,
+                    session_key=f"{getattr(client, 'channel_name', 'telegram')}:{chat_id}",
+                    channel_name=getattr(client, "channel_name", "telegram"),
+                    image_path=image_path,
+                    progress_callback=progress.handle_executor_event,
+                    cancel_event=cancel_event,
+                )
+            except TypeError as exc:
+                if "unexpected keyword argument 'session_key'" not in str(exc):
+                    raise
+                result = engine.run(
+                    config=config,
+                    prompt=prompt_text,
+                    thread_id=attempt_thread_id,
+                    image_path=image_path,
+                    progress_callback=progress.handle_executor_event,
+                    cancel_event=cancel_event,
+                )
         except ExecutorCancelledError:
             logging.info("Executor canceled for chat_id=%s", chat_id)
             emit_event(
