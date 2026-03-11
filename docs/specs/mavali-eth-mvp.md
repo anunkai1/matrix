@@ -1,6 +1,6 @@
 # Mavali ETH MVP
 
-Status: planning-only
+Status: repo implementation complete, live rollout pending
 
 ## Document Role
 
@@ -10,7 +10,7 @@ It should contain:
 
 - decisions already made
 - rationale for those decisions
-- next actions before implementation
+- next actions before live rollout
 
 It should not try to act as the strict machine contract. That role belongs to [`infra/contracts/mavali-eth-mvp.contract.yaml`](/home/architect/matrix/infra/contracts/mavali-eth-mvp.contract.yaml).
 
@@ -215,9 +215,31 @@ Every state-changing confirmation prompt must include:
 
 ## Next Actions
 
-Planning is now pinned closely enough to begin implementation.
+Planning is complete and the repo implementation exists.
 
-The next action is to build the MVP from the contract rather than continue open-ended planning.
+Current status:
+
+- runtime/plugin code has been implemented in the `matrix` repo
+- tests and bridge self-checks passed at repo level
+- the dedicated runtime is not yet provisioned live on Server3
+
+The next action is live rollout, not more planning.
+
+Live rollout is currently waiting on the remaining real-world inputs:
+
+- Ethereum mainnet RPC URL
+- final live env installation on Server3
+- creation of the `mavali_eth` Linux user/runtime
+- installation and start of the bridge service and receipt-monitor timer
+
+Once those are completed, the first live verification should be:
+
+1. bot responds in Telegram
+2. wallet address can be queried
+3. wallet can be funded with a small amount of ETH
+4. balance/read-only commands work
+5. inbound receipt monitoring works
+6. tiny outbound ETH send flow works with explicit `confirm`
 
 ## Expansion Path After MVP
 
