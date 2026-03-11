@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll for confirmed inbound ETH for mavali_eth
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+Unit=mavali-eth-receipt-monitor.service
+
+[Install]
+WantedBy=timers.target
+

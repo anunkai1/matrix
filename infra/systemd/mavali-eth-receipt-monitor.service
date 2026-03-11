@@ -1,0 +1,14 @@
+[Unit]
+Description=Mavali ETH Receipt Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=mavali_eth
+Group=mavali_eth
+WorkingDirectory=/home/mavali_eth/mavali_ethbot
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/default/telegram-mavali-eth-bridge
+ExecStart=/usr/bin/python3 /home/architect/matrix/src/mavali_eth/receipt_monitor.py
+

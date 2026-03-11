@@ -1,0 +1,25 @@
+[Unit]
+Description=Telegram Mavali ETH Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mavali_eth
+Group=mavali_eth
+WorkingDirectory=/home/mavali_eth/mavali_ethbot
+Environment=PYTHONUNBUFFERED=1
+Environment=UNIT_NAME=telegram-mavali-eth-bridge.service
+Environment=TELEGRAM_RUNTIME_ROOT=/home/mavali_eth/mavali_ethbot
+Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix
+Environment=TELEGRAM_EXECUTOR_CMD=/home/mavali_eth/mavali_ethbot/src/telegram_bridge/executor.sh
+EnvironmentFile=-/etc/default/telegram-mavali-eth-bridge
+ExecStart=/usr/bin/python3 /home/mavali_eth/mavali_ethbot/src/telegram_bridge/main.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
