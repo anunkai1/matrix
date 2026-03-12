@@ -32,7 +32,9 @@ Expected variables in `/etc/default/server3-monitoring`:
 - Grafana is the only exposed UI.
 - Prometheus and node exporter are not exposed on the LAN.
 - Grafana dashboards and datasource are provisioned from the repo.
-- The default dashboard is `Server3 Node Overview`.
+- Provisioned dashboards:
+  - `Server3 Node Overview`
+  - `Node Exporter Full` (`gnetId=1860`, revision `42`)
 - The systemd unit pre-creates/chowns the bind-mounted data directories before startup:
   - Grafana data: UID/GID `472:472`
   - Prometheus data: UID/GID `65534:65534`
@@ -51,5 +53,7 @@ curl -s http://127.0.0.1:9090/api/v1/targets
 - env template: `ops/server3_monitoring/.env.example`
 - Prometheus config: `ops/server3_monitoring/prometheus/prometheus.yml`
 - Grafana provisioning: `ops/server3_monitoring/grafana/provisioning`
-- dashboard JSON: `ops/server3_monitoring/grafana/dashboards/server3-node-overview.json`
+- dashboard JSONs:
+  - `ops/server3_monitoring/grafana/dashboards/server3-node-overview.json`
+  - `ops/server3_monitoring/grafana/dashboards/node-exporter-full.json`
 - unit: `infra/systemd/server3-monitoring.service`
