@@ -1,0 +1,22 @@
+[Unit]
+Description=Server3 monitoring stack (Prometheus + Grafana + node_exporter)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/srv/server3-monitoring
+EnvironmentFile=/etc/default/server3-monitoring
+ExecStartPre=/usr/bin/mkdir -p /srv/server3-monitoring/data/grafana
+ExecStartPre=/usr/bin/mkdir -p /srv/server3-monitoring/data/prometheus
+ExecStartPre=/usr/bin/chown -R 472:472 /srv/server3-monitoring/data/grafana
+ExecStartPre=/usr/bin/chown -R 65534:65534 /srv/server3-monitoring/data/prometheus
+ExecStart=/usr/bin/docker compose -f monitoring-stack.yml --env-file /etc/default/server3-monitoring up -d
+ExecStop=/usr/bin/docker compose -f monitoring-stack.yml --env-file /etc/default/server3-monitoring down
+ExecReload=/usr/bin/docker compose -f monitoring-stack.yml --env-file /etc/default/server3-monitoring up -d
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-11 (AEST, +10:00)
+Last updated: 2026-03-13 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -45,6 +45,7 @@ Last updated: 2026-03-11 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-13: deployed a LAN-only Server3 monitoring stack with `server3-monitoring.service`, Dockerized `node_exporter` + Prometheus + Grafana, a provisioned `Server3 Node Overview` dashboard, Grafana bound to `192.168.0.148:3000`, Prometheus bound to `127.0.0.1:9090`, and live config in `/etc/default/server3-monitoring`.
 - 2026-03-11: implemented the first `mavali_eth` MVP code path in the shared repo by adding a deterministic Ethereum wallet engine plugin, shared SQLite pending/ledger state, JSON-RPC wallet reads, signer-helper integration, a CLI surface, a receipt-monitor script, runtime env/unit/timer templates, and an operator runbook; the spec now reflects that `mavali_eth` is repo-implemented and live rollout is pending real env/RPC provisioning on Server3.
 - 2026-03-11: pinned the remaining `mavali_eth` planning decisions by defining inbound ETH as `2` confirmations, pinning the Telegram owner env field, defining strict raw `0x...` address parsing, and defining the mandatory transaction-confirmation prompt fields in both the human spec and the contract.
 - 2026-03-11: completed a final local media cleanup pass by aligning the downloader's remaining default save-path fields with `/data/downloads`, removing an empty orphan movie-library folder, and pruning stale duplicate catalog rows so the active library tree now has one row per live media path.
@@ -53,13 +54,11 @@ Last updated: 2026-03-11 (AEST, +10:00)
 - 2026-03-10: repaired a Server3 download/import path drift by restoring legacy `/data/...` compatibility mounts for the local library importers, then backfilled previously downloaded valid episodes into the live library paths so the catalog can see them again.
 - 2026-03-10: added a planning-only spec at `docs/specs/server3-browser-automation-mvp.md` for an OpenClaw-style browser-control layer on Server3, capturing the intended scope, architecture, rationale, and next actions before any implementation work starts.
 - 2026-03-10: clarified the `mavali_eth` planning split so `docs/specs/mavali-eth-mvp.md` now acts as the human/operator planning doc with decisions, rationale, and next actions, while `infra/contracts/mavali-eth-mvp.contract.yaml` stays limited to the current agreed runtime behavior.
-- 2026-03-10: added planning-only `mavali_eth` MVP artifacts at `docs/specs/mavali-eth-mvp.md` and `infra/contracts/mavali-eth-mvp.contract.yaml` so the human/operator spec and the stricter LLM/runtime contract are pinned before implementation starts.
-- 2026-03-10: fixed Govorun reply-prefix behavior so a prefix-only reply like `говорун` on WhatsApp now uses the quoted/replied-to message as the actionable prompt instead of rejecting with the generic prefixed-prompt help text.
 
 ## Current Risks/Watchouts (Max 5)
+- The monitoring stack binds Grafana specifically to `192.168.0.148:3000`; if Server3's LAN IP changes, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.
 - `mavali_eth` is implemented in-repo but not provisioned live; its signing path depends on a dedicated venv/helper (`ops/mavali_eth/install_runtime_venv.sh` + `ops/mavali_eth/eth_account_helper.py`) and is not available until that runtime is installed.
 - Tank keeps `/home/tank/tankbot/src` linked to the shared repo source tree; preserve `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot` in its unit/env so runtime identity does not collapse back to the shared repo root.
-- Browser autoplay can still be blocked by client policy and may require UI fallback interactions.
 - WhatsApp progress edit behavior relies on valid outbound key mappings; mismatch paths should be treated as warning conditions.
 - Keep group allowlists aligned (`WA_ALLOWED_CHAT_IDS`/`WA_ALLOWED_GROUPS` with `TELEGRAM_ALLOWED_CHAT_IDS`) while managing DM admission separately via `WA_ALLOWED_DMS` and `TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED`.
 
