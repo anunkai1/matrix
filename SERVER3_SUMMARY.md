@@ -45,6 +45,7 @@ Last updated: 2026-03-13 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-13: mounted the newly attached USB HDD `TOSHIBA EXT` persistently at `/srv/external/toshiba_ext` via `UUID=08EA6CA6EA6C91AC` using `ntfs-3g` with shared app ownership (`uid=1000,gid=1000`); live verification confirmed read/write access and the disk currently presents about `1.9T` total with `885G` used and `979G` free.
 - 2026-03-13: provisioned a new isolated Telegram helper runtime `Macrorayd` with its own Linux user, runtime root, env/state/log separation, service template `telegram-macrorayd-bridge.service`, env template `infra/env/telegram-macrorayd-bridge.env.example`, restart wiring (`TELEGRAM_RESTART_UNIT` + dedicated sudoers mirror), manifest entry, and a neutral runtime-local `AGENTS.md`; it is intended as a clean Codex-powered helper bot whose personality can be specialized later without changing the shared bridge core.
 - 2026-03-13: added the official `Node Exporter Full` Grafana dashboard (`gnetId=1860`, revision `42`) to the LAN-only Server3 monitoring stack and verified it is live in the `Server3` folder alongside `Server3 Node Overview`.
 - 2026-03-13: deployed a LAN-only Server3 monitoring stack with `server3-monitoring.service`, Dockerized `node_exporter` + Prometheus + Grafana, a provisioned `Server3 Node Overview` dashboard, Grafana bound to `192.168.0.148:3000`, Prometheus bound to `127.0.0.1:9090`, and live config in `/etc/default/server3-monitoring`.
@@ -55,11 +56,11 @@ Last updated: 2026-03-13 (AEST, +10:00)
 - 2026-03-10: completed a second-pass recovery of the local library stack after the importer path repair by clearing a bad Docker runtime state, restoring the downloader, indexer, importer, request, and catalog services, and verifying the recovered `Survivor AU` episodes 7 and 8 now exist in the live library paths and are indexed by the catalog; remaining importer warnings on the recovered backlog are duplicate-destination notices rather than broken import paths.
 
 ## Current Risks/Watchouts (Max 5)
+- The external USB HDD at `/srv/external/toshiba_ext` is mounted as `ntfs-3g`; it is fine for immediate expansion/storage use, but if it becomes a permanent Linux-native media disk, reformatting to `ext4` later would be cleaner and more reliable than staying on NTFS.
 - The monitoring stack binds Grafana specifically to `192.168.0.148:3000`; if Server3's LAN IP changes, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.
 - `mavali_eth` is implemented in-repo but not provisioned live; its signing path depends on a dedicated venv/helper (`ops/mavali_eth/install_runtime_venv.sh` + `ops/mavali_eth/eth_account_helper.py`) and is not available until that runtime is installed.
 - Tank keeps `/home/tank/tankbot/src` linked to the shared repo source tree; preserve `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot` in its unit/env so runtime identity does not collapse back to the shared repo root.
 - WhatsApp progress edit behavior relies on valid outbound key mappings; mismatch paths should be treated as warning conditions.
-- Keep group allowlists aligned (`WA_ALLOWED_CHAT_IDS`/`WA_ALLOWED_GROUPS` with `TELEGRAM_ALLOWED_CHAT_IDS`) while managing DM admission separately via `WA_ALLOWED_DMS` and `TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED`.
 
 ## Archive Pointer
 - `SERVER3_ARCHIVE.md` is the canonical long-term detailed history.
