@@ -1,0 +1,4 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+* * * * * root . /etc/default/server3-monitoring && /home/architect/matrix/ops/server3_monitoring/scripts/export_external_arr_metrics.sh /var/lib/node_exporter_textfile "$SERVER3_EXTERNAL_DISK_DF_PATH" "$SERVER3_EXTERNAL_DISK_LABEL" "$SERVER3_EXTERNAL_DISK_DF_CONTAINER"

@@ -11,6 +11,7 @@ WorkingDirectory=/srv/server3-monitoring
 EnvironmentFile=/etc/default/server3-monitoring
 ExecStartPre=/usr/bin/mkdir -p /srv/server3-monitoring/data/grafana
 ExecStartPre=/usr/bin/mkdir -p /srv/server3-monitoring/data/prometheus
+ExecStartPre=/usr/bin/mkdir -p /var/lib/node_exporter_textfile
 ExecStartPre=/usr/bin/chown -R 472:472 /srv/server3-monitoring/data/grafana
 ExecStartPre=/usr/bin/chown -R 65534:65534 /srv/server3-monitoring/data/prometheus
 ExecStart=/usr/bin/docker compose -f monitoring-stack.yml --env-file /etc/default/server3-monitoring up -d
