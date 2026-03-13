@@ -176,6 +176,31 @@
       ]
     },
     {
+      "name": "Macrorayd",
+      "category": "secondary",
+      "runtime_layout": "shared-core-overlay",
+      "workspace_root": "/home/macrorayd/macroraydbot",
+      "shared_core_root": "/home/architect/matrix",
+      "purpose": "Dedicated Telegram Codex helper runtime with isolated state and future runtime-local personality.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "isolated Macrorayd workspace",
+        "Macrorayd runtime environment"
+      ],
+      "owner_user": "macrorayd",
+      "notes": [
+        "Runs the shared Telegram bridge with its own runtime root, AGENTS.md, and memory state.",
+        "Initial rollout is neutral; runtime-local personality can be added later without changing the shared core."
+      ],
+      "units": [
+        {
+          "name": "telegram-macrorayd-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
       "name": "Network layer",
       "category": "infra",
       "runtime_layout": "system-service",
