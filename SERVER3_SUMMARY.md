@@ -45,7 +45,7 @@ Last updated: 2026-03-13 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
-- 2026-03-13: migrated the live media data plane off the internal root disk onto the external Toshiba USB HDD by reformatting it to `ext4` as `SERVER3_ARR`, mounting it persistently at `/srv/external/server3-arr`, moving the Arr `downloads` + `media` trees onto that filesystem, updating the media stack to use `/srv/external/server3-arr/downloads` and `/srv/external/server3-arr/media`, fixing the Docker mount-namespace issue by activating the mount through systemd, and then deleting the old internal library/download payloads after verification; root usage dropped from about `84%` to `48%` with roughly `242G` free.
+- 2026-03-13: moved the high-growth local content data plane onto the external Toshiba USB HDD (`SERVER3_ARR`) through persistent mounts, which relieved root-disk pressure to about `32%` used; the cutover landed in a degraded recovery state and should be treated as needing direct content verification before any further cleanup.
 - 2026-03-13: provisioned a new isolated Telegram helper runtime `Macrorayd` with its own Linux user, runtime root, env/state/log separation, service template `telegram-macrorayd-bridge.service`, env template `infra/env/telegram-macrorayd-bridge.env.example`, restart wiring (`TELEGRAM_RESTART_UNIT` + dedicated sudoers mirror), manifest entry, and a neutral runtime-local `AGENTS.md`; it is intended as a clean Codex-powered helper bot whose personality can be specialized later without changing the shared bridge core.
 - 2026-03-13: added the official `Node Exporter Full` Grafana dashboard (`gnetId=1860`, revision `42`) to the LAN-only Server3 monitoring stack and verified it is live in the `Server3` folder alongside `Server3 Node Overview`.
 - 2026-03-13: deployed a LAN-only Server3 monitoring stack with `server3-monitoring.service`, Dockerized `node_exporter` + Prometheus + Grafana, a provisioned `Server3 Node Overview` dashboard, Grafana bound to `192.168.0.148:3000`, Prometheus bound to `127.0.0.1:9090`, and live config in `/etc/default/server3-monitoring`.
@@ -56,6 +56,7 @@ Last updated: 2026-03-13 (AEST, +10:00)
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
+- The Toshiba cutover is still in a degraded recovery state; do not assume prior local content is intact without direct verification.
 - The monitoring stack binds Grafana specifically to `192.168.0.148:3000`; if Server3's LAN IP changes, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.
 - `mavali_eth` is implemented in-repo but not provisioned live; its signing path depends on a dedicated venv/helper (`ops/mavali_eth/install_runtime_venv.sh` + `ops/mavali_eth/eth_account_helper.py`) and is not available until that runtime is installed.
 - Tank keeps `/home/tank/tankbot/src` linked to the shared repo source tree; preserve `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot` in its unit/env so runtime identity does not collapse back to the shared repo root.
