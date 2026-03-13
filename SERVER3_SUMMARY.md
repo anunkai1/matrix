@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-13 (AEST, +10:00)
+Last updated: 2026-03-14 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -45,13 +45,13 @@ Last updated: 2026-03-13 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-14: extended the Server3 monitoring stack to expose the external Arr disk `/srv/external/server3-arr` through a host cron-driven node_exporter textfile metric and added an external-disk section to `Server3 Node Overview` for total/used/free/percent-used plus `sdb` read/write throughput.
 - 2026-03-13: moved the high-growth local content data plane onto the external Toshiba USB HDD (`SERVER3_ARR`) through persistent mounts, which relieved root-disk pressure to about `32%` used; the cutover landed in a degraded recovery state and should be treated as needing direct content verification before any further cleanup.
 - 2026-03-13: provisioned a new isolated Telegram helper runtime `Macrorayd` with its own Linux user, runtime root, env/state/log separation, service template `telegram-macrorayd-bridge.service`, env template `infra/env/telegram-macrorayd-bridge.env.example`, restart wiring (`TELEGRAM_RESTART_UNIT` + dedicated sudoers mirror), manifest entry, and a neutral runtime-local `AGENTS.md`; it is intended as a clean Codex-powered helper bot whose personality can be specialized later without changing the shared bridge core.
 - 2026-03-13: added the official `Node Exporter Full` Grafana dashboard (`gnetId=1860`, revision `42`) to the LAN-only Server3 monitoring stack and verified it is live in the `Server3` folder alongside `Server3 Node Overview`.
 - 2026-03-13: deployed a LAN-only Server3 monitoring stack with `server3-monitoring.service`, Dockerized `node_exporter` + Prometheus + Grafana, a provisioned `Server3 Node Overview` dashboard, Grafana bound to `192.168.0.148:3000`, Prometheus bound to `127.0.0.1:9090`, and live config in `/etc/default/server3-monitoring`.
 - 2026-03-11: implemented the first `mavali_eth` MVP code path in the shared repo by adding a deterministic Ethereum wallet engine plugin, shared SQLite pending/ledger state, JSON-RPC wallet reads, signer-helper integration, a CLI surface, a receipt-monitor script, runtime env/unit/timer templates, and an operator runbook; the spec now reflects that `mavali_eth` is repo-implemented and live rollout is pending real env/RPC provisioning on Server3.
 - 2026-03-11: pinned the remaining `mavali_eth` planning decisions by defining inbound ETH as `2` confirmations, pinning the Telegram owner env field, defining strict raw `0x...` address parsing, and defining the mandatory transaction-confirmation prompt fields in both the human spec and the contract.
-- 2026-03-11: completed a final local media cleanup pass by aligning the downloader's remaining default save-path fields with `/data/downloads`, removing an empty orphan movie-library folder, and pruning stale duplicate catalog rows so the active library tree now has one row per live media path.
 - 2026-03-11: completed the local media path normalization end to end by moving the catalog service from `/media` to `/data/media`, updating persisted library paths, and verifying the downloader, importers, request service, and catalog all respond cleanly with the library now indexed only under `/data/media/...`.
 
 ## Current Risks/Watchouts (Max 5)

@@ -6,12 +6,14 @@ services:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
       - --path.rootfs=/rootfs
+      - --collector.textfile.directory=/textfile_collector
       - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)
     restart: unless-stopped
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro,rslave
+      - /var/lib/node_exporter_textfile:/textfile_collector:ro
 
   prometheus:
     image: prom/prometheus:v2.53.3
