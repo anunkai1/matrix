@@ -8,6 +8,7 @@ ALLOWED_UNITS=(
   "telegram-architect-bridge.service"
   "telegram-tank-bridge.service"
   "telegram-mavali-eth-bridge.service"
+  "telegram-macrorayd-bridge.service"
   "govorun-whatsapp-bridge.service"
   "oracle-signal-bridge.service"
 )
