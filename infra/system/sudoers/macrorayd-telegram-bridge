@@ -1,0 +1,3 @@
+# Mirror of /etc/sudoers.d/macrorayd-telegram-bridge on Server3.
+Defaults:macrorayd !requiretty
+macrorayd ALL=(root) NOPASSWD: /home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-macrorayd-bridge.service
