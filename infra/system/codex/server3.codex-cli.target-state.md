@@ -1,23 +1,20 @@
 # Server3 Codex CLI Target State
 
-- Timestamp (Australia/Brisbane ISO-8601): 2026-03-03T19:36:43+10:00
-- Scope: system-wide Codex CLI runtime paths for Server3 (`/usr/local` preferred)
+- Timestamp (Australia/Brisbane ISO-8601): 2026-03-15T08:52:39+10:00
+- Scope: system-wide Codex CLI runtime paths for Server3
 
 ## Runtime Components
 - Node.js: `v22.22.0`
-- npm: `10.9.4`
+- npm: `11.11.0`
 - Global npm prefix (system): `/usr`
-- Preferred Codex binary path: `/usr/local/bin/codex`
-- Additional Codex paths in `PATH`: `/usr/bin/codex`, `/bin/codex`
+- Active Codex binary path: `/usr/bin/codex`
 
 ## Target Version
-- npm latest at apply time: `@openai/codex@0.107.0`
-- `/usr/local/lib/node_modules/@openai/codex/package.json` version: `0.107.0`
-- `/usr/lib/node_modules/@openai/codex/package.json` version: `0.107.0`
-- `codex --version`: `codex-cli 0.107.0`
+- `@openai/codex`: `0.114.0`
+- `codex --version`: `codex-cli 0.114.0`
 
 ## Apply / Rollback
-- Apply latest to `/usr/local`:
-  - `sudo npm install -g --prefix /usr/local @openai/codex@latest`
-- Roll back to previous known version if needed:
-  - `sudo npm install -g --prefix /usr/local @openai/codex@0.106.0`
+- Apply target version:
+  - `sudo npm install -g @openai/codex@0.114.0`
+- Roll back to previous known version:
+  - `sudo npm install -g @openai/codex@0.112.0`

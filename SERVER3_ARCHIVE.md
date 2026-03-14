@@ -5,7 +5,7 @@ This file stores detailed operational history for Server3 tasks.
 ## 2026-03-15 (Summary Roll-Forward Trim for Server3 State Backup)
 
 Summary:
-- Added a new rolling-summary entry for the Server3 state-backup workflow and pinned the new backup service/timer memory in `SERVER3_SUMMARY.md`.
+- Added a new rolling-summary entry for the Server3 monthly quiesced state-backup workflow, restore helpers, and pinned backup service/timer memory in `SERVER3_SUMMARY.md`.
 - Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound and max-10 pinned-memory bound.
 
 Migrated out of summary during this trim:
