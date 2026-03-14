@@ -2,6 +2,17 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-15 (Summary Roll-Forward Trim for Server3 State Backup)
+
+Summary:
+- Added a new rolling-summary entry for the Server3 state-backup workflow and pinned the new backup service/timer memory in `SERVER3_SUMMARY.md`.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound and max-10 pinned-memory bound.
+
+Migrated out of summary during this trim:
+- 2026-03-11: pinned the remaining `mavali_eth` planning decisions by defining inbound ETH as `2` confirmations, pinning the Telegram owner env field, defining strict raw `0x...` address parsing, and defining the mandatory transaction-confirmation prompt fields in both the human spec and the contract.
+- Govorun WhatsApp behavior is env-tunable: progress wording, busy-lock wording, and reply-tone guidance are configured via `/etc/default/govorun-whatsapp-bridge`.
+- WhatsApp progress edit behavior relies on valid outbound key mappings; mismatch paths should be treated as warning conditions.
+
 ## 2026-03-15 (Summary Roll-Forward Trim for Codex CLI Upgrade)
 
 Summary:
