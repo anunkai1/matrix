@@ -56,7 +56,7 @@ Last updated: 2026-03-15 (AEST, +10:00)
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
-- The Toshiba cutover is still in a degraded recovery state; do not assume prior local content is intact without direct verification.
+- As of 2026-03-15 AEST, `/srv/external/server3-arr` is not mounted even though the media stack restarted; do not trust current Arr/Jellyfin pathing or write activity until that external data disk is remounted and checked directly.
 - The monitoring stack binds Grafana specifically to `192.168.0.148:3000`; if Server3's LAN IP changes, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.
 - The new Server3 backup path is local-only on the attached USB backup disk at `/srv/external/server3-backups`; if the host and that backup disk are lost together, the rebuild path is gone.
 - Tank keeps `/home/tank/tankbot/src` linked to the shared repo source tree; preserve `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot` in its unit/env so runtime identity does not collapse back to the shared repo root.
