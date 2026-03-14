@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-15 (Summary Roll-Forward Trim for Codex CLI Upgrade)
+
+Summary:
+- Added a new rolling-summary entry for the global Codex CLI upgrade on Server3.
+- Re-trimmed `SERVER3_SUMMARY.md` to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-11: completed the local media path normalization end to end by moving the catalog service from `/media` to `/data/media`, updating persisted library paths, and verifying the downloader, importers, request service, and catalog all respond cleanly with the library now indexed only under `/data/media/...`.
+
 ## 2026-03-08 (Summary Roll-Forward Trim for Off-Repo Runtime Path Compatibility Fix)
 
 Summary:
