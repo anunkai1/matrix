@@ -45,6 +45,7 @@ Last updated: 2026-03-15 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-15: recovered the external Arr data disk after backup verification exposed a stale mount state; confirmed the root-side placeholder tree was clean, remounted `/dev/sdb1` at `/srv/external/server3-arr`, restarted `media-stack.service`, and passed `ops/server3_state/verify_restore.sh --require-media-mount`.
 - 2026-03-15: reworked Server3 state backup into a monthly quiesced restore workflow on `/srv/external/server3-backups/state`, added manifest/checksum/git-bundle output plus restore/bootstrap/verify helpers, and verified both a live snapshot and a non-destructive restore extraction while keeping the Arr media payload excluded.
 - 2026-03-15: upgraded the globally installed Codex CLI on Server3 from `@openai/codex@0.112.0` to `0.114.0` under `/usr/lib/node_modules` using `sudo npm install -g`, and verified both `npm list -g @openai/codex --depth=0` and `codex --version` now report `0.114.0`.
 - 2026-03-14: extended the Server3 monitoring stack to expose the external Arr disk `/srv/external/server3-arr` through a host cron-driven node_exporter textfile metric and added an external-disk section to `Server3 Node Overview` for total/used/free/percent-used plus `sdb` read/write throughput.
@@ -56,7 +57,7 @@ Last updated: 2026-03-15 (AEST, +10:00)
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
-- As of 2026-03-15 AEST, `/srv/external/server3-arr` is not mounted even though the media stack restarted; do not trust current Arr/Jellyfin pathing or write activity until that external data disk is remounted and checked directly.
+- The 2026-03-13 external-disk cutover left at least one stale/inconsistent mount state behind; if Arr paths ever look empty, verify `findmnt /srv/external/server3-arr /srv/media-stack/downloads /srv/media-stack/media` before restarting media services.
 - The monitoring stack binds Grafana specifically to `192.168.0.148:3000`; if Server3's LAN IP changes, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.
 - The new Server3 backup path is local-only on the attached USB backup disk at `/srv/external/server3-backups`; if the host and that backup disk are lost together, the rebuild path is gone.
 - Tank keeps `/home/tank/tankbot/src` linked to the shared repo source tree; preserve `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot` in its unit/env so runtime identity does not collapse back to the shared repo root.
