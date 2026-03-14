@@ -1,0 +1,9 @@
+[Unit]
+Description=Server3 state backup snapshot
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/srv/external/server3-backups
+
+[Service]
+Type=oneshot
+ExecStart=/home/architect/matrix/ops/server3_state/backup_state.sh

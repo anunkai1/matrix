@@ -40,11 +40,12 @@ Last updated: 2026-03-15 (AEST, +10:00)
 - TV desktop/browser reliability is hardened with deterministic helpers, existing-window reuse, and autoplay fallback tooling (`wmctrl`, `xdotool`, `yt-dlp`).
 - Tank defaults are hardened: DM prefix bypass in private chats, isolated Joplin profile/path, reasoning effort `low`.
 - Architect Telegram + CLI now share one neutral memory identity on Server3 via `shared:architect:main`; the shared bucket merges the existing Architect Telegram chats and CLI history while starting a fresh unified Codex session thread.
-- Govorun WhatsApp behavior is env-tunable: progress wording, busy-lock wording, and reply-tone guidance are configured via `/etc/default/govorun-whatsapp-bridge`.
 - Local media services now use one canonical internal namespace: `/data/downloads` and `/data/media/...`; avoid reintroducing alternate path aliases like `/downloads`, `/tv`, `/movies`, or `/media`.
+- Server3 state resilience now has a dedicated backup service/timer pair (`server3-state-backup.service` / `server3-state-backup.timer`) intended to snapshot rebuild-critical state only; the media payload stays on the external data disk and is intentionally excluded.
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-15: added a Server3 state-backup workflow with a daily timer, snapshot manifest/checksum output, and repo bundle capture so the host/app state can be rebuilt cleanly without backing up the media payload itself.
 - 2026-03-15: upgraded the globally installed Codex CLI on Server3 from `@openai/codex@0.112.0` to `0.114.0` under `/usr/lib/node_modules` using `sudo npm install -g`, and verified both `npm list -g @openai/codex --depth=0` and `codex --version` now report `0.114.0`.
 - 2026-03-14: extended the Server3 monitoring stack to expose the external Arr disk `/srv/external/server3-arr` through a host cron-driven node_exporter textfile metric and added an external-disk section to `Server3 Node Overview` for total/used/free/percent-used plus `sdb` read/write throughput.
 - 2026-03-13: moved the high-growth local content data plane onto the external Toshiba USB HDD (`SERVER3_ARR`) through persistent mounts, which relieved root-disk pressure to about `32%` used; the cutover landed in a degraded recovery state and should be treated as needing direct content verification before any further cleanup.
@@ -52,7 +53,6 @@ Last updated: 2026-03-15 (AEST, +10:00)
 - 2026-03-13: added the official `Node Exporter Full` Grafana dashboard (`gnetId=1860`, revision `42`) to the LAN-only Server3 monitoring stack and verified it is live in the `Server3` folder alongside `Server3 Node Overview`.
 - 2026-03-13: deployed a LAN-only Server3 monitoring stack with `server3-monitoring.service`, Dockerized `node_exporter` + Prometheus + Grafana, a provisioned `Server3 Node Overview` dashboard, Grafana bound to `192.168.0.148:3000`, Prometheus bound to `127.0.0.1:9090`, and live config in `/etc/default/server3-monitoring`.
 - 2026-03-11: implemented the first `mavali_eth` MVP code path in the shared repo by adding a deterministic Ethereum wallet engine plugin, shared SQLite pending/ledger state, JSON-RPC wallet reads, signer-helper integration, a CLI surface, a receipt-monitor script, runtime env/unit/timer templates, and an operator runbook; the spec now reflects that `mavali_eth` is repo-implemented and live rollout is pending real env/RPC provisioning on Server3.
-- 2026-03-11: pinned the remaining `mavali_eth` planning decisions by defining inbound ETH as `2` confirmations, pinning the Telegram owner env field, defining strict raw `0x...` address parsing, and defining the mandatory transaction-confirmation prompt fields in both the human spec and the contract.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
@@ -60,7 +60,6 @@ Last updated: 2026-03-15 (AEST, +10:00)
 - The monitoring stack binds Grafana specifically to `192.168.0.148:3000`; if Server3's LAN IP changes, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.
 - `mavali_eth` is implemented in-repo but not provisioned live; its signing path depends on a dedicated venv/helper (`ops/mavali_eth/install_runtime_venv.sh` + `ops/mavali_eth/eth_account_helper.py`) and is not available until that runtime is installed.
 - Tank keeps `/home/tank/tankbot/src` linked to the shared repo source tree; preserve `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot` in its unit/env so runtime identity does not collapse back to the shared repo root.
-- WhatsApp progress edit behavior relies on valid outbound key mappings; mismatch paths should be treated as warning conditions.
 
 ## Archive Pointer
 - `SERVER3_ARCHIVE.md` is the canonical long-term detailed history.

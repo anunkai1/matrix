@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Server3 state backup snapshot
+
+[Timer]
+OnCalendar=*-*-* 03:50:00
+Persistent=true
+Unit=server3-state-backup.service
+
+[Install]
+WantedBy=timers.target
