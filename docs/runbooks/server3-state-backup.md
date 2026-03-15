@@ -50,7 +50,7 @@ as sockets, pid files, and shell snapshots.
 
 - cadence: monthly
 - time: `05:00` AEST on day `1`
-- retention: `12` snapshots by default
+- retention: `3` snapshots by default
 
 `05:00` is used intentionally to avoid colliding with:
 
