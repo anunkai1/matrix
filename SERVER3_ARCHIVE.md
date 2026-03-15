@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-15 (Summary Roll-Forward Trim for Arr Verification Closure)
+
+Summary:
+- Added a new rolling-summary entry documenting that the external Arr/media data plane has now been directly verified working correctly on the live mount stack.
+- Removed the now-stale degraded-recovery verification follow-up from `SERVER3_SUMMARY.md` and cleared the matching active watchout.
+
+Migrated out of summary during this trim:
+- 2026-03-13: moved the high-growth local content data plane onto the external Toshiba USB HDD (`SERVER3_ARR`) through persistent mounts, which relieved root-disk pressure to about `32%` used; the cutover landed in a degraded recovery state and should be treated as needing direct content verification before any further cleanup.
+
 ## 2026-03-15 (Summary Roll-Forward Trim for Backup Retention Reduction)
 
 Summary:
