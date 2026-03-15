@@ -3,7 +3,7 @@ set -euo pipefail
 
 ENV_FILE="${SERVER3_STATE_BACKUP_ENV_FILE:-/etc/default/server3-state-backup}"
 BACKUP_ROOT_DEFAULT="/srv/external/server3-backups/state"
-RETENTION_COUNT_DEFAULT="12"
+RETENTION_COUNT_DEFAULT="3"
 HOST_NAME_DEFAULT="$(hostnamectl --static 2>/dev/null || hostname)"
 REPO_PATH_DEFAULT="/home/architect/matrix"
 
