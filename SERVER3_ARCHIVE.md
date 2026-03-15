@@ -2,6 +2,16 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-15 (Summary Roll-Forward Trim for Server3 TV Bluetooth Enablement)
+
+Summary:
+- Added a new rolling-summary entry for enabling the Server3 TV Bluetooth stack and live `Blueman` pairing UI.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-13: added the official `Node Exporter Full` Grafana dashboard (`gnetId=1860`, revision `42`) to the LAN-only Server3 monitoring stack and verified it is live in the `Server3` folder alongside `Server3 Node Overview`.
+- 2026-03-11: implemented the first `mavali_eth` MVP code path in the shared repo by adding a deterministic Ethereum wallet engine plugin, shared SQLite pending/ledger state, JSON-RPC wallet reads, signer-helper integration, a CLI surface, a receipt-monitor script, runtime env/unit/timer templates, and an operator runbook; the spec now reflects that `mavali_eth` is repo-implemented and live rollout is pending real env/RPC provisioning on Server3.
+
 ## 2026-03-15 (Summary Roll-Forward Trim for Server3 State Backup)
 
 Summary:
