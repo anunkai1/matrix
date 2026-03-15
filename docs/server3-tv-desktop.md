@@ -9,8 +9,8 @@ This runbook configures Server3 for HDMI TV usage while keeping default boot in 
 - Adds on-demand desktop commands:
   - `server3-tv-start`
   - `server3-tv-stop`
-- Auto-opens Brave maximized at login (`https://www.youtube.com`).
-- Firefox is also available as an alternate browser (manual launch).
+- Starts to a neutral desktop session; browsers open only when explicitly requested.
+- Firefox and Brave are both supported on demand.
 - Prefers HDMI audio sink in the `tv` session.
 - Includes helper scripts for intent-executor flows:
   - `ops/tv-desktop/server3-tv-open-browser-url.sh`
@@ -72,8 +72,9 @@ sudo apt-get install -y yt-dlp wmctrl xdotool
 ## TV Session Behavior
 - LightDM autologins `tv` only when desktop is started.
 - Xfce autostarts `server3-tv-session-start.sh`.
-- Brave launches maximized (not forced fullscreen).
-- You can still press `F11` if you want fullscreen temporarily.
+- The session bootstrap only prepares display/audio state; it does not force any browser open.
+- Browser windows are opened by `server3-tv-open-browser-url.sh` or the YouTube helper when explicitly requested.
+- Firefox launches with a dedicated TV-only profile path so it does not collide with stale/default-profile state.
 
 ## Audio Routing
 At session start, `server3-tv-audio.sh`:

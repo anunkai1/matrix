@@ -35,6 +35,8 @@ if [[ $# -gt 2 ]]; then
 fi
 
 BROWSER_LC="${BROWSER_RAW,,}"
+TV_HOME="/home/tv"
+FIREFOX_PROFILE_DIR="${TV_HOME}/snap/firefox/common/.mozilla/firefox/server3-tv-profile"
 
 case "${BROWSER_LC}" in
   firefox)
@@ -69,13 +71,66 @@ fi
 
 TV_UID="$(id -u tv)"
 DISPLAY_VALUE=":0"
-XAUTHORITY_VALUE="/home/tv/.Xauthority"
+XAUTHORITY_VALUE="${TV_HOME}/.Xauthority"
+RUNTIME_DIR="/run/user/${TV_UID}"
 BUS_PATH="/run/user/${TV_UID}/bus"
 
-ENV_VARS=("DISPLAY=${DISPLAY_VALUE}" "XAUTHORITY=${XAUTHORITY_VALUE}")
-if [[ -S "${BUS_PATH}" ]]; then
-  ENV_VARS+=("DBUS_SESSION_BUS_ADDRESS=unix:path=${BUS_PATH}")
-fi
+wait_for_tv_session() {
+  local attempts=20
+  local delay=1
+  local attempt
+  for attempt in $(seq 1 "${attempts}"); do
+    if pgrep -u tv -x xfce4-session >/dev/null 2>&1 \
+      && sudo -u tv test -f "${XAUTHORITY_VALUE}" \
+      && sudo -u tv test -d "${RUNTIME_DIR}"; then
+      return 0
+    fi
+    sleep "${delay}"
+  done
+
+  echo "TV desktop session did not become ready." >&2
+  return 1
+}
+
+wait_for_window() {
+  local filter="$1"
+  local attempts=20
+  local delay=1
+  local attempt
+
+  if ! command -v wmctrl >/dev/null 2>&1; then
+    return 0
+  fi
+
+  for attempt in $(seq 1 "${attempts}"); do
+    if sudo -u tv env "${ENV_VARS[@]}" wmctrl -lx 2>/dev/null \
+      | awk -v filter="${filter}" 'tolower($0) ~ filter {found=1} END {exit(found ? 0 : 1)}'; then
+      return 0
+    fi
+    sleep "${delay}"
+  done
+
+  echo "Timed out waiting for browser window: ${filter}" >&2
+  return 1
+}
+
+build_env_vars() {
+  ENV_VARS=(
+    "HOME=${TV_HOME}"
+    "USER=tv"
+    "LOGNAME=tv"
+    "DISPLAY=${DISPLAY_VALUE}"
+    "XAUTHORITY=${XAUTHORITY_VALUE}"
+    "XDG_RUNTIME_DIR=${RUNTIME_DIR}"
+  )
+
+  if [[ -S "${BUS_PATH}" ]]; then
+    ENV_VARS+=("DBUS_SESSION_BUS_ADDRESS=unix:path=${BUS_PATH}")
+  fi
+}
+
+wait_for_tv_session
+build_env_vars
 
 # Reuse existing browser window when available (default behavior).
 if (( REUSE_EXISTING_WINDOW == 1 )) && command -v wmctrl >/dev/null 2>&1 && command -v xdotool >/dev/null 2>&1; then
@@ -99,13 +154,22 @@ fi
 
 # Launch detached so bridge returns immediately when no reusable window is found.
 if [[ "${BROWSER_LC}" == "firefox" ]]; then
-  sudo -u tv env "${ENV_VARS[@]}" nohup "${BROWSER_BIN}" --new-window "${URL}" >/tmp/server3-tv-browser.log 2>&1 < /dev/null &
+  sudo install -d -m 755 -o tv -g tv \
+    "${TV_HOME}/snap/firefox/common/.mozilla/firefox" \
+    "${FIREFOX_PROFILE_DIR}"
+  sudo -u tv env "${ENV_VARS[@]}" nohup "${BROWSER_BIN}" \
+    --no-remote \
+    --new-instance \
+    --profile "${FIREFOX_PROFILE_DIR}" \
+    --new-window "${URL}" >/tmp/server3-tv-firefox.log 2>&1 < /dev/null &
+  wait_for_window "firefox"
 else
   sudo -u tv env "${ENV_VARS[@]}" nohup "${BROWSER_BIN}" \
     --no-default-browser-check \
     --no-first-run \
     --start-maximized \
-    --new-window "${URL}" >/tmp/server3-tv-browser.log 2>&1 < /dev/null &
+    --new-window "${URL}" >/tmp/server3-tv-brave.log 2>&1 < /dev/null &
+  wait_for_window "brave-browser"
 fi
 
 echo "[server3-tv-open-browser-url] reused_existing_window=0 browser=${BROWSER_LC} url=${URL}"

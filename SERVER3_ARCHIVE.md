@@ -2,6 +2,16 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-15 (Server3 TV Neutral Start + Deterministic Browser Launch)
+
+Summary:
+- Removed the forced Brave-at-login behavior from the `tv` desktop session so Server3 TV now starts to a neutral desktop instead of opening a browser unconditionally.
+- Hardened `ops/tv-desktop/server3-tv-open-browser-url.sh` to wait for the real `tv` session readiness, pass the correct TV-session environment (`DISPLAY`, `XAUTHORITY`, `XDG_RUNTIME_DIR`, DBus bus), and launch Firefox with a dedicated TV-only profile under the snap-managed path.
+- Verified live behavior end to end: cold TV start now opens no browser, explicit Firefox launch reaches YouTube cleanly, explicit Brave launch still works, and TV shutdown still tears the session down cleanly.
+
+Notes:
+- `SERVER3_SUMMARY.md` was intentionally left unchanged in git for this change set because the local Arr-privacy pre-commit hook blocks staging that tracked file in this clone.
+
 ## 2026-03-15 (Summary Roll-Forward Trim for Arr Verification Closure)
 
 Summary:
