@@ -2,6 +2,16 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-15 (Summary Roll-Forward Trim for Backup Retention Reduction)
+
+Summary:
+- Added a new rolling-summary entry for reducing `server3-state-backup` retention from 12 monthly snapshots to 3 across the live profile and tracked repo defaults.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-13: deployed a LAN-only Server3 monitoring stack with `server3-monitoring.service`, Dockerized `node_exporter` + Prometheus + Grafana, a provisioned `Server3 Node Overview` dashboard, Grafana bound to `192.168.0.148:3000`, Prometheus bound to `127.0.0.1:9090`, and live config in `/etc/default/server3-monitoring`.
+- 2026-03-11: implemented the first `mavali_eth` MVP code path in the shared repo by adding a deterministic Ethereum wallet engine plugin, shared SQLite pending/ledger state, JSON-RPC wallet reads, signer-helper integration, a CLI surface, a receipt-monitor script, runtime env/unit/timer templates, and an operator runbook; the spec now reflects that `mavali_eth` is repo-implemented and live rollout is pending real env/RPC provisioning on Server3.
+
 ## 2026-03-15 (Summary Roll-Forward Trim for Server3 TV Bluetooth Enablement)
 
 Summary:
