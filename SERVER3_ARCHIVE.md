@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-16 (Architect Env Permission Hardening)
+
+Summary:
+- Hardened the live Architect Telegram env secret surface by changing `/etc/default/telegram-architect-bridge` and all readable `telegram-architect-bridge.bak*` plus `telegram-architect-whatsapp-bridge.bak*` backup copies under `/etc/default/` to `root:root` mode `600`.
+- Verified after the permission change that `telegram-architect-bridge.service`, `telegram-tank-bridge.service`, and `telegram-macrorayd-bridge.service` all remained active, so the tighter env-file permissions did not break the bridge runtime.
+
+Notes:
+- This change only reduced local readability of the Architect env family; it did not rotate any bot/auth tokens and did not yet apply the same lockdown to other secret-bearing env files on the host.
+
 ## 2026-03-15 (Server3 TV Neutral Start + Deterministic Browser Launch)
 
 Summary:

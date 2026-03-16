@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-15 (AEST, +10:00)
+Last updated: 2026-03-16 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -45,6 +45,7 @@ Last updated: 2026-03-15 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-16: hardened the Architect Telegram bridge env secrets on the live host by changing `/etc/default/telegram-architect-bridge` and its readable Architect backup copies under `/etc/default/` to `root:root` mode `600`, and verified `telegram-architect-bridge.service`, `telegram-tank-bridge.service`, and `telegram-macrorayd-bridge.service` all remained active after the permission lockdown.
 - 2026-03-15: completed direct post-cutover verification for the external Arr/media data plane and confirmed content visibility plus app behavior are operating correctly on the live `/srv/external/server3-arr` mount stack, closing the degraded-recovery follow-up from the 2026-03-13 migration.
 - 2026-03-15: reduced `server3-state-backup` retention from 12 monthly snapshots to 3 in the live profile and tracked repo defaults so the attached backup disk keeps only the most recent quarter of rebuild-grade state archives.
 - 2026-03-15: recovered the external Arr data disk after backup verification exposed a stale mount state; confirmed the root-side placeholder tree was clean, remounted `/dev/sdb1` at `/srv/external/server3-arr`, restarted `media-stack.service`, and passed `ops/server3_state/verify_restore.sh --require-media-mount`.
@@ -52,13 +53,13 @@ Last updated: 2026-03-15 (AEST, +10:00)
 - 2026-03-15: upgraded the globally installed Codex CLI on Server3 from `@openai/codex@0.112.0` to `0.114.0` under `/usr/lib/node_modules` using `sudo npm install -g`, and verified both `npm list -g @openai/codex --depth=0` and `codex --version` now report `0.114.0`.
 - 2026-03-14: extended the Server3 monitoring stack to expose the external Arr disk `/srv/external/server3-arr` through a host cron-driven node_exporter textfile metric and added an external-disk section to `Server3 Node Overview` for total/used/free/percent-used plus `sdb` read/write throughput.
 - 2026-03-13: provisioned a new isolated Telegram helper runtime `Macrorayd` with its own Linux user, runtime root, env/state/log separation, service template `telegram-macrorayd-bridge.service`, env template `infra/env/telegram-macrorayd-bridge.env.example`, restart wiring (`TELEGRAM_RESTART_UNIT` + dedicated sudoers mirror), manifest entry, and a neutral runtime-local `AGENTS.md`; it is intended as a clean Codex-powered helper bot whose personality can be specialized later without changing the shared bridge core.
-- 2026-03-13: added the official `Node Exporter Full` Grafana dashboard (`gnetId=1860`, revision `42`) to the LAN-only Server3 monitoring stack and verified it is live in the `Server3` folder alongside `Server3 Node Overview`.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
 - The monitoring stack binds Grafana specifically to `192.168.0.148:3000`; if Server3's LAN IP changes, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.
 - The new Server3 backup path is local-only on the attached USB backup disk at `/srv/external/server3-backups`; if the host and that backup disk are lost together, the rebuild path is gone.
 - Tank keeps `/home/tank/tankbot/src` linked to the shared repo source tree; preserve `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot` in its unit/env so runtime identity does not collapse back to the shared repo root.
+- Other live secret-bearing env files under `/etc/default/` still use broader readability than the now-hardened Architect env family; continue the same permission lockdown pattern before treating the host-side secret sprawl as resolved.
 
 ## Archive Pointer
 - `SERVER3_ARCHIVE.md` is the canonical long-term detailed history.
