@@ -11,6 +11,15 @@ Summary:
 Notes:
 - This change only reduced local readability of the Architect env family; it did not rotate any bot/auth tokens and did not yet apply the same lockdown to other secret-bearing env files on the host.
 
+## 2026-03-16 (Remaining Live Env Permission Hardening)
+
+Summary:
+- Hardened the remaining broader-read live `/etc/default` families for `telegram-tank-bridge`, `server3-runtime-observer`, `signal-oracle-bridge`, `oracle-signal-bridge`, `server3-state-backup`, and `govorun-whatsapp-daily-uplift` plus the readable backup copies that existed for Tank, runtime observer, and Signal Oracle.
+- Verified after the permission change that `telegram-tank-bridge.service`, `signal-oracle-bridge.service`, `oracle-signal-bridge.service`, `server3-runtime-observer.timer`, `server3-state-backup.timer`, and `govorun-whatsapp-daily-uplift.timer` all remained active.
+
+Notes:
+- This was the follow-through on the earlier Architect env hardening pass and closed the broader-read `/etc/default` watchout that had remained in `SERVER3_SUMMARY.md`.
+
 ## 2026-03-15 (Server3 TV Neutral Start + Deterministic Browser Launch)
 
 Summary:
