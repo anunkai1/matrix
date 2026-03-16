@@ -2244,6 +2244,9 @@ def process_prompt(
     cleanup_paths: List[str] = []
     attachment_file_ids: List[str] = []
     attachment_store = getattr(state, "attachment_store", None)
+    affective_runtime = getattr(state, "affective_runtime", None)
+    affective_turn_started = False
+    affective_turn_finished = False
     progress = ProgressReporter(
         client,
         chat_id,
@@ -2292,6 +2295,35 @@ def process_prompt(
                 previous_thread_id = None if stateless else state_repo.get_thread_id(chat_id)
         else:
             previous_thread_id = None if stateless else state_repo.get_thread_id(chat_id)
+        if affective_runtime is not None:
+            try:
+                affective_runtime.begin_turn(prompt_text)
+                affective_turn_started = True
+                affective_prefix = (affective_runtime.prompt_prefix() or "").strip()
+                if affective_prefix:
+                    prompt_text = f"{affective_prefix}\n\nUser request:\n{prompt_text}"
+                    emit_event(
+                        "bridge.affective_prompt_applied",
+                        fields={
+                            "chat_id": chat_id,
+                            "message_id": message_id,
+                            "prefix_chars": len(affective_prefix),
+                        },
+                    )
+            except Exception:
+                logging.exception(
+                    "Affective runtime begin_turn failed for chat_id=%s; continuing without prefix.",
+                    chat_id,
+                )
+                if affective_turn_started:
+                    try:
+                        affective_runtime.finish_turn(success=False)
+                    except Exception:
+                        logging.exception(
+                            "Affective runtime rollback failed after begin_turn error for chat_id=%s",
+                            chat_id,
+                        )
+                affective_turn_started = False
         emit_event(
             "bridge.request_processing_started",
             fields={
@@ -2342,6 +2374,15 @@ def process_prompt(
                         channel_name,
                         attachment_file_id,
                     )
+        if affective_turn_started:
+            try:
+                affective_runtime.finish_turn(success=True)
+                affective_turn_finished = True
+            except Exception:
+                logging.exception(
+                    "Affective runtime finish_turn(success=True) failed for chat_id=%s",
+                    chat_id,
+                )
         if memory_engine is not None and turn_context is not None:
             if stateless:
                 state_repo.clear_thread_id(chat_id)
@@ -2356,6 +2397,14 @@ def process_prompt(
             except Exception:
                 logging.exception("Failed to finish shared memory turn for chat_id=%s", chat_id)
     finally:
+        if affective_turn_started and not affective_turn_finished and affective_runtime is not None:
+            try:
+                affective_runtime.finish_turn(success=False)
+            except Exception:
+                logging.exception(
+                    "Affective runtime finish_turn(success=False) failed for chat_id=%s",
+                    chat_id,
+                )
         progress.close()
         clear_cancel_event(state, chat_id, expected_event=cancel_event)
         for cleanup_path in cleanup_paths:

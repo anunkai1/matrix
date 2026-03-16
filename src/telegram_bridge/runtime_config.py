@@ -84,6 +84,9 @@ class Config:
     signal_bridge_auth_token: str
     signal_poll_timeout_seconds: int
     keyword_routing_enabled: bool
+    affective_runtime_enabled: bool = False
+    affective_runtime_db_path: str = ""
+    affective_runtime_ping_target: str = "1.1.1.1"
     policy_reset_memory_on_change: bool = False
     progress_label: str = ""
     progress_elapsed_prefix: str = "Already"
@@ -303,6 +306,14 @@ def load_config() -> Config:
     memory_sqlite_path = os.getenv("TELEGRAM_MEMORY_SQLITE_PATH", "").strip()
     if not memory_sqlite_path:
         memory_sqlite_path = os.path.join(state_dir, "memory.sqlite3")
+    affective_runtime_db_path = os.getenv(
+        "TELEGRAM_AFFECTIVE_RUNTIME_DB_PATH",
+        os.path.join(state_dir, "affective_state.sqlite3"),
+    ).strip() or os.path.join(state_dir, "affective_state.sqlite3")
+    affective_runtime_ping_target = os.getenv(
+        "TELEGRAM_AFFECTIVE_RUNTIME_PING_TARGET",
+        "1.1.1.1",
+    )
 
     allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids) if raw_chat_ids else set()
     assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
@@ -491,6 +502,12 @@ def load_config() -> Config:
             "TELEGRAM_KEYWORD_ROUTING_ENABLED",
             True,
         ),
+        affective_runtime_enabled=parse_bool_env(
+            "TELEGRAM_AFFECTIVE_RUNTIME_ENABLED",
+            False,
+        ),
+        affective_runtime_db_path=affective_runtime_db_path,
+        affective_runtime_ping_target=affective_runtime_ping_target,
         policy_reset_memory_on_change=parse_bool_env(
             "TELEGRAM_POLICY_RESET_MEMORY_ON_CHANGE",
             False,

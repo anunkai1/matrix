@@ -27,6 +27,7 @@ SYSTEMD_STARTED_MESSAGE_ID = "39f53479d3a045ac8e11786248231fbf"
 CORE_SERVICES = (
     "telegram-architect-bridge.service",
     "telegram-tank-bridge.service",
+    "telegram-trinity-bridge.service",
     "whatsapp-govorun-bridge.service",
     "govorun-whatsapp-bridge.service",
 )

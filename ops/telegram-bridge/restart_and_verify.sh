@@ -7,6 +7,7 @@ CHAT_ROUTING_VALIDATOR="${REPO_ROOT}/ops/chat-routing/validate_chat_routing_cont
 ALLOWED_UNITS=(
   "telegram-architect-bridge.service"
   "telegram-tank-bridge.service"
+  "telegram-trinity-bridge.service"
   "telegram-mavali-eth-bridge.service"
   "telegram-macrorayd-bridge.service"
   "govorun-whatsapp-bridge.service"

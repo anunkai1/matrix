@@ -19,7 +19,7 @@ Last updated: 2026-03-16 (AEST, +10:00)
 - Runtime pattern: Telegram long polling + local `codex exec`
 - Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
 - Canonical runtime inventory now lives in `infra/server3-runtime-manifest.json`, with shared live inspection via `python3 ops/server3_runtime_status.py`
-- Shared runtime core now lives in `/home/architect/matrix/src/telegram_bridge`; Tank/Govorun/Oracle run as per-runtime overlays with preserved service names, env paths, AGENTS, and state roots.
+- Shared runtime core now lives in `/home/architect/matrix/src/telegram_bridge`; Tank/Trinity/Govorun/Oracle run as per-runtime overlays with preserved service names, env paths, AGENTS, and state roots.
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 - Runtime observer daily Telegram summary now appends a plain-English operator line indicating whether attention is needed.
 - Runtime observer daily health delivery is centralized through `staker_alerts_bot` to chat `211761499` (single destination).
@@ -27,7 +27,7 @@ Last updated: 2026-03-16 (AEST, +10:00)
 ## Runtime Inventory
 - Canonical manifest: `infra/server3-runtime-manifest.json`
 - Shared live status command: `python3 ops/server3_runtime_status.py`
-- Covered runtime groups: Architect, Tank, Govorun transport/bridge, Oracle transport/bridge, network layer, guardrail timers, optional UI.
+- Covered runtime groups: Architect, Tank, Trinity, Govorun transport/bridge, Oracle transport/bridge, network layer, guardrail timers, optional UI.
 
 ## Operational Memory (Pinned)
 - Routing keywords:
@@ -45,6 +45,7 @@ Last updated: 2026-03-16 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-16: provisioned a new isolated Telegram runtime `Trinity` with its own Linux user, runtime root `/home/trinity/trinitybot`, state root `/var/lib/trinitybot`, private-chat-only allowlist, dedicated service/env/sudoers wiring, restart path, backup/restore coverage, and a machine-grounded affective runtime that is default-off in shared code and enabled only in `telegram-trinity-bridge.service`.
 - 2026-03-16: completed the next host-side env-secret permission hardening pass by changing the remaining broader-read live `/etc/default` families for Tank, runtime observer, Signal/Oracle, `server3-state-backup`, and `govorun-whatsapp-daily-uplift` plus their readable backup copies to `root:root` mode `600`, and verified the affected services/timers all remained active.
 - 2026-03-16: hardened the Architect Telegram bridge env secrets on the live host by changing `/etc/default/telegram-architect-bridge` and its readable Architect backup copies under `/etc/default/` to `root:root` mode `600`, and verified `telegram-architect-bridge.service`, `telegram-tank-bridge.service`, and `telegram-macrorayd-bridge.service` all remained active after the permission lockdown.
 - 2026-03-15: completed direct post-cutover verification for the external Arr/media data plane and confirmed content visibility plus app behavior are operating correctly on the live `/srv/external/server3-arr` mount stack, closing the degraded-recovery follow-up from the 2026-03-13 migration.
@@ -52,7 +53,6 @@ Last updated: 2026-03-16 (AEST, +10:00)
 - 2026-03-15: recovered the external Arr data disk after backup verification exposed a stale mount state; confirmed the root-side placeholder tree was clean, remounted `/dev/sdb1` at `/srv/external/server3-arr`, restarted `media-stack.service`, and passed `ops/server3_state/verify_restore.sh --require-media-mount`.
 - 2026-03-15: reworked Server3 state backup into a monthly quiesced restore workflow on `/srv/external/server3-backups/state`, added manifest/checksum/git-bundle output plus restore/bootstrap/verify helpers, and verified both a live snapshot and a non-destructive restore extraction while keeping the Arr media payload excluded.
 - 2026-03-14: extended the Server3 monitoring stack to expose the external Arr disk `/srv/external/server3-arr` through a host cron-driven node_exporter textfile metric and added an external-disk section to `Server3 Node Overview` for total/used/free/percent-used plus `sdb` read/write throughput.
-- 2026-03-13: provisioned a new isolated Telegram helper runtime `Macrorayd` with its own Linux user, runtime root, env/state/log separation, service template `telegram-macrorayd-bridge.service`, env template `infra/env/telegram-macrorayd-bridge.env.example`, restart wiring (`TELEGRAM_RESTART_UNIT` + dedicated sudoers mirror), manifest entry, and a neutral runtime-local `AGENTS.md`; it is intended as a clean Codex-powered helper bot whose personality can be specialized later without changing the shared bridge core.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.

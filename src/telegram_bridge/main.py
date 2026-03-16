@@ -9,6 +9,7 @@ from typing import Dict, Optional
 from urllib.error import HTTPError, URLError
 
 try:
+    from .affective_runtime import build_affective_runtime
     from .attachment_store import AttachmentStore
     from .channel_adapter import ChannelAdapter
     from .executor import (
@@ -63,6 +64,7 @@ try:
     from .transport import TELEGRAM_LIMIT, TelegramClient, to_telegram_chunks
     from .voice_alias_learning import VoiceAliasLearningStore
 except ImportError:
+    from affective_runtime import build_affective_runtime
     from attachment_store import AttachmentStore
     from channel_adapter import ChannelAdapter
     from executor import (
@@ -335,6 +337,7 @@ def run_bridge(config: Config) -> int:
             "persistent_workers_enabled": config.persistent_workers_enabled,
             "canonical_sessions_enabled": config.canonical_sessions_enabled,
             "canonical_sqlite_enabled": config.canonical_sqlite_enabled,
+            "affective_runtime_enabled": config.affective_runtime_enabled,
         },
     )
     ensure_state_dir(config.state_dir)
@@ -350,6 +353,7 @@ def run_bridge(config: Config) -> int:
         max_summaries_per_key=config.memory_max_summaries_per_key,
         prune_interval_seconds=config.memory_prune_interval_seconds,
     )
+    affective_runtime = build_affective_runtime(config)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
     worker_sessions_path = os.path.join(config.state_dir, "worker_sessions.json")
     in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
@@ -633,6 +637,7 @@ def run_bridge(config: Config) -> int:
         chat_sessions=loaded_canonical_sessions,
         chat_sessions_path=chat_sessions_path,
         memory_engine=memory_engine,
+        affective_runtime=affective_runtime,
         attachment_store=attachment_store,
         voice_alias_learning_store=voice_alias_learning_store,
     )
@@ -740,6 +745,12 @@ def run_bridge(config: Config) -> int:
     logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
     logging.info("Memory SQLite path=%s", config.memory_sqlite_path)
     logging.info(
+        "Affective runtime enabled=%s db_path=%s ping_target=%s",
+        bool(affective_runtime),
+        config.affective_runtime_db_path,
+        config.affective_runtime_ping_target,
+    )
+    logging.info(
         "Attachment archive path=%s retention_seconds=%s max_total_bytes=%s",
         os.path.join(config.state_dir, "attachments.sqlite3"),
         config.attachment_retention_seconds,
@@ -798,6 +809,7 @@ def run_bridge(config: Config) -> int:
             "channel_plugin": config.channel_plugin,
             "engine_plugin": config.engine_plugin,
             "whatsapp_plugin_enabled": config.whatsapp_plugin_enabled,
+            "affective_runtime_enabled": bool(affective_runtime),
         },
     )
 

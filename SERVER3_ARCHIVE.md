@@ -279,6 +279,15 @@ Migrated out of summary during this trim:
 - 2026-02-28: removed legacy `tasks/lessons.md` compatibility stub and deleted empty `tasks/` folder after lessons migration to `docs/instructions/lessons.md`.
 - 2026-02-28: recorded owner risk decisions (`H5/H6/H7/H9`) and delivered H8 hardening by rejecting `--base-url` in direct HA scripts; docs and lessons updated.
 
+## 2026-03-16 (Summary Roll-Forward Trim for Trinity Runtime Rollout)
+
+Summary:
+- Added a new rolling summary entry for the Trinity runtime deployment and affective-runtime rollout.
+- Re-trimmed the rolling summary back to bound by migrating one oldest item into archive.
+
+Migrated out of summary during this trim:
+- 2026-03-13: provisioned a new isolated Telegram helper runtime `Macrorayd` with its own Linux user, runtime root, env/state/log separation, service template `telegram-macrorayd-bridge.service`, env template `infra/env/telegram-macrorayd-bridge.env.example`, restart wiring (`TELEGRAM_RESTART_UNIT` + dedicated sudoers mirror), manifest entry, and a neutral runtime-local `AGENTS.md`; it is intended as a clean Codex-powered helper bot whose personality can be specialized later without changing the shared bridge core.
+
 ## 2026-02-28 (Summary Roll-Forward Trim for Tank Voice Live Apply)
 
 Summary:

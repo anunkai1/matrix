@@ -1,0 +1,3 @@
+# Mirror of /etc/sudoers.d/trinity-telegram-bridge on Server3.
+Defaults:trinity !requiretty
+trinity ALL=(root) NOPASSWD: /home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-trinity-bridge.service

@@ -39,6 +39,7 @@ declare -i failures=0
 declare -a required_services=(
   telegram-architect-bridge.service
   telegram-tank-bridge.service
+  telegram-trinity-bridge.service
   telegram-macrorayd-bridge.service
   whatsapp-govorun-bridge.service
   govorun-whatsapp-bridge.service

@@ -76,6 +76,44 @@ class RuntimeConfigTests(unittest.TestCase):
             [str(ROOT / "src" / "telegram_bridge" / "executor.sh")],
         )
 
+    def test_load_config_defaults_affective_runtime_to_disabled(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_BRIDGE_STATE_DIR": "/tmp/runtime-config-affective",
+            },
+            clear=True,
+        ):
+            config = runtime_config.load_config()
+        self.assertFalse(config.affective_runtime_enabled)
+        self.assertEqual(
+            config.affective_runtime_db_path,
+            "/tmp/runtime-config-affective/affective_state.sqlite3",
+        )
+        self.assertEqual(config.affective_runtime_ping_target, "1.1.1.1")
+
+    def test_load_config_reads_affective_runtime_overrides(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_AFFECTIVE_RUNTIME_ENABLED": "true",
+                "TELEGRAM_AFFECTIVE_RUNTIME_DB_PATH": "/var/lib/trinitybot/affective.sqlite3",
+                "TELEGRAM_AFFECTIVE_RUNTIME_PING_TARGET": "",
+            },
+            clear=True,
+        ):
+            config = runtime_config.load_config()
+        self.assertTrue(config.affective_runtime_enabled)
+        self.assertEqual(
+            config.affective_runtime_db_path,
+            "/var/lib/trinitybot/affective.sqlite3",
+        )
+        self.assertEqual(config.affective_runtime_ping_target, "")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -51,6 +51,32 @@
       ]
     },
     {
+      "name": "Trinity",
+      "category": "secondary",
+      "runtime_layout": "shared-core-overlay",
+      "workspace_root": "/home/trinity/trinitybot",
+      "shared_core_root": "/home/architect/matrix",
+      "purpose": "Separate Telegram runtime for the Trinity persona and affective-state experiment.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "isolated Trinity workspace",
+        "Trinity runtime environment",
+        "authenticated Codex executor"
+      ],
+      "owner_user": "trinity",
+      "notes": [
+        "Uses a dedicated runtime root, state DB, and persona instructions so affective behavior does not bleed into Architect.",
+        "Feature is enabled only in the Trinity deployment via env flags; shared core remains default-off."
+      ],
+      "units": [
+        {
+          "name": "telegram-trinity-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
       "name": "Govorun transport",
       "category": "secondary",
       "runtime_layout": "transport-app",
