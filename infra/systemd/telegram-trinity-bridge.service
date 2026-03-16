@@ -11,7 +11,6 @@ WorkingDirectory=/home/trinity/trinitybot
 Environment=PYTHONUNBUFFERED=1
 Environment=UNIT_NAME=telegram-trinity-bridge.service
 Environment=TELEGRAM_RUNTIME_ROOT=/home/trinity/trinitybot
-Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix
 Environment=TELEGRAM_EXECUTOR_CMD=/home/trinity/trinitybot/src/telegram_bridge/executor.sh
 EnvironmentFile=-/etc/default/telegram-trinity-bridge
 ExecStart=/usr/bin/python3 /home/trinity/trinitybot/src/telegram_bridge/main.py

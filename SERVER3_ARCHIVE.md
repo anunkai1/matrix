@@ -282,7 +282,7 @@ Migrated out of summary during this trim:
 ## 2026-03-16 (Summary Roll-Forward Trim for Trinity Runtime Rollout)
 
 Summary:
-- Added a new rolling summary entry for the Trinity runtime deployment and affective-runtime rollout.
+- Added a new rolling summary entry for the Trinity runtime deployment, then refined it once Trinity moved from a shared-core overlay to its own dedicated code tree.
 - Re-trimmed the rolling summary back to bound by migrating one oldest item into archive.
 
 Migrated out of summary during this trim:
