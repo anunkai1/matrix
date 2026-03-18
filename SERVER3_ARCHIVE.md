@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-18 (Summary Roll-Forward Trim for Govorun Reply-Length Unpinning)
+
+Summary:
+- Updated the top rolling summary entry to reflect that Govorun no longer has explicit default reply-length instructions in either the live runtime policy or the active WhatsApp bridge env.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-18: replaced the Govorun WhatsApp 09:00 daily message rotation with a local Reddit-backed cache of highly popular `r/LifeProTips` posts from the last 5 years plus persistent anti-repeat SQLite history, then widened the cache refresh to merge several top-sorted subreddit search paths so the live source pool holds hundreds of unique cached posts while preserving the full cached source advice in Russian without adding a Reddit/source link; `LPT request` posts are now explicitly excluded and the existing request rows were purged from the live cache.
+
 ## 2026-03-16 (Architect Env Permission Hardening)
 
 Summary:
