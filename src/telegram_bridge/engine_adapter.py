@@ -67,7 +67,7 @@ class MavaliEthEngineAdapter:
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
-        del thread_id, progress_callback, cancel_event
+        codex_fallback = CodexEngineAdapter()
         src_root = Path(__file__).resolve().parents[1]
         if str(src_root) not in sys.path:
             sys.path.insert(0, str(src_root))
@@ -83,15 +83,35 @@ class MavaliEthEngineAdapter:
             )
 
         if image_path:
-            output = "This wallet runtime does not support images or files yet."
-        else:
-            try:
-                runtime_config = MavaliEthConfig.from_env(getattr(config, "state_dir", None))
-                service = MavaliEthService(runtime_config)
-                resolved_session_key = session_key or f"{channel_name or 'telegram'}:default"
-                output = service.handle_prompt(resolved_session_key, prompt)
-            except Exception as exc:
-                output = str(exc) or "mavali_eth execution failed."
+            return codex_fallback.run(
+                config=config,
+                prompt=prompt,
+                thread_id=thread_id,
+                session_key=session_key,
+                channel_name=channel_name,
+                image_path=image_path,
+                progress_callback=progress_callback,
+                cancel_event=cancel_event,
+            )
+
+        try:
+            runtime_config = MavaliEthConfig.from_env(getattr(config, "state_dir", None))
+            service = MavaliEthService(runtime_config)
+            resolved_session_key = session_key or f"{channel_name or 'telegram'}:default"
+            output = service.handle_prompt(resolved_session_key, prompt)
+            if output == service._help_message():
+                return codex_fallback.run(
+                    config=config,
+                    prompt=prompt,
+                    thread_id=thread_id,
+                    session_key=session_key,
+                    channel_name=channel_name,
+                    image_path=image_path,
+                    progress_callback=progress_callback,
+                    cancel_event=cancel_event,
+                )
+        except Exception as exc:
+            output = str(exc) or "mavali_eth execution failed."
 
         return subprocess.CompletedProcess(
             args=["mavali_eth"],
