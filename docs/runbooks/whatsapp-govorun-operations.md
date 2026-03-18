@@ -112,6 +112,7 @@
 - Optional busy-lock wording: set `TELEGRAM_BUSY_MESSAGE` (for example `Даю справку: уже занят предыдущим запросом. Скоро вернусь.`).
 - Optional speed/profile override: set `ARCHITECT_EXEC_ARGS` (for example `--model gpt-5.3-codex --config model_reasoning_effort="high"`). This is applied by `executor.sh` to both new and resumed chats.
 - `/restart` path override for Govorun runtime: set `TELEGRAM_RESTART_SCRIPT=/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh` and `TELEGRAM_RESTART_UNIT=govorun-whatsapp-bridge.service`.
+- Browser Brain routing is available through `Browser Brain ...` or `Server3 Browser ...`; Govorun can auto-start `server3-browser-brain.service` through its scoped sudoers allowlist when the browser runtime is idle.
 - Voice notes: require `TELEGRAM_VOICE_TRANSCRIBE_CMD`; in group chats transcript is checked against required prefix and silently ignored when prefix is missing.
 - WhatsApp group admin command exception: `/voice-alias ...` bypasses summon prefix so operators can run `list/approve/reject/add` directly.
 - Voice prefix learning: repeated near-match prefix mishears (for example `govoron` vs `govorun`) create normal `/voice-alias` suggestions for approval.
