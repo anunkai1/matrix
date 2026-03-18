@@ -47,6 +47,7 @@ Last updated: 2026-03-18 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-18: rolled out the live `Mavali ETH` runtime on Server3 by provisioning the `mavali_eth` user/root, installing the shared-core overlay shims and dedicated signing venv, staging the wallet keystore into `/home/mavali_eth/.local/state/telegram-mavali-eth-bridge/wallet.json`, writing `/etc/default/telegram-mavali-eth-bridge` with owner chat `211761499`, starting `telegram-mavali-eth-bridge.service`, enabling `mavali-eth-receipt-monitor.timer`, verifying CLI wallet/balance/gas reads, and sending a Telegram deployment smoke message to the owner chat; temporary RPC is `https://mainnet.gateway.tenderly.co`.
 - 2026-03-18: changed Architect's shared Telegram memory behavior so `TELEGRAM_SHARED_MEMORY_KEY=shared:architect:main` now uses per-chat live session keys during active chats, reads the shared key as archive/background context, and merges each live key back into the shared archive only when the idle-expiry path clears that chat's session; this stops DM/group topic bleed during active sessions while preserving a combined archive for later sessions and CLI use.
 - 2026-03-18: removed Govorun's remaining explicit default reply-length instructions from both the live runtime policy at `/home/govorun/govorunbot/AGENTS.md` and the active WhatsApp bridge env `/etc/default/govorun-whatsapp-bridge`, then restarted `govorun-whatsapp-bridge.service` so response length is no longer pinned there either.
 - 2026-03-18: centralized trusted runtime Codex auth on Server3 behind one canonical shared file at `/etc/server3-codex/auth.json` with per-user `~/.codex/auth.json` symlinks managed by the new `ops/codex/install_shared_auth.sh` helper, keeping per-user history/state/config separate while making quota/auth behavior consistent across the runtime users.
@@ -54,13 +55,13 @@ Last updated: 2026-03-18 (AEST, +10:00)
 - 2026-03-18: widened bare-YouTube-link lightweight request matching so common follow-up phrasing like `summarise this` now still triggers the transcript-first YouTube auto-route instead of falling back to the generic executor path.
 - 2026-03-18: added the new Telegram runtime `AgentSmith` as an isolated shared-core overlay with service `telegram-agentsmith-bridge.service`, runtime root `/home/agentsmith/agentsmithbot`, runtime-local AGENTS identity, private-chat allowlist `211761499`, and restore/restart coverage.
 - 2026-03-18: rewired shared YouTube-link handling across the bridge core so bare YouTube URLs in Telegram and WhatsApp chats now enter a deterministic transcript-first path: `yt-dlp` metadata/captions first, local transcription fallback when captions are missing, and explicit failure instead of metadata-only pseudo-summaries; upgraded the live host `yt-dlp` binary to `2026.03.17` so public-video audio download works again, and updated Govorun's live `AGENTS.md` so WhatsApp can execute the mode.
-- 2026-03-18: removed stale Govorun politics-boundary references from the repo after the live `/home/govorun/govorunbot/AGENTS.md` policy dropped that restriction, and cleaned the daily-uplift test so no dead anti-politics prompt assertion remains.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
 - The monitoring stack binds Grafana specifically to `192.168.0.148:3000`; if Server3's LAN IP changes, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.
 - The new Server3 backup path is local-only on the attached USB backup disk at `/srv/external/server3-backups`; if the host and that backup disk are lost together, the rebuild path is gone.
 - Tank keeps `/home/tank/tankbot/src` linked to the shared repo source tree; preserve `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot` in its unit/env so runtime identity does not collapse back to the shared repo root.
+- `Mavali ETH` is live on a temporary public Ethereum RPC (`https://mainnet.gateway.tenderly.co`); replace it with a dedicated authenticated provider before treating the wallet runtime as durable production infrastructure.
 
 ## Archive Pointer
 - `SERVER3_ARCHIVE.md` is the canonical long-term detailed history.
