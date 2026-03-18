@@ -46,6 +46,7 @@ When a request should not be handled as open-ended assistant chat, the bridge ca
 | Mode | User trigger | What it does | Main scripts |
 | --- | --- | --- | --- |
 | Home Assistant | `HA ...` or `Home Assistant ...` | Stateless HA control/scheduling | [`ops/ha`](../ops/ha) |
+| YouTube Link | bare YouTube URL or YouTube URL with a lightweight summary/transcript request | Transcript-first video analysis via `yt-dlp`, with Browser Brain fallback only when needed | `yt-dlp`, [`ops/browser_brain`](../ops/browser_brain) |
 | Browser Brain | `Server3 Browser ...` or `Browser Brain ...` | Structured real-browser automation via snapshot refs | [`ops/browser_brain`](../ops/browser_brain) |
 | TV/Desktop | `Server3 TV ...` | Start desktop, open browser, control YouTube | [`ops/tv-desktop`](../ops/tv-desktop) |
 | Nextcloud | `Nextcloud ...` | File and calendar operations | [`ops/nextcloud`](../ops/nextcloud) |
@@ -234,7 +235,7 @@ Use it when you want:
 
 ### Keyword-routed request
 
-1. Message starts with `HA`, `Server3 Browser`, `Browser Brain`, `Server3 TV`, or `Nextcloud`.
+1. Message starts with `HA`, `Server3 Browser`, `Browser Brain`, `Server3 TV`, or `Nextcloud`, or it contains an auto-routed YouTube link request.
 2. Bridge strips the keyword and switches to the bounded mode.
 3. Request runs stateless with a script allowlist or deterministic backend.
 4. Result is returned without carrying open-ended conversational memory.

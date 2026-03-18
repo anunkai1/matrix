@@ -239,6 +239,10 @@ Message handling:
     - `ops/browser_brain/status_service.sh`
   - Browser Brain requests should use `start`, then `open`/`navigate`, then `snapshot`, then actions by exact `ref`
   - empty keyword-only messages are rejected with a usage hint
+- Bare YouTube links are auto-routed into YouTube link mode:
+  - requests run stateless (no memory/session carryover)
+  - the bridge defaults a bare link to concise video summary behavior
+  - the bridge prefers `yt-dlp` metadata and captions/transcript retrieval first, then uses Browser Brain only as fallback
 - Messages starting with `Nextcloud` are routed into Nextcloud operations mode:
   - requests run stateless (no memory/session carryover)
   - the bridge wraps the request with strict policy to use deterministic scripts:

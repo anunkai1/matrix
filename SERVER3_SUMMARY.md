@@ -32,6 +32,7 @@ Last updated: 2026-03-18 (AEST, +10:00)
 ## Operational Memory (Pinned)
 - Routing keywords:
   - `HA ...` / `Home Assistant ...` for stateless HA operation mode
+  - bare YouTube links for transcript-first YouTube analysis mode with `yt-dlp` first and Browser Brain fallback
   - `Server3 TV ...` for desktop/browser control mode
   - `Nextcloud ...` for Nextcloud file/calendar operation mode
 - Primary channel: `telegram`; WhatsApp runtime exists in parallel (`whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service`).
@@ -45,6 +46,7 @@ Last updated: 2026-03-18 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-18: added shared YouTube-link auto-routing across the bridge core so bare YouTube URLs in Telegram and WhatsApp chats now enter a stateless transcript-first analysis mode that prefers `yt-dlp` metadata/captions and only falls back to Browser Brain when needed; updated Govorun's live `AGENTS.md` so WhatsApp can execute that mode instead of refusing all tool use.
 - 2026-03-18: removed stale Govorun politics-boundary references from the repo after the live `/home/govorun/govorunbot/AGENTS.md` policy dropped that restriction, and cleaned the daily-uplift test so no dead anti-politics prompt assertion remains.
 - 2026-03-18: widened Govorun's scoped sudoers allowlist so the WhatsApp runtime can auto-start `server3-browser-brain.service` for `Browser Brain ...` / `Server3 Browser ...` requests, and updated the Govorun operations runbook to document direct Browser Brain use from WhatsApp.
 - 2026-03-18: replaced the Govorun WhatsApp 09:00 daily message rotation with a local Reddit-backed cache of highly popular `r/LifeProTips` posts from the last 5 years plus persistent anti-repeat SQLite history, then widened the cache refresh to merge several top-sorted subreddit search paths so the live source pool holds hundreds of unique cached posts while preserving the full cached source advice in Russian without adding a Reddit/source link; `LPT request` posts are now explicitly excluded and the existing request rows were purged from the live cache.
@@ -52,7 +54,6 @@ Last updated: 2026-03-18 (AEST, +10:00)
 - 2026-03-16: provisioned a new isolated Telegram runtime `Trinity` with its own Linux user, dedicated code tree/runtime root `/home/trinity/trinitybot`, state root `/var/lib/trinitybot`, private-chat-only allowlist, dedicated service/env/sudoers wiring, restart path, backup/restore coverage, and a machine-grounded affective runtime that remains enabled only in `telegram-trinity-bridge.service`.
 - 2026-03-16: completed the next host-side env-secret permission hardening pass by changing the remaining broader-read live `/etc/default` families for Tank, runtime observer, Signal/Oracle, `server3-state-backup`, and `govorun-whatsapp-daily-uplift` plus their readable backup copies to `root:root` mode `600`, and verified the affected services/timers all remained active.
 - 2026-03-16: hardened the Architect Telegram bridge env secrets on the live host by changing `/etc/default/telegram-architect-bridge` and its readable Architect backup copies under `/etc/default/` to `root:root` mode `600`, and verified `telegram-architect-bridge.service`, `telegram-tank-bridge.service`, and `telegram-macrorayd-bridge.service` all remained active after the permission lockdown.
-- 2026-03-15: reduced `server3-state-backup` retention from 12 monthly snapshots to 3 in the live profile and tracked repo defaults so the attached backup disk keeps only the most recent quarter of rebuild-grade state archives.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.

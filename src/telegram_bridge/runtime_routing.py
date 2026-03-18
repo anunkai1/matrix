@@ -16,11 +16,13 @@ try:
         build_ha_keyword_prompt,
         build_nextcloud_keyword_prompt,
         build_server3_keyword_prompt,
+        build_youtube_link_prompt,
         command_bypasses_required_prefix,
         extract_browser_brain_keyword_request,
         extract_ha_keyword_request,
         extract_nextcloud_keyword_request,
         extract_server3_keyword_request,
+        extract_youtube_link_request,
     )
 except ImportError:
     from runtime_profile import (
@@ -33,11 +35,13 @@ except ImportError:
         build_ha_keyword_prompt,
         build_nextcloud_keyword_prompt,
         build_server3_keyword_prompt,
+        build_youtube_link_prompt,
         command_bypasses_required_prefix,
         extract_browser_brain_keyword_request,
         extract_ha_keyword_request,
         extract_nextcloud_keyword_request,
         extract_server3_keyword_request,
+        extract_youtube_link_request,
     )
 
 
@@ -83,6 +87,10 @@ def apply_required_prefix_gate(
         or not requires_prefix_for_message
         or command_bypasses_required_prefix(client, prefix_bypass_command)
     ):
+        return PrefixGateResult(prompt_input=prompt_input)
+
+    youtube_link_mode, _ = extract_youtube_link_request(prompt_input)
+    if prefix_bypass_command is None and youtube_link_mode:
         return PrefixGateResult(prompt_input=prompt_input)
 
     voice_without_caption = bool(voice_file_id) and not prompt_input.strip()
@@ -197,6 +205,16 @@ def apply_priority_keyword_routing(
             stateless=True,
             priority_keyword_mode=True,
             routed_event="bridge.ha_keyword_routed",
+        )
+
+    youtube_link_mode, youtube_url = extract_youtube_link_request(prompt_input)
+    if command is None and youtube_link_mode:
+        return KeywordRouteResult(
+            prompt_input=build_youtube_link_prompt(prompt_input, youtube_url),
+            command=None,
+            stateless=True,
+            priority_keyword_mode=True,
+            routed_event="bridge.youtube_link_auto_routed",
         )
 
     return KeywordRouteResult(

@@ -2136,6 +2136,32 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(client.messages, [])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_routes_bare_youtube_link_without_prefix_in_group(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(
+            required_prefixes=["@helper"],
+            require_prefix_in_private=False,
+        )
+        update = {
+            "update_id": 107,
+            "message": {
+                "message_id": 207,
+                "chat": {"id": 1, "type": "group"},
+                "text": "https://www.youtube.com/watch?v=yD5DFL3xPmo",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertTrue(kwargs["stateless"])
+        self.assertIn("YouTube link priority mode is active.", kwargs["prompt"])
+        self.assertIn("Detected YouTube URL: https://www.youtube.com/watch?v=yD5DFL3xPmo", kwargs["prompt"])
+        self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_ha_keyword_prompt_stateless(self, start_message_worker):
         state = bridge.State()
         client = FakeTelegramClient()
