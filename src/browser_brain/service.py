@@ -1,18 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import threading
-import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
-from urllib.parse import quote
-from urllib.request import urlopen
 
 from .config import BrowserBrainConfig
 
@@ -272,7 +266,6 @@ class BrowserBrainService:
     def __init__(self, config: BrowserBrainConfig) -> None:
         self.config = config
         self._lock = threading.RLock()
-        self._browser_process: subprocess.Popen[str] | None = None
         self._playwright = None
         self._browser = None
         self._started_at: datetime | None = None
@@ -284,12 +277,11 @@ class BrowserBrainService:
             tabs = self._tab_payloads() if self._browser is not None else []
             return {
                 "service": "server3-browser-brain",
-                "running": self._browser is not None and self._browser_process is not None and self._browser_process.poll() is None,
+                "running": self._managed_browser_alive(),
                 "headless": self.config.headless,
                 "browser_executable": self.config.browser_executable,
                 "user_data_dir": str(self.config.browser_user_data_dir),
                 "capture_dir": str(self.config.capture_dir),
-                "remote_debugging_port": self.config.remote_debugging_port,
                 "started_at": self._started_at.isoformat() if self._started_at else None,
                 "tabs": tabs,
             }
@@ -298,12 +290,12 @@ class BrowserBrainService:
         with self._lock:
             if self._browser is not None and self._managed_browser_alive():
                 return self.status()
-            if self._browser is not None or self._browser_process is not None:
+            if self._browser is not None:
                 self._shutdown_browser()
             self._ensure_paths()
             self._cleanup_old_captures()
             self._launch_browser()
-            self._log_action("start", {"headless": self.config.headless, "port": self.config.remote_debugging_port})
+            self._log_action("start", {"headless": self.config.headless})
             return self.status()
 
     def stop(self, _payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -453,7 +445,13 @@ class BrowserBrainService:
             self.start()
 
     def _managed_browser_alive(self) -> bool:
-        return self._browser is not None and self._browser_process is not None and self._browser_process.poll() is None
+        if self._browser is None:
+            return False
+        try:
+            self._browser.pages
+        except Exception:
+            return False
+        return True
 
     def _ensure_paths(self) -> None:
         self.config.state_dir.mkdir(parents=True, exist_ok=True)
@@ -477,66 +475,29 @@ class BrowserBrainService:
                 details={"hint": "Run ops/browser_brain/install_runtime_venv.sh to provision the runtime venv."},
             ) from exc
 
-        command = [
-            self.config.browser_executable,
-            f"--remote-debugging-port={self.config.remote_debugging_port}",
-            f"--user-data-dir={self.config.browser_user_data_dir}",
+        args = [
             "--no-default-browser-check",
             "--no-first-run",
             "--disable-background-networking",
             "--disable-sync",
             "--disable-component-update",
-            "--new-window",
-            "about:blank",
         ]
-        if self.config.headless:
-            command.insert(1, "--headless=new")
-
-        self._browser_process = subprocess.Popen(
-            command,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=dict(os.environ, HOME=str(self.config.state_dir)),
-        )
-        endpoint = self._wait_for_cdp_endpoint()
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.connect_over_cdp(endpoint)
+        self._browser = self._playwright.chromium.launch_persistent_context(
+            str(self.config.browser_user_data_dir),
+            executable_path=self.config.browser_executable,
+            headless=self.config.headless,
+            args=args,
+        )
         self._started_at = datetime.now(timezone.utc)
-        if not self._default_context().pages:
+        if not self._browser.pages:
             self._create_page("about:blank")
-
-    def _wait_for_cdp_endpoint(self) -> str:
-        deadline = time.time() + self.config.startup_timeout_seconds
-        url = f"http://127.0.0.1:{self.config.remote_debugging_port}/json/version"
-        while time.time() < deadline:
-            if self._browser_process is not None and self._browser_process.poll() is not None:
-                stderr = ""
-                if self._browser_process.stderr is not None:
-                    stderr = self._browser_process.stderr.read().strip()
-                raise BrowserBrainError(
-                    "browser_launch_failed",
-                    "Managed browser exited before CDP became ready",
-                    status=500,
-                    details={"stderr": stderr},
-                )
-            try:
-                with urlopen(url, timeout=1) as response:
-                    payload = json.loads(response.read().decode("utf-8"))
-                web_socket_url = payload.get("webSocketDebuggerUrl")
-                if web_socket_url:
-                    return f"http://127.0.0.1:{self.config.remote_debugging_port}"
-            except (URLError, TimeoutError, json.JSONDecodeError):
-                time.sleep(0.5)
-        raise BrowserBrainError("browser_start_timeout", "Timed out waiting for the managed browser CDP endpoint", status=500)
 
     def _shutdown_browser(self) -> None:
         browser = self._browser
         playwright = self._playwright
-        process = self._browser_process
         self._browser = None
         self._playwright = None
-        self._browser_process = None
         self._started_at = None
         if browser is not None:
             try:
@@ -548,21 +509,11 @@ class BrowserBrainService:
                 playwright.stop()
             except Exception:
                 pass
-        if process is not None and process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
 
     def _default_context(self):
         if self._browser is None:
             raise BrowserBrainError("browser_not_running", "Browser is not running", status=503)
-        contexts = list(self._browser.contexts)
-        if not contexts:
-            raise BrowserBrainError("browser_context_missing", "Browser has no automation context", status=500)
-        return contexts[0]
+        return self._browser
 
     def _live_pages(self):
         context = self._default_context()
@@ -570,27 +521,10 @@ class BrowserBrainService:
 
     def _create_page(self, url: str):
         context = self._default_context()
-        try:
-            page = context.new_page()
-            if url and url != "about:blank":
-                page.goto(url, wait_until="domcontentloaded", timeout=self.config.action_timeout_ms)
-            return page
-        except Exception:
-            escaped_url = quote(url or "about:blank", safe=":/?&=%#")
-            with urlopen(
-                f"http://127.0.0.1:{self.config.remote_debugging_port}/json/new?{escaped_url}",
-                timeout=self.config.startup_timeout_seconds,
-            ) as response:
-                response.read()
-            deadline = time.time() + self.config.startup_timeout_seconds
-            while time.time() < deadline:
-                for page in self._live_pages():
-                    if url == "about:blank" and page.url in {"about:blank", ""}:
-                        return page
-                    if page.url == url:
-                        return page
-                time.sleep(0.2)
-            raise BrowserBrainError("tab_create_failed", f"Timed out waiting for new tab: {url}", status=500)
+        page = context.new_page()
+        if url and url != "about:blank":
+            page.goto(url, wait_until="domcontentloaded", timeout=self.config.action_timeout_ms)
+        return page
 
     def _tab_id(self, page) -> str:
         key = id(page)

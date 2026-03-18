@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 
 from .service import BrowserBrainError, BrowserBrainService
@@ -27,7 +27,7 @@ ROUTES = {
 }
 
 
-class BrowserBrainHTTPServer(ThreadingHTTPServer):
+class BrowserBrainHTTPServer(HTTPServer):
     def __init__(self, server_address, controller: BrowserBrainService):
         super().__init__(server_address, BrowserBrainRequestHandler)
         self.controller = controller

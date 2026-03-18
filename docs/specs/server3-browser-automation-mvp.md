@@ -1,6 +1,6 @@
 # Server3 Browser Automation MVP
 
-Status: implemented in-repo, not yet deployed
+Status: deployed on live host
 
 ## Document Role
 
@@ -173,12 +173,12 @@ Key rationale behind this MVP shape:
 
 ## Next Actions
 
-Before live deployment, complete these steps:
+After deployment, the next steps are:
 
-1. Deploy the runtime on the live host under the dedicated `browser_brain` user.
-2. Install the runtime venv and start the systemd service.
-3. Validate live Brave/Playwright behavior on Server3 with a real site smoke test.
-4. Decide the first higher-level caller, likely Architect.
+1. Decide the first higher-level caller, likely Architect.
+2. Add a small local CLI or caller wrapper for faster operator smoke tests.
+3. Harden the allow/deny navigation policy before broad bot integration.
+4. Add typed input and screenshot regression checks to the live smoke test path.
 5. Add existing-session attach only after the isolated managed-profile path is stable.
 
 ## Expansion Path After MVP

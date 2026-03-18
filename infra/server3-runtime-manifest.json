@@ -294,7 +294,7 @@
       "workspace_root": "/home/browser_brain/browserbrain",
       "shared_core_root": "/home/architect/matrix",
       "purpose": "Dedicated local browser-control service for structured automation against a managed Brave profile.",
-      "expected_default_state": "inactive",
+      "expected_default_state": "active",
       "dependencies": [
         "browser_brain runtime user",
         "brave-browser",
@@ -309,7 +309,7 @@
         {
           "name": "server3-browser-brain.service",
           "kind": "service",
-          "expected_state": "inactive"
+          "expected_state": "active"
         }
       ]
     },
