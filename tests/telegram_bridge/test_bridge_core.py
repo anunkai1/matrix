@@ -2135,8 +2135,13 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertFalse(start_message_worker.called)
         self.assertEqual(client.messages, [])
 
+    @mock.patch.object(bridge_handlers, "start_youtube_worker")
     @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_routes_bare_youtube_link_without_prefix_in_group(self, start_message_worker):
+    def test_handle_update_routes_bare_youtube_link_without_prefix_in_group(
+        self,
+        start_message_worker,
+        start_youtube_worker,
+    ):
         state = bridge.State()
         client = FakeTelegramClient()
         config = make_config(
@@ -2154,12 +2159,77 @@ class BridgeCoreTests(unittest.TestCase):
 
         bridge.handle_update(state, config, client, update)
 
-        self.assertTrue(start_message_worker.called)
-        kwargs = start_message_worker.call_args.kwargs
-        self.assertTrue(kwargs["stateless"])
-        self.assertIn("YouTube link priority mode is active.", kwargs["prompt"])
-        self.assertIn("Detected YouTube URL: https://www.youtube.com/watch?v=yD5DFL3xPmo", kwargs["prompt"])
+        self.assertFalse(start_message_worker.called)
+        self.assertTrue(start_youtube_worker.called)
+        kwargs = start_youtube_worker.call_args.kwargs
+        self.assertEqual(kwargs["request_text"], "https://www.youtube.com/watch?v=yD5DFL3xPmo")
+        self.assertEqual(kwargs["youtube_url"], "https://www.youtube.com/watch?v=yD5DFL3xPmo")
         self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_youtube_worker")
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_does_not_auto_route_non_request_text_with_youtube_link(
+        self,
+        start_message_worker,
+        start_youtube_worker,
+    ):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(
+            required_prefixes=["@helper"],
+            require_prefix_in_private=False,
+        )
+        update = {
+            "update_id": 108,
+            "message": {
+                "message_id": 208,
+                "chat": {"id": 1, "type": "group"},
+                "text": "watch this https://www.youtube.com/watch?v=yD5DFL3xPmo",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertFalse(start_message_worker.called)
+        self.assertFalse(start_youtube_worker.called)
+        self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "send_executor_output", return_value="unavailable")
+    @mock.patch.object(bridge_handlers, "run_youtube_analyzer")
+    def test_process_youtube_request_returns_unavailable_when_transcript_request_has_no_transcript(
+        self,
+        run_youtube_analyzer,
+        send_executor_output,
+    ):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        run_youtube_analyzer.return_value = {
+            "ok": True,
+            "request_mode": "transcript",
+            "title": "Example Video",
+            "channel": "Example Channel",
+            "transcript_text": "",
+            "transcript_source": "none",
+            "transcript_language": "",
+            "transcript_error": "captions missing",
+        }
+
+        bridge_handlers.process_youtube_request(
+            state=state,
+            config=config,
+            client=client,
+            engine=None,
+            chat_id=1,
+            message_id=301,
+            request_text="full transcript https://www.youtube.com/watch?v=yD5DFL3xPmo",
+            youtube_url="https://www.youtube.com/watch?v=yD5DFL3xPmo",
+            cancel_event=None,
+        )
+
+        sent_output = send_executor_output.call_args.kwargs["output"]
+        self.assertIn("could not obtain captions or a usable transcription", sent_output)
+        self.assertIn("Example Video", sent_output)
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_ha_keyword_prompt_stateless(self, start_message_worker):

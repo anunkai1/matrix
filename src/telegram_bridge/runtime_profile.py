@@ -35,6 +35,10 @@ YOUTUBE_URL_RE = re.compile(
     r"(?P<url>https?://(?:[\w-]+\.)?(?:youtube\.com/(?:watch\?[^\s<>()]+|shorts/[^\s<>()]+|live/[^\s<>()]+|embed/[^\s<>()]+)|youtu\.be/[^\s<>()]+))",
     re.IGNORECASE,
 )
+YOUTUBE_LIGHTWEIGHT_REQUEST_RE = re.compile(
+    r"^(?:(?:please|pls|summary|summarise|summarize|analyse|analyze|explain|transcript|full transcript|captions?|subtitles?|transcribe|translate|translation|key points?|timestamps?|таймкоды|переведи|перевод|суммаризируй|суммаризуй|кратко|краткое содержание|резюме|сводка|анализ|проанализируй|транскрипт|стенограмма|субтитры|расшифровка)\s*)+$",
+    re.IGNORECASE,
+)
 WHATSAPP_REPLY_PREFIX = "Даю справку:"
 WHATSAPP_REPLY_PREFIX_RE = re.compile(r"^\s*даю\s+справку\s*:\s*", re.IGNORECASE)
 WHATSAPP_LEGACY_REPLY_PREFIX_RE = re.compile(r"^\s*говорун\s*:\s*", re.IGNORECASE)
@@ -78,14 +82,6 @@ def build_nextcloud_routing_script_allowlist() -> List[str]:
 
 def build_browser_brain_routing_script_allowlist() -> List[str]:
     return [
-        shared_core_path("ops", "browser_brain", "browser_brain_ctl.sh"),
-        shared_core_path("ops", "browser_brain", "status_service.sh"),
-    ]
-
-
-def build_youtube_routing_tool_allowlist() -> List[str]:
-    return [
-        "/usr/bin/yt-dlp",
         shared_core_path("ops", "browser_brain", "browser_brain_ctl.sh"),
         shared_core_path("ops", "browser_brain", "status_service.sh"),
     ]
@@ -147,6 +143,10 @@ def extract_youtube_link_request(text: str) -> tuple[bool, str]:
         return False, ""
 
     url = match.group("url").rstrip(").,!?]}'\"")
+    remainder = f"{stripped[: match.start()]} {stripped[match.end() :]}"
+    normalized_remainder = re.sub(r"[\s\.,!?:;()\[\]{}'\"`~@#$%^&*_+=/\\|-]+", " ", remainder).strip()
+    if normalized_remainder and not YOUTUBE_LIGHTWEIGHT_REQUEST_RE.fullmatch(normalized_remainder):
+        return False, ""
     return True, url
 
 
@@ -212,26 +212,6 @@ def build_browser_brain_keyword_prompt(user_request: str) -> str:
         "- For page interaction, use `open` or `navigate`, then `snapshot`, then act using refs from that snapshot.\n"
         "- Do not guess element targets; use exact snapshot refs for click/type/press actions.\n"
         "- After execution, report exact commands used plus resulting tab_id, snapshot_id, refs, and final URL/title."
-    )
-
-
-def build_youtube_link_prompt(user_request: str, youtube_url: str) -> str:
-    tools = "\n".join(f"- {path}" for path in build_youtube_routing_tool_allowlist())
-    return (
-        "YouTube link priority mode is active.\n"
-        "Treat this as a YouTube video analysis or transcript request.\n"
-        f"Original user message: {user_request.strip()}\n"
-        f"Detected YouTube URL: {youtube_url}\n\n"
-        "Mandatory execution policy:\n"
-        f"{tools}\n"
-        "- If the message is only the YouTube link, default to a concise video summary.\n"
-        "- Start with `yt-dlp --dump-single-json --no-warnings --skip-download <url>` for metadata, chapters, description, and caption availability.\n"
-        "- If the user asks for transcript or captions, attempt subtitle or automatic-caption retrieval with yt-dlp before using Browser Brain.\n"
-        "- Prefer transcript/captions over page scraping when they are available.\n"
-        "- If transcript retrieval fails or captions are unavailable, say so clearly and fall back to a metadata/chapter-based summary.\n"
-        "- Use Browser Brain only as fallback when yt-dlp metadata/captions are insufficient or page interaction is actually needed.\n"
-        "- For Browser Brain fallback, use `browser_brain_ctl.sh` rather than raw curl.\n"
-        "- Report whether the answer came from transcript/captions, metadata, or Browser Brain fallback."
     )
 
 

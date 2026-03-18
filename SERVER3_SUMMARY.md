@@ -32,7 +32,7 @@ Last updated: 2026-03-18 (AEST, +10:00)
 ## Operational Memory (Pinned)
 - Routing keywords:
   - `HA ...` / `Home Assistant ...` for stateless HA operation mode
-  - bare YouTube links for transcript-first YouTube analysis mode with `yt-dlp` first and Browser Brain fallback
+  - bare YouTube links for transcript-first YouTube analysis mode with `yt-dlp` captions first and local transcription fallback
   - `Server3 TV ...` for desktop/browser control mode
   - `Nextcloud ...` for Nextcloud file/calendar operation mode
 - Primary channel: `telegram`; WhatsApp runtime exists in parallel (`whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service`).
@@ -46,7 +46,7 @@ Last updated: 2026-03-18 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
-- 2026-03-18: added shared YouTube-link auto-routing across the bridge core so bare YouTube URLs in Telegram and WhatsApp chats now enter a stateless transcript-first analysis mode that prefers `yt-dlp` metadata/captions and only falls back to Browser Brain when needed; updated Govorun's live `AGENTS.md` so WhatsApp can execute that mode instead of refusing all tool use.
+- 2026-03-18: rewired shared YouTube-link handling across the bridge core so bare YouTube URLs in Telegram and WhatsApp chats now enter a deterministic transcript-first path: `yt-dlp` metadata/captions first, local transcription fallback when captions are missing, and explicit failure instead of metadata-only pseudo-summaries; upgraded the live host `yt-dlp` binary to `2026.03.17` so public-video audio download works again, and updated Govorun's live `AGENTS.md` so WhatsApp can execute the mode.
 - 2026-03-18: removed stale Govorun politics-boundary references from the repo after the live `/home/govorun/govorunbot/AGENTS.md` policy dropped that restriction, and cleaned the daily-uplift test so no dead anti-politics prompt assertion remains.
 - 2026-03-18: widened Govorun's scoped sudoers allowlist so the WhatsApp runtime can auto-start `server3-browser-brain.service` for `Browser Brain ...` / `Server3 Browser ...` requests, and updated the Govorun operations runbook to document direct Browser Brain use from WhatsApp.
 - 2026-03-18: replaced the Govorun WhatsApp 09:00 daily message rotation with a local Reddit-backed cache of highly popular `r/LifeProTips` posts from the last 5 years plus persistent anti-repeat SQLite history, then widened the cache refresh to merge several top-sorted subreddit search paths so the live source pool holds hundreds of unique cached posts while preserving the full cached source advice in Russian without adding a Reddit/source link; `LPT request` posts are now explicitly excluded and the existing request rows were purged from the live cache.

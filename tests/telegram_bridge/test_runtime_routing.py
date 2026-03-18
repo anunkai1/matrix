@@ -130,9 +130,25 @@ class RuntimeRoutingTests(unittest.TestCase):
 
         self.assertTrue(result.priority_keyword_mode)
         self.assertTrue(result.stateless)
+        self.assertEqual(result.route_kind, "youtube_link")
+        self.assertEqual(result.route_value, "https://www.youtube.com/watch?v=yD5DFL3xPmo")
         self.assertEqual(result.routed_event, "bridge.youtube_link_auto_routed")
-        self.assertIn("YouTube link priority mode is active.", result.prompt_input)
-        self.assertIn("Detected YouTube URL: https://www.youtube.com/watch?v=yD5DFL3xPmo", result.prompt_input)
+        self.assertEqual(result.prompt_input, "https://www.youtube.com/watch?v=yD5DFL3xPmo")
+
+    def test_apply_priority_keyword_routing_ignores_non_request_text_with_youtube_link(self) -> None:
+        config = SimpleNamespace(keyword_routing_enabled=True)
+
+        result = runtime_routing.apply_priority_keyword_routing(
+            config=config,
+            prompt_input="watch this https://www.youtube.com/watch?v=yD5DFL3xPmo",
+            command=None,
+            chat_id=1,
+        )
+
+        self.assertFalse(result.priority_keyword_mode)
+        self.assertFalse(result.stateless)
+        self.assertIsNone(result.route_kind)
+        self.assertEqual(result.prompt_input, "watch this https://www.youtube.com/watch?v=yD5DFL3xPmo")
 
 
 if __name__ == "__main__":

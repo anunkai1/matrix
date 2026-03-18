@@ -24,6 +24,7 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Safe executor wrapper: `src/telegram_bridge/executor.sh`
 - Voice transcription runner: `src/telegram_bridge/voice_transcribe.py`
 - Voice transcription service (warm model + idle timeout): `src/telegram_bridge/voice_transcribe_service.py`
+- YouTube transcript-first analyzer: `ops/youtube/analyze_youtube.py`
 - Voice alias learning store (suggestions + approvals): `src/telegram_bridge/voice_alias_learning.py`
 - Local smoke test: `src/telegram_bridge/smoke_test.sh`
 - Systemd source-of-truth unit: `infra/systemd/telegram-architect-bridge.service`
@@ -242,7 +243,8 @@ Message handling:
 - Bare YouTube links are auto-routed into YouTube link mode:
   - requests run stateless (no memory/session carryover)
   - the bridge defaults a bare link to concise video summary behavior
-  - the bridge prefers `yt-dlp` metadata and captions/transcript retrieval first, then uses Browser Brain only as fallback
+  - the bridge uses `yt-dlp` for metadata plus captions retrieval, then falls back to local transcription when captions are unavailable
+  - if neither captions nor local transcription succeeds, the bridge returns an explicit failure instead of a metadata-only pseudo-summary
 - Messages starting with `Nextcloud` are routed into Nextcloud operations mode:
   - requests run stateless (no memory/session carryover)
   - the bridge wraps the request with strict policy to use deterministic scripts:

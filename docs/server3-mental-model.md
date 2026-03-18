@@ -46,7 +46,7 @@ When a request should not be handled as open-ended assistant chat, the bridge ca
 | Mode | User trigger | What it does | Main scripts |
 | --- | --- | --- | --- |
 | Home Assistant | `HA ...` or `Home Assistant ...` | Stateless HA control/scheduling | [`ops/ha`](../ops/ha) |
-| YouTube Link | bare YouTube URL or YouTube URL with a lightweight summary/transcript request | Transcript-first video analysis via `yt-dlp`, with Browser Brain fallback only when needed | `yt-dlp`, [`ops/browser_brain`](../ops/browser_brain) |
+| YouTube Link | bare YouTube URL or YouTube URL with a lightweight summary/transcript request | Transcript-first video analysis via `yt-dlp` captions or local transcription | [`ops/youtube`](../ops/youtube), [`ops/telegram-voice`](../ops/telegram-voice) |
 | Browser Brain | `Server3 Browser ...` or `Browser Brain ...` | Structured real-browser automation via snapshot refs | [`ops/browser_brain`](../ops/browser_brain) |
 | TV/Desktop | `Server3 TV ...` | Start desktop, open browser, control YouTube | [`ops/tv-desktop`](../ops/tv-desktop) |
 | Nextcloud | `Nextcloud ...` | File and calendar operations | [`ops/nextcloud`](../ops/nextcloud) |

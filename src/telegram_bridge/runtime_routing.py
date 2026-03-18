@@ -16,7 +16,6 @@ try:
         build_ha_keyword_prompt,
         build_nextcloud_keyword_prompt,
         build_server3_keyword_prompt,
-        build_youtube_link_prompt,
         command_bypasses_required_prefix,
         extract_browser_brain_keyword_request,
         extract_ha_keyword_request,
@@ -35,7 +34,6 @@ except ImportError:
         build_ha_keyword_prompt,
         build_nextcloud_keyword_prompt,
         build_server3_keyword_prompt,
-        build_youtube_link_prompt,
         command_bypasses_required_prefix,
         extract_browser_brain_keyword_request,
         extract_ha_keyword_request,
@@ -60,6 +58,8 @@ class KeywordRouteResult:
     command: Optional[str]
     stateless: bool
     priority_keyword_mode: bool
+    route_kind: Optional[str] = None
+    route_value: Optional[str] = None
     routed_event: Optional[str] = None
     rejection_reason: Optional[str] = None
     rejection_message: Optional[str] = None
@@ -210,10 +210,12 @@ def apply_priority_keyword_routing(
     youtube_link_mode, youtube_url = extract_youtube_link_request(prompt_input)
     if command is None and youtube_link_mode:
         return KeywordRouteResult(
-            prompt_input=build_youtube_link_prompt(prompt_input, youtube_url),
+            prompt_input=prompt_input,
             command=None,
             stateless=True,
             priority_keyword_mode=True,
+            route_kind="youtube_link",
+            route_value=youtube_url,
             routed_event="bridge.youtube_link_auto_routed",
         )
 

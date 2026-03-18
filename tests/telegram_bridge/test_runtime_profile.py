@@ -58,18 +58,13 @@ class RuntimeProfileTests(unittest.TestCase):
             (True, "https://www.youtube.com/watch?v=yD5DFL3xPmo"),
         )
         self.assertEqual(
-            runtime_profile.extract_youtube_link_request("watch this https://youtu.be/yD5DFL3xPmo!"),
+            runtime_profile.extract_youtube_link_request("full transcript https://youtu.be/yD5DFL3xPmo!"),
             (True, "https://youtu.be/yD5DFL3xPmo"),
         )
-
-    def test_build_youtube_link_prompt_prefers_ytdlp_then_browser_brain(self) -> None:
-        prompt = runtime_profile.build_youtube_link_prompt(
-            "https://www.youtube.com/watch?v=yD5DFL3xPmo",
-            "https://www.youtube.com/watch?v=yD5DFL3xPmo",
+        self.assertEqual(
+            runtime_profile.extract_youtube_link_request("watch this https://youtu.be/yD5DFL3xPmo!"),
+            (False, ""),
         )
-        self.assertIn("YouTube link priority mode is active.", prompt)
-        self.assertIn("yt-dlp --dump-single-json", prompt)
-        self.assertIn("browser_brain_ctl.sh", prompt)
 
 if __name__ == "__main__":
     unittest.main()
