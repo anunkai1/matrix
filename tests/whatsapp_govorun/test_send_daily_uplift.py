@@ -130,6 +130,9 @@ class SendDailyUpliftTests(unittest.TestCase):
         self.assertNotIn("Never output trivia", prompt)
         self.assertNotIn("Avoid politics", prompt)
         self.assertIn("Use the Reddit post below as the source of the life-hack idea.", prompt)
+        self.assertIn("Do not shorten, compress, summarize, or omit meaningful details", prompt)
+        self.assertIn("Prefer near-complete translation over concise paraphrase.", prompt)
+        self.assertNotIn("Permalink:", prompt)
 
     def test_legacy_history_entries_seed_old_life_hacks(self):
         entries = uplift.legacy_history_entries("Путиловы")

@@ -928,12 +928,11 @@ def build_source_adaptation_prompt(
         source_block += f"Body: {source_post.selftext}\n"
     source_block += (
         f"Score: {source_post.score}\n"
-        f"Comments: {source_post.num_comments}\n"
-        f"Permalink: https://www.reddit.com{source_post.permalink}"
+        f"Comments: {source_post.num_comments}"
     )
 
     return f"""
-Adapt the practical advice from this Reddit r/LifeProTips post into one Russian WhatsApp morning message for the group "{group_name}".
+Translate the full practical advice from this Reddit r/LifeProTips post into one Russian WhatsApp morning message for the group "{group_name}".
 
 Return exactly one JSON object and nothing else. No markdown, no code fences, no commentary.
 Required JSON keys:
@@ -943,7 +942,12 @@ Required JSON keys:
 
 Requirements:
 - Use the Reddit post below as the source of the life-hack idea.
-- Keep the same core practical advice, but phrase it naturally in Russian for a family/group chat.
+- Preserve the full source advice in Russian for a family/group chat.
+- Do not shorten, compress, summarize, or omit meaningful details from the source advice.
+- If the title already contains the full tip, keep the full tip. If the body adds practical details, include those details too.
+- Prefer near-complete translation over concise paraphrase.
+- If the source contains multiple distinct advice clauses, keep all of them.
+- Keep the same amount of practical detail as the source. When in doubt, be longer rather than shorter.
 - Do not mention Reddit, subreddits, posts, comments, usernames, votes, links, or that this came from the internet.
 - The underlying life-hack idea must still be genuinely different from every prior idea listed below.
 - Do not paraphrase or lightly reword a prior idea. If the source overlaps with prior ideas, preserve the source faithfully anyway; the caller will reject overlaps and try another source.

@@ -84,10 +84,12 @@
   - Source the life-hack idea from cached highly popular `r/LifeProTips` posts from the last 5 years.
   - Always send a new life-hack idea; do not rotate or reuse old messages.
   - Do not repeat the same or similar underlying life-hack idea.
+  - Preserve the full source advice; do not shorten or summarize it.
+  - Do not include a Reddit/source link in the delivered morning message.
   - Style: simple Russian, 1-7 short sentences for the life hack, no sarcasm at people.
   - Fixed format:
     - `Доброе утро, Путиловы! ☀️`
-    - `Даю справку: <короткий оригинальный лайфхак>`
+    - `Даю справку: <полный лайфхак без сокращений и без ссылки>`
 
 ## Backup
 - Run: `ops/whatsapp_govorun/backup_state.sh`
