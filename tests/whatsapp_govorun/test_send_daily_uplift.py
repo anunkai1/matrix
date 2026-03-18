@@ -111,6 +111,22 @@ class SendDailyUpliftTests(unittest.TestCase):
         self.assertEqual([post.post_id for post in loaded], ["a1", "a2"])
         self.assertEqual(metadata["reddit_cache_post_count"], "2")
 
+    def test_build_reddit_post_skips_lpt_request_titles(self):
+        post = uplift.build_reddit_post(
+            {
+                "id": "req1",
+                "title": "LPT request: how do I clean a pan?",
+                "selftext": "help",
+                "permalink": "/r/LifeProTips/comments/req1/example/",
+                "score": 100,
+                "num_comments": 10,
+                "created_utc": uplift.recent_cutoff_utc() + 100,
+                "over_18": False,
+            },
+            "2026-03-18T00:00:00Z",
+        )
+        self.assertIsNone(post)
+
     def test_build_source_adaptation_prompt_uses_updated_rules(self):
         source_post = uplift.RedditPost(
             post_id="abc123",

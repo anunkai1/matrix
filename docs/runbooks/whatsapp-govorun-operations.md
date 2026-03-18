@@ -74,6 +74,7 @@
 - Source/cache:
   - source posts come from cached top `r/LifeProTips` Reddit posts from the last 5 years
   - cache refresh now merges the subreddit top feed with several top-sorted subreddit search paths to widen the unique popular source pool
+  - `LPT request` posts are excluded from the cache and never used as morning-message sources
   - the sender keeps a local SQLite cache and refreshes it only when stale or running low
   - manual refresh: `python3 ops/whatsapp_govorun/send_daily_uplift.py --refresh-cache-only`
   - cache status: `python3 ops/whatsapp_govorun/send_daily_uplift.py --cache-status`

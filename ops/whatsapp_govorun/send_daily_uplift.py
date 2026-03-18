@@ -780,10 +780,17 @@ def trim_reddit_title(text: str) -> str:
     return collapse_whitespace(html.unescape(text or ""))
 
 
+def is_request_post_title(title: str) -> bool:
+    normalized = collapse_whitespace(title).lower()
+    return normalized.startswith("lpt request")
+
+
 def build_reddit_post(item: dict[str, object], cached_at: str) -> Optional[RedditPost]:
     post_id = collapse_whitespace(str(item.get("id") or ""))
     title = trim_reddit_title(str(item.get("title") or ""))
     if not post_id or not title:
+        return None
+    if is_request_post_title(title):
         return None
     permalink = collapse_whitespace(str(item.get("permalink") or ""))
     if not permalink:
