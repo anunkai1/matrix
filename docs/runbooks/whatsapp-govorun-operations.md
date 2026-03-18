@@ -106,9 +106,8 @@
 - Prefix behavior in DM/private chats is controlled by `TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE` (set `false` for 1:1 without prefix).
 - Allow private chats that are not in `TELEGRAM_ALLOWED_CHAT_IDS`: set `TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED=true`.
 - Optional tone control: set `TELEGRAM_RESPONSE_STYLE_HINT` in `/etc/default/govorun-whatsapp-bridge` to keep replies informative with light humor.
-- Politics boundary: Govorun should decline political discussion in a warm, casual, slightly tired tone, avoid advocacy/persuasion/debate, and redirect toward something better, lighter, or positive.
 - Enforcement detail: Govorun uses the shared executor/core from `/home/architect/matrix`, but the executor now changes into `/home/govorun/govorunbot` before running Codex so native `AGENTS.md` resolution comes from the Govorun runtime directory itself.
-- Policy refresh guardrail: keep `TELEGRAM_POLICY_WATCH_FILES=/home/govorun/govorunbot/AGENTS.md` so bridge session state is cleared when Govorun's policy file changes; add `TELEGRAM_POLICY_RESET_MEMORY_ON_CHANGE=true` when you also want old bridge memory wiped so stale politics context cannot carry forward.
+- Policy refresh guardrail: keep `TELEGRAM_POLICY_WATCH_FILES=/home/govorun/govorunbot/AGENTS.md` so bridge session state is cleared when Govorun's policy file changes; add `TELEGRAM_POLICY_RESET_MEMORY_ON_CHANGE=true` when you also want old bridge memory wiped so stale instruction context cannot carry forward.
 - Attachment archive guardrail: the shared bridge now keeps a bounded local attachment archive under `TELEGRAM_BRIDGE_STATE_DIR` so replied-to images/files can be re-opened later; tune with `TELEGRAM_ATTACHMENT_RETENTION_SECONDS` and `TELEGRAM_ATTACHMENT_MAX_TOTAL_BYTES` when the defaults (14 days, 10 GiB) are not appropriate.
 - Optional busy-lock wording: set `TELEGRAM_BUSY_MESSAGE` (for example `Даю справку: уже занят предыдущим запросом. Скоро вернусь.`).
 - Optional speed/profile override: set `ARCHITECT_EXEC_ARGS` (for example `--model gpt-5.3-codex --config model_reasoning_effort="high"`). This is applied by `executor.sh` to both new and resumed chats.
