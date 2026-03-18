@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import re
@@ -11,8 +12,10 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.parse
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
@@ -26,9 +29,16 @@ except Exception:  # pragma: no cover
 
 
 PROMPT_HISTORY_LIMIT = 240
-DEFAULT_GENERATION_ATTEMPTS = 8
+MAX_REDDIT_BODY_CHARS = 2400
+DEFAULT_SOURCE_SELECTION_ATTEMPTS = 12
 DEFAULT_CODEX_TIMEOUT_SECONDS = 180
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
+DEFAULT_REDDIT_CACHE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
+DEFAULT_REDDIT_MIN_UNUSED = 30
+DEFAULT_REDDIT_FETCH_PAGES = 10
+DEFAULT_REDDIT_FETCH_PAGE_SIZE = 100
+DEFAULT_REDDIT_LOOKBACK_DAYS = 365 * 5
+DEFAULT_REDDIT_USER_AGENT = "matrix-govorun-daily-uplift/1.0"
 RUSSIAN_STOP_WORDS = {
     "а",
     "без",
@@ -86,7 +96,6 @@ RUSSIAN_TOKEN_ENDINGS = (
     "ями",
     "ами",
     "иях",
-    "иях",
     "его",
     "ого",
     "ему",
@@ -114,7 +123,6 @@ RUSSIAN_TOKEN_ENDINGS = (
     "ья",
     "иям",
     "ием",
-    "иях",
     "а",
     "я",
     "ы",
@@ -146,11 +154,31 @@ class GeneratedLifeHack:
 
 
 @dataclass(frozen=True)
+class RedditPost:
+    post_id: str
+    title: str
+    selftext: str
+    permalink: str
+    score: int
+    num_comments: int
+    created_utc: int
+    over_18: bool
+    title_probe: str
+    body_probe: str
+    cached_at: str
+
+
+@dataclass(frozen=True)
 class SentLifeHack:
     message_text: str
     hack_text: str
     idea_key: str
     idea_summary: str
+    source_post_id: Optional[str] = None
+    source_title: Optional[str] = None
+    source_permalink: Optional[str] = None
+    source_score: Optional[int] = None
+    source_created_utc: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +193,11 @@ class HistoryEntry:
     hack_probe: str
     idea_key_probe: str
     idea_summary_probe: str
+    source_post_id: Optional[str] = None
+    source_title: Optional[str] = None
+    source_permalink: Optional[str] = None
+    source_score: Optional[int] = None
+    source_created_utc: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -300,11 +333,72 @@ def state_dir_path() -> Path:
     return Path.home() / ".local" / "state" / "govorun-whatsapp-daily-uplift"
 
 
-def history_db_path() -> Path:
-    override = os.getenv("WA_DAILY_UPLIFT_HISTORY_DB_PATH", "").strip()
+def uplift_db_path() -> Path:
+    override = os.getenv("WA_DAILY_UPLIFT_DB_PATH", "").strip()
     if override:
         return Path(override).expanduser()
-    return state_dir_path() / "history.sqlite3"
+    legacy_override = os.getenv("WA_DAILY_UPLIFT_HISTORY_DB_PATH", "").strip()
+    if legacy_override:
+        return Path(legacy_override).expanduser()
+    return state_dir_path() / "daily_uplift.sqlite3"
+
+
+def reddit_cache_max_age_seconds() -> int:
+    raw_value = os.getenv(
+        "WA_DAILY_UPLIFT_REDDIT_CACHE_MAX_AGE_SECONDS",
+        str(DEFAULT_REDDIT_CACHE_MAX_AGE_SECONDS),
+    ).strip()
+    try:
+        return max(60, int(raw_value))
+    except ValueError:
+        return DEFAULT_REDDIT_CACHE_MAX_AGE_SECONDS
+
+
+def reddit_min_unused() -> int:
+    raw_value = os.getenv("WA_DAILY_UPLIFT_REDDIT_MIN_UNUSED", str(DEFAULT_REDDIT_MIN_UNUSED)).strip()
+    try:
+        return max(1, int(raw_value))
+    except ValueError:
+        return DEFAULT_REDDIT_MIN_UNUSED
+
+
+def reddit_fetch_pages() -> int:
+    raw_value = os.getenv("WA_DAILY_UPLIFT_REDDIT_FETCH_PAGES", str(DEFAULT_REDDIT_FETCH_PAGES)).strip()
+    try:
+        return max(1, int(raw_value))
+    except ValueError:
+        return DEFAULT_REDDIT_FETCH_PAGES
+
+
+def reddit_fetch_page_size() -> int:
+    raw_value = os.getenv(
+        "WA_DAILY_UPLIFT_REDDIT_FETCH_PAGE_SIZE",
+        str(DEFAULT_REDDIT_FETCH_PAGE_SIZE),
+    ).strip()
+    try:
+        return min(100, max(1, int(raw_value)))
+    except ValueError:
+        return DEFAULT_REDDIT_FETCH_PAGE_SIZE
+
+
+def reddit_lookback_days() -> int:
+    raw_value = os.getenv(
+        "WA_DAILY_UPLIFT_REDDIT_LOOKBACK_DAYS",
+        str(DEFAULT_REDDIT_LOOKBACK_DAYS),
+    ).strip()
+    try:
+        return max(1, int(raw_value))
+    except ValueError:
+        return DEFAULT_REDDIT_LOOKBACK_DAYS
+
+
+def reddit_user_agent() -> str:
+    return os.getenv("WA_DAILY_UPLIFT_REDDIT_USER_AGENT", DEFAULT_REDDIT_USER_AGENT).strip() or DEFAULT_REDDIT_USER_AGENT
+
+
+def recent_cutoff_utc(now_ts: Optional[int] = None) -> int:
+    base_ts = now_ts if now_ts is not None else int(time.time())
+    return base_ts - reddit_lookback_days() * 24 * 60 * 60
 
 
 class HistoryStore:
@@ -316,6 +410,23 @@ class HistoryStore:
         conn = sqlite3.connect(str(self.db_path), timeout=30)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def _column_names(self, conn: sqlite3.Connection, table_name: str) -> set[str]:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return {str(row["name"]) for row in rows}
+
+    def _ensure_sent_columns(self, conn: sqlite3.Connection) -> None:
+        required_columns = {
+            "source_post_id": "TEXT",
+            "source_title": "TEXT",
+            "source_permalink": "TEXT",
+            "source_score": "INTEGER",
+            "source_created_utc": "INTEGER",
+        }
+        existing_columns = self._column_names(conn, "sent_life_hacks")
+        for column_name, column_type in required_columns.items():
+            if column_name not in existing_columns:
+                conn.execute(f"ALTER TABLE sent_life_hacks ADD COLUMN {column_name} {column_type}")
 
     def ensure_schema(self) -> None:
         with self._connect() as conn:
@@ -335,6 +446,7 @@ class HistoryStore:
                 )
                 """
             )
+            self._ensure_sent_columns(conn)
             conn.execute(
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_sent_life_hacks_message_probe
@@ -345,6 +457,12 @@ class HistoryStore:
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_sent_life_hacks_idea_key_probe
                 ON sent_life_hacks(idea_key_probe)
+                """
+            )
+            conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_sent_life_hacks_source_post_id
+                ON sent_life_hacks(source_post_id)
                 """
             )
             conn.commit()
@@ -364,23 +482,29 @@ class HistoryStore:
                     message_probe,
                     hack_probe,
                     idea_key_probe,
-                    idea_summary_probe
+                    idea_summary_probe,
+                    source_post_id,
+                    source_title,
+                    source_permalink,
+                    source_score,
+                    source_created_utc
                 FROM sent_life_hacks
                 ORDER BY id ASC
                 """
             ).fetchall()
         return [
-            HistoryEntry(
-                id=int(row["id"]),
+            build_history_entry(
+                entry_id=int(row["id"]),
                 sent_at=str(row["sent_at"]),
                 message_text=str(row["message_text"]),
                 hack_text=str(row["hack_text"]),
                 idea_key=str(row["idea_key"]),
                 idea_summary=str(row["idea_summary"]),
-                message_probe=str(row["message_probe"]),
-                hack_probe=str(row["hack_probe"]),
-                idea_key_probe=str(row["idea_key_probe"]),
-                idea_summary_probe=str(row["idea_summary_probe"]),
+                source_post_id=str(row["source_post_id"]) if row["source_post_id"] is not None else None,
+                source_title=str(row["source_title"]) if row["source_title"] is not None else None,
+                source_permalink=str(row["source_permalink"]) if row["source_permalink"] is not None else None,
+                source_score=int(row["source_score"]) if row["source_score"] is not None else None,
+                source_created_utc=int(row["source_created_utc"]) if row["source_created_utc"] is not None else None,
             )
             for row in rows
         ]
@@ -399,8 +523,13 @@ class HistoryStore:
                     message_probe,
                     hack_probe,
                     idea_key_probe,
-                    idea_summary_probe
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    idea_summary_probe,
+                    source_post_id,
+                    source_title,
+                    source_permalink,
+                    source_score,
+                    source_created_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     sent_at.isoformat(),
@@ -412,9 +541,169 @@ class HistoryStore:
                     normalize_probe(message.hack_text),
                     normalize_probe(message.idea_key),
                     normalize_probe(message.idea_summary),
+                    message.source_post_id,
+                    message.source_title,
+                    message.source_permalink,
+                    message.source_score,
+                    message.source_created_utc,
                 ),
             )
             conn.commit()
+
+
+class RedditCacheStore:
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+
+    def _connect(self) -> sqlite3.Connection:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(self.db_path), timeout=30)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def ensure_schema(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reddit_cache_posts (
+                    post_id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    selftext TEXT NOT NULL,
+                    permalink TEXT NOT NULL,
+                    score INTEGER NOT NULL,
+                    num_comments INTEGER NOT NULL,
+                    created_utc INTEGER NOT NULL,
+                    over_18 INTEGER NOT NULL DEFAULT 0,
+                    title_probe TEXT NOT NULL,
+                    body_probe TEXT NOT NULL,
+                    cached_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_reddit_cache_posts_rank
+                ON reddit_cache_posts(score DESC, num_comments DESC, created_utc DESC)
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS daily_uplift_metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """
+            )
+            conn.commit()
+
+    def load_metadata(self) -> dict[str, str]:
+        self.ensure_schema()
+        with self._connect() as conn:
+            rows = conn.execute("SELECT key, value FROM daily_uplift_metadata").fetchall()
+        return {str(row["key"]): str(row["value"]) for row in rows}
+
+    def set_metadata(self, key: str, value: str) -> None:
+        self.ensure_schema()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO daily_uplift_metadata(key, value)
+                VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                """,
+                (key, value),
+            )
+            conn.commit()
+
+    def upsert_posts(self, posts: list[RedditPost], refreshed_at: str) -> None:
+        self.ensure_schema()
+        with self._connect() as conn:
+            for post in posts:
+                conn.execute(
+                    """
+                    INSERT INTO reddit_cache_posts (
+                        post_id,
+                        title,
+                        selftext,
+                        permalink,
+                        score,
+                        num_comments,
+                        created_utc,
+                        over_18,
+                        title_probe,
+                        body_probe,
+                        cached_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(post_id) DO UPDATE SET
+                        title=excluded.title,
+                        selftext=excluded.selftext,
+                        permalink=excluded.permalink,
+                        score=excluded.score,
+                        num_comments=excluded.num_comments,
+                        created_utc=excluded.created_utc,
+                        over_18=excluded.over_18,
+                        title_probe=excluded.title_probe,
+                        body_probe=excluded.body_probe,
+                        cached_at=excluded.cached_at
+                    """,
+                    (
+                        post.post_id,
+                        post.title,
+                        post.selftext,
+                        post.permalink,
+                        post.score,
+                        post.num_comments,
+                        post.created_utc,
+                        1 if post.over_18 else 0,
+                        post.title_probe,
+                        post.body_probe,
+                        post.cached_at,
+                    ),
+                )
+            conn.execute("DELETE FROM reddit_cache_posts WHERE created_utc < ?", (recent_cutoff_utc(),))
+            conn.commit()
+        self.set_metadata("reddit_cache_last_refresh", refreshed_at)
+        self.set_metadata("reddit_cache_post_count", str(len(posts)))
+
+    def load_recent_posts(self, cutoff_utc: int) -> list[RedditPost]:
+        self.ensure_schema()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    post_id,
+                    title,
+                    selftext,
+                    permalink,
+                    score,
+                    num_comments,
+                    created_utc,
+                    over_18,
+                    title_probe,
+                    body_probe,
+                    cached_at
+                FROM reddit_cache_posts
+                WHERE created_utc >= ?
+                ORDER BY score DESC, num_comments DESC, created_utc DESC
+                """,
+                (cutoff_utc,),
+            ).fetchall()
+        return [
+            RedditPost(
+                post_id=str(row["post_id"]),
+                title=str(row["title"]),
+                selftext=str(row["selftext"]),
+                permalink=str(row["permalink"]),
+                score=int(row["score"]),
+                num_comments=int(row["num_comments"]),
+                created_utc=int(row["created_utc"]),
+                over_18=bool(int(row["over_18"])),
+                title_probe=str(row["title_probe"]),
+                body_probe=str(row["body_probe"]),
+                cached_at=str(row["cached_at"]),
+            )
+            for row in rows
+        ]
 
 
 def build_history_entry(
@@ -424,6 +713,11 @@ def build_history_entry(
     hack_text: str,
     idea_key: str,
     idea_summary: str,
+    source_post_id: Optional[str] = None,
+    source_title: Optional[str] = None,
+    source_permalink: Optional[str] = None,
+    source_score: Optional[int] = None,
+    source_created_utc: Optional[int] = None,
 ) -> HistoryEntry:
     return HistoryEntry(
         id=entry_id,
@@ -436,6 +730,11 @@ def build_history_entry(
         hack_probe=normalize_probe(hack_text),
         idea_key_probe=normalize_probe(idea_key),
         idea_summary_probe=normalize_probe(idea_summary),
+        source_post_id=source_post_id,
+        source_title=source_title,
+        source_permalink=source_permalink,
+        source_score=source_score,
+        source_created_utc=source_created_utc,
     )
 
 
@@ -455,10 +754,166 @@ def legacy_history_entries(group_name: str) -> list[HistoryEntry]:
     return entries
 
 
-def build_generation_prompt(
+def trim_reddit_selftext(text: str) -> str:
+    cleaned = collapse_whitespace(html.unescape(text or ""))
+    if not cleaned or cleaned in {"[removed]", "[deleted]"}:
+        return ""
+    if len(cleaned) <= MAX_REDDIT_BODY_CHARS:
+        return cleaned
+    return cleaned[: MAX_REDDIT_BODY_CHARS - 3].rstrip() + "..."
+
+
+def trim_reddit_title(text: str) -> str:
+    return collapse_whitespace(html.unescape(text or ""))
+
+
+def build_reddit_post(item: dict[str, object], cached_at: str) -> Optional[RedditPost]:
+    post_id = collapse_whitespace(str(item.get("id") or ""))
+    title = trim_reddit_title(str(item.get("title") or ""))
+    if not post_id or not title:
+        return None
+    permalink = collapse_whitespace(str(item.get("permalink") or ""))
+    if not permalink:
+        permalink = f"/r/LifeProTips/comments/{post_id}/"
+    selftext = trim_reddit_selftext(str(item.get("selftext") or ""))
+    score = int(item.get("score") or 0)
+    num_comments = int(item.get("num_comments") or 0)
+    created_utc = int(float(item.get("created_utc") or 0))
+    over_18 = bool(item.get("over_18") or False)
+    return RedditPost(
+        post_id=post_id,
+        title=title,
+        selftext=selftext,
+        permalink=permalink,
+        score=score,
+        num_comments=num_comments,
+        created_utc=created_utc,
+        over_18=over_18,
+        title_probe=normalize_probe(title),
+        body_probe=normalize_probe(selftext),
+        cached_at=cached_at,
+    )
+
+
+def fetch_reddit_top_posts() -> list[RedditPost]:
+    fetched_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    page_size = reddit_fetch_page_size()
+    page_limit = reddit_fetch_pages()
+    cutoff_utc = recent_cutoff_utc()
+    headers = {"User-Agent": reddit_user_agent()}
+    after: Optional[str] = None
+    zero_recent_pages = 0
+    posts_by_id: dict[str, RedditPost] = {}
+
+    for _ in range(page_limit):
+        params = {"t": "all", "limit": str(page_size)}
+        if after:
+            params["after"] = after
+        endpoint = "https://www.reddit.com/r/LifeProTips/top.json?" + urllib.parse.urlencode(params)
+        request = Request(endpoint, headers=headers)
+        with urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, dict):
+            raise RuntimeError("reddit returned unexpected payload")
+
+        children = data.get("children")
+        if not isinstance(children, list) or not children:
+            break
+
+        recent_in_page = 0
+        for child in children:
+            child_data = child.get("data") if isinstance(child, dict) else None
+            if not isinstance(child_data, dict):
+                continue
+            post = build_reddit_post(child_data, fetched_at)
+            if post is None:
+                continue
+            if post.over_18:
+                continue
+            if post.created_utc < cutoff_utc:
+                continue
+            recent_in_page += 1
+            posts_by_id[post.post_id] = post
+
+        after_value = data.get("after")
+        after = str(after_value) if isinstance(after_value, str) and after_value.strip() else None
+        if recent_in_page == 0:
+            zero_recent_pages += 1
+        else:
+            zero_recent_pages = 0
+        if not after or zero_recent_pages >= 2:
+            break
+
+    posts = sorted(
+        posts_by_id.values(),
+        key=lambda post: (post.score, post.num_comments, post.created_utc),
+        reverse=True,
+    )
+    if not posts:
+        raise RuntimeError("reddit cache refresh returned no usable LifeProTips posts")
+    return posts
+
+
+def cache_age_seconds(metadata: dict[str, str]) -> Optional[int]:
+    last_refresh = metadata.get("reddit_cache_last_refresh", "").strip()
+    if not last_refresh:
+        return None
+    normalized = last_refresh.replace("Z", "+00:00")
+    try:
+        refreshed_at = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if refreshed_at.tzinfo is None:
+        refreshed_at = refreshed_at.replace(tzinfo=timezone.utc)
+    return max(0, int((datetime.now(timezone.utc) - refreshed_at).total_seconds()))
+
+
+def unused_recent_posts(
+    posts: list[RedditPost],
+    sent_source_ids: set[str],
+) -> list[RedditPost]:
+    return [post for post in posts if post.post_id not in sent_source_ids]
+
+
+def ensure_reddit_cache_ready(
+    cache_store: RedditCacheStore,
+    sent_source_ids: set[str],
+) -> dict[str, object]:
+    cutoff_utc = recent_cutoff_utc()
+    metadata = cache_store.load_metadata()
+    posts = cache_store.load_recent_posts(cutoff_utc)
+    unused_posts = unused_recent_posts(posts, sent_source_ids)
+    age_seconds = cache_age_seconds(metadata)
+    should_refresh = (
+        age_seconds is None
+        or age_seconds > reddit_cache_max_age_seconds()
+        or len(unused_posts) < reddit_min_unused()
+    )
+
+    if should_refresh:
+        refreshed_posts = fetch_reddit_top_posts()
+        refreshed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        cache_store.upsert_posts(refreshed_posts, refreshed_at)
+        metadata = cache_store.load_metadata()
+        posts = cache_store.load_recent_posts(cutoff_utc)
+        unused_posts = unused_recent_posts(posts, sent_source_ids)
+        age_seconds = cache_age_seconds(metadata)
+
+    return {
+        "recent_count": len(posts),
+        "unused_recent_count": len(unused_posts),
+        "last_refresh": metadata.get("reddit_cache_last_refresh"),
+        "cache_age_seconds": age_seconds,
+        "refreshed": should_refresh,
+    }
+
+
+def build_source_adaptation_prompt(
     group_name: str,
+    source_post: RedditPost,
     history_entries: list[HistoryEntry],
-    rejected: list[SimilarityMatch],
 ) -> str:
     history_slice = history_entries[-PROMPT_HISTORY_LIMIT:]
     if history_slice:
@@ -468,20 +923,17 @@ def build_generation_prompt(
     else:
         history_text = "- none yet"
 
-    rejection_text = ""
-    if rejected:
-        rejection_lines = [
-            f"- rejected as too similar ({match.reason}, score={match.score:.3f}): "
-            f"{match.entry.idea_key} | {match.entry.idea_summary}"
-            for match in rejected[-5:]
-        ]
-        rejection_text = (
-            "\nRejected earlier in this run because they overlapped with prior ideas:\n"
-            + "\n".join(rejection_lines)
-        )
+    source_block = f"Title: {source_post.title}\n"
+    if source_post.selftext:
+        source_block += f"Body: {source_post.selftext}\n"
+    source_block += (
+        f"Score: {source_post.score}\n"
+        f"Comments: {source_post.num_comments}\n"
+        f"Permalink: https://www.reddit.com{source_post.permalink}"
+    )
 
     return f"""
-Generate one original Russian WhatsApp daily morning message for the group "{group_name}".
+Adapt the practical advice from this Reddit r/LifeProTips post into one Russian WhatsApp morning message for the group "{group_name}".
 
 Return exactly one JSON object and nothing else. No markdown, no code fences, no commentary.
 Required JSON keys:
@@ -489,18 +941,17 @@ Required JSON keys:
 - idea_key
 - idea_summary
 
-Hard requirements:
-- Topic: only one practical life hack. Prefer life hacks.
-- Never output trivia, history, culture, animals, science, space, wholesome stories, quotes, motivation, or general fun facts.
-- The underlying life-hack idea must be genuinely different from every prior idea listed below.
-- Do not paraphrase, modernize, shorten, or slightly vary a previous idea. Pick a different idea entirely.
+Requirements:
+- Use the Reddit post below as the source of the life-hack idea.
+- Keep the same core practical advice, but phrase it naturally in Russian for a family/group chat.
+- Do not mention Reddit, subreddits, posts, comments, usernames, votes, links, or that this came from the internet.
+- The underlying life-hack idea must still be genuinely different from every prior idea listed below.
+- Do not paraphrase or lightly reword a prior idea. If the source overlaps with prior ideas, preserve the source faithfully anyway; the caller will reject overlaps and try another source.
 - Keep it warm, light, positive, and useful.
 - Use simple Russian.
-- hack_text must be 1-2 short sentences and must not include the greeting or the words "Доброе утро" or "Даю справку".
-- idea_key must be a short canonical description of the exact trick, 4-10 words, plain and specific.
-- idea_summary must be one short sentence that restates the same trick canonically for duplicate detection.
-- Avoid politics, war, tragedy, death, illness, dangerous advice, chemical/medical advice, money anxiety, and work-pressure topics.
-- If there is any overlap with a prior idea, choose a different life hack.
+- hack_text must be 1-7 short sentences and must not include Доброе утро or Даю справку.
+- idea_key must be a short canonical description of the exact trick, 4-12 words, plain and specific.
+- idea_summary must be 1-2 short sentences that restate the same trick canonically for duplicate detection.
 
 The caller will wrap your hack like this:
 Доброе утро, {group_name}! ☀️
@@ -508,7 +959,10 @@ The caller will wrap your hack like this:
 Даю справку: <hack_text>
 
 Prior life-hack ideas that must never be repeated or closely reused:
-{history_text}{rejection_text}
+{history_text}
+
+Source Reddit post:
+{source_block}
 """.strip()
 
 
@@ -626,12 +1080,15 @@ def codex_timeout_seconds() -> int:
         return DEFAULT_CODEX_TIMEOUT_SECONDS
 
 
-def generation_attempt_limit() -> int:
-    raw_value = os.getenv("WA_DAILY_UPLIFT_GENERATION_ATTEMPTS", str(DEFAULT_GENERATION_ATTEMPTS)).strip()
+def source_selection_attempt_limit() -> int:
+    raw_value = os.getenv(
+        "WA_DAILY_UPLIFT_SOURCE_SELECTION_ATTEMPTS",
+        str(DEFAULT_SOURCE_SELECTION_ATTEMPTS),
+    ).strip()
     try:
         return max(1, int(raw_value))
     except ValueError:
-        return DEFAULT_GENERATION_ATTEMPTS
+        return DEFAULT_SOURCE_SELECTION_ATTEMPTS
 
 
 def run_codex_generation(prompt: str) -> str:
@@ -667,19 +1124,16 @@ def run_codex_generation(prompt: str) -> str:
     env = dict(os.environ)
     env["HOME"] = env.get("HOME", str(Path.home()))
 
-    try:
-        result = subprocess.run(
-            cmd,
-            input=prompt,
-            text=True,
-            capture_output=True,
-            timeout=codex_timeout_seconds(),
-            cwd=codex_workdir(),
-            env=env,
-            check=False,
-        )
-    finally:
-        pass
+    result = subprocess.run(
+        cmd,
+        input=prompt,
+        text=True,
+        capture_output=True,
+        timeout=codex_timeout_seconds(),
+        cwd=codex_workdir(),
+        env=env,
+        check=False,
+    )
 
     reply = ""
     try:
@@ -700,33 +1154,66 @@ def run_codex_generation(prompt: str) -> str:
     return reply
 
 
-def generate_unique_life_hack(
+def choose_source_posts(
+    cache_store: RedditCacheStore,
+    history_entries: list[HistoryEntry],
+) -> tuple[list[RedditPost], dict[str, object]]:
+    sent_source_ids = {
+        entry.source_post_id
+        for entry in history_entries
+        if entry.source_post_id
+    }
+    cache_status = ensure_reddit_cache_ready(cache_store, sent_source_ids)
+    recent_posts = cache_store.load_recent_posts(recent_cutoff_utc())
+    candidates = unused_recent_posts(recent_posts, sent_source_ids)
+    if not candidates:
+        raise RuntimeError("reddit cache has no unused LifeProTips posts in the configured lookback window")
+    return candidates, cache_status
+
+
+def generate_reddit_sourced_life_hack(
     group_name: str,
     history_entries: list[HistoryEntry],
-) -> GeneratedLifeHack:
-    rejected: list[SimilarityMatch] = []
+    candidate_posts: list[RedditPost],
+) -> tuple[GeneratedLifeHack, RedditPost]:
     last_error: Optional[str] = None
 
-    for _ in range(generation_attempt_limit()):
-        prompt = build_generation_prompt(group_name, history_entries, rejected)
+    for source_post in candidate_posts[: source_selection_attempt_limit()]:
+        prompt = build_source_adaptation_prompt(group_name, source_post, history_entries)
         try:
             candidate = parse_generated_life_hack(run_codex_generation(prompt))
         except Exception as exc:
-            last_error = str(exc)
+            last_error = f"{source_post.post_id}: {exc}"
             continue
 
         match = find_similarity_match(candidate, history_entries)
         if match is not None:
-            rejected.append(match)
             last_error = (
-                f"candidate overlapped with prior idea ({match.reason}, score={match.score:.3f}): "
-                f"{match.entry.idea_key}"
+                f"{source_post.post_id}: candidate overlapped with prior idea "
+                f"({match.reason}, score={match.score:.3f})"
             )
             continue
 
-        return candidate
+        return candidate, source_post
 
-    raise RuntimeError(last_error or "failed to generate a unique life hack")
+    raise RuntimeError(last_error or "failed to adapt a unique Reddit life hack")
+
+
+def cache_status_payload(cache_store: RedditCacheStore, history_entries: list[HistoryEntry]) -> dict[str, object]:
+    sent_source_ids = {
+        entry.source_post_id
+        for entry in history_entries
+        if entry.source_post_id
+    }
+    metadata = cache_store.load_metadata()
+    posts = cache_store.load_recent_posts(recent_cutoff_utc())
+    return {
+        "recent_count": len(posts),
+        "unused_recent_count": len(unused_recent_posts(posts, sent_source_ids)),
+        "last_refresh": metadata.get("reddit_cache_last_refresh"),
+        "cache_age_seconds": cache_age_seconds(metadata),
+        "lookback_days": reddit_lookback_days(),
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -735,6 +1222,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--chat-jid", default=os.getenv("WA_DAILY_UPLIFT_CHAT_JID", "").strip())
     parser.add_argument("--test", action="store_true", help="Wrap payload as 1:1 preview text.")
     parser.add_argument("--dry-run", action="store_true", help="Print message without sending.")
+    parser.add_argument(
+        "--refresh-cache-only",
+        action="store_true",
+        help="Refresh the local Reddit cache and print status without generating a message.",
+    )
+    parser.add_argument(
+        "--cache-status",
+        action="store_true",
+        help="Print local Reddit cache status without refreshing or sending.",
+    )
     return parser.parse_args()
 
 
@@ -746,9 +1243,27 @@ def main() -> int:
     group_name = os.getenv("WA_DAILY_UPLIFT_GROUP_NAME", "Путиловы").strip() or "Путиловы"
 
     now_dt = now_in_tz(tz_name)
-    history_store = HistoryStore(history_db_path())
+    db_path = uplift_db_path()
+    history_store = HistoryStore(db_path)
+    cache_store = RedditCacheStore(db_path)
     history_entries = legacy_history_entries(group_name) + history_store.load_entries()
-    life_hack = generate_unique_life_hack(group_name, history_entries)
+
+    if args.cache_status:
+        print(json.dumps(cache_status_payload(cache_store, history_entries), ensure_ascii=False))
+        return 0
+
+    if args.refresh_cache_only:
+        sent_source_ids = {
+            entry.source_post_id
+            for entry in history_entries
+            if entry.source_post_id
+        }
+        status = ensure_reddit_cache_ready(cache_store, sent_source_ids)
+        print(json.dumps(status, ensure_ascii=False))
+        return 0
+
+    candidate_posts, _cache_status = choose_source_posts(cache_store, history_entries)
+    life_hack, source_post = generate_reddit_sourced_life_hack(group_name, history_entries, candidate_posts)
     daily_message = build_daily_message(group_name, life_hack.hack_text)
 
     text = daily_message
@@ -772,6 +1287,11 @@ def main() -> int:
                 hack_text=life_hack.hack_text,
                 idea_key=life_hack.idea_key,
                 idea_summary=life_hack.idea_summary,
+                source_post_id=source_post.post_id,
+                source_title=source_post.title,
+                source_permalink=f"https://www.reddit.com{source_post.permalink}",
+                source_score=source_post.score,
+                source_created_utc=source_post.created_utc,
             ),
         )
     print(json.dumps({"sent": True, "payload": payload, "response": response}, ensure_ascii=False))

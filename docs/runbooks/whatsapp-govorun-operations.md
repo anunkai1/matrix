@@ -54,7 +54,7 @@
   - On drift, the checker sends Telegram alerts when token/chat routing is available from runtime observer vars or `/etc/default/telegram-architect-bridge`.
 
 ## Daily Morning Message (09:00 AEST)
-- Purpose: send a Russian good-morning message with one uplifting fact to a target WhatsApp chat.
+- Purpose: send a Russian good-morning message with one Reddit-sourced life hack to a target WhatsApp chat.
 - Script: `ops/whatsapp_govorun/send_daily_uplift.py`
 - Units:
   - `govorun-whatsapp-daily-uplift.service`
@@ -71,15 +71,20 @@
   - `WA_DAILY_UPLIFT_TZ=Australia/Brisbane`
   - `WA_DAILY_UPLIFT_GROUP_NAME=Путиловы`
   - `WA_DAILY_UPLIFT_STATE_DIR=/home/govorun/.local/state/govorun-whatsapp-daily-uplift`
+- Source/cache:
+  - source posts come from cached top `r/LifeProTips` Reddit posts from the last 5 years
+  - the sender keeps a local SQLite cache and refreshes it only when stale or running low
+  - manual refresh: `python3 ops/whatsapp_govorun/send_daily_uplift.py --refresh-cache-only`
+  - cache status: `python3 ops/whatsapp_govorun/send_daily_uplift.py --cache-status`
 - 1:1 preview send:
   - `python3 ops/whatsapp_govorun/send_daily_uplift.py --test --chat-id <dm_chat_id>`
 - Tone rule (authoritative for this daily message):
   - Keep it light, warm, positive, and useful.
   - Prefer: life hacks.
-  - Always generate a new original life hack; do not rotate or reuse old messages.
+  - Source the life-hack idea from cached highly popular `r/LifeProTips` posts from the last 5 years.
+  - Always send a new life-hack idea; do not rotate or reuse old messages.
   - Do not repeat the same or similar underlying life-hack idea.
-  - Avoid: trivia, history/culture, animals, science, space, wholesome stories, politics, war, tragedy, death, illness, stress/work-pressure, money anxiety.
-  - Style: simple Russian, 1-2 short sentences for the life hack, no sarcasm at people.
+  - Style: simple Russian, 1-7 short sentences for the life hack, no sarcasm at people.
   - Fixed format:
     - `Доброе утро, Путиловы! ☀️`
     - `Даю справку: <короткий оригинальный лайфхак>`
