@@ -580,13 +580,71 @@ def send_input_too_long(
     )
 
 
+EXECUTOR_USAGE_LIMIT_RE = re.compile(r"\bhit your usage limit\b", re.IGNORECASE)
+EXECUTOR_RETRY_AT_RE = re.compile(r"\btry again at ([0-9]{1,2}:\d{2}\s*[AP]M)\b", re.IGNORECASE)
+
+
+def normalize_known_executor_failure_message(message: str) -> Optional[str]:
+    cleaned = " ".join((message or "").split())
+    if not cleaned:
+        return None
+    if EXECUTOR_USAGE_LIMIT_RE.search(cleaned):
+        retry_at_match = EXECUTOR_RETRY_AT_RE.search(cleaned)
+        if retry_at_match:
+            retry_at = " ".join(retry_at_match.group(1).upper().split())
+            return f"The runtime has hit its usage limit. Try again after {retry_at}."
+        return "The runtime has hit its usage limit. Try again later."
+    return None
+
+
+def extract_executor_failure_message(stdout: str, stderr: str) -> Optional[str]:
+    candidates: List[str] = []
+    for stream in (stdout or "", stderr or ""):
+        for raw_line in stream.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            payload: Optional[Dict[str, object]] = None
+            if line.startswith("{"):
+                try:
+                    decoded = json.loads(line)
+                except json.JSONDecodeError:
+                    decoded = None
+                if isinstance(decoded, dict):
+                    payload = decoded
+            if payload is not None:
+                payload_message = payload.get("message")
+                if isinstance(payload_message, str):
+                    candidates.append(payload_message)
+                payload_error = payload.get("error")
+                if isinstance(payload_error, dict):
+                    error_message = payload_error.get("message")
+                    if isinstance(error_message, str):
+                        candidates.append(error_message)
+                continue
+            candidates.append(line)
+    for candidate in candidates:
+        normalized = normalize_known_executor_failure_message(candidate)
+        if normalized:
+            return normalized
+    return None
+
+
 def send_executor_failure_message(
     client: ChannelAdapter,
     config,
     chat_id: int,
     message_id: Optional[int],
     allow_automatic_retry: bool,
+    failure_message: Optional[str] = None,
 ) -> None:
+    if failure_message:
+        client.send_message(
+            chat_id,
+            failure_message,
+            reply_to_message_id=message_id,
+        )
+        return
     if allow_automatic_retry:
         client.send_message(
             chat_id,
@@ -2251,6 +2309,7 @@ def execute_prompt_with_retry(
             return result
 
         reset_and_retry_new = False
+        failure_message = extract_executor_failure_message(result.stdout or "", result.stderr or "")
         if attempt_thread_id and should_reset_thread_after_resume_failure(
             result.stderr or "",
             result.stdout or "",
@@ -2272,6 +2331,12 @@ def execute_prompt_with_retry(
                     "attempt": attempt,
                     "reason": "invalid_resume_thread",
                 },
+            )
+        elif failure_message:
+            logging.warning(
+                "Executor failed for chat_id=%s with surfaced failure=%r",
+                chat_id,
+                failure_message,
             )
         elif allow_automatic_retry and not retry_attempted:
             logging.warning(
@@ -2325,6 +2390,7 @@ def execute_prompt_with_retry(
             chat_id=chat_id,
             message_id=message_id,
             allow_automatic_retry=allow_automatic_retry,
+            failure_message=failure_message,
         )
         return None
 

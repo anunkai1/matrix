@@ -2678,6 +2678,79 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(client.messages)
         self.assertEqual(client.messages[-1][1], "Request canceled.")
 
+    def test_execute_prompt_with_retry_surfaces_usage_limit_without_retry(self):
+        class UsageLimitEngine:
+            engine_name = "usage-limit"
+
+            def __init__(self):
+                self.calls = 0
+
+            def run(
+                self,
+                config,
+                prompt,
+                thread_id,
+                image_path=None,
+                progress_callback=None,
+                cancel_event=None,
+            ):
+                self.calls += 1
+                return subprocess.CompletedProcess(
+                    args=["codex", "exec"],
+                    returncode=1,
+                    stdout=(
+                        "{\"type\":\"error\",\"message\":\"You've hit your usage limit. "
+                        "Upgrade to Pro and try again at 2:00 PM.\"}\n"
+                        "{\"type\":\"turn.failed\",\"error\":{\"message\":\"You've hit your usage "
+                        "limit. Upgrade to Pro and try again at 2:00 PM.\"}}\n"
+                    ),
+                    stderr="",
+                )
+
+        class FakeProgress:
+            def __init__(self):
+                self.last_failure = ""
+
+            def handle_executor_event(self, _event):
+                return None
+
+            def set_phase(self, _phase):
+                return None
+
+            def mark_failure(self, detail):
+                self.last_failure = detail
+
+        state = bridge.State()
+        state_repo = bridge.StateRepository(state)
+        client = FakeTelegramClient()
+        config = make_config(persistent_workers_enabled=True)
+        progress = FakeProgress()
+        engine = UsageLimitEngine()
+
+        result = bridge_handlers.execute_prompt_with_retry(
+            state_repo=state_repo,
+            config=config,
+            client=client,
+            engine=engine,
+            chat_id=1,
+            message_id=51,
+            prompt_text="hello",
+            previous_thread_id=None,
+            image_path=None,
+            progress=progress,
+            cancel_event=threading.Event(),
+            session_continuity_enabled=True,
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(engine.calls, 1)
+        self.assertEqual(progress.last_failure, "Execution failed.")
+        self.assertTrue(client.messages)
+        self.assertEqual(
+            client.messages[-1][1],
+            "The runtime has hit its usage limit. Try again after 2:00 PM.",
+        )
+
     def test_build_canonical_sessions_from_legacy(self):
         worker = bridge.WorkerSession(
             created_at=1.0,
