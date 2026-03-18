@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-18 (Summary Roll-Forward Trim for Mavali ETH RPC Broadcast Fix)
+
+Summary:
+- Added a new rolling-summary entry for the `Mavali ETH` raw-transaction broadcast fix that normalizes signed transaction blobs to `0x...` form before `eth_sendRawTransaction` and records the live service restart.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-18: removed Govorun's remaining explicit default reply-length instructions from both the live runtime policy at `/home/govorun/govorunbot/AGENTS.md` and the active WhatsApp bridge env `/etc/default/govorun-whatsapp-bridge`, then restarted `govorun-whatsapp-bridge.service` so response length is no longer pinned there either.
+
 ## 2026-03-18 (Summary Roll-Forward Trim for Mavali ETH Signer Address Fix)
 
 Summary:
