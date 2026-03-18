@@ -57,9 +57,10 @@ def build_restart_script_path() -> str:
 
 
 def build_restart_unit_name() -> str:
-    configured = os.getenv("TELEGRAM_RESTART_UNIT", "").strip()
-    if configured:
-        return configured
+    for env_name in ("TELEGRAM_RESTART_UNIT", "UNIT_NAME"):
+        configured = os.getenv(env_name, "").strip()
+        if configured:
+            return configured
     return "telegram-architect-bridge.service"
 
 
