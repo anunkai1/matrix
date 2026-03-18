@@ -175,11 +175,10 @@ Key rationale behind this MVP shape:
 
 After deployment, the next steps are:
 
-1. Decide the first higher-level caller, likely Architect.
-2. Add a small local CLI or caller wrapper for faster operator smoke tests.
-3. Harden the allow/deny navigation policy before broad bot integration.
-4. Add typed input and screenshot regression checks to the live smoke test path.
-5. Add existing-session attach only after the isolated managed-profile path is stable.
+1. Expand the initial Architect caller path beyond keyword-routed manual requests into reusable higher-level workflows.
+2. Harden the allow/deny navigation policy before broad bot integration.
+3. Add typed input and screenshot regression checks to the live smoke test path.
+4. Add existing-session attach only after the isolated managed-profile path is stable.
 
 ## Expansion Path After MVP
 

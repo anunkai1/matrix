@@ -27,6 +27,10 @@ class RuntimeProfileTests(unittest.TestCase):
             runtime_profile.extract_server3_keyword_request("Server3 TV: open Firefox"),
             (True, "open Firefox"),
         )
+        self.assertEqual(
+            runtime_profile.extract_browser_brain_keyword_request("Server3 Browser - snapshot current page"),
+            (True, "snapshot current page"),
+        )
 
     def test_apply_outbound_reply_prefix_normalizes_whatsapp_prefix(self) -> None:
         client = SimpleNamespace(channel_name="whatsapp")
@@ -42,6 +46,11 @@ class RuntimeProfileTests(unittest.TestCase):
     def test_start_command_message_uses_assistant_name(self) -> None:
         config = SimpleNamespace(assistant_name="HelperBot")
         self.assertIn("HelperBot", runtime_profile.start_command_message(config))
+
+    def test_browser_brain_prompt_references_wrapper(self) -> None:
+        prompt = runtime_profile.build_browser_brain_keyword_prompt("open example.com")
+        self.assertIn("browser_brain_ctl.sh", prompt)
+        self.assertIn("snapshot", prompt)
 
 if __name__ == "__main__":
     unittest.main()

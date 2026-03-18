@@ -57,6 +57,14 @@ Check the local API:
 curl -fsS http://127.0.0.1:47831/v1/status | jq
 ```
 
+Use the local CLI wrapper:
+
+```bash
+cd /home/architect/matrix
+bash ops/browser_brain/browser_brain_ctl.sh status
+bash ops/browser_brain/browser_brain_ctl.sh start
+```
+
 ## API Surface
 
 Routes:
@@ -102,6 +110,14 @@ curl -fsS http://127.0.0.1:47831/v1/act/click \
   -d '{"tab_id":"tab-1234abcd","snapshot_id":"snap-1234abcd","ref":"el-0001"}' | jq
 ```
 
+Wrapper examples:
+
+```bash
+bash ops/browser_brain/browser_brain_ctl.sh open --url https://example.com
+bash ops/browser_brain/browser_brain_ctl.sh snapshot --tab-id tab-1234abcd
+bash ops/browser_brain/browser_brain_ctl.sh click --tab-id tab-1234abcd --snapshot-id snap-1234abcd --ref el-0001
+```
+
 ## Behavior Notes
 
 - The service keeps one isolated persistent browser profile under `/var/lib/server3-browser-brain/profile`.
@@ -109,6 +125,7 @@ curl -fsS http://127.0.0.1:47831/v1/act/click \
 - On stale-target failures the service performs one bounded re-snapshot/rebind attempt, then returns a structured error.
 - Screenshots are stored under `/var/lib/server3-browser-brain/captures` and old files are cleaned up on service start based on the configured TTL.
 - Typed text is not logged verbatim; only action metadata is logged.
+- Architect now has a keyword-routed first-caller path through `Server3 Browser ...` or `Browser Brain ...`.
 
 ## Out Of Scope For This MVP
 

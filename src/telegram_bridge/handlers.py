@@ -29,6 +29,7 @@ try:
         handle_natural_language_memory_query,
     )
     from .runtime_profile import (
+        BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
         HA_KEYWORD_HELP_MESSAGE,
         HELP_COMMAND_ALIASES,
         NEXTCLOUD_KEYWORD_HELP_MESSAGE,
@@ -39,6 +40,8 @@ try:
         WHATSAPP_REPLY_PREFIX_RE,
         apply_outbound_reply_prefix,
         assistant_label,
+        build_browser_brain_keyword_prompt,
+        build_browser_brain_routing_script_allowlist,
         build_ha_keyword_prompt,
         build_ha_routing_script_allowlist,
         build_nextcloud_keyword_prompt,
@@ -46,6 +49,7 @@ try:
         build_server3_keyword_prompt,
         build_server3_routing_script_allowlist,
         command_bypasses_required_prefix,
+        extract_browser_brain_keyword_request,
         extract_ha_keyword_request,
         extract_nextcloud_keyword_request,
         extract_server3_keyword_request,
@@ -84,6 +88,7 @@ except ImportError:
         handle_natural_language_memory_query,
     )
     from runtime_profile import (
+        BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
         HA_KEYWORD_HELP_MESSAGE,
         HELP_COMMAND_ALIASES,
         NEXTCLOUD_KEYWORD_HELP_MESSAGE,
@@ -94,6 +99,8 @@ except ImportError:
         WHATSAPP_REPLY_PREFIX_RE,
         apply_outbound_reply_prefix,
         assistant_label,
+        build_browser_brain_keyword_prompt,
+        build_browser_brain_routing_script_allowlist,
         build_ha_keyword_prompt,
         build_ha_routing_script_allowlist,
         build_nextcloud_keyword_prompt,
@@ -101,6 +108,7 @@ except ImportError:
         build_server3_keyword_prompt,
         build_server3_routing_script_allowlist,
         command_bypasses_required_prefix,
+        extract_browser_brain_keyword_request,
         extract_ha_keyword_request,
         extract_nextcloud_keyword_request,
         extract_server3_keyword_request,
@@ -1542,6 +1550,7 @@ def build_help_text(config) -> str:
         + "\n"
         "/voice-alias list - show pending learned voice corrections\n"
         "/voice-alias approve <id> - approve one learned correction\n"
+        "browser_brain_ctl.sh status - show browser brain API/runtime state (local shell command)\n"
         "server3-tv-start - start TV desktop mode (local shell command)\n"
         "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
@@ -1550,6 +1559,7 @@ def build_help_text(config) -> str:
             if not getattr(config, "keyword_routing_enabled", True)
             else (
                 "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
+                "Use `Server3 Browser ...` or `Browser Brain ...` for Server3 browser-brain automation.\n"
                 "Use `Server3 TV ...` for Server3 desktop/browser/UI operations.\n"
                 "Use `Nextcloud ...` for Nextcloud files/calendar operations.\n"
                 "Use `SRO ...` when referring to Server3 Runtime Observer checks/summaries."

@@ -79,6 +79,21 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertEqual(result.rejection_reason, "server3_keyword_missing_action")
         self.assertIn("Server3 TV mode needs an action.", result.rejection_message)
 
+    def test_apply_priority_keyword_routing_routes_browser_brain_requests(self) -> None:
+        config = SimpleNamespace(keyword_routing_enabled=True)
+
+        result = runtime_routing.apply_priority_keyword_routing(
+            config=config,
+            prompt_input="Server3 Browser open https://example.com and snapshot it",
+            command=None,
+            chat_id=1,
+        )
+
+        self.assertTrue(result.priority_keyword_mode)
+        self.assertTrue(result.stateless)
+        self.assertEqual(result.routed_event, "bridge.browser_brain_keyword_routed")
+        self.assertIn("Server3 Browser Brain priority mode is active.", result.prompt_input)
+
 
 if __name__ == "__main__":
     unittest.main()

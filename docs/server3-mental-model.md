@@ -46,6 +46,7 @@ When a request should not be handled as open-ended assistant chat, the bridge ca
 | Mode | User trigger | What it does | Main scripts |
 | --- | --- | --- | --- |
 | Home Assistant | `HA ...` or `Home Assistant ...` | Stateless HA control/scheduling | [`ops/ha`](../ops/ha) |
+| Browser Brain | `Server3 Browser ...` or `Browser Brain ...` | Structured real-browser automation via snapshot refs | [`ops/browser_brain`](../ops/browser_brain) |
 | TV/Desktop | `Server3 TV ...` | Start desktop, open browser, control YouTube | [`ops/tv-desktop`](../ops/tv-desktop) |
 | Nextcloud | `Nextcloud ...` | File and calendar operations | [`ops/nextcloud`](../ops/nextcloud) |
 
@@ -77,7 +78,7 @@ This is the primary Server3 brain.
 - Service: `telegram-architect-bridge.service`
 - User: `architect`
 - Workspace: `/home/architect/matrix`
-- Purpose: general assistant, file/image/voice handling, memory-backed conversation, and operator routing into HA/TV/Nextcloud modes.
+- Purpose: general assistant, file/image/voice handling, memory-backed conversation, and operator routing into HA/Browser Brain/TV/Nextcloud modes.
 - Main docs:
   - [`docs/telegram-architect-bridge.md`](./telegram-architect-bridge.md)
   - [`SERVER3_SUMMARY.md`](../SERVER3_SUMMARY.md)
@@ -187,6 +188,25 @@ Key mental rule:
 - Server3 normally lives in CLI mode.
 - TV mode is an on-demand desktop overlay.
 
+### Server3 Browser Brain Mode
+
+This is the structured browser-automation corridor.
+
+- Trigger: `Server3 Browser ...` or `Browser Brain ...`
+- Runtime dependency: `server3-browser-brain.service`
+- Scripts: [`ops/browser_brain`](../ops/browser_brain)
+- Docs: [`docs/runbooks/server3-browser-brain.md`](./runbooks/server3-browser-brain.md)
+
+Use it when you want:
+- open or navigate real browser tabs
+- inspect the current page and get actionable refs
+- click or type against exact snapshot refs
+- run browser automation without using the TV desktop path
+
+Key mental rule:
+- Browser Brain is the machine-operated browser substrate.
+- TV mode is still the human-visible desktop/browser path.
+
 ### Nextcloud Mode
 
 Nextcloud is another stateless script-backed mode.
@@ -214,7 +234,7 @@ Use it when you want:
 
 ### Keyword-routed request
 
-1. Message starts with `HA`, `Server3 TV`, or `Nextcloud`.
+1. Message starts with `HA`, `Server3 Browser`, `Browser Brain`, `Server3 TV`, or `Nextcloud`.
 2. Bridge strips the keyword and switches to the bounded mode.
 3. Request runs stateless with a script allowlist or deterministic backend.
 4. Result is returned without carrying open-ended conversational memory.
@@ -326,5 +346,5 @@ Think of Server3 as one reusable assistant engine surrounded by multiple identit
 
 - Architect is the main front door.
 - Tank, Oracle, and Govorun are specialized sibling runtimes.
-- HA, TV, and Nextcloud are the deterministic side corridors.
+- HA, Browser Brain, TV, and Nextcloud are the deterministic side corridors.
 - systemd timers, observer checks, and config contracts are the guard rails that keep the whole machine stable.

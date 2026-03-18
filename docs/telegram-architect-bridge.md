@@ -232,6 +232,13 @@ Message handling:
     - `ops/tv-desktop/server3-tv-browser-youtube-pause.sh`
     - `ops/tv-desktop/server3-tv-browser-youtube-play.sh`
   - empty keyword-only messages are rejected with a usage hint
+- Messages starting with `Server3 Browser` or `Browser Brain` are routed into Browser Brain mode:
+  - requests run stateless (no memory/session carryover)
+  - the bridge wraps the request with strict policy to prefer deterministic scripts:
+    - `ops/browser_brain/browser_brain_ctl.sh`
+    - `ops/browser_brain/status_service.sh`
+  - Browser Brain requests should use `start`, then `open`/`navigate`, then `snapshot`, then actions by exact `ref`
+  - empty keyword-only messages are rejected with a usage hint
 - Messages starting with `Nextcloud` are routed into Nextcloud operations mode:
   - requests run stateless (no memory/session carryover)
   - the bridge wraps the request with strict policy to use deterministic scripts:

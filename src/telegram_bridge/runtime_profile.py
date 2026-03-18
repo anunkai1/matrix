@@ -25,6 +25,9 @@ SERVER3_KEYWORD_HELP_MESSAGE = (
 NEXTCLOUD_KEYWORD_HELP_MESSAGE = (
     "Nextcloud mode needs an action. Example: `Nextcloud create event tomorrow 3pm dentist in Personal calendar`."
 )
+BROWSER_BRAIN_KEYWORD_HELP_MESSAGE = (
+    "Server3 Browser mode needs an action. Example: `Server3 Browser open https://example.com and snapshot the page`."
+)
 PREFIX_HELP_MESSAGE = (
     "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
 )
@@ -69,6 +72,13 @@ def build_nextcloud_routing_script_allowlist() -> List[str]:
     ]
 
 
+def build_browser_brain_routing_script_allowlist() -> List[str]:
+    return [
+        shared_core_path("ops", "browser_brain", "browser_brain_ctl.sh"),
+        shared_core_path("ops", "browser_brain", "status_service.sh"),
+    ]
+
+
 def assistant_label(config) -> str:
     value = getattr(config, "assistant_name", "").strip()
     return value or "Architect"
@@ -109,6 +119,10 @@ def extract_server3_keyword_request(text: str) -> tuple[bool, str]:
 
 def extract_nextcloud_keyword_request(text: str) -> tuple[bool, str]:
     return extract_keyword_request(text, ["nextcloud"])
+
+
+def extract_browser_brain_keyword_request(text: str) -> tuple[bool, str]:
+    return extract_keyword_request(text, ["server3 browser", "browser brain"])
 
 
 def build_ha_keyword_prompt(user_request: str) -> str:
@@ -157,6 +171,22 @@ def build_nextcloud_keyword_prompt(user_request: str) -> str:
         "- Do not print or expose credentials.\n"
         "- If path/calendar/time is unclear, ask one concise clarification question.\n"
         "- After execution, report exact scripts used and final outcome."
+    )
+
+
+def build_browser_brain_keyword_prompt(user_request: str) -> str:
+    scripts = "\n".join(f"- {path}" for path in build_browser_brain_routing_script_allowlist())
+    return (
+        "Server3 Browser Brain priority mode is active.\n"
+        "Treat this as a Server3 browser-control action request.\n"
+        f"User request: {user_request.strip()}\n\n"
+        "Mandatory execution policy:\n"
+        f"{scripts}\n"
+        "- Prefer browser_brain_ctl.sh over raw curl or ad-hoc shell commands.\n"
+        "- Start with `browser_brain_ctl.sh start` when browser state may be idle.\n"
+        "- For page interaction, use `open` or `navigate`, then `snapshot`, then act using refs from that snapshot.\n"
+        "- Do not guess element targets; use exact snapshot refs for click/type/press actions.\n"
+        "- After execution, report exact commands used plus resulting tab_id, snapshot_id, refs, and final URL/title."
     )
 
 
