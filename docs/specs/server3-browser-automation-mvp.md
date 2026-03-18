@@ -1,6 +1,6 @@
 # Server3 Browser Automation MVP
 
-Status: planning-only
+Status: implemented in-repo, not yet deployed
 
 ## Document Role
 
@@ -10,7 +10,7 @@ It should contain:
 
 - decisions already made
 - rationale for those decisions
-- next actions before implementation
+- next actions before live deployment
 
 ## Purpose
 
@@ -160,17 +160,26 @@ Key rationale behind this MVP shape:
 - a small action surface is easier to trust, test, and harden than open-ended browser freedom
 - keeping the browser layer separate from any one bot lets it become reusable infrastructure for Server3 later
 
+## MVP Decisions
+
+- managed browser: Brave on Server3
+- browser family baseline: Chromium-compatible only for MVP
+- control stack: Playwright-driven managed browser service with a local loopback API
+- runtime isolation: dedicated `browser_brain` runtime, separate from the `tv` desktop/browser path
+- default execution mode: headless
+- action model: snapshot refs plus bounded stale-target recovery
+- screenshot retention: temp capture directory with TTL cleanup on service start
+- first integration mode: standalone local service first, higher-level runtime callers later
+
 ## Next Actions
 
-Before implementation starts, tighten these planning points:
+Before live deployment, complete these steps:
 
-1. Decide the exact browser engine for MVP, likely Chromium or Chrome.
-2. Decide the control method, likely CDP-backed local control.
-3. Define the exact structured inspection format the service will return.
-4. Define the initial action schema for click, type, navigate, screenshot, and tab operations.
-5. Decide how the service should recover from stale page state between inspect and act.
-6. Decide whether screenshots are stored only temporarily or retained for audit/debug.
-7. Decide which higher-level runtime will call this first, if any, or whether it starts as a standalone local service.
+1. Deploy the runtime on the live host under the dedicated `browser_brain` user.
+2. Install the runtime venv and start the systemd service.
+3. Validate live Brave/Playwright behavior on Server3 with a real site smoke test.
+4. Decide the first higher-level caller, likely Architect.
+5. Add existing-session attach only after the isolated managed-profile path is stable.
 
 ## Expansion Path After MVP
 

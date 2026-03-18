@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-16 (AEST, +10:00)
+Last updated: 2026-03-18 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -45,14 +45,14 @@ Last updated: 2026-03-16 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-18: replaced the Govorun WhatsApp 09:00 daily message rotation with generated original life-hack messages backed by persistent anti-repeat SQLite history, restricted the topic preference to life hacks only, and updated the runbook/env template to document the new no-reuse behavior.
+- 2026-03-18: added repo-side Server3 Browser Brain MVP artifacts for a dedicated `browser_brain` runtime, including a loopback Brave/Playwright control service, env/unit/install scripts, runtime-manifest entry, target-state docs, and runbook; this is implementation scaffolding only and is not yet deployed/enabled on the live host.
 - 2026-03-16: provisioned a new isolated Telegram runtime `Trinity` with its own Linux user, dedicated code tree/runtime root `/home/trinity/trinitybot`, state root `/var/lib/trinitybot`, private-chat-only allowlist, dedicated service/env/sudoers wiring, restart path, backup/restore coverage, and a machine-grounded affective runtime that remains enabled only in `telegram-trinity-bridge.service`.
 - 2026-03-16: completed the next host-side env-secret permission hardening pass by changing the remaining broader-read live `/etc/default` families for Tank, runtime observer, Signal/Oracle, `server3-state-backup`, and `govorun-whatsapp-daily-uplift` plus their readable backup copies to `root:root` mode `600`, and verified the affected services/timers all remained active.
 - 2026-03-16: hardened the Architect Telegram bridge env secrets on the live host by changing `/etc/default/telegram-architect-bridge` and its readable Architect backup copies under `/etc/default/` to `root:root` mode `600`, and verified `telegram-architect-bridge.service`, `telegram-tank-bridge.service`, and `telegram-macrorayd-bridge.service` all remained active after the permission lockdown.
 - 2026-03-15: completed direct post-cutover verification for the external Arr/media data plane and confirmed content visibility plus app behavior are operating correctly on the live `/srv/external/server3-arr` mount stack, closing the degraded-recovery follow-up from the 2026-03-13 migration.
 - 2026-03-15: reduced `server3-state-backup` retention from 12 monthly snapshots to 3 in the live profile and tracked repo defaults so the attached backup disk keeps only the most recent quarter of rebuild-grade state archives.
 - 2026-03-15: recovered the external Arr data disk after backup verification exposed a stale mount state; confirmed the root-side placeholder tree was clean, remounted `/dev/sdb1` at `/srv/external/server3-arr`, restarted `media-stack.service`, and passed `ops/server3_state/verify_restore.sh --require-media-mount`.
-- 2026-03-15: reworked Server3 state backup into a monthly quiesced restore workflow on `/srv/external/server3-backups/state`, added manifest/checksum/git-bundle output plus restore/bootstrap/verify helpers, and verified both a live snapshot and a non-destructive restore extraction while keeping the Arr media payload excluded.
-- 2026-03-14: extended the Server3 monitoring stack to expose the external Arr disk `/srv/external/server3-arr` through a host cron-driven node_exporter textfile metric and added an external-disk section to `Server3 Node Overview` for total/used/free/percent-used plus `sdb` read/write throughput.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.

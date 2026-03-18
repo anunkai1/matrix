@@ -1,0 +1,20 @@
+[Unit]
+Description=Server3 Browser Brain
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=browser_brain
+Group=browser_brain
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/default/server3-browser-brain
+ExecStart=/var/lib/server3-browser-brain/venv/bin/python -m src.browser_brain.main
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

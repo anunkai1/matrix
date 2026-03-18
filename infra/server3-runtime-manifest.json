@@ -288,6 +288,32 @@
       ]
     },
     {
+      "name": "Browser brain",
+      "category": "optional",
+      "runtime_layout": "shared-core-service",
+      "workspace_root": "/home/browser_brain/browserbrain",
+      "shared_core_root": "/home/architect/matrix",
+      "purpose": "Dedicated local browser-control service for structured automation against a managed Brave profile.",
+      "expected_default_state": "inactive",
+      "dependencies": [
+        "browser_brain runtime user",
+        "brave-browser",
+        "playwright Python runtime"
+      ],
+      "owner_user": "browser_brain",
+      "notes": [
+        "Separate from the TV desktop/browser flow and intended for loopback-only local callers.",
+        "Uses a dedicated persistent browser profile under /var/lib/server3-browser-brain."
+      ],
+      "units": [
+        {
+          "name": "server3-browser-brain.service",
+          "kind": "service",
+          "expected_state": "inactive"
+        }
+      ]
+    },
+    {
       "name": "UI layer",
       "category": "optional",
       "runtime_layout": "optional-service",
