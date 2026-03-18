@@ -19,6 +19,11 @@ This runtime is separate from `Server3 TV` mode:
 - Control surface: loopback HTTP on `127.0.0.1:47831`
 - Action model: structured snapshot refs, then element-targeted actions
 
+Connection modes:
+
+- `managed` (default): Browser Brain launches and owns its own persistent profile under `/var/lib/server3-browser-brain/profile`
+- `existing_session`: Browser Brain attaches over local CDP to a browser process that was started elsewhere, for example the visible TV-session Brave helper
+
 ## Install
 
 Prepare the runtime user and state directories:
@@ -64,6 +69,28 @@ cd /home/architect/matrix
 bash ops/browser_brain/browser_brain_ctl.sh status
 bash ops/browser_brain/browser_brain_ctl.sh start
 ```
+
+## Existing-Session Attach Mode
+
+Set Browser Brain to attach mode in `/etc/default/server3-browser-brain`:
+
+```bash
+BROWSER_BRAIN_CONNECTION_MODE=existing_session
+BROWSER_BRAIN_REMOTE_DEBUGGING_PORT=9223
+```
+
+Then start the visible TV-side Brave session with local CDP enabled:
+
+```bash
+cd /home/architect/matrix
+bash ops/tv-desktop/server3-tv-brave-browser-brain-session.sh https://x.com/home
+```
+
+Notes:
+
+- This keeps login manual in the visible `tv` desktop browser while letting Browser Brain reuse the same session after attachment.
+- The TV helper uses a dedicated Brave profile under `/home/tv/.local/state/server3-browser-brain-brave-profile`.
+- Browser Brain `stop` will disconnect from the attached browser but does not intentionally close the `tv` user's Brave session.
 
 ## API Surface
 
@@ -126,6 +153,7 @@ bash ops/browser_brain/browser_brain_ctl.sh click --tab-id tab-1234abcd --snapsh
 - Screenshots are stored under `/var/lib/server3-browser-brain/captures` and old files are cleaned up on service start based on the configured TTL.
 - Typed text is not logged verbatim; only action metadata is logged.
 - Architect now has a keyword-routed first-caller path through `Server3 Browser ...` or `Browser Brain ...`.
+- In `existing_session` mode, Browser Brain attaches to a user-run local Chromium browser via CDP instead of launching its own browser process.
 
 ## Out Of Scope For This MVP
 

@@ -64,6 +64,7 @@ def build_server3_routing_script_allowlist() -> List[str]:
         "/usr/local/bin/server3-tv-start",
         "/usr/local/bin/server3-tv-stop",
         shared_core_path("ops", "tv-desktop", "server3-tv-open-browser-url.sh"),
+        shared_core_path("ops", "tv-desktop", "server3-tv-brave-browser-brain-session.sh"),
         shared_core_path("ops", "tv-desktop", "server3-youtube-open-top-result.sh"),
         shared_core_path("ops", "tv-desktop", "server3-tv-browser-youtube-pause.sh"),
         shared_core_path("ops", "tv-desktop", "server3-tv-browser-youtube-play.sh"),
@@ -175,6 +176,7 @@ def build_server3_keyword_prompt(user_request: str) -> str:
         f"{scripts}\n"
         "- Prefer deterministic script execution over ad-hoc shell steps.\n"
         "- For browser navigation, use server3-tv-open-browser-url.sh with firefox or brave and explicit URL.\n"
+        "- When a visible Browser Brain-attachable Brave session is needed, use server3-tv-brave-browser-brain-session.sh.\n"
         "- For YouTube top-result playback, use server3-youtube-open-top-result.sh with quoted query.\n"
         "- Respect optional min-duration constraints when explicitly requested.\n"
         "- If intent is unclear, ask one concise clarification question instead of guessing.\n"

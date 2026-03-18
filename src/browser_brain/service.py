@@ -268,6 +268,7 @@ class BrowserBrainService:
         self._lock = threading.RLock()
         self._playwright = None
         self._browser = None
+        self._browser_connection = None
         self._started_at: datetime | None = None
         self._tab_ids: dict[int, str] = {}
         self._snapshots_by_tab: dict[str, SnapshotRecord] = {}
@@ -278,10 +279,12 @@ class BrowserBrainService:
             return {
                 "service": "server3-browser-brain",
                 "running": self._managed_browser_alive(),
+                "connection_mode": self.config.connection_mode,
                 "headless": self.config.headless,
                 "browser_executable": self.config.browser_executable,
                 "user_data_dir": str(self.config.browser_user_data_dir),
                 "capture_dir": str(self.config.capture_dir),
+                "cdp_endpoint_url": self.config.cdp_endpoint_url if self.config.connection_mode == "existing_session" else None,
                 "started_at": self._started_at.isoformat() if self._started_at else None,
                 "tabs": tabs,
             }
@@ -295,7 +298,7 @@ class BrowserBrainService:
             self._ensure_paths()
             self._cleanup_old_captures()
             self._launch_browser()
-            self._log_action("start", {"headless": self.config.headless})
+            self._log_action("start", {"headless": self.config.headless, "connection_mode": self.config.connection_mode})
             return self.status()
 
     def stop(self, _payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -447,6 +450,14 @@ class BrowserBrainService:
     def _managed_browser_alive(self) -> bool:
         if self._browser is None:
             return False
+        connection = self._browser_connection
+        if connection is not None:
+            try:
+                is_connected = getattr(connection, "is_connected", None)
+                if callable(is_connected) and not is_connected():
+                    return False
+            except Exception:
+                return False
         try:
             self._browser.pages
         except Exception:
@@ -456,15 +467,10 @@ class BrowserBrainService:
     def _ensure_paths(self) -> None:
         self.config.state_dir.mkdir(parents=True, exist_ok=True)
         self.config.capture_dir.mkdir(parents=True, exist_ok=True)
-        self.config.browser_user_data_dir.mkdir(parents=True, exist_ok=True)
+        if self.config.connection_mode == "managed":
+            self.config.browser_user_data_dir.mkdir(parents=True, exist_ok=True)
 
     def _launch_browser(self) -> None:
-        if not Path(self.config.browser_executable).exists():
-            raise BrowserBrainError(
-                "browser_executable_missing",
-                f"Browser executable not found: {self.config.browser_executable}",
-                status=500,
-            )
         try:
             from playwright.sync_api import sync_playwright
         except ImportError as exc:
@@ -475,6 +481,22 @@ class BrowserBrainService:
                 details={"hint": "Run ops/browser_brain/install_runtime_venv.sh to provision the runtime venv."},
             ) from exc
 
+        self._playwright = sync_playwright().start()
+        if self.config.connection_mode == "existing_session":
+            self._attach_existing_session_browser()
+        else:
+            self._launch_managed_browser()
+        self._started_at = datetime.now(timezone.utc)
+        if not self._browser.pages:
+            self._create_page("about:blank")
+
+    def _launch_managed_browser(self) -> None:
+        if not Path(self.config.browser_executable).exists():
+            raise BrowserBrainError(
+                "browser_executable_missing",
+                f"Browser executable not found: {self.config.browser_executable}",
+                status=500,
+            )
         args = [
             "--no-default-browser-check",
             "--no-first-run",
@@ -482,26 +504,58 @@ class BrowserBrainService:
             "--disable-sync",
             "--disable-component-update",
         ]
-        self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch_persistent_context(
             str(self.config.browser_user_data_dir),
             executable_path=self.config.browser_executable,
             headless=self.config.headless,
             args=args,
         )
-        self._started_at = datetime.now(timezone.utc)
-        if not self._browser.pages:
-            self._create_page("about:blank")
+
+    def _attach_existing_session_browser(self) -> None:
+        endpoint_url = self.config.cdp_endpoint_url
+        try:
+            self._browser_connection = self._playwright.chromium.connect_over_cdp(endpoint_url)
+        except Exception as exc:
+            raise BrowserBrainError(
+                "existing_session_unavailable",
+                "Could not attach to the existing browser session",
+                status=503,
+                details={
+                    "cdp_endpoint_url": endpoint_url,
+                    "hint": "Launch Chrome/Brave with a local --remote-debugging-port and retry.",
+                    "exception": str(exc),
+                },
+            ) from exc
+        contexts = list(getattr(self._browser_connection, "contexts", []))
+        if contexts:
+            self._browser = contexts[0]
+            return
+        try:
+            self._browser = self._browser_connection.new_context()
+        except Exception as exc:
+            raise BrowserBrainError(
+                "existing_session_no_context",
+                "Attached browser exposed no usable context",
+                status=503,
+                details={"cdp_endpoint_url": endpoint_url, "exception": str(exc)},
+            ) from exc
 
     def _shutdown_browser(self) -> None:
         browser = self._browser
+        browser_connection = self._browser_connection
         playwright = self._playwright
         self._browser = None
+        self._browser_connection = None
         self._playwright = None
         self._started_at = None
-        if browser is not None:
+        if browser is not None and self.config.connection_mode == "managed":
             try:
                 browser.close()
+            except Exception:
+                pass
+        if browser_connection is not None and self.config.connection_mode == "managed":
+            try:
+                browser_connection.close()
             except Exception:
                 pass
         if playwright is not None:

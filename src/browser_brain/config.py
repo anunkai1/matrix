@@ -17,20 +17,37 @@ def _parse_int(value: str | None, default: int) -> int:
     return int(value)
 
 
+def _parse_connection_mode(value: str | None, default: str) -> str:
+    if value is None or value.strip() == "":
+        return default
+    mode = value.strip().lower().replace("-", "_")
+    if mode not in {"managed", "existing_session"}:
+        raise ValueError(f"Unsupported browser brain connection mode: {value}")
+    return mode
+
+
 @dataclass(frozen=True)
 class BrowserBrainConfig:
     host: str = "127.0.0.1"
     port: int = 47831
+    connection_mode: str = "managed"
     browser_executable: str = "/usr/bin/brave-browser"
     browser_user_data_dir: Path = Path("/var/lib/server3-browser-brain/profile")
     state_dir: Path = Path("/var/lib/server3-browser-brain")
     capture_dir: Path = Path("/var/lib/server3-browser-brain/captures")
     remote_debugging_port: int = 9223
+    existing_session_cdp_url: str = ""
     startup_timeout_seconds: int = 20
     action_timeout_ms: int = 7000
     screenshot_ttl_hours: int = 24
     headless: bool = True
     log_actions: bool = True
+
+    @property
+    def cdp_endpoint_url(self) -> str:
+        if self.existing_session_cdp_url:
+            return self.existing_session_cdp_url
+        return f"http://127.0.0.1:{self.remote_debugging_port}"
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> "BrowserBrainConfig":
@@ -41,11 +58,13 @@ class BrowserBrainConfig:
         return cls(
             host=values.get("BROWSER_BRAIN_HOST", "127.0.0.1"),
             port=_parse_int(values.get("BROWSER_BRAIN_PORT"), 47831),
+            connection_mode=_parse_connection_mode(values.get("BROWSER_BRAIN_CONNECTION_MODE"), "managed"),
             browser_executable=values.get("BROWSER_BRAIN_BROWSER_EXECUTABLE", "/usr/bin/brave-browser"),
             browser_user_data_dir=profile_dir,
             state_dir=state_dir,
             capture_dir=capture_dir,
             remote_debugging_port=_parse_int(values.get("BROWSER_BRAIN_REMOTE_DEBUGGING_PORT"), 9223),
+            existing_session_cdp_url=values.get("BROWSER_BRAIN_EXISTING_SESSION_CDP_URL", "").strip(),
             startup_timeout_seconds=_parse_int(values.get("BROWSER_BRAIN_STARTUP_TIMEOUT_SECONDS"), 20),
             action_timeout_ms=_parse_int(values.get("BROWSER_BRAIN_ACTION_TIMEOUT_MS"), 7000),
             screenshot_ttl_hours=_parse_int(values.get("BROWSER_BRAIN_SCREENSHOT_TTL_HOURS"), 24),

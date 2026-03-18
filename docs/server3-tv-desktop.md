@@ -14,6 +14,7 @@ This runbook configures Server3 for HDMI TV usage while keeping default boot in 
 - Prefers HDMI audio sink in the `tv` session.
 - Includes helper scripts for intent-executor flows:
   - `ops/tv-desktop/server3-tv-open-browser-url.sh`
+  - `ops/tv-desktop/server3-tv-brave-browser-brain-session.sh`
   - `ops/tv-desktop/server3-youtube-open-top-result.sh`
   - `ops/tv-desktop/server3-tv-browser-youtube-pause.sh`
   - `ops/tv-desktop/server3-tv-browser-youtube-play.sh`
@@ -40,6 +41,12 @@ Open a URL in Firefox/Brave under the `tv` desktop session:
 bash ops/tv-desktop/server3-tv-open-browser-url.sh firefox https://www.youtube.com
 ```
 By default, if a matching browser window already exists, it is reused (`Ctrl+L` + URL + Enter). Use `--new-window` to force a new window.
+
+Open a visible Brave session intended for Browser Brain CDP attach:
+```bash
+bash ops/tv-desktop/server3-tv-brave-browser-brain-session.sh https://x.com/home
+```
+This launches Brave for the `tv` desktop user with a local remote-debugging port and a dedicated profile so Browser Brain can attach to it later without needing headed mode itself.
 
 Resolve and open top YouTube search result (with optional duration constraint):
 ```bash
