@@ -36,7 +36,7 @@ YOUTUBE_URL_RE = re.compile(
     re.IGNORECASE,
 )
 YOUTUBE_LIGHTWEIGHT_REQUEST_RE = re.compile(
-    r"^(?:(?:please|pls|summary|summarise|summarize|analyse|analyze|explain|transcript|full transcript|captions?|subtitles?|transcribe|translate|translation|key points?|timestamps?|таймкоды|переведи|перевод|суммаризируй|суммаризуй|кратко|краткое содержание|резюме|сводка|анализ|проанализируй|транскрипт|стенограмма|субтитры|расшифровка)\s*)+$",
+    r"^(?:(?:please|pls|summary|summarise|summarize|analyse|analyze|explain|transcript|full transcript|captions?|subtitles?|transcribe|translate|translation|key points?|timestamps?|таймкоды|переведи|перевод|суммаризируй|суммаризуй|кратко|краткое содержание|резюме|сводка|анализ|проанализируй|транскрипт|стенограмма|субтитры|расшифровка)(?:\s+(?:this|it|video|clip|short|link))?\s*)+$",
     re.IGNORECASE,
 )
 WHATSAPP_REPLY_PREFIX = "Даю справку:"

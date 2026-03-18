@@ -2153,7 +2153,7 @@ class BridgeCoreTests(unittest.TestCase):
             "message": {
                 "message_id": 207,
                 "chat": {"id": 1, "type": "group"},
-                "text": "https://www.youtube.com/watch?v=yD5DFL3xPmo",
+                "text": "https://www.youtube.com/watch?v=yD5DFL3xPmo\nsummarise this",
             },
         }
 
@@ -2162,7 +2162,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertFalse(start_message_worker.called)
         self.assertTrue(start_youtube_worker.called)
         kwargs = start_youtube_worker.call_args.kwargs
-        self.assertEqual(kwargs["request_text"], "https://www.youtube.com/watch?v=yD5DFL3xPmo")
+        self.assertEqual(kwargs["request_text"], "https://www.youtube.com/watch?v=yD5DFL3xPmo\nsummarise this")
         self.assertEqual(kwargs["youtube_url"], "https://www.youtube.com/watch?v=yD5DFL3xPmo")
         self.assertEqual(client.messages, [])
 

@@ -65,6 +65,12 @@ class RuntimeProfileTests(unittest.TestCase):
             runtime_profile.extract_youtube_link_request("watch this https://youtu.be/yD5DFL3xPmo!"),
             (False, ""),
         )
+        self.assertEqual(
+            runtime_profile.extract_youtube_link_request(
+                "https://www.youtube.com/watch?v=yD5DFL3xPmo\nsummarise this"
+            ),
+            (True, "https://www.youtube.com/watch?v=yD5DFL3xPmo"),
+        )
 
 if __name__ == "__main__":
     unittest.main()

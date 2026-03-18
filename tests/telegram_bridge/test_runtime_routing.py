@@ -123,7 +123,7 @@ class RuntimeRoutingTests(unittest.TestCase):
 
         result = runtime_routing.apply_priority_keyword_routing(
             config=config,
-            prompt_input="https://www.youtube.com/watch?v=yD5DFL3xPmo",
+            prompt_input="https://www.youtube.com/watch?v=yD5DFL3xPmo\nsummarise this",
             command=None,
             chat_id=1,
         )
@@ -133,7 +133,7 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertEqual(result.route_kind, "youtube_link")
         self.assertEqual(result.route_value, "https://www.youtube.com/watch?v=yD5DFL3xPmo")
         self.assertEqual(result.routed_event, "bridge.youtube_link_auto_routed")
-        self.assertEqual(result.prompt_input, "https://www.youtube.com/watch?v=yD5DFL3xPmo")
+        self.assertEqual(result.prompt_input, "https://www.youtube.com/watch?v=yD5DFL3xPmo\nsummarise this")
 
     def test_apply_priority_keyword_routing_ignores_non_request_text_with_youtube_link(self) -> None:
         config = SimpleNamespace(keyword_routing_enabled=True)
