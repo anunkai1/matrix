@@ -70,17 +70,19 @@
   - `WA_DAILY_UPLIFT_CHAT_JID` target group JID (preferred)
   - `WA_DAILY_UPLIFT_TZ=Australia/Brisbane`
   - `WA_DAILY_UPLIFT_GROUP_NAME=Путиловы`
+  - `WA_DAILY_UPLIFT_STATE_DIR=/home/govorun/.local/state/govorun-whatsapp-daily-uplift`
 - 1:1 preview send:
   - `python3 ops/whatsapp_govorun/send_daily_uplift.py --test --chat-id <dm_chat_id>`
 - Tone rule (authoritative for this daily message):
-  - Keep it fun, funny, light, warm, and enjoyable.
-  - Send exactly one short fun fact / amusing positive note.
-  - Prefer: funny, fun, interesting history/culture moments, animals, science curiosities, space, wholesome human stories, life hacks.
-  - Avoid: politics, war, tragedy, death, illness, stress/work-pressure, money anxiety.
-  - Style: simple Russian, 1-2 sentences for the fact, no sarcasm at people.
+  - Keep it light, warm, positive, and useful.
+  - Prefer: life hacks.
+  - Always generate a new original life hack; do not rotate or reuse old messages.
+  - Do not repeat the same or similar underlying life-hack idea.
+  - Avoid: trivia, history/culture, animals, science, space, wholesome stories, politics, war, tragedy, death, illness, stress/work-pressure, money anxiety.
+  - Style: simple Russian, 1-2 short sentences for the life hack, no sarcasm at people.
   - Fixed format:
     - `Доброе утро, Путиловы! ☀️`
-    - `Даю справку: <короткий позитивный/забавный факт>`
+    - `Даю справку: <короткий оригинальный лайфхак>`
 
 ## Backup
 - Run: `ops/whatsapp_govorun/backup_state.sh`
