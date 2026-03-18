@@ -275,7 +275,9 @@ Message handling:
   - default CLI key: `cli:architect:<profile_name>`
   - optional bridge-wide Telegram override: `TELEGRAM_SHARED_MEMORY_KEY=<shared_key>`
   - optional CLI override: `CLI_CONVERSATION_KEY=<shared_key>`
-  - when both overrides use the same key, Telegram + CLI behave as one shared identity
+  - when `TELEGRAM_SHARED_MEMORY_KEY` is set, each Telegram chat writes to its own live session key under that shared namespace and reads the configured shared key as archive/background context
+  - when a Telegram live session expires, that live key is merged back into the shared archive key and then cleared
+  - CLI can still point directly at the shared archive key, so it sees merged memory after Telegram session expiry
   - current Server3 Architect rollout uses `shared:architect:main`
 - Memory modes:
   - default mode for new keys: `all_context`
@@ -322,7 +324,7 @@ Message handling:
 - With persistent workers enabled:
   - overlapping requests are still rejected while a chat is busy
   - stale sessions are reset on next message when policy files change, with user notice
-  - idle sessions are expired and user is notified that context was cleared
+  - idle sessions are expired, their live per-chat memory is archived into the shared key when configured, and the user is notified that context was cleared
 
 ## Architect CLI Parity
 

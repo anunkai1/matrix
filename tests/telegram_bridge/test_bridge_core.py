@@ -1672,6 +1672,56 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(client.messages)
         self.assertIn("workers are currently in use", client.messages[-1][1])
 
+    def test_expire_idle_worker_sessions_archives_live_shared_memory_before_clearing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
+            live_key = "shared:architect:main:session:tg:1"
+            archive_key = "shared:architect:main"
+
+            turn = memory_engine.begin_turn(
+                conversation_key=live_key,
+                channel="telegram",
+                sender_name="User",
+                user_input="remember this topic",
+            )
+            memory_engine.finish_turn(
+                turn,
+                channel="telegram",
+                assistant_text="stored",
+                new_thread_id="thread-live",
+            )
+            memory_engine.remember_explicit(live_key, "topic: separate")
+
+            state = bridge.State(
+                chat_threads={1: "thread-live"},
+                worker_sessions={
+                    1: bridge.WorkerSession(
+                        created_at=1.0,
+                        last_used_at=1.0,
+                        thread_id="thread-live",
+                        policy_fingerprint="fp",
+                    )
+                },
+                memory_engine=memory_engine,
+            )
+            client = FakeTelegramClient(channel_name="telegram")
+            config = make_config(
+                allowed_chat_ids={1},
+                persistent_workers_enabled=True,
+                persistent_workers_idle_timeout_seconds=1,
+                shared_memory_key=archive_key,
+            )
+
+            with mock.patch.object(bridge_session_manager.time, "time", return_value=100.0):
+                bridge.expire_idle_worker_sessions(state, config, client)
+
+            self.assertEqual(memory_engine.get_status(live_key).message_count, 0)
+            archive_status = memory_engine.get_status(archive_key)
+            self.assertEqual(archive_status.message_count, 2)
+            self.assertGreaterEqual(archive_status.summary_count, 1)
+            self.assertTrue(client.messages)
+            self.assertIn("Your session expired after 1 minutes of inactivity.", client.messages[-1][1])
+
     def test_policy_fingerprint_cache_reuses_value_within_ttl(self):
         bridge_session_manager._policy_fingerprint_cache.clear()
         with mock.patch.object(
@@ -2562,7 +2612,10 @@ class BridgeCoreTests(unittest.TestCase):
             ):
                 bridge.handle_update(state, config, client, update)
 
-            self.assertEqual(captured.get("conversation_key"), "shared:architect:main")
+            self.assertEqual(
+                captured.get("conversation_key"),
+                "shared:architect:main:session:tg:2",
+            )
             self.assertEqual(client.messages[-1][1], "memory ok")
 
     def test_build_status_text_uses_configured_channel_memory_namespace(self):
@@ -2574,10 +2627,10 @@ class BridgeCoreTests(unittest.TestCase):
             status_text = bridge_handlers.build_status_text(state, config, chat_id=9)
             self.assertIn("Memory mode: session_only", status_text)
 
-    def test_build_status_text_uses_shared_memory_key_when_configured(self):
+    def test_build_status_text_uses_live_shared_memory_scope_when_configured(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
-            memory_engine.set_mode("shared:architect:main", "session_only")
+            memory_engine.set_mode("shared:architect:main:session:tg:9", "session_only")
             state = bridge.State(memory_engine=memory_engine)
             config = make_config(shared_memory_key="shared:architect:main")
             status_text = bridge_handlers.build_status_text(state, config, chat_id=9)

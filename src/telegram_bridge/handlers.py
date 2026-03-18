@@ -30,6 +30,10 @@ try:
         handle_memory_command,
         handle_natural_language_memory_query,
     )
+    from .memory_scope import (
+        resolve_memory_conversation_key,
+        resolve_shared_memory_archive_key,
+    )
     from .runtime_profile import (
         BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
         HA_KEYWORD_HELP_MESSAGE,
@@ -89,6 +93,10 @@ except ImportError:
         build_memory_help_lines,
         handle_memory_command,
         handle_natural_language_memory_query,
+    )
+    from memory_scope import (
+        resolve_memory_conversation_key,
+        resolve_shared_memory_archive_key,
     )
     from runtime_profile import (
         BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
@@ -176,15 +184,6 @@ class PreparedPromptInput:
 class OutboundMediaDirective:
     media_ref: str
     as_voice: bool
-
-def resolve_memory_conversation_key(config, channel_name: str, chat_id: int) -> str:
-    shared_key = getattr(config, "shared_memory_key", "").strip()
-    normalized_channel = (channel_name or "telegram").strip().lower()
-    if shared_key and normalized_channel == "telegram":
-        return shared_key
-    return MemoryEngine.channel_key(channel_name, chat_id)
-
-
 def normalize_command(text: str) -> Optional[str]:
     stripped = text.strip()
     head: Optional[str] = None
@@ -2500,6 +2499,10 @@ def process_prompt(
                     sender_name=sender_name,
                     user_input=prompt_text,
                     stateless=stateless,
+                    background_conversation_key=resolve_shared_memory_archive_key(
+                        config,
+                        channel_name,
+                    ),
                 )
                 prompt_text = turn_context.prompt_text
                 previous_thread_id = turn_context.thread_id

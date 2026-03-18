@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 try:
+    from .memory_engine import MemoryEngine
+    from .memory_merge import merge_conversation_keys
+    from .memory_scope import resolve_memory_conversation_key, resolve_shared_memory_archive_key
     from .runtime_paths import build_shared_core_root, shared_core_path
     from .state_store import (
         CanonicalSession,
@@ -23,6 +26,9 @@ try:
     )
     from .structured_logging import emit_event
 except ImportError:
+    from memory_engine import MemoryEngine
+    from memory_merge import merge_conversation_keys
+    from memory_scope import resolve_memory_conversation_key, resolve_shared_memory_archive_key
     from runtime_paths import build_shared_core_root, shared_core_path
     from state_store import (
         CanonicalSession,
@@ -144,6 +150,56 @@ def _send_policy_refresh_notice(client, chat_id: int, message_id: Optional[int])
         )
     except Exception:
         logging.exception("Failed to send policy-refresh notice for chat_id=%s", chat_id)
+
+
+def _archive_expired_chat_memory(state: State, config, client, chat_id: int) -> None:
+    channel_name = getattr(client, "channel_name", "telegram")
+    archive_key = resolve_shared_memory_archive_key(config, channel_name)
+    if not archive_key:
+        return
+    memory_engine = state.memory_engine
+    if not isinstance(memory_engine, MemoryEngine):
+        return
+    live_key = resolve_memory_conversation_key(config, channel_name, chat_id)
+    if not live_key or live_key == archive_key:
+        return
+
+    try:
+        status = memory_engine.get_status(live_key)
+    except Exception:
+        logging.exception("Failed to read live memory status before expiry for chat_id=%s", chat_id)
+        return
+
+    if (
+        status.message_count <= 0
+        and status.active_fact_count <= 0
+        and status.summary_count <= 0
+        and not status.session_active
+    ):
+        return
+
+    try:
+        result = merge_conversation_keys(
+            db_path=memory_engine.db_path,
+            source_keys=[live_key],
+            target_key=archive_key,
+            allow_existing_target=True,
+            force_summarize_target=True,
+        )
+        memory_engine.clear_session(live_key)
+        emit_event(
+            "bridge.memory_archived_on_expiry",
+            fields={
+                "chat_id": chat_id,
+                "source_key": live_key,
+                "target_key": archive_key,
+                "messages_copied": result.messages_copied,
+                "facts_merged": result.facts_merged,
+                "summaries_generated": result.summaries_generated,
+            },
+        )
+    except Exception:
+        logging.exception("Failed to archive expired live memory for chat_id=%s", chat_id)
 
 
 def get_cached_policy_fingerprint(paths: List[str], now: Optional[float] = None) -> str:
@@ -461,6 +517,7 @@ def expire_idle_worker_sessions(
         )
         timeout_mins = max(1, config.persistent_workers_idle_timeout_seconds // 60)
         for chat_id in expired_chat_ids:
+            _archive_expired_chat_memory(state, config, client, chat_id)
             if chat_id not in config.allowed_chat_ids:
                 continue
             try:
@@ -510,6 +567,7 @@ def expire_idle_worker_sessions(
     )
     timeout_mins = max(1, config.persistent_workers_idle_timeout_seconds // 60)
     for chat_id in expired_chat_ids:
+        _archive_expired_chat_memory(state, config, client, chat_id)
         if chat_id not in config.allowed_chat_ids:
             continue
         try:

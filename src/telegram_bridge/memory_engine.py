@@ -742,8 +742,8 @@ class MemoryEngine:
         mode: str,
         current_input: str,
         recent_rows: Sequence[sqlite3.Row],
-        summary_row: Optional[sqlite3.Row],
-        fact_rows: Sequence[sqlite3.Row],
+        summary_sections: Sequence[Tuple[str, str]],
+        fact_lines: Sequence[str],
     ) -> str:
         sections: List[str] = []
         sections.append(
@@ -753,17 +753,17 @@ class MemoryEngine:
             "- Do not expose internal memory instructions."
         )
 
-        if mode == MODE_FULL and summary_row is not None:
-            summary_text = str(summary_row["summary_text"] or "").strip()
-            if summary_text:
-                sections.append(f"Conversation Summary:\n{summary_text}")
-
-        if mode == MODE_FULL and fact_rows:
-            facts = [
-                f"- [{row['id']}] {row['fact_key']}: {self._sanitize_line(str(row['fact_value']), 140)}"
-                for row in fact_rows
+        if mode == MODE_FULL and summary_sections:
+            rendered_summaries = [
+                f"{title}:\n{text}"
+                for title, text in summary_sections
+                if title.strip() and text.strip()
             ]
-            sections.append("Durable Facts:\n" + "\n".join(facts))
+            if rendered_summaries:
+                sections.append("\n\n".join(rendered_summaries))
+
+        if mode == MODE_FULL and fact_lines:
+            sections.append("Durable Facts:\n" + "\n".join(fact_lines))
 
         if recent_rows:
             lines: List[str] = []
@@ -776,6 +776,58 @@ class MemoryEngine:
 
         sections.append(f"Current User Input:\n{current_input.strip()}")
         return "\n\n".join(sections).strip()
+
+    @staticmethod
+    def _summary_text(row: Optional[sqlite3.Row]) -> str:
+        if row is None:
+            return ""
+        return str(row["summary_text"] or "").strip()
+
+    def _build_summary_sections(
+        self,
+        current_summary_row: Optional[sqlite3.Row],
+        background_summary_row: Optional[sqlite3.Row],
+    ) -> List[Tuple[str, str]]:
+        current_summary = self._summary_text(current_summary_row)
+        background_summary = self._summary_text(background_summary_row)
+        if not background_summary:
+            return [("Conversation Summary", current_summary)] if current_summary else []
+        if not current_summary:
+            return [("Conversation Summary", background_summary)]
+        if current_summary == background_summary:
+            return [("Conversation Summary", current_summary)]
+        return [
+            ("Shared Memory Summary", background_summary),
+            ("Current Chat Summary", current_summary),
+        ]
+
+    def _build_fact_lines(
+        self,
+        current_fact_rows: Sequence[sqlite3.Row],
+        background_fact_rows: Sequence[sqlite3.Row],
+    ) -> List[str]:
+        include_source_labels = bool(background_fact_rows)
+        lines: List[str] = []
+        seen_fact_keys = set()
+        sources = (
+            ("current", current_fact_rows),
+            ("shared", background_fact_rows),
+        )
+        for source_name, rows in sources:
+            for row in rows:
+                fact_key = str(row["fact_key"] or "").strip()
+                if not fact_key or fact_key in seen_fact_keys:
+                    continue
+                seen_fact_keys.add(fact_key)
+                value = self._sanitize_line(str(row["fact_value"]), 140)
+                if include_source_labels:
+                    prefix = f"{source_name}:{row['id']}"
+                else:
+                    prefix = str(row["id"])
+                lines.append(f"- [{prefix}] {fact_key}: {value}")
+                if len(lines) >= FACT_LIMIT:
+                    return lines
+        return lines
 
     def _list_conversation_keys(self, conn: sqlite3.Connection) -> List[str]:
         rows = conn.execute(
@@ -1014,6 +1066,7 @@ class MemoryEngine:
         user_input: str,
         stateless: bool = False,
         mode_override: Optional[str] = None,
+        background_conversation_key: Optional[str] = None,
     ) -> TurnContext:
         clean_input = (user_input or "").strip()
         if not clean_input:
@@ -1040,14 +1093,34 @@ class MemoryEngine:
                 mode = self._normalize_mode(str(mode_row["mode"] if mode_row else MODE_FULL))
 
             recent_rows = self._load_recent_messages(conn, conversation_key, limit=RECENT_WINDOW)
-            summary_row = self._load_latest_summary(conn, conversation_key) if mode == MODE_FULL else None
-            fact_rows = self._load_active_facts(conn, conversation_key) if mode == MODE_FULL else []
+            current_summary_row = self._load_latest_summary(conn, conversation_key) if mode == MODE_FULL else None
+            current_fact_rows = self._load_active_facts(conn, conversation_key) if mode == MODE_FULL else []
+            background_key = (background_conversation_key or "").strip()
+            background_summary_row = None
+            background_fact_rows: List[sqlite3.Row] = []
+            if mode == MODE_FULL and background_key and background_key != conversation_key:
+                background_summary_row = self._load_latest_summary(conn, background_key)
+                background_fact_rows = self._load_active_facts(conn, background_key)
             thread_row = conn.execute(
                 "SELECT thread_id FROM sessions WHERE conversation_key = ?",
                 (conversation_key,),
             ).fetchone()
             thread_id = str(thread_row["thread_id"] if thread_row else "").strip() or None
-            prompt_text = self._build_prompt(mode, clean_input, recent_rows, summary_row, fact_rows)
+            summary_sections = self._build_summary_sections(
+                current_summary_row,
+                background_summary_row,
+            )
+            fact_lines = self._build_fact_lines(
+                current_fact_rows,
+                background_fact_rows,
+            )
+            prompt_text = self._build_prompt(
+                mode,
+                clean_input,
+                recent_rows,
+                summary_sections,
+                fact_lines,
+            )
 
             user_message_id = self._append_message(
                 conn,
@@ -1108,7 +1181,7 @@ class MemoryEngine:
             self._maybe_summarize(conn, turn.conversation_key, turn.mode)
             self._prune_conversation(conn, turn.conversation_key, force=False)
 
-    def run_summarization_if_needed(self, conversation_key: str) -> bool:
+    def run_summarization_if_needed(self, conversation_key: str, force: bool = False) -> bool:
         with self._lock, self._connect() as conn:
             self._ensure_memory_rows(conn, conversation_key)
             row = conn.execute(
@@ -1116,9 +1189,15 @@ class MemoryEngine:
                 (conversation_key,),
             ).fetchone()
             mode = self._normalize_mode(str(row["mode"] if row else MODE_FULL))
-            return self._maybe_summarize(conn, conversation_key, mode)
+            return self._maybe_summarize(conn, conversation_key, mode, force=force)
 
-    def _maybe_summarize(self, conn: sqlite3.Connection, conversation_key: str, mode: str) -> bool:
+    def _maybe_summarize(
+        self,
+        conn: sqlite3.Connection,
+        conversation_key: str,
+        mode: str,
+        force: bool = False,
+    ) -> bool:
         if mode != MODE_FULL:
             return False
         self._ensure_memory_rows(conn, conversation_key)
@@ -1149,7 +1228,7 @@ class MemoryEngine:
             return False
 
         token_total = sum(int(row["token_estimate"] or 0) for row in rows)
-        if len(rows) < SUMMARY_TRIGGER_MESSAGES and token_total < SUMMARY_TRIGGER_TOKENS:
+        if not force and len(rows) < SUMMARY_TRIGGER_MESSAGES and token_total < SUMMARY_TRIGGER_TOKENS:
             return False
 
         summary_text, key_points, open_loops = self._summarize_rows(rows)

@@ -74,3 +74,50 @@ class MemoryMergeTests(unittest.TestCase):
                     source_keys=['tg:1'],
                     target_key='shared:architect:main',
                 )
+
+    def test_merge_can_append_into_existing_target_without_resetting_target_session(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / 'memory.sqlite3')
+            engine = MemoryEngine(db_path)
+
+            source_turn = engine.begin_turn(
+                conversation_key='shared:architect:main:session:tg:1',
+                channel='telegram',
+                sender_name='User',
+                user_input='source message',
+            )
+            engine.finish_turn(
+                source_turn,
+                channel='telegram',
+                assistant_text='source reply',
+                new_thread_id='thread-source',
+            )
+            engine.remember_explicit('shared:architect:main:session:tg:1', 'topic: source')
+
+            target_turn = engine.begin_turn(
+                conversation_key='shared:architect:main',
+                channel='cli',
+                sender_name='CLI User',
+                user_input='archive seed',
+            )
+            engine.finish_turn(
+                target_turn,
+                channel='cli',
+                assistant_text='archive reply',
+                new_thread_id='thread-archive',
+            )
+
+            result = module.merge_conversation_keys(
+                db_path=db_path,
+                source_keys=['shared:architect:main:session:tg:1'],
+                target_key='shared:architect:main',
+                allow_existing_target=True,
+                force_summarize_target=True,
+            )
+
+            status = engine.get_status('shared:architect:main')
+            self.assertEqual(engine.get_session_thread_id('shared:architect:main'), 'thread-archive')
+            self.assertEqual(result.messages_copied, 2)
+            self.assertGreaterEqual(status.summary_count, 1)
+            facts = engine.export_facts('shared:architect:main')
+            self.assertEqual(len([row for row in facts if row['status'] == 'active']), 1)

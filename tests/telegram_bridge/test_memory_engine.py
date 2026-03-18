@@ -173,6 +173,64 @@ class MemoryEngineTests(unittest.TestCase):
             self.assertEqual(active[0]["fact_key"], "explicit:favorite_editor")
             self.assertEqual(engine.get_status(key).summary_count, 0)
 
+    def test_begin_turn_uses_shared_background_summary_and_facts_without_mixing_recent_messages(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            engine = memory.MemoryEngine(db_path)
+            live_key = "shared:architect:main:session:tg:44"
+            archive_key = "shared:architect:main"
+
+            engine.remember_explicit(archive_key, "timezone: AEST")
+            with engine._lock, engine._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO chat_summaries (
+                        conversation_key,
+                        start_msg_id,
+                        end_msg_id,
+                        summary_text,
+                        key_points_json,
+                        open_loops_json,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        archive_key,
+                        1,
+                        2,
+                        "Shared archive summary",
+                        "[]",
+                        "[]",
+                        time.time(),
+                    ),
+                )
+
+            prior_turn = engine.begin_turn(
+                conversation_key=live_key,
+                channel="telegram",
+                sender_name="User",
+                user_input="local context",
+            )
+            engine.finish_turn(
+                prior_turn,
+                channel="telegram",
+                assistant_text="local reply",
+                new_thread_id="thread-live",
+            )
+
+            turn = engine.begin_turn(
+                conversation_key=live_key,
+                channel="telegram",
+                sender_name="User",
+                user_input="current request",
+                background_conversation_key=archive_key,
+            )
+
+            self.assertIn("Shared archive summary", turn.prompt_text)
+            self.assertIn("explicit:timezone", turn.prompt_text)
+            self.assertIn("local context", turn.prompt_text)
+            self.assertNotIn("Current Chat Summary:", turn.prompt_text)
+
     def test_command_flow_for_remember_forget_reset_and_hard_reset(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = str(Path(tmpdir) / "memory.sqlite3")
