@@ -22,11 +22,11 @@
      - `TELEGRAM_RESTART_SCRIPT=/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh`
      - `TELEGRAM_RESTART_UNIT=oracle-signal-bridge.service`
 5. Provision Codex CLI auth for the `oracle` runtime user before first start:
-   - required file: `/home/oracle/.codex/auth.json`
-   - simplest bootstrap on Server3:
-     - `sudo install -d -m 700 -o oracle -g oracle /home/oracle/.codex`
-     - `sudo install -m 600 -o oracle -g oracle /home/architect/.codex/auth.json /home/oracle/.codex/auth.json`
-     - `sudo install -m 600 -o oracle -g oracle /home/architect/.codex/config.toml /home/oracle/.codex/config.toml`
+   - required path: `/home/oracle/.codex/auth.json`
+   - preferred Server3 bootstrap:
+     - `ops/codex/install_shared_auth.sh oracle`
+   - this links Oracle's `auth.json` to the canonical shared auth file at `/etc/server3-codex/auth.json` and keeps Oracle's other `.codex` state local
+   - see [Server3 Shared Codex Auth](server3-shared-codex-auth.md) for the host-wide model and future-user onboarding
    - if this step is skipped, `oracle-signal-bridge.service` will accept chats but executor calls will fail with OpenAI `401 Unauthorized`
 6. Authenticate the dedicated Signal account:
    - link mode: `ops/signal_oracle/run_auth.sh link`
