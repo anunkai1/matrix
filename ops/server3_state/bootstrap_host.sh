@@ -104,6 +104,9 @@ ensure_user "tv" "1003" "1003" "/home/tv" "/bin/bash"
 ensure_user "govorun" "1005" "1005" "/home/govorun" "/bin/bash"
 ensure_user "oracle" "1007" "1007" "/home/oracle" "/bin/bash"
 ensure_user "macrorayd" "1008" "1008" "/home/macrorayd" "/bin/bash"
+ensure_user "trinity" "1009" "1009" "/home/trinity" "/bin/bash"
+ensure_user "browser_brain" "1010" "1010" "/home/browser_brain" "/bin/bash"
+ensure_user "agentsmith" "1011" "1011" "/home/agentsmith" "/bin/bash"
 
 mkdir -p /srv/external/server3-arr
 mkdir -p /srv/external/server3-backups

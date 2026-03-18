@@ -100,6 +100,7 @@ if [[ "${START_SERVICES}" == "yes" ]]; then
     server3-monitoring.service \
     media-stack.service \
     telegram-architect-bridge.service \
+    telegram-agentsmith-bridge.service \
     telegram-tank-bridge.service \
     telegram-trinity-bridge.service \
     telegram-macrorayd-bridge.service \
@@ -121,6 +122,7 @@ if [[ "${START_SERVICES}" == "yes" ]]; then
     signal-oracle-bridge.service \
     oracle-signal-bridge.service \
     telegram-architect-bridge.service \
+    telegram-agentsmith-bridge.service \
     telegram-tank-bridge.service \
     telegram-trinity-bridge.service \
     telegram-macrorayd-bridge.service \

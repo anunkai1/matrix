@@ -1,0 +1,3 @@
+# Mirror of /etc/sudoers.d/agentsmith-telegram-bridge on Server3.
+Defaults:agentsmith !requiretty
+agentsmith ALL=(root) NOPASSWD: /home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-agentsmith-bridge.service

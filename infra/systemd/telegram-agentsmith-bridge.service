@@ -1,0 +1,24 @@
+[Unit]
+Description=Telegram AgentSmith Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentsmith
+Group=agentsmith
+WorkingDirectory=/home/agentsmith/agentsmithbot
+Environment=PYTHONUNBUFFERED=1
+Environment=UNIT_NAME=telegram-agentsmith-bridge.service
+Environment=TELEGRAM_RUNTIME_ROOT=/home/agentsmith/agentsmithbot
+Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix
+Environment=TELEGRAM_EXECUTOR_CMD=/home/agentsmith/agentsmithbot/src/telegram_bridge/executor.sh
+EnvironmentFile=-/etc/default/telegram-agentsmith-bridge
+ExecStart=/usr/bin/python3 /home/agentsmith/agentsmithbot/src/telegram_bridge/main.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

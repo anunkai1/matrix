@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CHAT_ROUTING_VALIDATOR="${REPO_ROOT}/ops/chat-routing/validate_chat_routing_contract.py"
 ALLOWED_UNITS=(
   "telegram-architect-bridge.service"
+  "telegram-agentsmith-bridge.service"
   "telegram-tank-bridge.service"
   "telegram-trinity-bridge.service"
   "telegram-mavali-eth-bridge.service"

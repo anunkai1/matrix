@@ -20,6 +20,7 @@ Last updated: 2026-03-18 (AEST, +10:00)
 - Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
 - Canonical runtime inventory now lives in `infra/server3-runtime-manifest.json`, with shared live inspection via `python3 ops/server3_runtime_status.py`
 - Shared runtime core now lives in `/home/architect/matrix/src/telegram_bridge`; Tank/Govorun/Oracle run as per-runtime overlays, while Trinity now runs from its own dedicated code tree under `/home/trinity/trinitybot`.
+- AgentSmith now runs as an isolated shared-core Telegram sibling runtime under `/home/agentsmith/agentsmithbot` with its own service/env/state.
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 - Runtime observer daily Telegram summary now appends a plain-English operator line indicating whether attention is needed.
 - Runtime observer daily health delivery is centralized through `staker_alerts_bot` to chat `211761499` (single destination).
@@ -27,7 +28,7 @@ Last updated: 2026-03-18 (AEST, +10:00)
 ## Runtime Inventory
 - Canonical manifest: `infra/server3-runtime-manifest.json`
 - Shared live status command: `python3 ops/server3_runtime_status.py`
-- Covered runtime groups: Architect, Tank, Trinity, Govorun transport/bridge, Oracle transport/bridge, network layer, guardrail timers, optional UI.
+- Covered runtime groups: Architect, AgentSmith, Tank, Trinity, Govorun transport/bridge, Oracle transport/bridge, network layer, guardrail timers, optional UI.
 
 ## Operational Memory (Pinned)
 - Routing keywords:
@@ -46,6 +47,7 @@ Last updated: 2026-03-18 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-18: added the new Telegram runtime `AgentSmith` as an isolated shared-core overlay with service `telegram-agentsmith-bridge.service`, runtime root `/home/agentsmith/agentsmithbot`, runtime-local AGENTS identity, private-chat allowlist `211761499`, and restore/restart coverage.
 - 2026-03-18: rewired shared YouTube-link handling across the bridge core so bare YouTube URLs in Telegram and WhatsApp chats now enter a deterministic transcript-first path: `yt-dlp` metadata/captions first, local transcription fallback when captions are missing, and explicit failure instead of metadata-only pseudo-summaries; upgraded the live host `yt-dlp` binary to `2026.03.17` so public-video audio download works again, and updated Govorun's live `AGENTS.md` so WhatsApp can execute the mode.
 - 2026-03-18: removed stale Govorun politics-boundary references from the repo after the live `/home/govorun/govorunbot/AGENTS.md` policy dropped that restriction, and cleaned the daily-uplift test so no dead anti-politics prompt assertion remains.
 - 2026-03-18: widened Govorun's scoped sudoers allowlist so the WhatsApp runtime can auto-start `server3-browser-brain.service` for `Browser Brain ...` / `Server3 Browser ...` requests, and updated the Govorun operations runbook to document direct Browser Brain use from WhatsApp.

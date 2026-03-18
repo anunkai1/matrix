@@ -26,6 +26,32 @@
       ]
     },
     {
+      "name": "AgentSmith",
+      "category": "secondary",
+      "runtime_layout": "shared-core-overlay",
+      "workspace_root": "/home/agentsmith/agentsmithbot",
+      "shared_core_root": "/home/architect/matrix",
+      "purpose": "General Telegram assistant runtime with isolated state and runtime-local identity.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "isolated AgentSmith workspace",
+        "AgentSmith runtime environment",
+        "authenticated Codex executor"
+      ],
+      "owner_user": "agentsmith",
+      "notes": [
+        "Runs the shared Telegram bridge with its own runtime root, AGENTS.md, and memory state.",
+        "Private-chat-only allowlist is pinned to the owner DM unless expanded deliberately later."
+      ],
+      "units": [
+        {
+          "name": "telegram-agentsmith-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
       "name": "Tank",
       "category": "secondary",
       "runtime_layout": "shared-core-overlay",
