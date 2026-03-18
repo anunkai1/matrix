@@ -39,6 +39,11 @@ DEFAULT_REDDIT_FETCH_PAGES = 10
 DEFAULT_REDDIT_FETCH_PAGE_SIZE = 100
 DEFAULT_REDDIT_LOOKBACK_DAYS = 365 * 5
 DEFAULT_REDDIT_USER_AGENT = "matrix-govorun-daily-uplift/1.0"
+DEFAULT_REDDIT_SEARCH_QUERIES = (
+    "tip OR tips",
+    "work OR job OR career",
+    "money OR save OR budget",
+)
 RUSSIAN_STOP_WORDS = {
     "а",
     "без",
@@ -394,6 +399,14 @@ def reddit_lookback_days() -> int:
 
 def reddit_user_agent() -> str:
     return os.getenv("WA_DAILY_UPLIFT_REDDIT_USER_AGENT", DEFAULT_REDDIT_USER_AGENT).strip() or DEFAULT_REDDIT_USER_AGENT
+
+
+def reddit_search_queries() -> list[str]:
+    raw_value = os.getenv("WA_DAILY_UPLIFT_REDDIT_SEARCH_QUERIES", "").strip()
+    if not raw_value:
+        return list(DEFAULT_REDDIT_SEARCH_QUERIES)
+    queries = [collapse_whitespace(part) for part in raw_value.split("||")]
+    return [query for query in queries if query]
 
 
 def recent_cutoff_utc(now_ts: Optional[int] = None) -> int:
@@ -801,50 +814,71 @@ def fetch_reddit_top_posts() -> list[RedditPost]:
     page_limit = reddit_fetch_pages()
     cutoff_utc = recent_cutoff_utc()
     headers = {"User-Agent": reddit_user_agent()}
-    after: Optional[str] = None
-    zero_recent_pages = 0
     posts_by_id: dict[str, RedditPost] = {}
 
-    for _ in range(page_limit):
-        params = {"t": "all", "limit": str(page_size)}
-        if after:
-            params["after"] = after
-        endpoint = "https://www.reddit.com/r/LifeProTips/top.json?" + urllib.parse.urlencode(params)
-        request = Request(endpoint, headers=headers)
-        with urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+    sources: list[tuple[str, dict[str, str]]] = [
+        ("top", {"t": "all", "limit": str(page_size)}),
+    ]
+    for query in reddit_search_queries():
+        sources.append(
+            (
+                "search",
+                {
+                    "q": query,
+                    "restrict_sr": "on",
+                    "sort": "top",
+                    "t": "all",
+                    "limit": str(page_size),
+                },
+            )
+        )
 
-        data = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(data, dict):
-            raise RuntimeError("reddit returned unexpected payload")
+    for endpoint_name, base_params in sources:
+        after: Optional[str] = None
+        zero_recent_pages = 0
+        for _ in range(page_limit):
+            params = dict(base_params)
+            if after:
+                params["after"] = after
+            endpoint = (
+                f"https://www.reddit.com/r/LifeProTips/{endpoint_name}.json?"
+                + urllib.parse.urlencode(params)
+            )
+            request = Request(endpoint, headers=headers)
+            with urlopen(request, timeout=30) as response:
+                payload = json.loads(response.read().decode("utf-8"))
 
-        children = data.get("children")
-        if not isinstance(children, list) or not children:
-            break
+            data = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(data, dict):
+                raise RuntimeError("reddit returned unexpected payload")
 
-        recent_in_page = 0
-        for child in children:
-            child_data = child.get("data") if isinstance(child, dict) else None
-            if not isinstance(child_data, dict):
-                continue
-            post = build_reddit_post(child_data, fetched_at)
-            if post is None:
-                continue
-            if post.over_18:
-                continue
-            if post.created_utc < cutoff_utc:
-                continue
-            recent_in_page += 1
-            posts_by_id[post.post_id] = post
+            children = data.get("children")
+            if not isinstance(children, list) or not children:
+                break
 
-        after_value = data.get("after")
-        after = str(after_value) if isinstance(after_value, str) and after_value.strip() else None
-        if recent_in_page == 0:
-            zero_recent_pages += 1
-        else:
-            zero_recent_pages = 0
-        if not after or zero_recent_pages >= 2:
-            break
+            recent_in_page = 0
+            for child in children:
+                child_data = child.get("data") if isinstance(child, dict) else None
+                if not isinstance(child_data, dict):
+                    continue
+                post = build_reddit_post(child_data, fetched_at)
+                if post is None:
+                    continue
+                if post.over_18:
+                    continue
+                if post.created_utc < cutoff_utc:
+                    continue
+                recent_in_page += 1
+                posts_by_id[post.post_id] = post
+
+            after_value = data.get("after")
+            after = str(after_value) if isinstance(after_value, str) and after_value.strip() else None
+            if recent_in_page == 0:
+                zero_recent_pages += 1
+            else:
+                zero_recent_pages = 0
+            if not after or zero_recent_pages >= 2:
+                break
 
     posts = sorted(
         posts_by_id.values(),

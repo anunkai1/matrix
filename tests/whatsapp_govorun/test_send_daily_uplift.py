@@ -134,6 +134,22 @@ class SendDailyUpliftTests(unittest.TestCase):
         self.assertIn("Prefer near-complete translation over concise paraphrase.", prompt)
         self.assertNotIn("Permalink:", prompt)
 
+    def test_reddit_search_queries_defaults_and_override(self):
+        original = uplift.os.environ.get("WA_DAILY_UPLIFT_REDDIT_SEARCH_QUERIES")
+        try:
+            uplift.os.environ.pop("WA_DAILY_UPLIFT_REDDIT_SEARCH_QUERIES", None)
+            self.assertEqual(
+                uplift.reddit_search_queries(),
+                ["tip OR tips", "work OR job OR career", "money OR save OR budget"],
+            )
+            uplift.os.environ["WA_DAILY_UPLIFT_REDDIT_SEARCH_QUERIES"] = "alpha||beta || gamma"
+            self.assertEqual(uplift.reddit_search_queries(), ["alpha", "beta", "gamma"])
+        finally:
+            if original is None:
+                uplift.os.environ.pop("WA_DAILY_UPLIFT_REDDIT_SEARCH_QUERIES", None)
+            else:
+                uplift.os.environ["WA_DAILY_UPLIFT_REDDIT_SEARCH_QUERIES"] = original
+
     def test_legacy_history_entries_seed_old_life_hacks(self):
         entries = uplift.legacy_history_entries("Путиловы")
         self.assertGreaterEqual(len(entries), 2)
