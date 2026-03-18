@@ -70,6 +70,11 @@ class SendDailyUpliftTests(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0].idea_key, "зелень в банке с салфеткой")
 
+    def test_legacy_history_entries_seed_old_life_hacks(self):
+        entries = uplift.legacy_history_entries("Путиловы")
+        self.assertGreaterEqual(len(entries), 2)
+        self.assertTrue(any("широкая кружка" in entry.idea_key for entry in entries))
+
 
 if __name__ == "__main__":
     unittest.main()

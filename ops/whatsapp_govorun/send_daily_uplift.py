@@ -124,6 +124,18 @@ RUSSIAN_TOKEN_ENDINGS = (
     "ю",
     "о",
 )
+LEGACY_BLOCKED_LIFE_HACKS = (
+    (
+        "Если чай слишком горячий, в широкой кружке он остывает быстрее - простой уютный лайфхак.",
+        "широкая кружка быстрее остужает чай",
+        "Чай остывает быстрее в широкой кружке благодаря большей открытой поверхности.",
+    ),
+    (
+        "Капля лимонного сока помогает быстро убрать запах чеснока с рук - маленький кухонный лайфхак.",
+        "лимон убирает запах чеснока с рук",
+        "Немного лимонного сока помогает убрать чесночный запах с кожи рук.",
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -403,6 +415,44 @@ class HistoryStore:
                 ),
             )
             conn.commit()
+
+
+def build_history_entry(
+    entry_id: int,
+    sent_at: str,
+    message_text: str,
+    hack_text: str,
+    idea_key: str,
+    idea_summary: str,
+) -> HistoryEntry:
+    return HistoryEntry(
+        id=entry_id,
+        sent_at=sent_at,
+        message_text=message_text,
+        hack_text=hack_text,
+        idea_key=idea_key,
+        idea_summary=idea_summary,
+        message_probe=normalize_probe(message_text),
+        hack_probe=normalize_probe(hack_text),
+        idea_key_probe=normalize_probe(idea_key),
+        idea_summary_probe=normalize_probe(idea_summary),
+    )
+
+
+def legacy_history_entries(group_name: str) -> list[HistoryEntry]:
+    entries: list[HistoryEntry] = []
+    for index, (hack_text, idea_key, idea_summary) in enumerate(LEGACY_BLOCKED_LIFE_HACKS, start=1):
+        entries.append(
+            build_history_entry(
+                entry_id=-index,
+                sent_at="legacy-rotation",
+                message_text=build_daily_message(group_name, hack_text),
+                hack_text=hack_text,
+                idea_key=idea_key,
+                idea_summary=idea_summary,
+            )
+        )
+    return entries
 
 
 def build_generation_prompt(
@@ -697,7 +747,7 @@ def main() -> int:
 
     now_dt = now_in_tz(tz_name)
     history_store = HistoryStore(history_db_path())
-    history_entries = history_store.load_entries()
+    history_entries = legacy_history_entries(group_name) + history_store.load_entries()
     life_hack = generate_unique_life_hack(group_name, history_entries)
     daily_message = build_daily_message(group_name, life_hack.hack_text)
 
