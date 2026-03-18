@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-18 (Summary Roll-Forward Trim for Mavali ETH Signer Address Fix)
+
+Summary:
+- Added a new rolling-summary entry for the `Mavali ETH` signer helper fix that normalizes lowercase hex destination addresses before transaction signing and records the offline live-keystore verification.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-18: centralized trusted runtime Codex auth on Server3 behind one canonical shared file at `/etc/server3-codex/auth.json` with per-user `~/.codex/auth.json` symlinks managed by the new `ops/codex/install_shared_auth.sh` helper, keeping per-user history/state/config separate while making quota/auth behavior consistent across the runtime users.
+
 ## 2026-03-18 (Summary Roll-Forward Trim for Govorun Reply-Length Unpinning)
 
 Summary:
