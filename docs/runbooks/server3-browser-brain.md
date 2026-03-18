@@ -92,6 +92,17 @@ Notes:
 - The TV helper uses a dedicated Brave profile under `/home/tv/.local/state/server3-browser-brain-brave-profile`.
 - Browser Brain `stop` will disconnect from the attached browser but does not intentionally close the `tv` user's Brave session.
 
+### Next-Time X.com Flow
+
+If a later Architect session or Telegram chat asks to "log into `x.com`" for Browser Brain, the intended operator flow is:
+
+1. Confirm Browser Brain should use the `existing_session` path, not headed mode.
+2. Verify `/etc/default/server3-browser-brain` still has `BROWSER_BRAIN_CONNECTION_MODE=existing_session` and the expected CDP port/URL.
+3. Start the visible TV-side helper: `bash ops/tv-desktop/server3-tv-brave-browser-brain-session.sh https://x.com/home`
+4. Have the user log into `x.com` manually in that visible `tv` Brave window if the session is not already valid.
+5. Start or reuse Browser Brain so it attaches over local CDP and then operate on the attached session.
+6. If the site session has expired, repeat only the manual login step; do not switch Browser Brain itself to headed mode.
+
 ## API Surface
 
 Routes:
