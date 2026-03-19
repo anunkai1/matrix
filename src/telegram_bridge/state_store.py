@@ -8,6 +8,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+try:
+    from .conversation_scope import normalize_scope_storage_key, parse_telegram_scope_key
+except ImportError:
+    from conversation_scope import normalize_scope_storage_key, parse_telegram_scope_key
+
+
+ScopeKey = str
+
 
 @dataclass
 class CanonicalSession:
@@ -30,30 +38,31 @@ class WorkerSession:
 @dataclass
 class State:
     started_at: float = field(default_factory=time.time)
-    busy_chats: Set[int] = field(default_factory=set)
-    recent_requests: Dict[int, List[float]] = field(default_factory=dict)
-    chat_threads: Dict[int, str] = field(default_factory=dict)
+    busy_chats: Set[ScopeKey] = field(default_factory=set)
+    recent_requests: Dict[ScopeKey, List[float]] = field(default_factory=dict)
+    chat_threads: Dict[ScopeKey, str] = field(default_factory=dict)
     chat_thread_path: str = ""
-    worker_sessions: Dict[int, WorkerSession] = field(default_factory=dict)
+    worker_sessions: Dict[ScopeKey, WorkerSession] = field(default_factory=dict)
     worker_sessions_path: str = ""
-    in_flight_requests: Dict[int, Dict[str, object]] = field(default_factory=dict)
+    in_flight_requests: Dict[ScopeKey, Dict[str, object]] = field(default_factory=dict)
     in_flight_path: str = ""
     canonical_sessions_enabled: bool = False
     canonical_legacy_mirror_enabled: bool = False
     canonical_sqlite_enabled: bool = False
     canonical_sqlite_path: str = ""
     canonical_json_mirror_enabled: bool = False
-    chat_sessions: Dict[int, CanonicalSession] = field(default_factory=dict)
+    chat_sessions: Dict[ScopeKey, CanonicalSession] = field(default_factory=dict)
     chat_sessions_path: str = ""
     restart_requested: bool = False
     restart_in_progress: bool = False
     restart_chat_id: Optional[int] = None
+    restart_message_thread_id: Optional[int] = None
     restart_reply_to_message_id: Optional[int] = None
     memory_engine: Optional[object] = None
     affective_runtime: Optional[object] = None
     attachment_store: Optional[object] = None
     voice_alias_learning_store: Optional[object] = None
-    cancel_events: Dict[int, threading.Event] = field(default_factory=dict)
+    cancel_events: Dict[ScopeKey, threading.Event] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -71,7 +80,7 @@ def quarantine_corrupt_state_file(path: str) -> Optional[str]:
     return str(quarantined)
 
 
-def load_chat_threads(path: str) -> Dict[int, str]:
+def load_chat_threads(path: str) -> Dict[ScopeKey, str]:
     data_path = Path(path)
     if not data_path.exists():
         return {}
@@ -81,19 +90,18 @@ def load_chat_threads(path: str) -> Dict[int, str]:
         raise ValueError(f"Failed to parse chat thread state {path}: {exc}") from exc
     if not isinstance(raw, dict):
         raise ValueError(f"Invalid chat thread state {path}: root is not object")
-    parsed: Dict[int, str] = {}
+    parsed: Dict[ScopeKey, str] = {}
     for key, value in raw.items():
         if not isinstance(value, str) or not value.strip():
             continue
-        try:
-            chat_id = int(key)
-        except ValueError:
+        scope_key = normalize_scope_storage_key(key)
+        if scope_key is None:
             continue
-        parsed[chat_id] = value.strip()
+        parsed[scope_key] = value.strip()
     return parsed
 
 
-def load_worker_sessions(path: str) -> Dict[int, WorkerSession]:
+def load_worker_sessions(path: str) -> Dict[ScopeKey, WorkerSession]:
     data_path = Path(path)
     if not data_path.exists():
         return {}
@@ -104,13 +112,12 @@ def load_worker_sessions(path: str) -> Dict[int, WorkerSession]:
     if not isinstance(raw, dict):
         raise ValueError(f"Invalid worker session state {path}: root is not object")
 
-    parsed: Dict[int, WorkerSession] = {}
+    parsed: Dict[ScopeKey, WorkerSession] = {}
     for key, value in raw.items():
         if not isinstance(value, dict):
             continue
-        try:
-            chat_id = int(key)
-        except ValueError:
+        scope_key = normalize_scope_storage_key(key)
+        if scope_key is None:
             continue
         created_at = value.get("created_at")
         last_used_at = value.get("last_used_at")
@@ -124,7 +131,7 @@ def load_worker_sessions(path: str) -> Dict[int, WorkerSession]:
             thread_id = ""
         if not isinstance(policy_fingerprint, str):
             policy_fingerprint = ""
-        parsed[chat_id] = WorkerSession(
+        parsed[scope_key] = WorkerSession(
             created_at=float(created_at),
             last_used_at=float(last_used_at),
             thread_id=thread_id.strip(),
@@ -133,7 +140,7 @@ def load_worker_sessions(path: str) -> Dict[int, WorkerSession]:
     return parsed
 
 
-def load_in_flight_requests(path: str) -> Dict[int, Dict[str, object]]:
+def load_in_flight_requests(path: str) -> Dict[ScopeKey, Dict[str, object]]:
     data_path = Path(path)
     if not data_path.exists():
         return {}
@@ -144,13 +151,12 @@ def load_in_flight_requests(path: str) -> Dict[int, Dict[str, object]]:
     if not isinstance(raw, dict):
         raise ValueError(f"Invalid in-flight state {path}: root is not object")
 
-    out: Dict[int, Dict[str, object]] = {}
+    out: Dict[ScopeKey, Dict[str, object]] = {}
     for key, value in raw.items():
         if not isinstance(value, dict):
             continue
-        try:
-            chat_id = int(key)
-        except ValueError:
+        scope_key = normalize_scope_storage_key(key)
+        if scope_key is None:
             continue
         payload: Dict[str, object] = {}
         started_at = value.get("started_at")
@@ -159,11 +165,11 @@ def load_in_flight_requests(path: str) -> Dict[int, Dict[str, object]]:
         message_id = value.get("message_id")
         if isinstance(message_id, int):
             payload["message_id"] = message_id
-        out[chat_id] = payload
+        out[scope_key] = payload
     return out
 
 
-def load_canonical_sessions(path: str) -> Dict[int, CanonicalSession]:
+def load_canonical_sessions(path: str) -> Dict[ScopeKey, CanonicalSession]:
     data_path = Path(path)
     if not data_path.exists():
         return {}
@@ -174,13 +180,12 @@ def load_canonical_sessions(path: str) -> Dict[int, CanonicalSession]:
     if not isinstance(raw, dict):
         raise ValueError(f"Invalid canonical session state {path}: root is not object")
 
-    parsed: Dict[int, CanonicalSession] = {}
+    parsed: Dict[ScopeKey, CanonicalSession] = {}
     for key, value in raw.items():
         if not isinstance(value, dict):
             continue
-        try:
-            chat_id = int(key)
-        except ValueError:
+        scope_key = normalize_scope_storage_key(key)
+        if scope_key is None:
             continue
 
         thread_id = value.get("thread_id")
@@ -207,7 +212,7 @@ def load_canonical_sessions(path: str) -> Dict[int, CanonicalSession]:
         if not isinstance(in_flight_message_id, int):
             in_flight_message_id = None
 
-        parsed[chat_id] = CanonicalSession(
+        parsed[scope_key] = CanonicalSession(
             thread_id=thread_id.strip(),
             worker_created_at=float(worker_created_at) if worker_created_at is not None else None,
             worker_last_used_at=float(worker_last_used_at) if worker_last_used_at is not None else None,
@@ -227,10 +232,68 @@ def ensure_canonical_sessions_sqlite(path: str) -> None:
     db_path = Path(path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(db_path)) as conn:
+        has_table = conn.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'canonical_sessions'
+            """
+        ).fetchone()
+        if has_table is not None:
+            columns = {
+                str(row[1])
+                for row in conn.execute("PRAGMA table_info(canonical_sessions)").fetchall()
+            }
+            if "scope_key" not in columns:
+                conn.execute("ALTER TABLE canonical_sessions RENAME TO canonical_sessions_legacy")
+                conn.execute(
+                    """
+                    CREATE TABLE canonical_sessions (
+                        scope_key TEXT PRIMARY KEY,
+                        chat_id INTEGER,
+                        message_thread_id INTEGER,
+                        thread_id TEXT NOT NULL DEFAULT '',
+                        worker_created_at REAL,
+                        worker_last_used_at REAL,
+                        worker_policy_fingerprint TEXT NOT NULL DEFAULT '',
+                        in_flight_started_at REAL,
+                        in_flight_message_id INTEGER
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO canonical_sessions (
+                        scope_key,
+                        chat_id,
+                        message_thread_id,
+                        thread_id,
+                        worker_created_at,
+                        worker_last_used_at,
+                        worker_policy_fingerprint,
+                        in_flight_started_at,
+                        in_flight_message_id
+                    )
+                    SELECT
+                        'tg:' || chat_id,
+                        chat_id,
+                        NULL,
+                        thread_id,
+                        worker_created_at,
+                        worker_last_used_at,
+                        worker_policy_fingerprint,
+                        in_flight_started_at,
+                        in_flight_message_id
+                    FROM canonical_sessions_legacy
+                    """
+                )
+                conn.execute("DROP TABLE canonical_sessions_legacy")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS canonical_sessions (
-                chat_id INTEGER PRIMARY KEY,
+                scope_key TEXT PRIMARY KEY,
+                chat_id INTEGER,
+                message_thread_id INTEGER,
                 thread_id TEXT NOT NULL DEFAULT '',
                 worker_created_at REAL,
                 worker_last_used_at REAL,
@@ -243,16 +306,16 @@ def ensure_canonical_sessions_sqlite(path: str) -> None:
         conn.commit()
 
 
-def load_canonical_sessions_sqlite(path: str) -> Dict[int, CanonicalSession]:
+def load_canonical_sessions_sqlite(path: str) -> Dict[ScopeKey, CanonicalSession]:
     if not path:
         return {}
     ensure_canonical_sessions_sqlite(path)
-    parsed: Dict[int, CanonicalSession] = {}
+    parsed: Dict[ScopeKey, CanonicalSession] = {}
     with sqlite3.connect(path) as conn:
         rows = conn.execute(
             """
             SELECT
-                chat_id,
+                scope_key,
                 thread_id,
                 worker_created_at,
                 worker_last_used_at,
@@ -260,18 +323,20 @@ def load_canonical_sessions_sqlite(path: str) -> Dict[int, CanonicalSession]:
                 in_flight_started_at,
                 in_flight_message_id
             FROM canonical_sessions
-            ORDER BY chat_id
+            ORDER BY scope_key
             """
         ).fetchall()
     for row in rows:
-        chat_id = int(row[0])
+        scope_key = normalize_scope_storage_key(row[0])
+        if scope_key is None:
+            continue
         thread_id = str(row[1] or "").strip()
         worker_created_at = float(row[2]) if row[2] is not None else None
         worker_last_used_at = float(row[3]) if row[3] is not None else None
         worker_policy_fingerprint = str(row[4] or "").strip()
         in_flight_started_at = float(row[5]) if row[5] is not None else None
         in_flight_message_id = int(row[6]) if row[6] is not None else None
-        parsed[chat_id] = CanonicalSession(
+        parsed[scope_key] = CanonicalSession(
             thread_id=thread_id,
             worker_created_at=worker_created_at,
             worker_last_used_at=worker_last_used_at,
@@ -284,7 +349,7 @@ def load_canonical_sessions_sqlite(path: str) -> Dict[int, CanonicalSession]:
 
 def persist_canonical_sessions_sqlite(
     path: str,
-    sessions: Dict[int, CanonicalSession],
+    sessions: Dict[ScopeKey, CanonicalSession],
 ) -> None:
     if not path:
         return
@@ -296,18 +361,30 @@ def persist_canonical_sessions_sqlite(
             conn.executemany(
                 """
                 INSERT INTO canonical_sessions (
+                    scope_key,
                     chat_id,
+                    message_thread_id,
                     thread_id,
                     worker_created_at,
                     worker_last_used_at,
                     worker_policy_fingerprint,
                     in_flight_started_at,
                     in_flight_message_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
-                        chat_id,
+                        scope_key,
+                        (
+                            parse_telegram_scope_key(scope_key).chat_id
+                            if scope_key.startswith("tg:")
+                            else None
+                        ),
+                        (
+                            parse_telegram_scope_key(scope_key).message_thread_id
+                            if scope_key.startswith("tg:")
+                            else None
+                        ),
                         session.thread_id,
                         session.worker_created_at,
                         session.worker_last_used_at,
@@ -315,7 +392,7 @@ def persist_canonical_sessions_sqlite(
                         session.in_flight_started_at,
                         session.in_flight_message_id,
                     )
-                    for chat_id, session in sorted(sessions.items())
+                    for scope_key, session in sorted(sessions.items())
                 ],
             )
         conn.commit()
@@ -323,8 +400,8 @@ def persist_canonical_sessions_sqlite(
 
 def load_or_import_canonical_sessions_sqlite(
     path: str,
-    import_sessions: Optional[Dict[int, CanonicalSession]] = None,
-) -> tuple[Dict[int, CanonicalSession], bool]:
+    import_sessions: Optional[Dict[ScopeKey, CanonicalSession]] = None,
+) -> tuple[Dict[ScopeKey, CanonicalSession], bool]:
     if not path:
         if import_sessions:
             return dict(import_sessions), False
@@ -339,15 +416,15 @@ def load_or_import_canonical_sessions_sqlite(
     return dict(import_sessions), True
 
 
-def _build_canonical_session_for_chat(
-    chat_id: int,
-    chat_threads: Dict[int, str],
-    worker_sessions: Dict[int, WorkerSession],
-    in_flight_requests: Dict[int, Dict[str, object]],
+def _build_canonical_session_for_scope(
+    scope_key: ScopeKey,
+    chat_threads: Dict[ScopeKey, str],
+    worker_sessions: Dict[ScopeKey, WorkerSession],
+    in_flight_requests: Dict[ScopeKey, Dict[str, object]],
 ) -> Optional[CanonicalSession]:
-    thread_id = chat_threads.get(chat_id, "")
-    worker = worker_sessions.get(chat_id)
-    in_flight = in_flight_requests.get(chat_id)
+    thread_id = chat_threads.get(scope_key, "")
+    worker = worker_sessions.get(scope_key)
+    in_flight = in_flight_requests.get(scope_key)
 
     if not thread_id and worker is None and in_flight is None:
         return None
@@ -373,21 +450,21 @@ def _build_canonical_session_for_chat(
 
 
 def build_canonical_sessions_from_legacy(
-    chat_threads: Dict[int, str],
-    worker_sessions: Dict[int, WorkerSession],
-    in_flight_requests: Dict[int, Dict[str, object]],
-) -> Dict[int, CanonicalSession]:
-    out: Dict[int, CanonicalSession] = {}
-    all_chat_ids = set(chat_threads) | set(worker_sessions) | set(in_flight_requests)
-    for chat_id in all_chat_ids:
-        session = _build_canonical_session_for_chat(
-            chat_id,
+    chat_threads: Dict[ScopeKey, str],
+    worker_sessions: Dict[ScopeKey, WorkerSession],
+    in_flight_requests: Dict[ScopeKey, Dict[str, object]],
+) -> Dict[ScopeKey, CanonicalSession]:
+    out: Dict[ScopeKey, CanonicalSession] = {}
+    all_scope_keys = set(chat_threads) | set(worker_sessions) | set(in_flight_requests)
+    for scope_key in all_scope_keys:
+        session = _build_canonical_session_for_scope(
+            scope_key,
             chat_threads,
             worker_sessions,
             in_flight_requests,
         )
         if session is not None:
-            out[chat_id] = session
+            out[scope_key] = session
     return out
 
 
@@ -416,19 +493,19 @@ def _canonical_session_to_legacy(
 
 
 def build_legacy_from_canonical(
-    canonical_sessions: Dict[int, CanonicalSession],
-) -> tuple[Dict[int, str], Dict[int, WorkerSession], Dict[int, Dict[str, object]]]:
-    chat_threads: Dict[int, str] = {}
-    worker_sessions: Dict[int, WorkerSession] = {}
-    in_flight_requests: Dict[int, Dict[str, object]] = {}
-    for chat_id, session in canonical_sessions.items():
+    canonical_sessions: Dict[ScopeKey, CanonicalSession],
+) -> tuple[Dict[ScopeKey, str], Dict[ScopeKey, WorkerSession], Dict[ScopeKey, Dict[str, object]]]:
+    chat_threads: Dict[ScopeKey, str] = {}
+    worker_sessions: Dict[ScopeKey, WorkerSession] = {}
+    in_flight_requests: Dict[ScopeKey, Dict[str, object]] = {}
+    for scope_key, session in canonical_sessions.items():
         thread_value, worker_value, in_flight_value = _canonical_session_to_legacy(session)
         if thread_value is not None:
-            chat_threads[chat_id] = thread_value
+            chat_threads[scope_key] = thread_value
         if worker_value is not None:
-            worker_sessions[chat_id] = worker_value
+            worker_sessions[scope_key] = worker_value
         if in_flight_value is not None:
-            in_flight_requests[chat_id] = in_flight_value
+            in_flight_requests[scope_key] = in_flight_value
     return chat_threads, worker_sessions, in_flight_requests
 
 
@@ -475,30 +552,27 @@ def persist_json_state_file(path_value: str, serialized: Dict[str, object]) -> N
 
 def persist_chat_threads(state: State) -> None:
     with state.lock:
-        serialized = {str(chat_id): thread_id for chat_id, thread_id in state.chat_threads.items()}
+        serialized = {scope_key: thread_id for scope_key, thread_id in state.chat_threads.items()}
     persist_json_state_file(state.chat_thread_path, serialized)
 
 
 def persist_worker_sessions(state: State) -> None:
     with state.lock:
         serialized = {
-            str(chat_id): {
+            scope_key: {
                 "created_at": session.created_at,
                 "last_used_at": session.last_used_at,
                 "thread_id": session.thread_id,
                 "policy_fingerprint": session.policy_fingerprint,
             }
-            for chat_id, session in state.worker_sessions.items()
+            for scope_key, session in state.worker_sessions.items()
         }
     persist_json_state_file(state.worker_sessions_path, serialized)
 
 
 def persist_in_flight_requests(state: State) -> None:
     with state.lock:
-        serialized = {
-            str(chat_id): payload
-            for chat_id, payload in state.in_flight_requests.items()
-        }
+        serialized = {scope_key: payload for scope_key, payload in state.in_flight_requests.items()}
     persist_json_state_file(state.in_flight_path, serialized)
 
 
@@ -507,7 +581,7 @@ def persist_canonical_sessions(state: State) -> None:
         return
     with state.lock:
         sessions = {
-            chat_id: CanonicalSession(
+            scope_key: CanonicalSession(
                 thread_id=session.thread_id,
                 worker_created_at=session.worker_created_at,
                 worker_last_used_at=session.worker_last_used_at,
@@ -515,10 +589,10 @@ def persist_canonical_sessions(state: State) -> None:
                 in_flight_started_at=session.in_flight_started_at,
                 in_flight_message_id=session.in_flight_message_id,
             )
-            for chat_id, session in state.chat_sessions.items()
+            for scope_key, session in state.chat_sessions.items()
         }
         serialized = {
-            str(chat_id): {
+            scope_key: {
                 "thread_id": session.thread_id,
                 "worker_created_at": session.worker_created_at,
                 "worker_last_used_at": session.worker_last_used_at,
@@ -526,7 +600,7 @@ def persist_canonical_sessions(state: State) -> None:
                 "in_flight_started_at": session.in_flight_started_at,
                 "in_flight_message_id": session.in_flight_message_id,
             }
-            for chat_id, session in sessions.items()
+            for scope_key, session in sessions.items()
         }
     if state.canonical_sqlite_enabled:
         persist_canonical_sessions_sqlite(state.canonical_sqlite_path, sessions)
@@ -553,24 +627,24 @@ def mirror_legacy_from_canonical(state: State, persist: bool = True) -> None:
         persist_in_flight_requests(state)
 
 
-def sync_canonical_session(state: State, chat_id: int) -> None:
+def sync_canonical_session(state: State, scope_key: ScopeKey) -> None:
     if not state.canonical_sessions_enabled:
         return
     changed = False
     with state.lock:
-        session = _build_canonical_session_for_chat(
-            chat_id,
+        session = _build_canonical_session_for_scope(
+            scope_key,
             state.chat_threads,
             state.worker_sessions,
             state.in_flight_requests,
         )
-        existing = state.chat_sessions.get(chat_id)
+        existing = state.chat_sessions.get(scope_key)
         if session is None:
             if existing is not None:
-                del state.chat_sessions[chat_id]
+                del state.chat_sessions[scope_key]
                 changed = True
         elif existing != session:
-            state.chat_sessions[chat_id] = session
+            state.chat_sessions[scope_key] = session
             changed = True
     if changed:
         persist_canonical_sessions(state)
@@ -588,11 +662,11 @@ def sync_all_canonical_sessions(state: State) -> None:
     persist_canonical_sessions(state)
 
 
-def clear_worker_session(state: State, chat_id: int) -> bool:
+def clear_worker_session(state: State, scope_key: ScopeKey) -> bool:
     if state.canonical_sessions_enabled:
         changed = False
         with state.lock:
-            session = state.chat_sessions.get(chat_id)
+            session = state.chat_sessions.get(scope_key)
             if session is not None and (
                 session.worker_created_at is not None
                 or session.worker_last_used_at is not None
@@ -602,7 +676,7 @@ def clear_worker_session(state: State, chat_id: int) -> bool:
                 session.worker_last_used_at = None
                 session.worker_policy_fingerprint = ""
                 if canonical_session_is_empty(session):
-                    del state.chat_sessions[chat_id]
+                    del state.chat_sessions[scope_key]
                 changed = True
         if changed:
             persist_canonical_sessions(state)
@@ -614,36 +688,36 @@ def clear_worker_session(state: State, chat_id: int) -> bool:
 
     removed = False
     with state.lock:
-        if chat_id in state.worker_sessions:
-            del state.worker_sessions[chat_id]
+        if scope_key in state.worker_sessions:
+            del state.worker_sessions[scope_key]
             removed = True
     if removed:
         persist_worker_sessions(state)
-        sync_canonical_session(state, chat_id)
+        sync_canonical_session(state, scope_key)
     return removed
 
 
-def get_thread_id(state: State, chat_id: int) -> Optional[str]:
+def get_thread_id(state: State, scope_key: ScopeKey) -> Optional[str]:
     if state.canonical_sessions_enabled:
         with state.lock:
-            session = state.chat_sessions.get(chat_id)
+            session = state.chat_sessions.get(scope_key)
             if session is None:
                 return None
             thread_id = session.thread_id.strip()
             return thread_id or None
     with state.lock:
-        return state.chat_threads.get(chat_id)
+        return state.chat_threads.get(scope_key)
 
 
-def set_thread_id(state: State, chat_id: int, thread_id: str) -> None:
+def set_thread_id(state: State, scope_key: ScopeKey, thread_id: str) -> None:
     if state.canonical_sessions_enabled:
         normalized_thread_id = thread_id.strip()
         changed = False
         with state.lock:
-            session = state.chat_sessions.get(chat_id)
+            session = state.chat_sessions.get(scope_key)
             if session is None:
                 session = CanonicalSession()
-                state.chat_sessions[chat_id] = session
+                state.chat_sessions[scope_key] = session
             if session.thread_id != normalized_thread_id:
                 session.thread_id = normalized_thread_id
                 changed = True
@@ -664,10 +738,10 @@ def set_thread_id(state: State, chat_id: int, thread_id: str) -> None:
     persist_threads = False
     persist_sessions = False
     with state.lock:
-        if state.chat_threads.get(chat_id) != normalized_thread_id:
-            state.chat_threads[chat_id] = normalized_thread_id
+        if state.chat_threads.get(scope_key) != normalized_thread_id:
+            state.chat_threads[scope_key] = normalized_thread_id
             persist_threads = True
-        session = state.worker_sessions.get(chat_id)
+        session = state.worker_sessions.get(scope_key)
         if session is not None:
             session.thread_id = normalized_thread_id
             session.last_used_at = time.time()
@@ -677,14 +751,14 @@ def set_thread_id(state: State, chat_id: int, thread_id: str) -> None:
     if persist_sessions:
         persist_worker_sessions(state)
     if persist_threads or persist_sessions:
-        sync_canonical_session(state, chat_id)
+        sync_canonical_session(state, scope_key)
 
 
-def clear_thread_id(state: State, chat_id: int) -> bool:
+def clear_thread_id(state: State, scope_key: ScopeKey) -> bool:
     if state.canonical_sessions_enabled:
         removed = False
         with state.lock:
-            session = state.chat_sessions.get(chat_id)
+            session = state.chat_sessions.get(scope_key)
             if session is not None:
                 if session.thread_id:
                     session.thread_id = ""
@@ -693,7 +767,7 @@ def clear_thread_id(state: State, chat_id: int) -> bool:
                     session.worker_last_used_at = time.time()
                     removed = True
                 if canonical_session_is_empty(session):
-                    del state.chat_sessions[chat_id]
+                    del state.chat_sessions[scope_key]
                     removed = True
         if removed:
             persist_canonical_sessions(state)
@@ -706,10 +780,10 @@ def clear_thread_id(state: State, chat_id: int) -> bool:
     removed = False
     persist_sessions = False
     with state.lock:
-        if chat_id in state.chat_threads:
-            del state.chat_threads[chat_id]
+        if scope_key in state.chat_threads:
+            del state.chat_threads[scope_key]
             removed = True
-        session = state.worker_sessions.get(chat_id)
+        session = state.worker_sessions.get(scope_key)
         if session is not None:
             session.thread_id = ""
             session.last_used_at = time.time()
@@ -719,17 +793,17 @@ def clear_thread_id(state: State, chat_id: int) -> bool:
     if persist_sessions:
         persist_worker_sessions(state)
     if removed or persist_sessions:
-        sync_canonical_session(state, chat_id)
+        sync_canonical_session(state, scope_key)
     return removed
 
 
-def mark_in_flight_request(state: State, chat_id: int, message_id: Optional[int]) -> None:
+def mark_in_flight_request(state: State, scope_key: ScopeKey, message_id: Optional[int]) -> None:
     if state.canonical_sessions_enabled:
         with state.lock:
-            session = state.chat_sessions.get(chat_id)
+            session = state.chat_sessions.get(scope_key)
             if session is None:
                 session = CanonicalSession()
-                state.chat_sessions[chat_id] = session
+                state.chat_sessions[scope_key] = session
             session.in_flight_started_at = time.time()
             session.in_flight_message_id = message_id if isinstance(message_id, int) else None
         persist_canonical_sessions(state)
@@ -743,16 +817,16 @@ def mark_in_flight_request(state: State, chat_id: int, message_id: Optional[int]
     if isinstance(message_id, int):
         payload["message_id"] = message_id
     with state.lock:
-        state.in_flight_requests[chat_id] = payload
+        state.in_flight_requests[scope_key] = payload
     persist_in_flight_requests(state)
-    sync_canonical_session(state, chat_id)
+    sync_canonical_session(state, scope_key)
 
 
-def clear_in_flight_request(state: State, chat_id: int) -> None:
+def clear_in_flight_request(state: State, scope_key: ScopeKey) -> None:
     if state.canonical_sessions_enabled:
         changed = False
         with state.lock:
-            session = state.chat_sessions.get(chat_id)
+            session = state.chat_sessions.get(scope_key)
             if session is not None and (
                 session.in_flight_started_at is not None
                 or session.in_flight_message_id is not None
@@ -760,7 +834,7 @@ def clear_in_flight_request(state: State, chat_id: int) -> None:
                 session.in_flight_started_at = None
                 session.in_flight_message_id = None
                 if canonical_session_is_empty(session):
-                    del state.chat_sessions[chat_id]
+                    del state.chat_sessions[scope_key]
                 changed = True
         if changed:
             persist_canonical_sessions(state)
@@ -772,37 +846,37 @@ def clear_in_flight_request(state: State, chat_id: int) -> None:
 
     removed = False
     with state.lock:
-        if chat_id in state.in_flight_requests:
-            del state.in_flight_requests[chat_id]
+        if scope_key in state.in_flight_requests:
+            del state.in_flight_requests[scope_key]
             removed = True
     if removed:
         persist_in_flight_requests(state)
-        sync_canonical_session(state, chat_id)
+        sync_canonical_session(state, scope_key)
 
 
-def pop_interrupted_requests(state: State) -> Dict[int, Dict[str, object]]:
+def pop_interrupted_requests(state: State) -> Dict[ScopeKey, Dict[str, object]]:
     if state.canonical_sessions_enabled:
-        interrupted: Dict[int, Dict[str, object]] = {}
+        interrupted: Dict[ScopeKey, Dict[str, object]] = {}
         with state.lock:
-            for chat_id, session in state.chat_sessions.items():
+            for scope_key, session in state.chat_sessions.items():
                 if session.in_flight_started_at is None:
                     continue
                 payload: Dict[str, object] = {"started_at": float(session.in_flight_started_at)}
                 if session.in_flight_message_id is not None:
                     payload["message_id"] = session.in_flight_message_id
-                interrupted[chat_id] = payload
+                interrupted[scope_key] = payload
 
             if not interrupted:
                 return {}
 
-            for chat_id in list(interrupted):
-                session = state.chat_sessions.get(chat_id)
+            for scope_key in list(interrupted):
+                session = state.chat_sessions.get(scope_key)
                 if session is None:
                     continue
                 session.in_flight_started_at = None
                 session.in_flight_message_id = None
                 if canonical_session_is_empty(session):
-                    del state.chat_sessions[chat_id]
+                    del state.chat_sessions[scope_key]
         persist_canonical_sessions(state)
         mirror_legacy_from_canonical(
             state,
@@ -817,8 +891,8 @@ def pop_interrupted_requests(state: State) -> Dict[int, Dict[str, object]]:
         state.in_flight_requests = {}
     persist_in_flight_requests(state)
     if state.canonical_sessions_enabled:
-        for chat_id in interrupted:
-            sync_canonical_session(state, chat_id)
+        for scope_key in interrupted:
+            sync_canonical_session(state, scope_key)
     return interrupted
 
 
@@ -828,23 +902,23 @@ class StateRepository:
     def __init__(self, state: State) -> None:
         self.state = state
 
-    def get_thread_id(self, chat_id: int) -> Optional[str]:
-        return get_thread_id(self.state, chat_id)
+    def get_thread_id(self, scope_key: ScopeKey) -> Optional[str]:
+        return get_thread_id(self.state, scope_key)
 
-    def set_thread_id(self, chat_id: int, thread_id: str) -> None:
-        set_thread_id(self.state, chat_id, thread_id)
+    def set_thread_id(self, scope_key: ScopeKey, thread_id: str) -> None:
+        set_thread_id(self.state, scope_key, thread_id)
 
-    def clear_thread_id(self, chat_id: int) -> bool:
-        return clear_thread_id(self.state, chat_id)
+    def clear_thread_id(self, scope_key: ScopeKey) -> bool:
+        return clear_thread_id(self.state, scope_key)
 
-    def clear_worker_session(self, chat_id: int) -> bool:
-        return clear_worker_session(self.state, chat_id)
+    def clear_worker_session(self, scope_key: ScopeKey) -> bool:
+        return clear_worker_session(self.state, scope_key)
 
-    def mark_in_flight_request(self, chat_id: int, message_id: Optional[int]) -> None:
-        mark_in_flight_request(self.state, chat_id, message_id)
+    def mark_in_flight_request(self, scope_key: ScopeKey, message_id: Optional[int]) -> None:
+        mark_in_flight_request(self.state, scope_key, message_id)
 
-    def clear_in_flight_request(self, chat_id: int) -> None:
-        clear_in_flight_request(self.state, chat_id)
+    def clear_in_flight_request(self, scope_key: ScopeKey) -> None:
+        clear_in_flight_request(self.state, scope_key)
 
-    def pop_interrupted_requests(self) -> Dict[int, Dict[str, object]]:
+    def pop_interrupted_requests(self) -> Dict[ScopeKey, Dict[str, object]]:
         return pop_interrupted_requests(self.state)

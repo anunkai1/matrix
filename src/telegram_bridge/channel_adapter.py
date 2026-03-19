@@ -22,6 +22,7 @@ class ChannelAdapter(Protocol):
         chat_id: int,
         text: str,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> None:
         ...
 
@@ -30,6 +31,7 @@ class ChannelAdapter(Protocol):
         chat_id: int,
         text: str,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Optional[int]:
         ...
 
@@ -39,6 +41,7 @@ class ChannelAdapter(Protocol):
         photo: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         ...
 
@@ -48,6 +51,7 @@ class ChannelAdapter(Protocol):
         document: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         ...
 
@@ -57,6 +61,7 @@ class ChannelAdapter(Protocol):
         audio: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         ...
 
@@ -66,13 +71,19 @@ class ChannelAdapter(Protocol):
         voice: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         ...
 
     def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
         ...
 
-    def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
+    def send_chat_action(
+        self,
+        chat_id: int,
+        action: str = "typing",
+        message_thread_id: Optional[int] = None,
+    ) -> None:
         ...
 
     def get_file(self, file_id: str) -> Dict[str, object]:
@@ -111,11 +122,13 @@ class TelegramChannelAdapter:
         chat_id: int,
         text: str,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> None:
         self._client.send_message(
             chat_id=chat_id,
             text=text,
             reply_to_message_id=reply_to_message_id,
+            message_thread_id=message_thread_id,
         )
 
     def send_message_get_id(
@@ -123,11 +136,13 @@ class TelegramChannelAdapter:
         chat_id: int,
         text: str,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Optional[int]:
         return self._client.send_message_get_id(
             chat_id=chat_id,
             text=text,
             reply_to_message_id=reply_to_message_id,
+            message_thread_id=message_thread_id,
         )
 
     def send_photo(
@@ -136,12 +151,14 @@ class TelegramChannelAdapter:
         photo: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         return self._client.send_photo(
             chat_id=chat_id,
             photo=photo,
             caption=caption,
             reply_to_message_id=reply_to_message_id,
+            message_thread_id=message_thread_id,
         )
 
     def send_document(
@@ -150,12 +167,14 @@ class TelegramChannelAdapter:
         document: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         return self._client.send_document(
             chat_id=chat_id,
             document=document,
             caption=caption,
             reply_to_message_id=reply_to_message_id,
+            message_thread_id=message_thread_id,
         )
 
     def send_audio(
@@ -164,12 +183,14 @@ class TelegramChannelAdapter:
         audio: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         return self._client.send_audio(
             chat_id=chat_id,
             audio=audio,
             caption=caption,
             reply_to_message_id=reply_to_message_id,
+            message_thread_id=message_thread_id,
         )
 
     def send_voice(
@@ -178,19 +199,30 @@ class TelegramChannelAdapter:
         voice: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         return self._client.send_voice(
             chat_id=chat_id,
             voice=voice,
             caption=caption,
             reply_to_message_id=reply_to_message_id,
+            message_thread_id=message_thread_id,
         )
 
     def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
         self._client.edit_message(chat_id, message_id, text)
 
-    def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
-        self._client.send_chat_action(chat_id, action=action)
+    def send_chat_action(
+        self,
+        chat_id: int,
+        action: str = "typing",
+        message_thread_id: Optional[int] = None,
+    ) -> None:
+        self._client.send_chat_action(
+            chat_id,
+            action=action,
+            message_thread_id=message_thread_id,
+        )
 
     def get_file(self, file_id: str) -> Dict[str, object]:
         return self._client.get_file(file_id)

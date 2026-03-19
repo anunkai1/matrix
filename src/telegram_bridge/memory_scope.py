@@ -14,9 +14,14 @@ def resolve_shared_memory_archive_key(config, channel_name: str) -> str:
     return ""
 
 
-def resolve_memory_conversation_key(config, channel_name: str, chat_id: int) -> str:
+def resolve_memory_conversation_key(config, channel_name: str, scope_key: str | int) -> str:
     shared_archive_key = resolve_shared_memory_archive_key(config, channel_name)
+    if isinstance(scope_key, int):
+        scoped_key = MemoryEngine.channel_key(channel_name, scope_key)
+    else:
+        scoped_key = str(scope_key or "").strip()
+        if not scoped_key:
+            raise ValueError("scope_key must not be empty")
     if shared_archive_key:
-        scoped_key = MemoryEngine.channel_key(channel_name, chat_id)
         return f"{shared_archive_key}:session:{scoped_key}"
-    return MemoryEngine.channel_key(channel_name, chat_id)
+    return scoped_key

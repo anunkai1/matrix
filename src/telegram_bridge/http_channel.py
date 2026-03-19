@@ -94,10 +94,13 @@ class HttpBridgeChannelAdapter:
         chat_id: int,
         text: str,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> None:
         payload: Dict[str, object] = {"chat_id": str(chat_id), "text": text}
         if reply_to_message_id is not None:
             payload["reply_to_message_id"] = str(reply_to_message_id)
+        if message_thread_id is not None:
+            payload["message_thread_id"] = str(message_thread_id)
         self._request_json("POST", "/messages", payload)
 
     def send_message_get_id(
@@ -105,10 +108,13 @@ class HttpBridgeChannelAdapter:
         chat_id: int,
         text: str,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Optional[int]:
         payload: Dict[str, object] = {"chat_id": str(chat_id), "text": text}
         if reply_to_message_id is not None:
             payload["reply_to_message_id"] = str(reply_to_message_id)
+        if message_thread_id is not None:
+            payload["message_thread_id"] = str(message_thread_id)
         response = self._request_json("POST", "/messages", payload)
         result = response.get("result")
         if isinstance(result, dict):
@@ -124,6 +130,7 @@ class HttpBridgeChannelAdapter:
         media_ref: str,
         caption: Optional[str],
         reply_to_message_id: Optional[int],
+        message_thread_id: Optional[int],
     ) -> Dict[str, object]:
         payload: Dict[str, object] = {
             "chat_id": str(chat_id),
@@ -134,6 +141,8 @@ class HttpBridgeChannelAdapter:
             payload["caption"] = caption
         if reply_to_message_id is not None:
             payload["reply_to_message_id"] = str(reply_to_message_id)
+        if message_thread_id is not None:
+            payload["message_thread_id"] = str(message_thread_id)
         return self._request_json("POST", "/media", payload)
 
     def send_photo(
@@ -142,8 +151,16 @@ class HttpBridgeChannelAdapter:
         photo: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
-        return self._send_media("photo", chat_id, photo, caption, reply_to_message_id)
+        return self._send_media(
+            "photo",
+            chat_id,
+            photo,
+            caption,
+            reply_to_message_id,
+            message_thread_id,
+        )
 
     def send_document(
         self,
@@ -151,8 +168,16 @@ class HttpBridgeChannelAdapter:
         document: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
-        return self._send_media("document", chat_id, document, caption, reply_to_message_id)
+        return self._send_media(
+            "document",
+            chat_id,
+            document,
+            caption,
+            reply_to_message_id,
+            message_thread_id,
+        )
 
     def send_audio(
         self,
@@ -160,8 +185,16 @@ class HttpBridgeChannelAdapter:
         audio: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
-        return self._send_media("audio", chat_id, audio, caption, reply_to_message_id)
+        return self._send_media(
+            "audio",
+            chat_id,
+            audio,
+            caption,
+            reply_to_message_id,
+            message_thread_id,
+        )
 
     def send_voice(
         self,
@@ -169,8 +202,16 @@ class HttpBridgeChannelAdapter:
         voice: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
-        return self._send_media("voice", chat_id, voice, caption, reply_to_message_id)
+        return self._send_media(
+            "voice",
+            chat_id,
+            voice,
+            caption,
+            reply_to_message_id,
+            message_thread_id,
+        )
 
     def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
         if not self.supports_message_edits:
@@ -182,8 +223,15 @@ class HttpBridgeChannelAdapter:
         }
         self._request_json("POST", "/messages/edit", payload)
 
-    def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
+    def send_chat_action(
+        self,
+        chat_id: int,
+        action: str = "typing",
+        message_thread_id: Optional[int] = None,
+    ) -> None:
         payload: Dict[str, object] = {"chat_id": str(chat_id), "action": action}
+        if message_thread_id is not None:
+            payload["message_thread_id"] = str(message_thread_id)
         self._request_json("POST", "/chat-action", payload)
 
     def get_file(self, file_id: str) -> Dict[str, object]:

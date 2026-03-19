@@ -334,6 +334,7 @@ class TelegramClient:
         chat_id: int,
         text: str,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> None:
         for chunk in to_telegram_chunks(text):
             payload: Dict[str, object] = {
@@ -343,6 +344,8 @@ class TelegramClient:
             }
             if reply_to_message_id is not None:
                 payload["reply_to_message_id"] = str(reply_to_message_id)
+            if message_thread_id is not None:
+                payload["message_thread_id"] = str(message_thread_id)
             self._request("sendMessage", payload)
 
     def send_message_get_id(
@@ -350,6 +353,7 @@ class TelegramClient:
         chat_id: int,
         text: str,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Optional[int]:
         payload: Dict[str, object] = {
             "chat_id": str(chat_id),
@@ -358,6 +362,8 @@ class TelegramClient:
         }
         if reply_to_message_id is not None:
             payload["reply_to_message_id"] = str(reply_to_message_id)
+        if message_thread_id is not None:
+            payload["message_thread_id"] = str(message_thread_id)
         response = self._request("sendMessage", payload)
         result = response.get("result")
         if isinstance(result, dict):
@@ -374,6 +380,7 @@ class TelegramClient:
         media: str,
         caption: Optional[str],
         reply_to_message_id: Optional[int],
+        message_thread_id: Optional[int],
     ) -> Dict[str, object]:
         payload: Dict[str, object] = {
             "chat_id": str(chat_id),
@@ -382,6 +389,8 @@ class TelegramClient:
             payload["caption"] = caption[:TELEGRAM_CAPTION_LIMIT]
         if reply_to_message_id is not None:
             payload["reply_to_message_id"] = str(reply_to_message_id)
+        if message_thread_id is not None:
+            payload["message_thread_id"] = str(message_thread_id)
 
         if os.path.isfile(media):
             with open(media, "rb") as handle:
@@ -407,6 +416,7 @@ class TelegramClient:
         photo: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         return self._send_media(
             "sendPhoto",
@@ -415,6 +425,7 @@ class TelegramClient:
             photo,
             caption,
             reply_to_message_id,
+            message_thread_id,
         )
 
     def send_document(
@@ -423,6 +434,7 @@ class TelegramClient:
         document: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         return self._send_media(
             "sendDocument",
@@ -431,6 +443,7 @@ class TelegramClient:
             document,
             caption,
             reply_to_message_id,
+            message_thread_id,
         )
 
     def send_audio(
@@ -439,6 +452,7 @@ class TelegramClient:
         audio: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         return self._send_media(
             "sendAudio",
@@ -447,6 +461,7 @@ class TelegramClient:
             audio,
             caption,
             reply_to_message_id,
+            message_thread_id,
         )
 
     def send_voice(
@@ -455,6 +470,7 @@ class TelegramClient:
         voice: str,
         caption: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
+        message_thread_id: Optional[int] = None,
     ) -> Dict[str, object]:
         return self._send_media(
             "sendVoice",
@@ -463,6 +479,7 @@ class TelegramClient:
             voice,
             caption,
             reply_to_message_id,
+            message_thread_id,
         )
 
     def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
@@ -474,11 +491,18 @@ class TelegramClient:
         }
         self._request("editMessageText", payload)
 
-    def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
+    def send_chat_action(
+        self,
+        chat_id: int,
+        action: str = "typing",
+        message_thread_id: Optional[int] = None,
+    ) -> None:
         payload: Dict[str, object] = {
             "chat_id": str(chat_id),
             "action": action,
         }
+        if message_thread_id is not None:
+            payload["message_thread_id"] = str(message_thread_id)
         self._request("sendChatAction", payload)
 
     def get_file(self, file_id: str) -> Dict[str, object]:

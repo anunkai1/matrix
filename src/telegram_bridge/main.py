@@ -12,6 +12,7 @@ try:
     from .affective_runtime import build_affective_runtime
     from .attachment_store import AttachmentStore
     from .channel_adapter import ChannelAdapter
+    from .conversation_scope import parse_telegram_scope_key
     from .executor import (
         ExecutorProgressEvent,
         extract_executor_progress_event,
@@ -67,6 +68,7 @@ except ImportError:
     from affective_runtime import build_affective_runtime
     from attachment_store import AttachmentStore
     from channel_adapter import ChannelAdapter
+    from conversation_scope import parse_telegram_scope_key
     from executor import (
         ExecutorProgressEvent,
         extract_executor_progress_event,
@@ -272,16 +274,26 @@ def run_self_test() -> int:
         raise RuntimeError("Stream buffer self-test failed")
 
     restart_state = State()
-    status, _ = request_safe_restart(restart_state, chat_id=1, reply_to_message_id=None)
+    status, _ = request_safe_restart(
+        restart_state,
+        chat_id=1,
+        message_thread_id=None,
+        reply_to_message_id=None,
+    )
     if status != "run_now":
         raise RuntimeError("Restart self-test failed (run_now)")
     finish_restart_attempt(restart_state)
     with restart_state.lock:
-        restart_state.busy_chats.add(1)
-    status, _ = request_safe_restart(restart_state, chat_id=1, reply_to_message_id=None)
+        restart_state.busy_chats.add("tg:1")
+    status, _ = request_safe_restart(
+        restart_state,
+        chat_id=1,
+        message_thread_id=None,
+        reply_to_message_id=None,
+    )
     if status != "queued":
         raise RuntimeError("Restart self-test failed (queued)")
-    clear_busy(restart_state, 1)
+    clear_busy(restart_state, "tg:1")
     ready = pop_ready_restart_request(restart_state)
     if not ready or ready[0] != 1:
         raise RuntimeError("Restart self-test failed (pop_ready)")
@@ -691,19 +703,24 @@ def run_bridge(config: Config) -> int:
 
     interrupted = state_repo.pop_interrupted_requests()
     if interrupted:
-        for chat_id in sorted(interrupted):
-            if chat_id not in config.allowed_chat_ids:
+        for scope_key in sorted(interrupted):
+            try:
+                target = parse_telegram_scope_key(scope_key)
+            except ValueError:
+                continue
+            if target.chat_id not in config.allowed_chat_ids:
                 continue
             try:
                 client.send_message(
-                    chat_id,
+                    target.chat_id,
                     "Your previous request was interrupted because the bridge restarted. "
                     "Please resend it.",
+                    message_thread_id=target.message_thread_id,
                 )
             except Exception:
                 logging.exception(
-                    "Failed to send restart-interruption notice for chat_id=%s",
-                    chat_id,
+                    "Failed to send restart-interruption notice for scope=%s",
+                    scope_key,
                 )
         logging.warning(
             "Detected %s interrupted in-flight request(s) from previous runtime.",

@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 try:
+    from .conversation_scope import ConversationScope, scope_from_message
     from .executor import (
         ExecutorCancelledError,
         ExecutorProgressEvent,
@@ -78,6 +79,7 @@ try:
     from .structured_logging import emit_event
     from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 except ImportError:
+    from conversation_scope import ConversationScope, scope_from_message
     from executor import (
         ExecutorCancelledError,
         ExecutorProgressEvent,
@@ -347,9 +349,14 @@ def is_voice_messages_forbidden_error(exc: Exception) -> bool:
     return "VOICE_MESSAGES_FORBIDDEN" in str(exc).upper()
 
 
-def send_chat_action_safe(client: ChannelAdapter, chat_id: int, action: str) -> None:
+def send_chat_action_safe(
+    client: ChannelAdapter,
+    chat_id: int,
+    action: str,
+    message_thread_id: Optional[int] = None,
+) -> None:
     try:
-        client.send_chat_action(chat_id, action=action)
+        client.send_chat_action(chat_id, action=action, message_thread_id=message_thread_id)
     except Exception:
         logging.debug("Failed to send %s action for chat_id=%s", action, chat_id)
 
@@ -636,12 +643,14 @@ def send_executor_failure_message(
     message_id: Optional[int],
     allow_automatic_retry: bool,
     failure_message: Optional[str] = None,
+    message_thread_id: Optional[int] = None,
 ) -> None:
     if failure_message:
         client.send_message(
             chat_id,
             failure_message,
             reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
         )
         return
     if allow_automatic_retry:
@@ -649,43 +658,45 @@ def send_executor_failure_message(
             chat_id,
             RETRY_FAILED_MESSAGE,
             reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
         )
         return
     client.send_message(
         chat_id,
         config.generic_error_message,
         reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
     )
 
 
-def register_cancel_event(state: State, chat_id: int) -> threading.Event:
+def register_cancel_event(state: State, scope_key: str) -> threading.Event:
     cancel_event = threading.Event()
     with state.lock:
-        state.cancel_events[chat_id] = cancel_event
+        state.cancel_events[scope_key] = cancel_event
     return cancel_event
 
 
 def clear_cancel_event(
     state: State,
-    chat_id: int,
+    scope_key: str,
     expected_event: Optional[threading.Event] = None,
 ) -> None:
     with state.lock:
-        current = state.cancel_events.get(chat_id)
+        current = state.cancel_events.get(scope_key)
         if current is None:
             return
         if expected_event is not None and current is not expected_event:
             return
-        del state.cancel_events[chat_id]
+        del state.cancel_events[scope_key]
 
 
-def request_chat_cancel(state: State, chat_id: int) -> str:
+def request_chat_cancel(state: State, scope_key: str) -> str:
     with state.lock:
-        is_busy = chat_id in state.busy_chats
-        cancel_event = state.cancel_events.get(chat_id)
+        is_busy = scope_key in state.busy_chats
+        cancel_event = state.cancel_events.get(scope_key)
         if not is_busy:
             if cancel_event is not None:
-                del state.cancel_events[chat_id]
+                del state.cancel_events[scope_key]
             return "idle"
         if cancel_event is None:
             return "unavailable"
@@ -695,23 +706,21 @@ def request_chat_cancel(state: State, chat_id: int) -> str:
         return "requested"
 
 
-def extract_chat_context(update: Dict[str, object]) -> tuple[Optional[Dict[str, object]], Optional[int], Optional[int]]:
+def extract_chat_context(
+    update: Dict[str, object],
+) -> tuple[Optional[Dict[str, object]], Optional[ConversationScope], Optional[int]]:
     message = update.get("message")
     if not isinstance(message, dict):
         return None, None, None
 
-    chat = message.get("chat")
-    if not isinstance(chat, dict):
-        return None, None, None
-
-    chat_id = chat.get("id")
-    if not isinstance(chat_id, int):
+    scope = scope_from_message(message)
+    if scope is None:
         return None, None, None
 
     message_id = message.get("message_id")
     if not isinstance(message_id, int):
         message_id = None
-    return message, chat_id, message_id
+    return message, scope, message_id
 
 
 class ProgressReporter:
@@ -1764,7 +1773,12 @@ def build_help_text(config) -> str:
     return base + "\n\n" + "\n".join(build_memory_help_lines())
 
 
-def build_status_text(state: State, config, chat_id: Optional[int] = None) -> str:
+def build_status_text(
+    state: State,
+    config,
+    chat_id: Optional[int] = None,
+    scope_key: Optional[str] = None,
+) -> str:
     with state.lock:
         busy_count = len(state.busy_chats)
         restart_requested = state.restart_requested
@@ -1780,8 +1794,8 @@ def build_status_text(state: State, config, chat_id: Optional[int] = None) -> st
             )
             has_thread = False
             has_worker = False
-            if chat_id is not None:
-                session = state.chat_sessions.get(chat_id)
+            if scope_key is not None:
+                session = state.chat_sessions.get(scope_key)
                 if session is not None:
                     has_thread = bool(session.thread_id.strip())
                     has_worker = (
@@ -1791,8 +1805,8 @@ def build_status_text(state: State, config, chat_id: Optional[int] = None) -> st
         else:
             thread_count = len(state.chat_threads)
             worker_count = len(state.worker_sessions)
-            has_thread = chat_id in state.chat_threads if chat_id is not None else False
-            has_worker = chat_id in state.worker_sessions if chat_id is not None else False
+            has_thread = scope_key in state.chat_threads if scope_key is not None else False
+            has_worker = scope_key in state.worker_sessions if scope_key is not None else False
 
     lines = [
         "Bridge status: online",
@@ -1810,7 +1824,7 @@ def build_status_text(state: State, config, chat_id: Optional[int] = None) -> st
         f"Safe restart in progress: {restart_in_progress}",
     ]
 
-    if chat_id is not None:
+    if scope_key is not None:
         lines.append(f"This chat has saved context: {has_thread}")
         lines.append(f"This chat has worker session: {has_worker}")
         memory_engine = state.memory_engine
@@ -1818,10 +1832,10 @@ def build_status_text(state: State, config, chat_id: Optional[int] = None) -> st
             memory_channel = getattr(config, "channel_plugin", "telegram")
             try:
                 memory_status = memory_engine.get_status(
-                    resolve_memory_conversation_key(config, memory_channel, chat_id)
+                    resolve_memory_conversation_key(config, memory_channel, scope_key)
                 )
             except Exception:
-                logging.exception("Failed to query memory status for chat_id=%s", chat_id)
+                logging.exception("Failed to query memory status for scope_key=%s", scope_key)
             else:
                 lines.append(f"Memory mode: {memory_status.mode}")
                 lines.append(f"Memory facts: {memory_status.active_fact_count}")
@@ -2166,7 +2180,9 @@ def execute_prompt_with_retry(
     config,
     client: ChannelAdapter,
     engine: EngineAdapter,
+    scope_key: str,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
     prompt_text: str,
     previous_thread_id: Optional[str],
@@ -2192,7 +2208,12 @@ def execute_prompt_with_retry(
                 },
             )
             progress.mark_failure("Execution canceled.")
-            client.send_message(chat_id, REQUEST_CANCELED_MESSAGE, reply_to_message_id=message_id)
+            client.send_message(
+                chat_id,
+                REQUEST_CANCELED_MESSAGE,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
             return None
 
         attempt += 1
@@ -2212,7 +2233,7 @@ def execute_prompt_with_retry(
                     config=config,
                     prompt=prompt_text,
                     thread_id=attempt_thread_id,
-                    session_key=f"{getattr(client, 'channel_name', 'telegram')}:{chat_id}",
+                    session_key=scope_key,
                     channel_name=getattr(client, "channel_name", "telegram"),
                     image_path=image_path,
                     progress_callback=progress.handle_executor_event,
@@ -2236,7 +2257,12 @@ def execute_prompt_with_retry(
                 fields={"chat_id": chat_id, "message_id": message_id, "attempt": attempt},
             )
             progress.mark_failure("Execution canceled.")
-            client.send_message(chat_id, REQUEST_CANCELED_MESSAGE, reply_to_message_id=message_id)
+            client.send_message(
+                chat_id,
+                REQUEST_CANCELED_MESSAGE,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
             return None
         except subprocess.TimeoutExpired:
             logging.warning("Executor timeout for chat_id=%s", chat_id)
@@ -2246,7 +2272,12 @@ def execute_prompt_with_retry(
                 fields={"chat_id": chat_id, "message_id": message_id, "attempt": attempt},
             )
             progress.mark_failure("Execution timed out.")
-            client.send_message(chat_id, config.timeout_message, reply_to_message_id=message_id)
+            client.send_message(
+                chat_id,
+                config.timeout_message,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
             return None
         except FileNotFoundError:
             logging.exception("Executor command not found: %s", config.executor_cmd)
@@ -2260,6 +2291,7 @@ def execute_prompt_with_retry(
                 chat_id,
                 config.generic_error_message,
                 reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
             )
             return None
         except Exception:
@@ -2272,7 +2304,7 @@ def execute_prompt_with_retry(
             if allow_automatic_retry and not retry_attempted:
                 retry_attempted = True
                 if session_continuity_enabled:
-                    state_repo.clear_thread_id(chat_id)
+                    state_repo.clear_thread_id(scope_key)
                 attempt_thread_id = None
                 progress.set_phase(RETRY_WITH_NEW_SESSION_PHASE)
                 emit_event(
@@ -2293,6 +2325,7 @@ def execute_prompt_with_retry(
                 chat_id=chat_id,
                 message_id=message_id,
                 allow_automatic_retry=allow_automatic_retry,
+                message_thread_id=message_thread_id,
             )
             return None
 
@@ -2361,7 +2394,7 @@ def execute_prompt_with_retry(
 
         if reset_and_retry_new:
             if session_continuity_enabled:
-                state_repo.clear_thread_id(chat_id)
+                state_repo.clear_thread_id(scope_key)
             attempt_thread_id = None
             retry_attempted = True
             continue
@@ -2390,6 +2423,7 @@ def execute_prompt_with_retry(
             message_id=message_id,
             allow_automatic_retry=allow_automatic_retry,
             failure_message=failure_message,
+            message_thread_id=message_thread_id,
         )
         return None
 
@@ -2398,6 +2432,7 @@ def finalize_prompt_success(
     state_repo: StateRepository,
     config,
     client: ChannelAdapter,
+    scope_key: str,
     chat_id: int,
     message_id: Optional[int],
     result: subprocess.CompletedProcess[str],
@@ -2405,7 +2440,7 @@ def finalize_prompt_success(
 ) -> tuple[Optional[str], str]:
     new_thread_id, output = parse_executor_output(result.stdout or "")
     if new_thread_id:
-        state_repo.set_thread_id(chat_id, new_thread_id)
+        state_repo.set_thread_id(scope_key, new_thread_id)
     if not output:
         output = config.empty_output_message
     if not output_contains_control_directive(output):
@@ -2434,7 +2469,9 @@ def process_prompt(
     config,
     client: ChannelAdapter,
     engine: Optional[EngineAdapter],
+    scope_key: str,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
     prompt: str,
     photo_file_id: Optional[str],
@@ -2449,7 +2486,7 @@ def process_prompt(
     active_engine = engine or CodexEngineAdapter()
     state_repo = StateRepository(state)
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
-    conversation_key = resolve_memory_conversation_key(config, channel_name, chat_id)
+    conversation_key = resolve_memory_conversation_key(config, channel_name, scope_key)
     previous_thread_id: Optional[str] = None
     turn_context: Optional[TurnContext] = None
     image_path: Optional[str] = None
@@ -2509,9 +2546,9 @@ def process_prompt(
             except Exception:
                 logging.exception("Failed to prepare shared memory turn for chat_id=%s", chat_id)
                 turn_context = None
-                previous_thread_id = None if stateless else state_repo.get_thread_id(chat_id)
+                previous_thread_id = None if stateless else state_repo.get_thread_id(scope_key)
         else:
-            previous_thread_id = None if stateless else state_repo.get_thread_id(chat_id)
+            previous_thread_id = None if stateless else state_repo.get_thread_id(scope_key)
         if affective_runtime is not None:
             try:
                 affective_runtime.begin_turn(prompt_text)
@@ -2559,7 +2596,9 @@ def process_prompt(
             config=config,
             client=client,
             engine=active_engine,
+            scope_key=scope_key,
             chat_id=chat_id,
+            message_thread_id=message_thread_id,
             message_id=message_id,
             prompt_text=prompt_text,
             previous_thread_id=previous_thread_id,
@@ -2574,13 +2613,14 @@ def process_prompt(
             state_repo=state_repo,
             config=config,
             client=client,
+            scope_key=scope_key,
             chat_id=chat_id,
             message_id=message_id,
             result=result,
             progress=progress,
         )
         if stateless:
-            state_repo.clear_thread_id(chat_id)
+            state_repo.clear_thread_id(scope_key)
         if attachment_store is not None:
             for attachment_file_id in attachment_file_ids:
                 try:
@@ -2602,7 +2642,7 @@ def process_prompt(
                 )
         if memory_engine is not None and turn_context is not None:
             if stateless:
-                state_repo.clear_thread_id(chat_id)
+                state_repo.clear_thread_id(scope_key)
             try:
                 memory_engine.finish_turn(
                     turn_context,
@@ -2623,13 +2663,13 @@ def process_prompt(
                     chat_id,
                 )
         progress.close()
-        clear_cancel_event(state, chat_id, expected_event=cancel_event)
+        clear_cancel_event(state, scope_key, expected_event=cancel_event)
         for cleanup_path in cleanup_paths:
             try:
                 os.remove(cleanup_path)
             except OSError:
                 logging.warning("Failed to remove temp file: %s", cleanup_path)
-        finalize_chat_work(state, client, chat_id)
+        finalize_chat_work(state, client, scope_key, chat_id)
         emit_event(
             "bridge.request_processing_finished",
             fields={"chat_id": chat_id, "message_id": message_id},
@@ -2641,7 +2681,9 @@ def process_message_worker(
     config,
     client: ChannelAdapter,
     engine: Optional[EngineAdapter],
+    scope_key: str,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
     prompt: str,
     photo_file_id: Optional[str],
@@ -2658,7 +2700,9 @@ def process_message_worker(
             config,
             client,
             engine,
+            scope_key,
             chat_id,
+            message_thread_id,
             message_id,
             prompt,
             photo_file_id,
@@ -2691,7 +2735,9 @@ def process_youtube_request(
     config,
     client: ChannelAdapter,
     engine: Optional[EngineAdapter],
+    scope_key: str,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
     request_text: str,
     youtube_url: str,
@@ -2713,7 +2759,12 @@ def process_youtube_request(
         progress.start()
         if cancel_event is not None and cancel_event.is_set():
             progress.mark_failure("Execution canceled.")
-            client.send_message(chat_id, REQUEST_CANCELED_MESSAGE, reply_to_message_id=message_id)
+            client.send_message(
+                chat_id,
+                REQUEST_CANCELED_MESSAGE,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
             return
 
         progress.set_phase("Fetching YouTube metadata and transcript.")
@@ -2721,7 +2772,12 @@ def process_youtube_request(
 
         if cancel_event is not None and cancel_event.is_set():
             progress.mark_failure("Execution canceled.")
-            client.send_message(chat_id, REQUEST_CANCELED_MESSAGE, reply_to_message_id=message_id)
+            client.send_message(
+                chat_id,
+                REQUEST_CANCELED_MESSAGE,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
             return
 
         request_mode = str(analysis.get("request_mode") or "summary").strip().lower()
@@ -2773,7 +2829,9 @@ def process_youtube_request(
             config=config,
             client=client,
             engine=active_engine,
+            scope_key=scope_key,
             chat_id=chat_id,
+            message_thread_id=message_thread_id,
             message_id=message_id,
             prompt_text=build_youtube_summary_prompt(request_text, analysis),
             previous_thread_id=None,
@@ -2788,6 +2846,7 @@ def process_youtube_request(
             state_repo=state_repo,
             config=config,
             client=client,
+            scope_key=scope_key,
             chat_id=chat_id,
             message_id=message_id,
             result=result,
@@ -2795,13 +2854,13 @@ def process_youtube_request(
         )
     finally:
         progress.close()
-        clear_cancel_event(state, chat_id, expected_event=cancel_event)
+        clear_cancel_event(state, scope_key, expected_event=cancel_event)
         for cleanup_path in cleanup_paths:
             try:
                 os.remove(cleanup_path)
             except OSError:
                 logging.warning("Failed to remove temp file: %s", cleanup_path)
-        finalize_chat_work(state, client, chat_id)
+        finalize_chat_work(state, client, scope_key, chat_id)
         emit_event(
             "bridge.request_processing_finished",
             fields={"chat_id": chat_id, "message_id": message_id},
@@ -2813,7 +2872,9 @@ def process_youtube_worker(
     config,
     client: ChannelAdapter,
     engine: Optional[EngineAdapter],
+    scope_key: str,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
     request_text: str,
     youtube_url: str,
@@ -2825,7 +2886,9 @@ def process_youtube_worker(
             config=config,
             client=client,
             engine=engine,
+            scope_key=scope_key,
             chat_id=chat_id,
+            message_thread_id=message_thread_id,
             message_id=message_id,
             request_text=request_text,
             youtube_url=youtube_url,
@@ -2839,7 +2902,12 @@ def process_youtube_worker(
             fields={"chat_id": chat_id, "message_id": message_id, "phase": "youtube_analysis"},
         )
         try:
-            client.send_message(chat_id, config.timeout_message, reply_to_message_id=message_id)
+            client.send_message(
+                chat_id,
+                config.timeout_message,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
         except Exception:
             logging.exception("Failed to send YouTube timeout response for chat_id=%s", chat_id)
     except Exception:
@@ -2850,7 +2918,12 @@ def process_youtube_worker(
             fields={"chat_id": chat_id, "message_id": message_id, "phase": "youtube_analysis"},
         )
         try:
-            client.send_message(chat_id, config.generic_error_message, reply_to_message_id=message_id)
+            client.send_message(
+                chat_id,
+                config.generic_error_message,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
         except Exception:
             logging.exception("Failed to send YouTube worker error response for chat_id=%s", chat_id)
 
@@ -2860,7 +2933,9 @@ def start_youtube_worker(
     config,
     client: ChannelAdapter,
     engine: Optional[EngineAdapter],
+    scope_key: str,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
     request_text: str,
     youtube_url: str,
@@ -2873,7 +2948,9 @@ def start_youtube_worker(
             config,
             client,
             engine,
+            scope_key,
             chat_id,
+            message_thread_id,
             message_id,
             request_text,
             youtube_url,
@@ -2888,30 +2965,34 @@ def handle_reset_command(
     state: State,
     config,
     client: ChannelAdapter,
+    scope_key: str,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
 ) -> None:
     state_repo = StateRepository(state)
-    removed_thread = state_repo.clear_thread_id(chat_id)
-    removed_worker = state_repo.clear_worker_session(chat_id) if config.persistent_workers_enabled else False
+    removed_thread = state_repo.clear_thread_id(scope_key)
+    removed_worker = state_repo.clear_worker_session(scope_key) if config.persistent_workers_enabled else False
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
     if memory_engine is not None:
         memory_channel = getattr(client, "channel_name", "telegram")
         try:
-            memory_engine.clear_session(resolve_memory_conversation_key(config, memory_channel, chat_id))
+            memory_engine.clear_session(resolve_memory_conversation_key(config, memory_channel, scope_key))
         except Exception:
-            logging.exception("Failed to clear shared memory session for chat_id=%s", chat_id)
+            logging.exception("Failed to clear shared memory session for scope=%s", scope_key)
     if removed_thread or removed_worker:
         client.send_message(
             chat_id,
             "Context reset. Your next message starts a new conversation.",
             reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
         )
         return
     client.send_message(
         chat_id,
         "No saved context was found for this chat.",
         reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
     )
 
 
@@ -2919,9 +3000,10 @@ def handle_restart_command(
     state: State,
     client: ChannelAdapter,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
 ) -> None:
-    status, busy_count = request_safe_restart(state, chat_id, message_id)
+    status, busy_count = request_safe_restart(state, chat_id, message_thread_id, message_id)
     emit_event(
         "bridge.restart_requested",
         fields={
@@ -2936,6 +3018,7 @@ def handle_restart_command(
             chat_id,
             "Restart is already in progress.",
             reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
         )
         return
     if status == "already_queued":
@@ -2943,6 +3026,7 @@ def handle_restart_command(
             chat_id,
             "Restart is already queued and will run after current work completes.",
             reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
         )
         return
     if status == "queued":
@@ -2950,6 +3034,7 @@ def handle_restart_command(
             chat_id,
             f"Safe restart queued. Waiting for {busy_count} active request(s) to finish.",
             reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
         )
         return
 
@@ -2957,17 +3042,20 @@ def handle_restart_command(
         chat_id,
         "No active request. Restarting bridge now.",
         reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
     )
-    trigger_restart_async(state, client, chat_id, message_id)
+    trigger_restart_async(state, client, chat_id, message_thread_id, message_id)
 
 
 def handle_cancel_command(
     state: State,
     client: ChannelAdapter,
+    scope_key: str,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
 ) -> None:
-    status = request_chat_cancel(state, chat_id)
+    status = request_chat_cancel(state, scope_key)
     emit_event(
         "bridge.cancel_requested",
         fields={"chat_id": chat_id, "message_id": message_id, "status": status},
@@ -2977,6 +3065,7 @@ def handle_cancel_command(
             chat_id,
             CANCEL_REQUESTED_MESSAGE,
             reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
         )
         return
     if status == "already_requested":
@@ -2984,6 +3073,7 @@ def handle_cancel_command(
             chat_id,
             CANCEL_ALREADY_REQUESTED_MESSAGE,
             reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
         )
         return
     if status == "unavailable":
@@ -2991,12 +3081,14 @@ def handle_cancel_command(
             chat_id,
             "Active request cannot be canceled at this stage. Please wait a few seconds and retry.",
             reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
         )
         return
     client.send_message(
         chat_id,
         CANCEL_NO_ACTIVE_MESSAGE,
         reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
     )
 
 
@@ -3199,7 +3291,9 @@ def handle_known_command(
     state: State,
     config,
     client: ChannelAdapter,
+    scope_key: str,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
     command: Optional[str],
     raw_text: str,
@@ -3221,18 +3315,19 @@ def handle_known_command(
     if command == "/status":
         client.send_message(
             chat_id,
-            build_status_text(state, config, chat_id=chat_id),
+            build_status_text(state, config, chat_id=chat_id, scope_key=scope_key),
             reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
         )
         return True
     if command == "/restart":
-        handle_restart_command(state, client, chat_id, message_id)
+        handle_restart_command(state, client, chat_id, message_thread_id, message_id)
         return True
     if command == "/cancel":
-        handle_cancel_command(state, client, chat_id, message_id)
+        handle_cancel_command(state, client, scope_key, chat_id, message_thread_id, message_id)
         return True
     if command == "/reset":
-        handle_reset_command(state, config, client, chat_id, message_id)
+        handle_reset_command(state, config, client, scope_key, chat_id, message_thread_id, message_id)
         return True
     if command == "/voice-alias":
         return handle_voice_alias_command(
@@ -3251,7 +3346,9 @@ def start_message_worker(
     config,
     client: ChannelAdapter,
     engine: Optional[EngineAdapter],
+    scope_key: str,
     chat_id: int,
+    message_thread_id: Optional[int],
     message_id: Optional[int],
     prompt: str,
     photo_file_id: Optional[str],
@@ -3269,7 +3366,9 @@ def start_message_worker(
             config,
             client,
             engine,
+            scope_key,
             chat_id,
+            message_thread_id,
             message_id,
             prompt,
             photo_file_id,
@@ -3292,9 +3391,12 @@ def handle_update(
     update: Dict[str, object],
     engine: Optional[EngineAdapter] = None,
 ) -> None:
-    message, chat_id, message_id = extract_chat_context(update)
-    if message is None or chat_id is None:
+    message, conversation_scope, message_id = extract_chat_context(update)
+    if message is None or conversation_scope is None:
         return
+    chat_id = conversation_scope.chat_id
+    message_thread_id = conversation_scope.message_thread_id
+    scope_key = conversation_scope.scope_key
     update_id = update.get("update_id")
     update_id_int = update_id if isinstance(update_id, int) else None
     emit_event(
@@ -3302,6 +3404,7 @@ def handle_update(
         fields={
             "chat_id": chat_id,
             "message_id": message_id,
+            "scope_key": scope_key,
             "update_id": update_id_int,
         },
     )
@@ -3428,7 +3531,7 @@ def handle_update(
         memory_channel = getattr(client, "channel_name", "telegram")
         cmd_result = handle_memory_command(
             engine=memory_engine,
-            conversation_key=resolve_memory_conversation_key(config, memory_channel, chat_id),
+            conversation_key=resolve_memory_conversation_key(config, memory_channel, scope_key),
             text=prompt_input,
         )
         if cmd_result.handled:
@@ -3452,7 +3555,9 @@ def handle_update(
         state,
         config,
         client,
+        scope_key,
         chat_id,
+        message_thread_id,
         message_id,
         command,
         prompt_input or "",
@@ -3466,7 +3571,7 @@ def handle_update(
     if memory_engine is not None and prompt_input and not priority_keyword_mode and not stateless:
         recall_response = handle_natural_language_memory_query(
             memory_engine,
-            resolve_memory_conversation_key(config, memory_channel, chat_id),
+            resolve_memory_conversation_key(config, memory_channel, scope_key),
             prompt_input,
         )
         if recall_response:
@@ -3513,7 +3618,7 @@ def handle_update(
         )
         return
 
-    if is_rate_limited(state, config, chat_id):
+    if is_rate_limited(state, config, scope_key):
         emit_event(
             "bridge.request_rejected",
             level=logging.WARNING,
@@ -3527,7 +3632,15 @@ def handle_update(
         return
 
     if not stateless:
-        if not ensure_chat_worker_session(state, config, client, chat_id, message_id):
+        if not ensure_chat_worker_session(
+            state,
+            config,
+            client,
+            scope_key,
+            chat_id,
+            message_thread_id,
+            message_id,
+        ):
             emit_event(
                 "bridge.request_rejected",
                 level=logging.WARNING,
@@ -3535,7 +3648,7 @@ def handle_update(
             )
             return
 
-    if not mark_busy(state, chat_id):
+    if not mark_busy(state, scope_key):
         emit_event(
             "bridge.request_rejected",
             level=logging.WARNING,
@@ -3547,14 +3660,15 @@ def handle_update(
             reply_to_message_id=message_id,
         )
         return
-    cancel_event = register_cancel_event(state, chat_id)
+    cancel_event = register_cancel_event(state, scope_key)
     state_repo = StateRepository(state)
-    state_repo.mark_in_flight_request(chat_id, message_id)
+    state_repo.mark_in_flight_request(scope_key, message_id)
     emit_event(
         "bridge.request_accepted",
         fields={
             "chat_id": chat_id,
             "message_id": message_id,
+            "scope_key": scope_key,
             "has_photo": bool(photo_file_id),
             "has_voice": bool(voice_file_id),
             "has_document": document is not None,
@@ -3567,7 +3681,9 @@ def handle_update(
             config=config,
             client=client,
             engine=engine,
+            scope_key=scope_key,
             chat_id=chat_id,
+            message_thread_id=message_thread_id,
             message_id=message_id,
             request_text=prompt,
             youtube_url=youtube_route_url,
@@ -3579,7 +3695,9 @@ def handle_update(
             config=config,
             client=client,
             engine=engine,
+            scope_key=scope_key,
             chat_id=chat_id,
+            message_thread_id=message_thread_id,
             message_id=message_id,
             prompt=prompt,
             photo_file_id=photo_file_id,
