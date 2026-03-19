@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-19 (Summary Roll-Forward Trim for Architect Group Allowlist Fix)
+
+Summary:
+- Added a new rolling-summary entry for the live Architect Telegram allowlist fix after `architect#2` started arriving as a separate supergroup chat id once topics were enabled.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-18: rolled out the live `Mavali ETH` runtime on Server3 by provisioning the `mavali_eth` user/root, installing the shared-core overlay shims and dedicated signing venv, staging the wallet keystore into `/home/mavali_eth/.local/state/telegram-mavali-eth-bridge/wallet.json`, writing `/etc/default/telegram-mavali-eth-bridge` with owner chat `211761499`, starting `telegram-mavali-eth-bridge.service`, enabling `mavali-eth-receipt-monitor.timer`, verifying CLI wallet/balance/gas reads, and sending a Telegram deployment smoke message to the owner chat; temporary RPC is `https://mainnet.gateway.tenderly.co`.
+
 ## 2026-03-19 (Summary Roll-Forward Trim for Mavali ETH Doc Alignment)
 
 Summary:
