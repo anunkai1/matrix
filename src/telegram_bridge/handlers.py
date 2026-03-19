@@ -976,18 +976,18 @@ def build_reply_context_prompt(message: Dict[str, object]) -> str:
     sender_name = extract_sender_name(reply_to)
     sender_line = ""
     if sender_name != "Telegram User":
-        sender_line = f"Автор исходного сообщения: {sender_name}\n"
+        sender_line = f"Original Message Author: {sender_name}\n"
 
     body_parts: List[str] = []
     if quoted_text:
         body_parts.append(
-            "Сообщение, на которое пользователь ответил:\n"
+            "Message User Replied To:\n"
             f"{quoted_text}"
         )
     if media_context:
         body_parts.append(media_context)
 
-    return "Контекст ответа:\n" + sender_line + "\n\n".join(body_parts)
+    return "Reply Context:\n" + sender_line + "\n\n".join(body_parts)
 
 
 def select_media_prompt(text: Optional[str], caption: Optional[str], default_prompt: str) -> str:
@@ -3490,7 +3490,7 @@ def handle_update(
         if prompt:
             prompt = (
                 f"{reply_context_prompt}\n\n"
-                "Текущее сообщение пользователя:\n"
+                "Current User Message:\n"
                 f"{prompt}"
             )
         else:

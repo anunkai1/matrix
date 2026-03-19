@@ -1328,9 +1328,9 @@ class BridgeCoreTests(unittest.TestCase):
                 },
             }
         )
-        self.assertIn("Контекст ответа:", prompt)
-        self.assertIn("Автор исходного сообщения: Govorun TPG 2026", prompt)
-        self.assertIn("Сообщение, на которое пользователь ответил:", prompt)
+        self.assertIn("Reply Context:", prompt)
+        self.assertIn("Original Message Author: Govorun TPG 2026", prompt)
+        self.assertIn("Message User Replied To:", prompt)
         self.assertIn("Доброе утро, Путиловы!", prompt)
 
     def test_build_reply_context_prompt_mentions_reply_media_without_text(self):
@@ -1343,7 +1343,7 @@ class BridgeCoreTests(unittest.TestCase):
                 },
             }
         )
-        self.assertIn("Контекст ответа:", prompt)
+        self.assertIn("Reply Context:", prompt)
         self.assertIn("В исходном сообщении было изображение.", prompt)
 
     def test_apply_voice_alias_replacements(self):
@@ -1977,8 +1977,8 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
-        self.assertIn("Контекст ответа:", kwargs["prompt"])
-        self.assertIn("Автор исходного сообщения: Vlad", kwargs["prompt"])
+        self.assertIn("Reply Context:", kwargs["prompt"])
+        self.assertIn("Original Message Author: Vlad", kwargs["prompt"])
         self.assertIn("Посмотри на это и ответь по сути.", kwargs["prompt"])
         self.assertEqual(client.messages, [])
 
@@ -2156,9 +2156,9 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
-        self.assertIn("Контекст ответа:", kwargs["prompt"])
-        self.assertIn("Автор исходного сообщения: Govorun TPG 2026", kwargs["prompt"])
-        self.assertIn("Текущее сообщение пользователя:\nЭто про что", kwargs["prompt"])
+        self.assertIn("Reply Context:", kwargs["prompt"])
+        self.assertIn("Original Message Author: Govorun TPG 2026", kwargs["prompt"])
+        self.assertIn("Current User Message:\nЭто про что", kwargs["prompt"])
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
