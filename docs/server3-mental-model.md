@@ -152,6 +152,19 @@ Use Govorun when you want:
 - the Russian-speaking persona workflow
 - daily WhatsApp uplift message automation
 
+### Other Sibling Runtimes
+
+Server3 also has a few newer sibling runtimes that follow the same general pattern but solve narrower jobs.
+
+- AgentSmith: another isolated Telegram sibling runtime with its own runtime root, state, and allowlist posture.
+- Trinity: a separate Telegram runtime with its own dedicated code tree and persona experiments.
+- Mavali ETH: a wallet-first Ethereum runtime that keeps deterministic wallet actions but can still fall through to Codex for general prompts.
+- Macrorayd: a dedicated Telegram Codex helper runtime with isolated state and room for future runtime-local personality.
+
+Mental shortcut:
+- These are real live runtimes, not just ideas or branches.
+- For exhaustive current inventory, trust `infra/server3-runtime-manifest.json` first; this mental model stays intentionally higher level.
+
 ### Home Assistant Mode
 
 This is not its own long-running service. It is a script-backed mode that Architect can enter for one request.
@@ -202,11 +215,13 @@ Use it when you want:
 - open or navigate real browser tabs
 - inspect the current page and get actionable refs
 - click or type against exact snapshot refs
-- run browser automation without using the TV desktop path
+- drive a managed browser session end to end
+- attach to an already-open local browser session when a site needs visible manual login
 
 Key mental rule:
 - Browser Brain is the machine-operated browser substrate.
-- TV mode is still the human-visible desktop/browser path.
+- It has two connection modes: `managed` and `existing_session`.
+- TV mode is still the human-visible desktop/browser path, but it can also act as the visible login helper for Browser Brain when Browser Brain attaches over local CDP.
 
 ### Nextcloud Mode
 
@@ -327,10 +342,10 @@ If you want a general assistant:
 - use Architect
 
 If you want a separate persona/profile:
-- use Tank, Govorun, or Oracle depending on domain
+- use Tank, Govorun, Oracle, AgentSmith, Trinity, Mavali ETH, or Macrorayd depending on domain
 
 If you want a bounded operational action:
-- use the keyword modes: `HA`, `Server3 TV`, `Nextcloud`, `Trade`
+- use the keyword modes: `HA`, `Server3 Browser`, `Server3 TV`, or `Nextcloud`
 
 If you want to know how something is installed or restarted:
 - check [`ops`](../ops) first, then the matching runbook
@@ -346,6 +361,6 @@ If you want current truth before acting:
 Think of Server3 as one reusable assistant engine surrounded by multiple identities and bounded tool corridors:
 
 - Architect is the main front door.
-- Tank, Oracle, and Govorun are specialized sibling runtimes.
+- Tank, Oracle, Govorun, AgentSmith, Trinity, Mavali ETH, and Macrorayd are sibling runtimes built around the same core idea: isolate identity and state when it matters.
 - HA, Browser Brain, TV, and Nextcloud are the deterministic side corridors.
 - systemd timers, observer checks, and config contracts are the guard rails that keep the whole machine stable.
