@@ -201,15 +201,16 @@
       "runtime_layout": "shared-core-overlay",
       "workspace_root": "/home/mavali_eth/mavali_ethbot",
       "shared_core_root": "/home/architect/matrix",
-      "purpose": "Dedicated Ethereum mainnet wallet operator runtime.",
+      "purpose": "Wallet-first Ethereum mainnet runtime with deterministic wallet actions and Codex fallback for non-wallet prompts.",
       "expected_default_state": "active",
       "dependencies": [
-        "Alchemy Ethereum RPC",
-        "mavali_eth signing helper venv"
+        "temporary public Tenderly Ethereum RPC (replace later)",
+        "mavali_eth signing helper venv",
+        "authenticated Codex executor"
       ],
       "owner_user": "mavali_eth",
       "notes": [
-        "Runs the shared Telegram bridge with the mavali_eth deterministic wallet engine.",
+        "Runs the shared Telegram bridge with the mavali_eth deterministic wallet engine plus Codex fallback for non-wallet prompts.",
         "Receipt notifications are delivered by a separate oneshot timer service."
       ],
       "units": [

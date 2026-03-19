@@ -2,6 +2,16 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-19 (Summary Roll-Forward Trim for Mavali ETH Doc Alignment)
+
+Summary:
+- Added a new rolling-summary entry for aligning the `Mavali ETH` spec/runbook/contract/runtime-manifest/env example with the live Server3 state, including the wallet-first hybrid runtime behavior and the intentionally temporary Tenderly RPC note.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-18: added Browser Brain `existing_session` attach mode alongside the default managed-profile mode, with config support for local CDP attachment, a new TV-side Brave helper at `ops/tv-desktop/server3-tv-brave-browser-brain-session.sh`, runbook/docs updates, targeted unit coverage, live managed-mode restart verification, and a live attach smoke against a temporary local CDP Brave instance; the practical on-screen login path is now “launch the visible `tv` Brave helper, log in manually there once, then let Browser Brain attach over local CDP” instead of trying to run Browser Brain itself headed on a host X display.
+- 2026-03-18: changed Architect's shared Telegram memory behavior so `TELEGRAM_SHARED_MEMORY_KEY=shared:architect:main` now uses per-chat live session keys during active chats, reads the shared key as archive/background context, and merges each live key back into the shared archive only when the idle-expiry path clears that chat's session; this stops DM/group topic bleed during active sessions while preserving a combined archive for later sessions and CLI use.
+
 ## 2026-03-18 (Summary Roll-Forward Trim for Mavali ETH RPC Broadcast Fix)
 
 Summary:
