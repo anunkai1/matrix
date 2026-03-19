@@ -15,7 +15,11 @@ These are the ways work enters the server.
 | Entry point | Purpose | Main live service/user |
 | --- | --- | --- |
 | Telegram Architect bot | General assistant and operator entry point | `telegram-architect-bridge.service` as `architect` |
+| Telegram AgentSmith bot | Isolated Telegram assistant/runtime sibling | `telegram-agentsmith-bridge.service` as `agentsmith` |
 | Telegram Tank bot | Separate Telegram runtime/profile for Tank | `telegram-tank-bridge.service` as `tank` |
+| Telegram Trinity bot | Dedicated Telegram runtime with its own code tree | `telegram-trinity-bridge.service` as `trinity` |
+| Telegram Mavali ETH bot | Wallet-first Telegram runtime with deterministic ETH actions plus Codex fallback | `telegram-mavali-eth-bridge.service` as `mavali_eth` |
+| Telegram Macrorayd bot | Dedicated Telegram Codex helper/runtime sibling | `telegram-macrorayd-bridge.service` as `macrorayd` |
 | Signal Oracle | Signal-facing assistant persona with its own transport sidecar | `signal-oracle-bridge.service` + `oracle-signal-bridge.service` as `oracle` |
 | WhatsApp Govorun | WhatsApp-facing assistant persona | `whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service` as `govorun` |
 | Local shell launchers | Direct CLI use with shared memory | `architect`, `tank`, raw `codex` |
@@ -36,6 +40,8 @@ The main reusable runtime lives in [`src/telegram_bridge`](../src/telegram_bridg
 
 Mental shortcut:
 - Telegram Architect and Tank are variations of the same bridge pattern.
+- AgentSmith, Mavali ETH, and Macrorayd are also shared-core Telegram overlays with isolated runtime roots.
+- Trinity keeps the same bridge shape but runs from its own dedicated code tree instead of a thin overlay root.
 - Oracle reuses the same Python bridge core, but its transport is fronted by a local Signal sidecar around `signal-cli`.
 - Govorun reuses the same Python bridge core, but its transport is fronted by a Node WhatsApp API bridge.
 
@@ -296,11 +302,16 @@ Use it when you want:
 Server3 now uses one shared bridge core in `/home/architect/matrix` plus per-runtime roots under different Linux users:
 
 - Architect: `/home/architect/matrix`
+- AgentSmith: `/home/agentsmith/agentsmithbot` (overlay root)
 - Tank: `/home/tank/tankbot` (runtime root; `/home/tank/tankbot/src` points at the shared core tree)
+- Trinity: `/home/trinity/trinitybot` (dedicated runtime root and code tree)
 - Oracle bridge: `/home/oracle/oraclebot` (overlay root)
 - Oracle Signal transport: `/home/oracle/signal-oracle/app`
 - Govorun Python bridge: `/home/govorun/govorunbot` (overlay root)
 - Govorun Node transport: `/home/govorun/whatsapp-govorun/app`
+- Mavali ETH: `/home/mavali_eth/mavali_ethbot` (overlay root with wallet-first engine plugin)
+- Macrorayd: `/home/macrorayd/macroraydbot` (overlay root)
+- Browser Brain: `/home/browser_brain/browserbrain` (dedicated local browser-control service root)
 
 ### Secrets
 

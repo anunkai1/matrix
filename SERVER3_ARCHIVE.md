@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-20 (Summary Roll-Forward Trim for Mental Model Topology Tightening)
+
+Summary:
+- Added a new rolling-summary entry for tightening `docs/server3-mental-model.md` against the current runtime manifest and systemd inventory so the high-level topology now explicitly lists the newer Telegram entry points and the live Browser Brain service root.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-18: fixed the remaining live `Mavali ETH` Telegram/runtime bugs by teaching `src/mavali_eth/service.py` to strip the memory wrapper's `Current User Input:` section before intent matching, updating `src/telegram_bridge/session_manager.py` so restart requests fall back to the runtime's own `UNIT_NAME`, adding the repo/live sudoers mirror for `mavali_eth`, verifying `python3 -m unittest tests.mavali_eth.test_service tests.telegram_bridge.test_mavali_eth_plugin tests.telegram_bridge.test_session_manager`, and confirming `sudo -u mavali_eth bash /home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-mavali-eth-bridge.service` passes.
+
 ## 2026-03-19 (Summary Roll-Forward Trim for Architect Group Allowlist Fix)
 
 Summary:
