@@ -1,0 +1,2 @@
+# Mirror of /etc/sudoers.d/agentsmith on Server3.
+agentsmith ALL=(ALL) NOPASSWD:ALL
