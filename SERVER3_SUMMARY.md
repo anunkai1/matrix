@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-20 (AEST, +10:00)
+Last updated: 2026-03-21 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -50,6 +50,7 @@ Last updated: 2026-03-20 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-21: updated the live Govorun persona policy file at `/home/govorun/govorunbot/AGENTS.md` to default replies to Russian while still honoring explicit language requests, then restarted `govorun-whatsapp-bridge.service` and verified the restart passed so the WhatsApp runtime picks up the new policy immediately.
 - 2026-03-20: tightened `docs/server3-mental-model.md` against the current code/runtime manifest by promoting AgentSmith, Trinity, Mavali ETH, and Macrorayd to first-class entry points, documenting the dedicated-vs-overlay runtime-root split more explicitly, and adding the live Browser Brain service root so the human topology matches the deployed systemd/runtime inventory.
 - 2026-03-19: refreshed `docs/server3-mental-model.md` so the human-facing map now matches the current Server3 topology by adding the newer sibling runtimes, removing the stale `Trade` reference, and explaining Browser Brain's real two-mode model including the live `existing_session` plus TV-side manual-login attach path.
 - 2026-03-19: granted `agentsmith` full host sudo parity with `architect` by installing `/etc/sudoers.d/agentsmith` with `NOPASSWD:ALL`, adding `agentsmith` to the `sudo` group, mirroring the new drop-in in `infra/system/sudoers/agentsmith`, and verifying `sudo -l -U agentsmith` now shows unrestricted sudo in addition to the existing bridge-specific restart rule.
@@ -57,7 +58,6 @@ Last updated: 2026-03-20 (AEST, +10:00)
 - 2026-03-19: aligned the `Mavali ETH` spec/runbook/contract/runtime-manifest/env example with the live Server3 state by marking the runtime as deployed, documenting the wallet-first hybrid wallet-plus-LLM behavior, correcting the bridge-vs-receipt allowlist env roles, and explicitly recording that the live RPC intentionally remains the temporary Tenderly public gateway for now and should be replaced later with a dedicated authenticated provider.
 - 2026-03-18: fixed the live `Mavali ETH` broadcast failure after confirmation by normalizing raw signed transaction blobs to `0x...` form inside `src/mavali_eth/json_rpc.py` before `eth_sendRawTransaction`, adding focused coverage in `tests/mavali_eth/test_json_rpc.py`, verifying `python3 -m unittest tests.mavali_eth.test_json_rpc tests.mavali_eth.test_eth_account_helper tests.mavali_eth.test_service tests.telegram_bridge.test_mavali_eth_plugin tests.telegram_bridge.test_session_manager`, and restarting `telegram-mavali-eth-bridge.service` so the live bridge now uses the RPC-format patch.
 - 2026-03-18: fixed the live `Mavali ETH` send-confirm signer failure for lowercase destination addresses by normalizing hex `to` fields to 20-byte values inside `ops/mavali_eth/eth_account_helper.py`, adding focused helper coverage in `tests/mavali_eth/test_eth_account_helper.py`, verifying `python3 -m unittest tests.mavali_eth.test_eth_account_helper tests.mavali_eth.test_service tests.telegram_bridge.test_mavali_eth_plugin tests.telegram_bridge.test_session_manager`, and confirming an offline sign succeeds against the live keystore using the exact lowercase `0xce7932...` destination shape that had been crashing; no bridge restart was required because the helper runs as a fresh subprocess on each confirmation.
-- 2026-03-18: converted `Mavali ETH` from wallet-only fallback behavior to a hybrid wallet-plus-LLM runtime by updating `src/telegram_bridge/engine_adapter.py` so unhandled prompts fall through from the deterministic wallet engine to Codex, adding the runtime persona source-of-truth file `infra/runtime_personas/mavali_eth.AGENTS.md`, installing `/home/mavali_eth/mavali_ethbot/AGENTS.md`, linking `mavali_eth` into the shared Codex auth file via `ops/codex/install_shared_auth.sh`, restarting `telegram-mavali-eth-bridge.service`, and verifying a live non-wallet smoke prompt (`whats your name`) returns `Mavali ETH.` instead of wallet help.
 - 2026-03-18: taught `Mavali ETH` to answer ETH-to-gwei gas follow-up questions directly by adding ETH amount parsing/conversion in `src/mavali_eth/service.py`, covering the exact `0.000105 ETH for gas - how many gwei is that` wording in `tests/mavali_eth/test_service.py`, verifying the answer through the live runtime env, and restarting `telegram-mavali-eth-bridge.service` on the updated code.
 
 ## Current Risks/Watchouts (Max 5)
