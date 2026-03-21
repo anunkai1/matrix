@@ -1,20 +1,17 @@
 ## Runtime Personas
 
-This directory stores tracked persona and policy files for Server3 runtimes.
+This directory stores the canonical `AGENTS.md` persona files for Server3 runtimes.
 
 Purpose:
-- keep runtime identity/policy under version control
-- provide a canonical repo copy for review and history
+- keep runtime identity and policy under version control
+- make `matrix` the source of truth for persona files
 - avoid leaving important persona files only in local runtime roots
 
-Important:
-- a file here is not automatically live
-- the active runtime may still read its local `AGENTS.md` from its runtime root
-- a runtime becomes repo-backed only after an explicit link or sync step
+Current state:
+- the main runtime `AGENTS.md` files are now repo-backed from this directory via live symlinks
+- verify that wiring with:
+  - `bash ops/runtime_personas/check_runtime_repo_links.sh`
 
-Safe rollout model:
-1. track the current runtime persona here
-2. verify the tracked copy matches the live local file
-3. later, if desired, link or sync the runtime root to this repo copy
-
-Keep secrets, tokens, local state, caches, and attachments out of this directory.
+Notes:
+- keep secrets, tokens, local state, caches, attachments, and runtime databases out of this directory
+- runtime roots under `/home/<user>/...` remain the live deployment paths, not the canonical source
