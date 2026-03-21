@@ -1766,7 +1766,7 @@ def build_help_text(config) -> str:
                 "Use `Server3 Browser ...` or `Browser Brain ...` for Server3 browser-brain automation.\n"
                 "Use `Server3 TV ...` for Server3 desktop/browser/UI operations.\n"
                 "Use `Nextcloud ...` for Nextcloud files/calendar operations.\n"
-                "Use `SRO ...` when referring to Server3 Runtime Observer checks/summaries."
+                "Use `SRO ...` for Server3 Runtime Observer status, summaries, snapshot collection, and test alerts."
             )
         )
     )

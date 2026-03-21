@@ -118,6 +118,35 @@ class RuntimeRoutingTests(unittest.TestCase):
         self.assertEqual(result.routed_event, "bridge.browser_brain_keyword_routed")
         self.assertIn("Server3 Browser Brain priority mode is active.", result.prompt_input)
 
+    def test_apply_priority_keyword_routing_rejects_empty_sro_request(self) -> None:
+        config = SimpleNamespace(keyword_routing_enabled=True)
+
+        result = runtime_routing.apply_priority_keyword_routing(
+            config=config,
+            prompt_input="SRO",
+            command=None,
+            chat_id=1,
+        )
+
+        self.assertEqual(result.rejection_reason, "sro_keyword_missing_action")
+        self.assertIn("SRO mode needs an action.", result.rejection_message)
+
+    def test_apply_priority_keyword_routing_routes_sro_requests(self) -> None:
+        config = SimpleNamespace(keyword_routing_enabled=True)
+
+        result = runtime_routing.apply_priority_keyword_routing(
+            config=config,
+            prompt_input="SRO summary 24h",
+            command=None,
+            chat_id=1,
+        )
+
+        self.assertTrue(result.priority_keyword_mode)
+        self.assertTrue(result.stateless)
+        self.assertEqual(result.routed_event, "bridge.sro_keyword_routed")
+        self.assertIn("Server3 Runtime Observer priority mode is active.", result.prompt_input)
+        self.assertIn("runtime_observer_ctl.sh", result.prompt_input)
+
     def test_apply_priority_keyword_routing_routes_youtube_links(self) -> None:
         config = SimpleNamespace(keyword_routing_enabled=True)
 

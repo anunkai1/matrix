@@ -423,10 +423,18 @@ class BrowserBrainService:
             page = self._page_for_payload(payload)
             element = self._resolve_element(page, payload)
             try:
-                element.fill(text, timeout=self.config.action_timeout_ms)
-            except Exception:
+                # Prefer keyboard-driven entry first because many modern React-style
+                # forms discard DOM-level fill() values on rerender or submit.
                 element.click(timeout=self.config.action_timeout_ms)
-                element.type(text, timeout=self.config.action_timeout_ms)
+                page.keyboard.press("Control+A")
+                page.keyboard.press("Backspace")
+                page.keyboard.type(text, delay=20)
+            except Exception:
+                try:
+                    element.fill(text, timeout=self.config.action_timeout_ms)
+                except Exception:
+                    element.click(timeout=self.config.action_timeout_ms)
+                    element.type(text, timeout=self.config.action_timeout_ms)
             self._log_action("act.type", {"tab_id": self._tab_id(page), "ref": payload.get("ref"), "text_length": len(text)})
             return {"tab": self._tab_payload(page), "ref": payload.get("ref"), "ok": True}
 
@@ -439,7 +447,7 @@ class BrowserBrainService:
             if payload.get("ref"):
                 element = self._resolve_element(page, payload)
                 element.focus()
-            page.keyboard.press(key, timeout=self.config.action_timeout_ms)
+            page.keyboard.press(key)
             self._log_action("act.press", {"tab_id": self._tab_id(page), "key": key, "ref": payload.get("ref")})
             return {"tab": self._tab_payload(page), "key": key, "ok": True}
 

@@ -28,6 +28,9 @@ NEXTCLOUD_KEYWORD_HELP_MESSAGE = (
 BROWSER_BRAIN_KEYWORD_HELP_MESSAGE = (
     "Server3 Browser mode needs an action. Example: `Server3 Browser open https://example.com and snapshot the page`."
 )
+SRO_KEYWORD_HELP_MESSAGE = (
+    "SRO mode needs an action. Example: `SRO summary 24h`."
+)
 PREFIX_HELP_MESSAGE = (
     "Helper mode needs a prefixed prompt. Example: `@helper summarize this file`."
 )
@@ -88,6 +91,12 @@ def build_browser_brain_routing_script_allowlist() -> List[str]:
     ]
 
 
+def build_sro_routing_script_allowlist() -> List[str]:
+    return [
+        shared_core_path("ops", "runtime_observer", "runtime_observer_ctl.sh"),
+    ]
+
+
 def assistant_label(config) -> str:
     value = getattr(config, "assistant_name", "").strip()
     return value or "Architect"
@@ -132,6 +141,10 @@ def extract_nextcloud_keyword_request(text: str) -> tuple[bool, str]:
 
 def extract_browser_brain_keyword_request(text: str) -> tuple[bool, str]:
     return extract_keyword_request(text, ["server3 browser", "browser brain"])
+
+
+def extract_sro_keyword_request(text: str) -> tuple[bool, str]:
+    return extract_keyword_request(text, ["sro", "server3 runtime observer", "runtime observer"])
 
 
 def extract_youtube_link_request(text: str) -> tuple[bool, str]:
@@ -214,6 +227,25 @@ def build_browser_brain_keyword_prompt(user_request: str) -> str:
         "- For page interaction, use `open` or `navigate`, then `snapshot`, then act using refs from that snapshot.\n"
         "- Do not guess element targets; use exact snapshot refs for click/type/press actions.\n"
         "- After execution, report exact commands used plus resulting tab_id, snapshot_id, refs, and final URL/title."
+    )
+
+
+def build_sro_keyword_prompt(user_request: str) -> str:
+    scripts = "\n".join(f"- {path}" for path in build_sro_routing_script_allowlist())
+    return (
+        "Server3 Runtime Observer priority mode is active.\n"
+        "Treat this as a Server3 runtime observability request.\n"
+        f"User request: {user_request.strip()}\n\n"
+        "Mandatory execution policy:\n"
+        f"{scripts}\n"
+        "- Prefer runtime_observer_ctl.sh over direct python, systemctl, journalctl, or ad-hoc shell commands for supported observer actions.\n"
+        "- Supported observer commands are: `status`, `summary --hours N`, `collect`, and `notify-test`.\n"
+        "- Use `status` for current health/KPI state.\n"
+        "- Use `summary --hours N` for rolling windows such as 6h, 24h, or 72h.\n"
+        "- Use `notify-test` only when the user explicitly asks to send a runtime observer test alert.\n"
+        "- Use `collect` only when the user explicitly asks to collect and persist a fresh snapshot.\n"
+        "- If the requested observer action is unclear, ask one concise clarification question instead of guessing.\n"
+        "- After execution, report the exact command used and the resulting KPI state or outcome."
     )
 
 

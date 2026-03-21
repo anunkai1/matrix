@@ -52,6 +52,21 @@ class RuntimeProfileTests(unittest.TestCase):
         self.assertIn("browser_brain_ctl.sh", prompt)
         self.assertIn("snapshot", prompt)
 
+    def test_extract_sro_keyword_request_supports_expected_separators(self) -> None:
+        self.assertEqual(
+            runtime_profile.extract_sro_keyword_request("SRO: status"),
+            (True, "status"),
+        )
+        self.assertEqual(
+            runtime_profile.extract_sro_keyword_request("Runtime Observer - summary 24h"),
+            (True, "summary 24h"),
+        )
+
+    def test_sro_prompt_references_wrapper(self) -> None:
+        prompt = runtime_profile.build_sro_keyword_prompt("summary 24h")
+        self.assertIn("runtime_observer_ctl.sh", prompt)
+        self.assertIn("summary --hours N", prompt)
+
     def test_extract_youtube_link_request_detects_watch_urls(self) -> None:
         self.assertEqual(
             runtime_profile.extract_youtube_link_request("https://www.youtube.com/watch?v=yD5DFL3xPmo"),

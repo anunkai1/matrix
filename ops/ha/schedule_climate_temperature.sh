@@ -22,9 +22,12 @@ fi
 usage() {
   cat <<'EOF'
 Usage:
-  schedule_climate_temperature.sh --delay 2h --entity climate.entity_id --temperature 25 [options]
+  schedule_climate_temperature.sh (--in DURATION | --at WHEN) --entity climate.entity_id --temperature 25 [options]
 
 Options:
+  --in DURATION      Relative delay (examples: "5 minutes", "2h", "in 30 seconds")
+  --at WHEN          Absolute time (examples: "07:00", "2026-02-23 19:00", "tomorrow 7am")
+  --delay DURATION   Backward-compatible alias for --in
   --env-file PATH     Env file consumed by set_climate_temperature.sh
                       (default: /etc/default/ha-ops)
   --unit-prefix NAME  Prefix for transient systemd unit names
@@ -34,7 +37,67 @@ Options:
 EOF
 }
 
-delay=""
+trim_value() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+normalize_in_spec() {
+  local spec
+  spec="$(trim_value "$1")"
+  if [[ "$spec" =~ ^[iI][nN][[:space:]]+(.+)$ ]]; then
+    spec="${BASH_REMATCH[1]}"
+  fi
+  trim_value "$spec"
+}
+
+resolve_at_spec() {
+  local spec="$1"
+  local now_epoch
+  local target_epoch
+  local candidate_input
+
+  spec="$(trim_value "$spec")"
+  if [[ -z "$spec" ]]; then
+    echo "[schedule_climate_temperature] --at cannot be empty" >&2
+    return 2
+  fi
+
+  now_epoch="$(date +%s)"
+
+  if [[ "$spec" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$ ]]; then
+    candidate_input="$(date +%F) $spec"
+    target_epoch="$(date -d "$candidate_input" +%s 2>/dev/null || true)"
+    if [[ -z "$target_epoch" ]]; then
+      echo "[schedule_climate_temperature] invalid --at time: $spec" >&2
+      return 2
+    fi
+    if (( target_epoch <= now_epoch )); then
+      target_epoch="$(date -d "$candidate_input +1 day" +%s 2>/dev/null || true)"
+      if [[ -z "$target_epoch" ]]; then
+        echo "[schedule_climate_temperature] could not resolve next day for --at: $spec" >&2
+        return 2
+      fi
+    fi
+  else
+    target_epoch="$(date -d "$spec" +%s 2>/dev/null || true)"
+    if [[ -z "$target_epoch" ]]; then
+      echo "[schedule_climate_temperature] invalid --at value: $spec" >&2
+      return 2
+    fi
+    if (( target_epoch <= now_epoch )); then
+      echo "[schedule_climate_temperature] --at must resolve to a future time: $spec" >&2
+      return 2
+    fi
+  fi
+
+  date -d "@$target_epoch" '+%Y-%m-%d %H:%M:%S'
+}
+
+in_spec=""
+at_spec=""
 entity=""
 temperature=""
 env_file="$DEFAULT_ENV_FILE"
@@ -43,8 +106,16 @@ dry_run="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --in)
+      in_spec="${2:-}"
+      shift 2
+      ;;
+    --at)
+      at_spec="${2:-}"
+      shift 2
+      ;;
     --delay)
-      delay="${2:-}"
+      in_spec="${2:-}"
       shift 2
       ;;
     --entity)
@@ -79,8 +150,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$delay" ]]; then
-  echo "[schedule_climate_temperature] --delay is required" >&2
+if [[ -z "$in_spec" && -z "$at_spec" ]]; then
+  echo "[schedule_climate_temperature] one of --in or --at is required" >&2
+  exit 2
+fi
+
+if [[ -n "$in_spec" && -n "$at_spec" ]]; then
+  echo "[schedule_climate_temperature] use either --in or --at, not both" >&2
   exit 2
 fi
 
@@ -114,9 +190,23 @@ preflight_cmd=("$SET_SCRIPT" --entity "$entity" --temperature "$temperature" --e
 "${preflight_cmd[@]}" >/dev/null
 echo "[schedule_climate_temperature] preflight=ok"
 
-run_output="$(systemd-run --unit "$unit" --on-active="$delay" "${cmd[@]}")"
+if [[ -n "$in_spec" ]]; then
+  in_spec="$(normalize_in_spec "$in_spec")"
+  if [[ -z "$in_spec" ]]; then
+    echo "[schedule_climate_temperature] --in resolved to empty duration" >&2
+    exit 2
+  fi
+  run_output="$(systemd-run --unit "$unit" --on-active="$in_spec" "${cmd[@]}")"
+  trigger_desc="in=$in_spec"
+else
+  on_calendar="$(resolve_at_spec "$at_spec")"
+  run_output="$(systemd-run --unit "$unit" --on-calendar="$on_calendar" "${cmd[@]}")"
+  trigger_desc="at=$on_calendar"
+fi
+
 printf '%s\n' "$run_output"
 
+echo "[schedule_climate_temperature] trigger=$trigger_desc"
 echo "[schedule_climate_temperature] timer_unit=${unit}.timer"
 echo "[schedule_climate_temperature] service_unit=${unit}.service"
 systemctl status "${unit}.timer" --no-pager | sed -n '1,12p'

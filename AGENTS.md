@@ -4,6 +4,7 @@ INSTRUCTIONS:
 1) Read `ARCHITECT_INSTRUCTION.md` first (authoritative execution policy).
 2) Follow the session start checklist defined in `ARCHITECT_INSTRUCTION.md`.
 3) Read `SERVER3_ARCHIVE.md` only when deeper history is needed.
+4) Read `CAPABILITIES.md` when present in the active runtime/project root before making channel, bridge, media, or integration capability assumptions.
 
 Note:
 - `AGENTS.md` is intentionally minimal to avoid duplicated policy text.

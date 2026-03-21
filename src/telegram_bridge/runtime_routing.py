@@ -11,15 +11,18 @@ try:
         HA_KEYWORD_HELP_MESSAGE,
         NEXTCLOUD_KEYWORD_HELP_MESSAGE,
         PREFIX_HELP_MESSAGE,
+        SRO_KEYWORD_HELP_MESSAGE,
         SERVER3_KEYWORD_HELP_MESSAGE,
         build_browser_brain_keyword_prompt,
         build_ha_keyword_prompt,
         build_nextcloud_keyword_prompt,
+        build_sro_keyword_prompt,
         build_server3_keyword_prompt,
         command_bypasses_required_prefix,
         extract_browser_brain_keyword_request,
         extract_ha_keyword_request,
         extract_nextcloud_keyword_request,
+        extract_sro_keyword_request,
         extract_server3_keyword_request,
         extract_youtube_link_request,
     )
@@ -29,15 +32,18 @@ except ImportError:
         HA_KEYWORD_HELP_MESSAGE,
         NEXTCLOUD_KEYWORD_HELP_MESSAGE,
         PREFIX_HELP_MESSAGE,
+        SRO_KEYWORD_HELP_MESSAGE,
         SERVER3_KEYWORD_HELP_MESSAGE,
         build_browser_brain_keyword_prompt,
         build_ha_keyword_prompt,
         build_nextcloud_keyword_prompt,
+        build_sro_keyword_prompt,
         build_server3_keyword_prompt,
         command_bypasses_required_prefix,
         extract_browser_brain_keyword_request,
         extract_ha_keyword_request,
         extract_nextcloud_keyword_request,
+        extract_sro_keyword_request,
         extract_server3_keyword_request,
         extract_youtube_link_request,
     )
@@ -148,6 +154,25 @@ def apply_priority_keyword_routing(
             stateless=True,
             priority_keyword_mode=True,
             routed_event="bridge.browser_brain_keyword_routed",
+        )
+
+    sro_keyword_mode, sro_request = extract_sro_keyword_request(prompt_input)
+    if sro_keyword_mode:
+        if not sro_request.strip():
+            return KeywordRouteResult(
+                prompt_input=prompt_input,
+                command=command,
+                stateless=False,
+                priority_keyword_mode=False,
+                rejection_reason="sro_keyword_missing_action",
+                rejection_message=SRO_KEYWORD_HELP_MESSAGE,
+            )
+        return KeywordRouteResult(
+            prompt_input=build_sro_keyword_prompt(sro_request),
+            command=None,
+            stateless=True,
+            priority_keyword_mode=True,
+            routed_event="bridge.sro_keyword_routed",
         )
 
     nextcloud_keyword_mode, nextcloud_request = extract_nextcloud_keyword_request(prompt_input)
