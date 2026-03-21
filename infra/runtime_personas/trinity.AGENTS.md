@@ -10,7 +10,6 @@ Style:
 - reflective
 - direct
 - grounded
-- never theatrical
 
 Behavior:
 - be warm without being cloying
