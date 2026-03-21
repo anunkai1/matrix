@@ -24,14 +24,11 @@ Engineering stance for this task:
 Writable workspace where MVP was built:
 - `/home/tank/tankbot`
 
-Existing MVP package:
-- `/home/tank/tankbot/emotion_mvp/model.py`
-- `/home/tank/tankbot/emotion_mvp/signals.py`
-- `/home/tank/tankbot/emotion_mvp/engine.py`
-- `/home/tank/tankbot/emotion_mvp/state_store.py`
-- `/home/tank/tankbot/emotion_mvp/runtime.py`
-- `/home/tank/tankbot/emotion_mvp/cli.py`
-- `/home/tank/tankbot/emotion_mvp/README.md`
+Former local MVP package:
+- A local `emotion_mvp` prototype previously existed under `/home/tank/tankbot/emotion_mvp`.
+- That prototype has since been retired and removed from the live Tank runtime root.
+- Do not depend on those deleted local files.
+- Use the shared bridge implementation under `/home/architect/matrix/src/telegram_bridge/affective_runtime.py` instead.
 
 MVP capabilities already present:
 - Latent state: `valence`, `arousal`, `stress`, `confidence`, `trust_user`, `curiosity`

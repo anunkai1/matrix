@@ -245,13 +245,10 @@ Ok yeah let's start it and think about it deeply
 Implemented. I started an end-to-end MVP for a computer-grounded “feelings” layer you can iterate on now.
 
 What’s ready:
-- State model: [`model.py`](/home/tank/tankbot/emotion_mvp/model.py)
-- Machine signal collector: [`signals.py`](/home/tank/tankbot/emotion_mvp/signals.py)
-- Emotion update engine (deterministic + decay): [`engine.py`](/home/tank/tankbot/emotion_mvp/engine.py)
-- Runnable simulator CLI: [`cli.py`](/home/tank/tankbot/emotion_mvp/cli.py)
-- Usage + next-iteration notes: [`README.md`](/home/tank/tankbot/emotion_mvp/README.md)
+- A local `emotion_mvp` prototype package was created at the time of this exchange.
+- That prototype was later retired and removed from the live Tank runtime root after the shared bridge gained its own affective runtime support.
 
-I verified it runs end-to-end with:
+At the time, it was verified end to end with:
 `python3 -m emotion_mvp.cli --steps 3 --interval 0.1 --task-success 0.4 --user-feedback 0.2 --no-ping`
 
 This gives per-step JSON of:
