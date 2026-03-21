@@ -155,7 +155,7 @@ Main docs:
 
 Use Govorun when you want:
 - WhatsApp chat handling
-- the Russian-speaking persona workflow
+- an isolated WhatsApp persona workflow with its own runtime-local language/policy
 - daily WhatsApp uplift message automation
 
 ### Other Sibling Runtimes
