@@ -295,7 +295,7 @@ Use it when you want:
 ### Source-of-truth repo
 
 - This repo, `/home/architect/matrix`, is the source-of-truth definition set.
-- It contains code, service units, env templates, runbooks, ops scripts, and target-state docs.
+- It contains code, service units, env templates, runbooks, ops scripts, target-state docs, canonical runtime personas under `infra/runtime_personas`, and canonical companion runtime docs under `docs/runtime_docs`.
 
 ### Deployed runtime roots
 
@@ -312,6 +312,8 @@ Server3 now uses one shared bridge core in `/home/architect/matrix` plus per-run
 - Mavali ETH: `/home/mavali_eth/mavali_ethbot` (overlay root with wallet-first engine plugin)
 - Macrorayd: `/home/macrorayd/macroraydbot` (overlay root)
 - Browser Brain: `/home/browser_brain/browserbrain` (dedicated local browser-control service root)
+
+For the repo-backed runtimes, the live `AGENTS.md` files and selected companion docs in those runtime roots are symlinked back to the canonical copies in `matrix`. Verify that wiring with `bash /home/architect/matrix/ops/runtime_personas/check_runtime_repo_links.sh`.
 
 ### Secrets
 

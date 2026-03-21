@@ -37,9 +37,12 @@ Source-of-truth repository for Server3 automation and operations. The current pr
   - Telegram bridge modules now split into `main.py` (bootstrap/poll loop), `runtime_paths.py`, `runtime_config.py`, `runtime_profile.py`, `runtime_routing.py`, `handlers.py`, `transport.py`, `executor.py`, `state_store.py`, `session_manager.py`, `media.py`, `memory_engine.py`
   - Shared-memory CLI wrapper: `src/architect_cli/main.py`
 - `infra/` source-of-truth mirrors for live server state (systemd units, env templates, managed shell profile content)
+  - `infra/runtime_personas/` canonical runtime `AGENTS.md` personas for repo-backed runtimes
 - `ops/` apply/rollback/restart/status scripts for live rollout
   - `ops/runtime_overlays/sync_server3_runtime_overlays.py` installs thin per-runtime overlay shims over the shared bridge core
+  - `ops/runtime_personas/check_runtime_repo_links.sh` verifies that live runtime doc links still point at the canonical repo copies
 - `docs/` operator runbooks
+  - `docs/runtime_docs/` canonical companion runtime docs consumed from live runtime roots via symlinks
 - `logs/` repo-tracked execution/change records
 - `SERVER3_SUMMARY.md` summary-first session context log
 - `SERVER3_ARCHIVE.md` canonical long-term archive index
@@ -118,6 +121,7 @@ bash src/telegram_bridge/smoke_test.sh
 ## Change Control Rules
 
 - This repo is the single source of truth.
+- Runtime personas and tracked runtime companion docs now follow the same rule: edit the repo copy, not the live runtime path.
 - Non-exempt change sets are GitHub-traceable through commit + push.
 - Policy details (approval, exemptions, verification, proof requirements) are defined in `ARCHITECT_INSTRUCTION.md`.
 
@@ -152,6 +156,7 @@ bash src/telegram_bridge/smoke_test.sh
 - `docs/telegram-bridge-debug-checklist.md`
 - `docs/runbooks/whatsapp-govorun-operations.md`
 - `docs/runbooks/oracle-signal-operations.md`
+- `docs/runbooks/runtime-doc-source-of-truth.md`
 - `docs/server-setup.md`
 - `SERVER3_SUMMARY.md`
 - `SERVER3_ARCHIVE.md`

@@ -2,6 +2,19 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-22 (Runtime Doc Source-Of-Truth Migration)
+
+Summary:
+- Completed the Server3 runtime-doc migration so tracked runtime persona files now live canonically in `infra/runtime_personas` and tracked companion runtime docs now live canonically in `docs/runtime_docs`.
+- Wired the live runtime roots for AgentSmith, Tank, Trinity, Govorun, Oracle, Mavali ETH, and Macrorayd back to those repo copies through symlinks.
+- Added `ops/runtime_personas/check_runtime_repo_links.sh` plus `docs/runbooks/runtime-doc-source-of-truth.md` so both humans and LLMs have one canonical verification path.
+- Pruned the temporary `*.pre-repo-link` rollback files after verification passed.
+- Deleted Tank's retired local `emotion_mvp` prototype and removed the stale repo references after confirming the live Tank runtime was not using it.
+
+Notes:
+- This change intentionally did not move secrets, `.local/state` runtime data, caches, attachments, or live sqlite databases into git.
+- The repo is now the canonical source for tracked runtime policy/docs; live runtime roots remain deployment paths only.
+
 ## 2026-03-20 (Summary Roll-Forward Trim for Mental Model Topology Tightening)
 
 Summary:
