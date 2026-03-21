@@ -5,7 +5,6 @@ mappings=(
   "/home/agentsmith/agentsmithbot/AGENTS.md|/home/architect/matrix/infra/runtime_personas/agentsmith.AGENTS.md"
   "/home/agentsmith/agentsmithbot/AGENTSMITH_INSTRUCTION.md|/home/architect/matrix/docs/runtime_docs/agentsmith/AGENTSMITH_INSTRUCTION.md"
   "/home/agentsmith/agentsmithbot/AGENTSMITH_SUMMARY.md|/home/architect/matrix/docs/runtime_docs/agentsmith/AGENTSMITH_SUMMARY.md"
-  "/home/agentsmith/agentsmithbot/CAPABILITIES.md|/home/architect/matrix/docs/runtime_docs/agentsmith/CAPABILITIES.md"
   "/home/agentsmith/agentsmithbot/LESSONS.md|/home/architect/matrix/docs/runtime_docs/agentsmith/LESSONS.md"
   "/home/agentsmith/agentsmithbot/private/SOUL.md|/home/architect/matrix/docs/runtime_docs/agentsmith/private/SOUL.md"
   "/home/tank/tankbot/AGENTS.md|/home/architect/matrix/infra/runtime_personas/tank.AGENTS.md"

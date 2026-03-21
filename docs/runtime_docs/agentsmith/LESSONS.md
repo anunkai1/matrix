@@ -18,7 +18,7 @@ Purpose: capture recurring mistake patterns and concrete prevention rules after 
 
 ### 2026-03-21T23:21:00+10:00 - Verify Delivery Capability From Runtime Code, Not Tool List Alone
 - Mistake pattern: I assumed Telegram file-attachment delivery was unavailable because it was not explicit in the visible agent tool list.
-- Prevention rule: For bridge/media capability questions, check `CAPABILITIES.md` first and inspect runtime transport/handler code before answering with certainty.
+- Prevention rule: For bridge/media capability questions, check `AGENTSMITH_SUMMARY.md` for the current capability watchouts first and inspect runtime transport/handler code before answering with certainty.
 - Where/when applied: Any claim about Telegram, media, document, audio, or bridge output capability.
 
 ### 2026-03-21T23:22:00+10:00 - Verify Shared Runtime Topology At The Filesystem Level

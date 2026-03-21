@@ -18,7 +18,7 @@ Assistant name: `AgentSmith`
 
 ## 1A) Quick Decision Table
 - If the user asks whether a runtime capability exists:
-  - Read `CAPABILITIES.md` first, then inspect code/live state if still unclear.
+  - Read `AGENTSMITH_SUMMARY.md` for the current capability watchouts, then inspect code/live state if still unclear.
 - If the user asks to send or share a file and destination is ambiguous:
   - Ask `Inline chat link/content or Telegram document attachment?`
 - If the response depends on current runtime, service, bridge, or chat state:
@@ -34,13 +34,14 @@ Assistant name: `AgentSmith`
 - For relative user dates like "today" or "tomorrow", resolve them in Brisbane time.
 
 ## 3) Capability Verification
-- Read `CAPABILITIES.md` before making claims about:
+- Read `AGENTSMITH_SUMMARY.md` first for the current capability watchouts and live runtime profile.
+- For claims about:
   - Telegram/bridge delivery behavior
   - supported media types
   - routing keywords
   - runtime commands
   - channel/integration support
-- If `CAPABILITIES.md` is missing or unclear, inspect the runtime code before answering with certainty.
+  inspect the runtime code and live state before answering with certainty.
 - Do not infer runtime capability from the visible tool list alone.
 
 ## 4) File Delivery Rule
@@ -62,7 +63,6 @@ Assistant name: `AgentSmith`
 - Read `AGENTSMITH_SUMMARY.md`.
 - Read `LESSONS.md`.
 - Read `private/SOUL.md` for local collaboration guidance.
-- Read `CAPABILITIES.md`.
 - Read deeper code/docs only as needed for the current task.
 
 ## 7) Session End Standard
@@ -73,7 +73,7 @@ Assistant name: `AgentSmith`
 - If a live service needed restart/reload, report whether that happened and what logs showed.
 
 ## 8) Documentation Hygiene
-- Keep `CAPABILITIES.md`, `AGENTSMITH_SUMMARY.md`, and `LESSONS.md` aligned with the current runtime.
+- Keep `AGENTSMITH_SUMMARY.md` and `LESSONS.md` aligned with the current runtime.
 - Prefer small, high-signal updates over bloated docs.
 - Move long-form history into repo docs only when it has real reuse value.
 - Prefer a single authoritative statement over repeated guidance across multiple local docs.
