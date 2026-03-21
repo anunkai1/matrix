@@ -7,7 +7,8 @@
 - Signal transport root: `/home/oracle/signal-oracle`
 - Oracle bridge root: `/home/oracle/oraclebot`
 - Oracle bridge workspace layout is intentionally minimal:
-  - `/home/oracle/oraclebot/AGENTS.md` is the Oracle persona/identity truth file
+  - `/home/oracle/oraclebot/AGENTS.md` is the live Oracle persona path
+  - the canonical tracked Oracle persona file lives at `/home/architect/matrix/infra/runtime_personas/oracle.AGENTS.md`
   - `/home/oracle/oraclebot/src/telegram_bridge/` contains thin shared-core overlay entrypoints
   - shared bridge implementation lives in `/home/architect/matrix/src/telegram_bridge`
 
@@ -56,11 +57,12 @@
 
 ## Operational notes
 - Use a dedicated Signal account/device for Oracle. Do not reuse a personal Signal account.
-- `ops/signal_oracle/deploy_bridge.sh` syncs the Signal transport app plus the Oracle overlay shims, and preserves the existing Oracle `AGENTS.md`.
+- `ops/signal_oracle/deploy_bridge.sh` syncs the Signal transport app plus the Oracle overlay shims, and preserves the existing Oracle `AGENTS.md` live path so it can continue pointing at the canonical repo persona file.
 - `ops/signal_oracle/install_user_service.sh` installs a least-privilege sudoers rule so Oracle can run in-chat `/restart` against `oracle-signal-bridge.service` only.
 - `ops/signal_oracle/start_service.sh` now fails fast if `/home/oracle/.codex/auth.json` is missing.
 - `oracle-signal-bridge.service` now waits for the local Signal transport `/health` endpoint before its Python bridge starts, which prevents boot-time `Connection refused` churn when the transport is still warming up.
 - `TELEGRAM_RUNTIME_ROOT=/home/oracle/oraclebot` and `TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix` are now carried in the unit so policy/runtime identity stays separate from the shared code root.
+- Verify the live Oracle runtime doc link wiring with `bash /home/architect/matrix/ops/runtime_personas/check_runtime_repo_links.sh`.
 - Signal message edits are not supported in v1. The bridge uses a single progress message plus typing updates.
 - Signal voice-note transcription uses Oracle's own faster-whisper runtime under `/home/oracle/.local/share/telegram-voice/venv` and the shared script `/home/architect/matrix/ops/telegram-voice/transcribe_voice.sh`.
 - Recommended Oracle Signal voice defaults on Server3:
