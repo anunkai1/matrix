@@ -25,7 +25,7 @@ Writable workspace where MVP was built:
 - `/home/tank/tankbot`
 
 Former local MVP package:
-- A local `emotion_mvp` prototype previously existed under `/home/tank/tankbot/emotion_mvp`.
+- A local `emotion_mvp` prototype previously existed in the Tank runtime root.
 - That prototype has since been retired and removed from the live Tank runtime root.
 - Do not depend on those deleted local files.
 - Use the shared bridge implementation under `/home/architect/matrix/src/telegram_bridge/affective_runtime.py` instead.
