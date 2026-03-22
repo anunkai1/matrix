@@ -4,13 +4,15 @@ on:
   push:
     paths:
       - "src/telegram_bridge/**"
-      - "tests/**"
+      - "src/architect_cli/**"
+      - "tests/telegram_bridge/**"
       - "pyproject.toml"
       - ".github/workflows/telegram-bridge-ci.yml"
   pull_request:
     paths:
       - "src/telegram_bridge/**"
-      - "tests/**"
+      - "src/architect_cli/**"
+      - "tests/telegram_bridge/**"
       - "pyproject.toml"
       - ".github/workflows/telegram-bridge-ci.yml"
 
@@ -47,7 +49,7 @@ jobs:
 
       - name: Unit tests
         run: |
-          coverage run -m unittest discover -s tests -p 'test_*.py'
+          coverage run -m unittest discover -s tests/telegram_bridge -p 'test_*.py'
           coverage report -m
 
       - name: Self-test and smoke test
