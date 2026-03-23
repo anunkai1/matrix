@@ -1427,6 +1427,22 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIsNone(voice_file_id)
         self.assertIsNone(document)
 
+    def test_extract_prompt_and_media_collects_whatsapp_flat_photo_ids(self):
+        prompt, photo_file_ids, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+            {
+                "caption": "Please analyze these images.",
+                "photo": [
+                    {"file_id": "wa-p1", "file_size": 100, "mime_type": "image/jpeg"},
+                    {"file_id": "wa-p2", "file_size": 120, "mime_type": "image/jpeg"},
+                    {"file_id": "wa-p3", "file_size": 140, "mime_type": "image/jpeg"},
+                ],
+            }
+        )
+        self.assertEqual(prompt, "Please analyze these images.")
+        self.assertEqual(photo_file_ids, ["wa-p1", "wa-p2", "wa-p3"])
+        self.assertIsNone(voice_file_id)
+        self.assertIsNone(document)
+
     def test_collapse_media_group_updates_merges_album_messages(self):
         updates = [
             {
@@ -2291,6 +2307,34 @@ class BridgeCoreTests(unittest.TestCase):
         kwargs = start_message_worker.call_args.kwargs
         self.assertEqual(kwargs["prompt"], "photo caption")
         self.assertEqual(kwargs["photo_file_id"], "photo-1")
+        self.assertIsNone(kwargs["voice_file_id"])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_whatsapp_multi_photo_payload_keeps_all_photos(self, start_message_worker):
+        state = bridge.State()
+        client = FakeTelegramClient(channel_name="whatsapp")
+        config = make_config(channel_plugin="whatsapp")
+        update = {
+            "update_id": 152,
+            "message": {
+                "message_id": 252,
+                "chat": {"id": 1},
+                "caption": "Please analyze these images.",
+                "photo": [
+                    {"file_id": "wa-photo-1", "file_size": 101, "mime_type": "image/jpeg"},
+                    {"file_id": "wa-photo-2", "file_size": 102, "mime_type": "image/jpeg"},
+                    {"file_id": "wa-photo-3", "file_size": 103, "mime_type": "image/jpeg"},
+                ],
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertEqual(kwargs["prompt"], "Please analyze these images.")
+        self.assertEqual(kwargs["photo_file_id"], "wa-photo-1")
+        self.assertEqual(kwargs["photo_file_ids"], ["wa-photo-1", "wa-photo-2", "wa-photo-3"])
         self.assertIsNone(kwargs["voice_file_id"])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")

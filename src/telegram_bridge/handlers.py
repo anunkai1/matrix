@@ -965,6 +965,28 @@ def pick_largest_photo_file_id(photo_items: List[object]) -> Optional[str]:
     return best_file_id
 
 
+def extract_discrete_photo_file_ids(photo_items: List[object]) -> List[str]:
+    has_transport_descriptors = any(
+        isinstance(item, dict) and isinstance(item.get("mime_type"), str) and item.get("mime_type", "").strip()
+        for item in photo_items
+    )
+    if not has_transport_descriptors:
+        return []
+
+    photo_file_ids: List[str] = []
+    for item in photo_items:
+        if not isinstance(item, dict):
+            continue
+        file_id = item.get("file_id")
+        if not isinstance(file_id, str):
+            continue
+        normalized = file_id.strip()
+        if not normalized or normalized in photo_file_ids:
+            continue
+        photo_file_ids.append(normalized)
+    return photo_file_ids
+
+
 def normalize_optional_text(value: object) -> Optional[str]:
     if not isinstance(value, str):
         return None
@@ -1127,6 +1149,12 @@ def extract_message_photo_file_ids(message: Dict[str, object]) -> List[str]:
     for candidate in iter_media_group_messages(message):
         photo_items = candidate.get("photo")
         if not isinstance(photo_items, list) or not photo_items:
+            continue
+        discrete_photo_file_ids = extract_discrete_photo_file_ids(photo_items)
+        if discrete_photo_file_ids:
+            for file_id in discrete_photo_file_ids:
+                if file_id not in photo_file_ids:
+                    photo_file_ids.append(file_id)
             continue
         file_id = pick_largest_photo_file_id(photo_items)
         if not file_id or file_id in photo_file_ids:
