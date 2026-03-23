@@ -13,8 +13,7 @@ function isPhotoBatchablePayload(payload) {
   return true;
 }
 
-function buildIncomingPhotoBatchKey(chatJid, payload, senderKey = '', chatType = 'private') {
-  if (!isPhotoBatchablePayload(payload)) return '';
+function buildIncomingPhotoBatchContextKey(chatJid, senderKey = '', chatType = 'private') {
   const normalizedChatJid = String(chatJid || '').trim();
   if (!normalizedChatJid) return '';
   if (String(chatType || '').trim().toLowerCase() !== 'group') {
@@ -22,6 +21,11 @@ function buildIncomingPhotoBatchKey(chatJid, payload, senderKey = '', chatType =
   }
   const normalizedSenderKey = normalizeBatchSenderKey(senderKey) || normalizedChatJid;
   return `${normalizedChatJid}::${normalizedSenderKey}`;
+}
+
+function buildIncomingPhotoBatchKey(chatJid, payload, senderKey = '', chatType = 'private') {
+  if (!isPhotoBatchablePayload(payload)) return '';
+  return buildIncomingPhotoBatchContextKey(chatJid, senderKey, chatType);
 }
 
 function mergePhotoPayload(basePayload, nextPayload) {
@@ -118,4 +122,72 @@ export class IncomingPhotoBatcher {
   }
 }
 
-export { buildIncomingPhotoBatchKey, clonePayload, isPhotoBatchablePayload, mergePhotoPayload };
+export class IncomingEnvelopeBatcher {
+  constructor({ emit, quietWindowMs = 1500 } = {}) {
+    if (typeof emit !== 'function') {
+      throw new Error('emit callback is required');
+    }
+    this.emit = emit;
+    this.quietWindowMs = Math.max(0, Number(quietWindowMs) || 0);
+    this.pending = new Map();
+  }
+
+  _schedule(batchKey) {
+    const entry = this.pending.get(batchKey);
+    if (!entry) return;
+    if (entry.timer) {
+      clearTimeout(entry.timer);
+    }
+    entry.timer = setTimeout(() => {
+      void Promise.resolve(this.flush(batchKey));
+    }, this.quietWindowMs);
+    if (typeof entry.timer.unref === 'function') {
+      entry.timer.unref();
+    }
+  }
+
+  push(batchKey, envelope) {
+    if (!batchKey) {
+      void Promise.resolve(this.emit([envelope]));
+      return;
+    }
+
+    const existing = this.pending.get(batchKey);
+    if (!existing) {
+      this.pending.set(batchKey, {
+        envelopes: [envelope],
+        timer: null,
+      });
+      this._schedule(batchKey);
+      return;
+    }
+
+    existing.envelopes.push(envelope);
+    this._schedule(batchKey);
+  }
+
+  async flush(batchKey) {
+    const entry = this.pending.get(batchKey);
+    if (!entry) return false;
+    if (entry.timer) {
+      clearTimeout(entry.timer);
+    }
+    this.pending.delete(batchKey);
+    await this.emit(entry.envelopes);
+    return true;
+  }
+
+  async flushAll() {
+    for (const batchKey of [...this.pending.keys()]) {
+      await this.flush(batchKey);
+    }
+  }
+}
+
+export {
+  buildIncomingPhotoBatchContextKey,
+  buildIncomingPhotoBatchKey,
+  clonePayload,
+  isPhotoBatchablePayload,
+  mergePhotoPayload
+};

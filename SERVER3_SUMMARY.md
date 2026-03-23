@@ -52,6 +52,7 @@ Last updated: 2026-03-24 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-24: fixed Govorun WhatsApp multi-photo batching at the actual ingress bottleneck by buffering raw inbound photo messages before media download and only materializing/merging payloads once per quiet-window batch, eliminating the serial per-image download gap that was still splitting one WhatsApp photo send into separate `chat_busy` requests.
 - 2026-03-24: narrowed Govorun WhatsApp photo batch identity again so private-chat photo batches merge by chat rather than by sender identity, avoiding PN/LID sender-id churn in WhatsApp MD that was still splitting one DM photo send into separate `chat_busy` updates.
 - 2026-03-24: taught the shared Python bridge to detect mid-run HTTP queue counter rollbacks and reset its saved offset when the WhatsApp transport starts numbering fresh updates from a lower id, preventing the bridge from going blind to new messages after a transport restart.
 - 2026-03-24: fixed Govorun WhatsApp photo batching again by deriving inbound photo batch keys from stable raw WhatsApp sender ids rather than variable display-name fields, so multi-photo sends in the same chat stop splitting into separate `chat_busy` requests.

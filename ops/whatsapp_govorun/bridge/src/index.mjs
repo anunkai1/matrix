@@ -23,7 +23,11 @@ import {
   parseInteger,
   readEnvFromFile
 } from './common.mjs';
-import { buildIncomingPhotoBatchKey, IncomingPhotoBatcher } from './inbound_batcher.mjs';
+import {
+  buildIncomingPhotoBatchContextKey,
+  IncomingEnvelopeBatcher,
+  mergePhotoPayload
+} from './inbound_batcher.mjs';
 import { createLogger } from './logger.mjs';
 
 const localEnv = readEnvFromFile(path.join(process.cwd(), '.env'));
@@ -79,8 +83,8 @@ const MIME_BY_EXTENSION = new Map([
 ]);
 
 cleanupFilesDirOnStartup();
-const incomingPhotoBatcher = new IncomingPhotoBatcher({
-  emit: pushUpdate,
+const incomingPhotoBatcher = new IncomingEnvelopeBatcher({
+  emit: emitIncomingPhotoBatch,
   quietWindowMs: INBOUND_PHOTO_BATCH_QUIET_WINDOW_MS
 });
 
@@ -513,6 +517,23 @@ function collectUpdates(offset, limit) {
   return updateQueue.filter((entry) => entry.update_id >= offset).slice(0, limit);
 }
 
+async function emitIncomingPhotoBatch(envelopes) {
+  let mergedPayload = null;
+  for (const envelope of envelopes || []) {
+    if (!envelope || typeof envelope !== 'object') continue;
+    const payload = await buildIncomingMessagePayload(
+      envelope.sock,
+      envelope.msg,
+      envelope.chatJid
+    );
+    if (!payload) continue;
+    mergedPayload = mergedPayload ? mergePhotoPayload(mergedPayload, payload) : payload;
+  }
+  if (mergedPayload) {
+    pushUpdate(mergedPayload);
+  }
+}
+
 function waitForUpdates(offset, timeoutMs) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
@@ -764,18 +785,23 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
 }
 
 async function enqueueIncomingUpdate(sock, msg, chatJid) {
-  const payload = await buildIncomingMessagePayload(sock, msg, chatJid);
-  if (!payload) return;
-  const chatType = String(payload.chat?.type || 'private').trim().toLowerCase();
-  incomingPhotoBatcher.push(
-    buildIncomingPhotoBatchKey(
-      chatJid,
-      payload,
-      buildIncomingSenderKey(msg, chatJid),
-      chatType
-    ),
-    payload
+  const message = extractNormalizedMessageContent(msg);
+  const chatType = chatJid.endsWith('@g.us') ? 'group' : 'private';
+  const batchKey = buildIncomingPhotoBatchContextKey(
+    chatJid,
+    buildIncomingSenderKey(msg, chatJid),
+    chatType
   );
+  if (message.imageMessage) {
+    incomingPhotoBatcher.push(batchKey, { sock, msg, chatJid });
+    return;
+  }
+
+  await incomingPhotoBatcher.flush(batchKey);
+  const payload = await buildIncomingMessagePayload(sock, msg, chatJid);
+  if (payload) {
+    pushUpdate(payload);
+  }
 }
 
 function sendJson(res, status, payload) {

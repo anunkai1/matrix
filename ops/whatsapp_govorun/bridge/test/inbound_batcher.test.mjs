@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildIncomingPhotoBatchContextKey,
   buildIncomingPhotoBatchKey,
+  IncomingEnvelopeBatcher,
   IncomingPhotoBatcher,
   isPhotoBatchablePayload,
   mergePhotoPayload
@@ -69,6 +71,16 @@ test('buildIncomingPhotoBatchKey uses chat-only key for private chats', () => {
   assert.equal(batchKey, '61400000000@s.whatsapp.net::dm');
 });
 
+test('buildIncomingPhotoBatchContextKey uses chat-only key for private chats', () => {
+  const batchKey = buildIncomingPhotoBatchContextKey(
+    '61400000000@s.whatsapp.net',
+    '177816645709939:1@lid',
+    'private'
+  );
+
+  assert.equal(batchKey, '61400000000@s.whatsapp.net::dm');
+});
+
 test('IncomingPhotoBatcher emits one merged payload for a photo batch', () => {
   const emitted = [];
   const batcher = new IncomingPhotoBatcher({
@@ -115,4 +127,19 @@ test('IncomingPhotoBatcher flushes pending photo batch before non-photo payload'
   assert.equal(emitted.length, 2);
   assert.deepEqual(emitted[0].photo.map((item) => item.file_id), ['p1']);
   assert.equal(emitted[1].text, 'follow-up text');
+});
+
+test('IncomingEnvelopeBatcher groups envelopes under one batch key', async () => {
+  const emitted = [];
+  const batcher = new IncomingEnvelopeBatcher({
+    emit: async (envelopes) => emitted.push(envelopes.map((item) => item.id)),
+    quietWindowMs: 50
+  });
+
+  batcher.push('chat-1::dm', { id: 'm1' });
+  batcher.push('chat-1::dm', { id: 'm2' });
+
+  assert.equal(emitted.length, 0);
+  await batcher.flush('chat-1::dm');
+  assert.deepEqual(emitted, [['m1', 'm2']]);
 });
