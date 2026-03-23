@@ -52,6 +52,7 @@ Last updated: 2026-03-23 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-23: linked `/home/architect/.codex/auth.json` to the canonical shared auth file at `/etc/server3-codex/auth.json`, so future `codex login` refreshes under the `architect` shell now automatically update the same ChatGPT account used by the trusted bot runtimes.
 - 2026-03-23: refreshed the canonical shared Codex auth file at `/etc/server3-codex/auth.json` from Architect's current ChatGPT login, so trusted runtime users linked through the shared auth path now execute against the same OpenAI account as the active `architect` shell login.
 - 2026-03-23: hardened `mavali_eth` execution security by binding staged actions to the Telegram owner chat, adding 3-character confirmation tokens, threading Telegram actor ids through the bridge adapter, enforcing executor-side gas-cap policy, failing closed on missing/mismatched wallet keystores, and hardening local SQLite state/journal persistence.
 - 2026-03-23: completed the remaining `mavali_eth` elegance backlog by adding shared formatting utilities, splitting parsing into domain modules behind a stable `parsing.py` facade, breaking Uniswap/CowSwap handlers into clearer preview vs execution internals, and extracting Polymarket query rendering into `polymarket_formatters.py`.
@@ -59,7 +60,6 @@ Last updated: 2026-03-23 (AEST, +10:00)
 - 2026-03-23: extracted `mavali_eth` dependency assembly into `service_dependencies.py`, so `service.py` now initializes from a single wiring bundle instead of constructing every client, handler, and monitor inline.
 - 2026-03-23: extracted `mavali_eth` wallet bootstrap, keystore materialization, chain-id verification, and current-message normalization into a dedicated `service_runtime.py` helper, so `service.py` no longer owns that leftover runtime subsystem directly.
 - 2026-03-23: extracted `mavali_eth` pending-action confirmation dispatch and inbound transfer polling into dedicated `confirmation_router.py` and `inbound_monitor.py` modules, so `service.py` no longer carries those remaining generic control-flow loops inline.
-- 2026-03-23: extracted `mavali_eth` prompt routing into a dedicated `prompt_router.py` helper so `service.py` now acts much more like a thin coordinator instead of carrying the entire command parser chain inline.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
