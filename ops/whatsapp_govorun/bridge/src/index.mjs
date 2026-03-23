@@ -23,6 +23,7 @@ import {
   parseInteger,
   readEnvFromFile
 } from './common.mjs';
+import { IncomingPhotoBatcher } from './inbound_batcher.mjs';
 import { createLogger } from './logger.mjs';
 
 const localEnv = readEnvFromFile(path.join(process.cwd(), '.env'));
@@ -58,6 +59,7 @@ let activeSock = null;
 let apiServer = null;
 let storedFilesCleanupTimer = null;
 const OUTBOUND_MEDIA_TYPES = new Set(['photo', 'audio', 'voice', 'document']);
+const INBOUND_PHOTO_BATCH_QUIET_WINDOW_MS = 1500;
 const MIME_BY_EXTENSION = new Map([
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
@@ -77,6 +79,10 @@ const MIME_BY_EXTENSION = new Map([
 ]);
 
 cleanupFilesDirOnStartup();
+const incomingPhotoBatcher = new IncomingPhotoBatcher({
+  emit: pushUpdate,
+  quietWindowMs: INBOUND_PHOTO_BATCH_QUIET_WINDOW_MS
+});
 
 function shouldHandleChat(jid, isGroup, chatId = null) {
   // Apply numeric chat-id allowlist to groups only. DMs are controlled via
@@ -494,6 +500,15 @@ function pushUpdate(messagePayload) {
   }
 }
 
+function buildIncomingBatchKey(chatJid, payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  if (!Array.isArray(payload.photo) || payload.photo.length === 0) return '';
+  if (payload.voice || payload.document) return '';
+  const sender = String(payload.from?.username || chatJid || '').trim();
+  if (!sender) return '';
+  return `${chatJid}::${sender}`;
+}
+
 function collectUpdates(offset, limit) {
   return updateQueue.filter((entry) => entry.update_id >= offset).slice(0, limit);
 }
@@ -751,7 +766,7 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
 async function enqueueIncomingUpdate(sock, msg, chatJid) {
   const payload = await buildIncomingMessagePayload(sock, msg, chatJid);
   if (!payload) return;
-  pushUpdate(payload);
+  incomingPhotoBatcher.push(buildIncomingBatchKey(chatJid, payload), payload);
 }
 
 function sendJson(res, status, payload) {

@@ -145,7 +145,7 @@
   - `text`: plain text message body only (no media caption overloading).
   - `caption`: media caption when present.
   - `reply_to_message`: quoted/replied message context when available (for example original `text` and sender).
-  - `photo`: Telegram-compatible list with `file_id` (+ size metadata).
+  - `photo`: Telegram-compatible list with one or more `file_id` entries (+ size metadata). WhatsApp multi-image sends are batched into a single update after a short quiet window on the Node ingress side.
   - `voice`: object with `file_id` for PTT voice notes only.
   - `document`: object with `file_id`, `file_name`, `mime_type` for files and non-PTT audio.
 - File indirection:

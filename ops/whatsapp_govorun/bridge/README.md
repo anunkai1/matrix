@@ -25,7 +25,9 @@ Matrix-managed runtime component that links WhatsApp messages to Codex execution
 - `GET /files/content?file_path=<token>`
 
 `GET /updates` message objects include normalized fields such as `text`, `caption`, media objects,
-and `reply_to_message` (quoted-message context) when available.
+and `reply_to_message` (quoted-message context) when available. For inbound photo albums, plugin mode
+batches consecutive WhatsApp photo messages from the same sender/chat into one update with a `photo`
+list after a short quiet window.
 
 Outbound `POST /messages` and `POST /media` accept optional `reply_to_message_id` and
 use best-effort quoted replies when source message metadata is available.

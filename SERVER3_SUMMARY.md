@@ -52,6 +52,7 @@ Last updated: 2026-03-23 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-23: taught the Govorun WhatsApp plugin ingress to batch consecutive inbound photo messages from the same sender/chat into one multi-image update with a short quiet window, aligning WhatsApp photo albums with the shared Python multi-image path and updating the Govorun runbook/bridge README to match.
 - 2026-03-23: hardened Architect Telegram album handling again by buffering `media_group_id` photo batches across poll cycles with a short quiet-window flush, so 3/5/6/10-photo sends no longer depend on all album items landing in the same `getUpdates` response.
 - 2026-03-23: taught the Architect Telegram bridge to collapse `media_group_id` albums into one request and carry multiple photo attachments through to Codex, so album-style image batches no longer fall into the per-chat busy guard after the first photo.
 - 2026-03-23: linked `/home/architect/.codex/auth.json` to the canonical shared auth file at `/etc/server3-codex/auth.json`, so future `codex login` refreshes under the `architect` shell now automatically update the same ChatGPT account used by the trusted bot runtimes.
@@ -59,7 +60,6 @@ Last updated: 2026-03-23 (AEST, +10:00)
 - 2026-03-23: hardened `mavali_eth` execution security by binding staged actions to the Telegram owner chat, adding 3-character confirmation tokens, threading Telegram actor ids through the bridge adapter, enforcing executor-side gas-cap policy, failing closed on missing/mismatched wallet keystores, and hardening local SQLite state/journal persistence.
 - 2026-03-23: completed the remaining `mavali_eth` elegance backlog by adding shared formatting utilities, splitting parsing into domain modules behind a stable `parsing.py` facade, breaking Uniswap/CowSwap handlers into clearer preview vs execution internals, and extracting Polymarket query rendering into `polymarket_formatters.py`.
 - 2026-03-23: consolidated repeated `mavali_eth` core wallet gas-estimation, pending-envelope creation, and confirmation-message scaffolding inside `core_wallet_actions.py`, reducing local duplication without changing the live ETH/ERC20 action flow.
-- 2026-03-23: extracted `mavali_eth` dependency assembly into `service_dependencies.py`, so `service.py` now initializes from a single wiring bundle instead of constructing every client, handler, and monitor inline.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
