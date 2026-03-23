@@ -2298,6 +2298,7 @@ def execute_prompt_with_retry(
     progress: ProgressReporter,
     image_path: Optional[str] = None,
     image_paths: Optional[List[str]] = None,
+    actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
     session_continuity_enabled: bool = True,
 ) -> Optional[subprocess.CompletedProcess[str]]:
@@ -2355,9 +2356,16 @@ def execute_prompt_with_retry(
                     cancel_event=cancel_event,
                 )
             except TypeError as exc:
-                if (
-                    "unexpected keyword argument 'session_key'" not in str(exc)
-                    and "unexpected keyword argument 'image_paths'" not in str(exc)
+                exc_text = str(exc)
+                if not any(
+                    token in exc_text
+                    for token in (
+                        "unexpected keyword argument 'session_key'",
+                        "unexpected keyword argument 'channel_name'",
+                        "unexpected keyword argument 'actor_chat_id'",
+                        "unexpected keyword argument 'actor_user_id'",
+                        "unexpected keyword argument 'image_paths'",
+                    )
                 ):
                     raise
                 result = engine.run(
@@ -2599,6 +2607,7 @@ def process_prompt(
     stateless: bool = False,
     sender_name: str = "Telegram User",
     photo_file_ids: Optional[List[str]] = None,
+    actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     channel_name = getattr(client, "channel_name", "telegram")
@@ -2726,6 +2735,7 @@ def process_prompt(
             previous_thread_id=previous_thread_id,
             image_path=image_path,
             image_paths=image_paths or ([image_path] if image_path else []),
+            actor_user_id=actor_user_id,
             progress=progress,
             cancel_event=cancel_event,
             session_continuity_enabled=not stateless,
@@ -2816,6 +2826,7 @@ def process_message_worker(
     stateless: bool = False,
     sender_name: str = "Telegram User",
     photo_file_ids: Optional[List[str]] = None,
+    actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     try:
@@ -2836,6 +2847,7 @@ def process_message_worker(
             stateless=stateless,
             sender_name=sender_name,
             photo_file_ids=photo_file_ids,
+            actor_user_id=actor_user_id,
             enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
         )
     except Exception:
@@ -2866,6 +2878,7 @@ def process_youtube_request(
     message_id: Optional[int],
     request_text: str,
     youtube_url: str,
+    actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
     active_engine = engine or CodexEngineAdapter()
@@ -2961,6 +2974,7 @@ def process_youtube_request(
             prompt_text=build_youtube_summary_prompt(request_text, analysis),
             previous_thread_id=None,
             image_path=None,
+            actor_user_id=actor_user_id,
             progress=progress,
             cancel_event=cancel_event,
             session_continuity_enabled=False,
@@ -3003,6 +3017,7 @@ def process_youtube_worker(
     message_id: Optional[int],
     request_text: str,
     youtube_url: str,
+    actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
     try:
@@ -3017,6 +3032,7 @@ def process_youtube_worker(
             message_id=message_id,
             request_text=request_text,
             youtube_url=youtube_url,
+            actor_user_id=actor_user_id,
             cancel_event=cancel_event,
         )
     except subprocess.TimeoutExpired:
@@ -3064,6 +3080,7 @@ def start_youtube_worker(
     message_id: Optional[int],
     request_text: str,
     youtube_url: str,
+    actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
     worker = threading.Thread(
@@ -3079,6 +3096,7 @@ def start_youtube_worker(
             message_id,
             request_text,
             youtube_url,
+            actor_user_id,
             cancel_event,
         ),
         daemon=True,
@@ -3484,6 +3502,7 @@ def start_message_worker(
     stateless: bool = False,
     sender_name: str = "Telegram User",
     photo_file_ids: Optional[List[str]] = None,
+    actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     worker = threading.Thread(
@@ -3505,6 +3524,7 @@ def start_message_worker(
             stateless,
             sender_name,
             photo_file_ids,
+            actor_user_id,
             enforce_voice_prefix_from_transcript,
         ),
         daemon=True,
@@ -3818,6 +3838,7 @@ def handle_update(
             message_id=message_id,
             request_text=prompt,
             youtube_url=youtube_route_url,
+            actor_user_id=actor_user_id,
             cancel_event=cancel_event,
         )
     else:
@@ -3839,6 +3860,7 @@ def handle_update(
             stateless=stateless,
             sender_name=sender_name,
             enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
+            actor_user_id=actor_user_id,
         )
     emit_event(
         "bridge.worker_started",

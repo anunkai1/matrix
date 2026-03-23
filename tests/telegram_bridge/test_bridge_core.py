@@ -2875,6 +2875,70 @@ class BridgeCoreTests(unittest.TestCase):
             "The runtime has hit its usage limit. Try again after 2:00 PM.",
         )
 
+    def test_execute_prompt_with_retry_falls_back_when_actor_identity_kwargs_unsupported(self):
+        class LegacyEngine:
+            engine_name = "legacy"
+
+            def __init__(self):
+                self.calls = 0
+
+            def run(
+                self,
+                config,
+                prompt,
+                thread_id,
+                image_path=None,
+                progress_callback=None,
+                cancel_event=None,
+            ):
+                del config, thread_id, image_path, progress_callback, cancel_event
+                self.calls += 1
+                stdout = json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {"type": "agent_message", "text": f"ok:{prompt}"},
+                    }
+                )
+                return subprocess.CompletedProcess(args=["legacy"], returncode=0, stdout=stdout, stderr="")
+
+        class FakeProgress:
+            def handle_executor_event(self, _event):
+                return None
+
+            def set_phase(self, _phase):
+                return None
+
+            def mark_failure(self, _detail):
+                return None
+
+        state = bridge.State()
+        state_repo = bridge.StateRepository(state)
+        client = FakeTelegramClient()
+        config = make_config()
+        engine = LegacyEngine()
+
+        result = bridge_handlers.execute_prompt_with_retry(
+            state_repo=state_repo,
+            config=config,
+            client=client,
+            engine=engine,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=52,
+            prompt_text="hello",
+            previous_thread_id=None,
+            image_path=None,
+            actor_user_id=123,
+            progress=FakeProgress(),
+            cancel_event=threading.Event(),
+            session_continuity_enabled=True,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(engine.calls, 1)
+
     def test_build_canonical_sessions_from_legacy(self):
         worker = bridge.WorkerSession(
             created_at=1.0,
