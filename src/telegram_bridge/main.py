@@ -3,9 +3,10 @@
 
 import argparse
 import logging
+import math
 import os
 import time
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
 
 try:
@@ -45,6 +46,7 @@ try:
     )
     from .state_store import (
         CanonicalSession,
+        PendingMediaGroup,
         State,
         StateRepository,
         WorkerSession,
@@ -106,6 +108,7 @@ except ImportError:
     )
     from state_store import (
         CanonicalSession,
+        PendingMediaGroup,
         State,
         StateRepository,
         WorkerSession,
@@ -349,6 +352,106 @@ def drop_pending_updates(client: ChannelAdapter) -> int:
         },
     )
     return offset
+
+
+MEDIA_GROUP_QUIET_WINDOW_SECONDS = 2.0
+
+
+def get_media_group_identity(update: Dict[str, object]) -> Optional[Tuple[int, str]]:
+    message = update.get("message")
+    if not isinstance(message, dict):
+        return None
+
+    media_group_id = message.get("media_group_id")
+    chat = message.get("chat")
+    chat_id = chat.get("id") if isinstance(chat, dict) else None
+    if not isinstance(chat_id, int):
+        return None
+    if not isinstance(media_group_id, str) or not media_group_id.strip():
+        return None
+    return chat_id, media_group_id.strip()
+
+
+def make_pending_media_group_key(chat_id: int, media_group_id: str) -> str:
+    return f"{chat_id}:{media_group_id}"
+
+
+def buffer_pending_media_group_updates(
+    state: State,
+    updates: List[Dict[str, object]],
+    *,
+    now: Optional[float] = None,
+) -> List[Dict[str, object]]:
+    current_time = time.time() if now is None else now
+    immediate_updates: List[Dict[str, object]] = []
+    for update in updates:
+        identity = get_media_group_identity(update)
+        if identity is None:
+            immediate_updates.append(update)
+            continue
+
+        chat_id, media_group_id = identity
+        pending_key = make_pending_media_group_key(chat_id, media_group_id)
+        pending = state.pending_media_groups.get(pending_key)
+        if pending is None:
+            state.pending_media_groups[pending_key] = PendingMediaGroup(
+                chat_id=chat_id,
+                media_group_id=media_group_id,
+                updates=[update],
+                started_at=current_time,
+                last_seen_at=current_time,
+            )
+            continue
+
+        pending.updates.append(update)
+        pending.last_seen_at = current_time
+
+    return immediate_updates
+
+
+def flush_ready_media_group_updates(
+    state: State,
+    *,
+    now: Optional[float] = None,
+    force: bool = False,
+) -> List[Dict[str, object]]:
+    current_time = time.time() if now is None else now
+    ready_groups: List[Tuple[int, float, str]] = []
+    for pending_key, pending in state.pending_media_groups.items():
+        if not pending.updates:
+            continue
+        quiet_elapsed = current_time - pending.last_seen_at
+        if not force and quiet_elapsed < MEDIA_GROUP_QUIET_WINDOW_SECONDS:
+            continue
+        first_update = pending.updates[0]
+        first_update_id = first_update.get("update_id")
+        sort_update_id = first_update_id if isinstance(first_update_id, int) else 2**31
+        ready_groups.append((sort_update_id, pending.started_at, pending_key))
+
+    flushed_updates: List[Dict[str, object]] = []
+    for _, _, pending_key in sorted(ready_groups):
+        pending = state.pending_media_groups.pop(pending_key, None)
+        if pending is None or not pending.updates:
+            continue
+        flushed_updates.extend(collapse_media_group_updates(pending.updates))
+    return flushed_updates
+
+
+def compute_poll_timeout_seconds(state: State, config: Config, *, now: Optional[float] = None) -> Optional[int]:
+    if not state.pending_media_groups:
+        return None
+
+    current_time = time.time() if now is None else now
+    remaining_windows = [
+        max(0.0, MEDIA_GROUP_QUIET_WINDOW_SECONDS - (current_time - pending.last_seen_at))
+        for pending in state.pending_media_groups.values()
+        if pending.updates
+    ]
+    if not remaining_windows:
+        return 0
+
+    wait_seconds = max(1, int(math.ceil(min(remaining_windows))))
+    return min(config.poll_timeout_seconds, wait_seconds)
 
 
 def run_bridge(config: Config) -> int:
@@ -843,18 +946,30 @@ def run_bridge(config: Config) -> int:
     while True:
         try:
             expire_idle_worker_sessions(state, config, client)
-            updates = client.get_updates(offset)
+            ready_updates = flush_ready_media_group_updates(state)
+            if ready_updates:
+                for update in ready_updates:
+                    handle_update(state, config, client, update, engine=engine)
+                continue
+
+            poll_timeout_seconds = compute_poll_timeout_seconds(state, config)
+            updates = client.get_updates(offset, timeout_seconds=poll_timeout_seconds)
             if updates:
                 emit_event(
                     "bridge.poll_updates_received",
-                    fields={"count": len(updates), "offset_before": offset},
+                    fields={
+                        "count": len(updates),
+                        "offset_before": offset,
+                        "pending_media_group_count": len(state.pending_media_groups),
+                        "poll_timeout_seconds": poll_timeout_seconds,
+                    },
                 )
             for update in updates:
                 update_id = update.get("update_id")
                 if isinstance(update_id, int):
                     offset = max(offset, update_id + 1)
-            collapsed_updates = collapse_media_group_updates(updates)
-            for update in collapsed_updates:
+            immediate_updates = buffer_pending_media_group_updates(state, updates)
+            for update in immediate_updates:
                 handle_update(state, config, client, update, engine=engine)
         except (HTTPError, URLError, TimeoutError):
             logging.exception("Network/API error while polling Telegram")

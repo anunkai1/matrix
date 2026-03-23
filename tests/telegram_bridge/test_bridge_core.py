@@ -1389,6 +1389,87 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(len(album_message["media_group_messages"]), 2)
         self.assertEqual(collapsed[1]["message"]["text"], "plain")
 
+    def test_buffer_pending_media_group_updates_flushes_split_album_across_polls(self):
+        state = bridge.State()
+        first_batch = [
+            {
+                "update_id": 101,
+                "message": {
+                    "message_id": 11,
+                    "media_group_id": "album-1",
+                    "caption": "album caption",
+                    "chat": {"id": 1},
+                    "photo": [{"file_id": "p1", "file_size": 10}],
+                },
+            },
+            {
+                "update_id": 102,
+                "message": {
+                    "message_id": 12,
+                    "chat": {"id": 1},
+                    "text": "plain",
+                },
+            },
+        ]
+
+        immediate_updates = bridge.buffer_pending_media_group_updates(
+            state,
+            first_batch,
+            now=100.0,
+        )
+        self.assertEqual(len(immediate_updates), 1)
+        self.assertEqual(immediate_updates[0]["message"]["text"], "plain")
+        self.assertEqual(len(state.pending_media_groups), 1)
+        self.assertEqual(bridge.flush_ready_media_group_updates(state, now=101.0), [])
+
+        second_batch = [
+            {
+                "update_id": 103,
+                "message": {
+                    "message_id": 13,
+                    "media_group_id": "album-1",
+                    "chat": {"id": 1},
+                    "photo": [{"file_id": "p2", "file_size": 11}],
+                },
+            }
+        ]
+        immediate_updates = bridge.buffer_pending_media_group_updates(
+            state,
+            second_batch,
+            now=101.0,
+        )
+        self.assertEqual(immediate_updates, [])
+
+        flushed_updates = bridge.flush_ready_media_group_updates(state, now=103.1)
+        self.assertEqual(len(flushed_updates), 1)
+        self.assertEqual(len(state.pending_media_groups), 0)
+        album_message = flushed_updates[0]["message"]
+        self.assertEqual(album_message["caption"], "album caption")
+        self.assertEqual(len(album_message["media_group_messages"]), 2)
+
+    def test_compute_poll_timeout_seconds_shortens_while_waiting_for_album_tail(self):
+        state = bridge.State()
+        state.pending_media_groups["1:album-1"] = bridge.PendingMediaGroup(
+            chat_id=1,
+            media_group_id="album-1",
+            updates=[
+                {
+                    "update_id": 101,
+                    "message": {
+                        "message_id": 11,
+                        "media_group_id": "album-1",
+                        "chat": {"id": 1},
+                    },
+                }
+            ],
+            started_at=100.0,
+            last_seen_at=100.0,
+        )
+
+        config = make_config(poll_timeout_seconds=30)
+        self.assertEqual(bridge.compute_poll_timeout_seconds(state, config, now=100.1), 2)
+        self.assertEqual(bridge.compute_poll_timeout_seconds(state, config, now=101.2), 1)
+
     def test_build_reply_context_prompt_from_reply_to_message_text(self):
         prompt = bridge_handlers.build_reply_context_prompt(
             {

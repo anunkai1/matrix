@@ -36,6 +36,15 @@ class WorkerSession:
 
 
 @dataclass
+class PendingMediaGroup:
+    chat_id: int
+    media_group_id: str
+    updates: List[Dict[str, object]] = field(default_factory=list)
+    started_at: float = field(default_factory=time.time)
+    last_seen_at: float = field(default_factory=time.time)
+
+
+@dataclass
 class State:
     started_at: float = field(default_factory=time.time)
     busy_chats: Set[ScopeKey] = field(default_factory=set)
@@ -63,6 +72,7 @@ class State:
     attachment_store: Optional[object] = None
     voice_alias_learning_store: Optional[object] = None
     cancel_events: Dict[ScopeKey, threading.Event] = field(default_factory=dict)
+    pending_media_groups: Dict[str, PendingMediaGroup] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
