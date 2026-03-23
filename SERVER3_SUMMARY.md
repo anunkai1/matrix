@@ -52,6 +52,7 @@ Last updated: 2026-03-22 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-23: extracted the remaining wallet/help/query presentation layer into `wallet_queries.py`, so `service.py` now delegates basic address/balance/gas/help/token query responses instead of formatting them inline.
 - 2026-03-23: extracted the bulky `mavali_eth` Polymarket read/query and preview-staging surface into `polymarket_queries.py`, so `service.py` no longer carries the long market/account/orderbook presentation block inline.
 - 2026-03-23: extracted `mavali_eth` pending-action confirmation dispatch and inbound transfer polling into dedicated `confirmation_router.py` and `inbound_monitor.py` modules, so `service.py` no longer carries those remaining generic control-flow loops inline.
 - 2026-03-23: extracted `mavali_eth` prompt routing into a dedicated `prompt_router.py` helper so `service.py` now acts much more like a thin coordinator instead of carrying the entire command parser chain inline.
@@ -59,7 +60,6 @@ Last updated: 2026-03-22 (AEST, +10:00)
 - 2026-03-23: hardened `mavali_eth` Uniswap execution after the Tenderly no-op incident by adding `eth_getCode` provider preflight checks, refusing to stage or confirm against an RPC that exposes empty router/factory/token code, centralizing transaction submission logic, caching ERC20 metadata reads, and treating below-minimum or zero-output receipts as failed executions instead of falsely reporting a confirmed swap.
 - 2026-03-23: removed duplicated mainnet token catalogs from the `mavali_eth` CowSwap and Uniswap modules by extracting a shared token registry, so aliases like `link` / `chainlink`, symbol formatting, and decimals no longer drift independently across protocol adapters.
 - 2026-03-23: extracted `mavali_eth` core wallet staging and confirmation flows into a dedicated handler so ERC20 transfer/approve preparation plus native/ERC20 confirm execution no longer live inline in `service.py`.
-- 2026-03-23: extracted the remaining `mavali_eth` protocol-heavy confirmation flows into dedicated CowSwap and Polymarket action handlers, so `service.py` now delegates all three major protocol adapters instead of embedding their funded-path orchestration inline.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
