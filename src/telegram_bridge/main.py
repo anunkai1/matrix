@@ -139,6 +139,11 @@ def build_policy_fingerprint_state_path(state_dir: str) -> str:
     return os.path.join(state_dir, "policy_fingerprint.txt")
 
 
+def build_update_offset_state_path(state_dir: str, channel_plugin: str) -> str:
+    normalized = (channel_plugin or "telegram").strip().lower() or "telegram"
+    return os.path.join(state_dir, f"{normalized}_update_offset.txt")
+
+
 def load_saved_policy_fingerprint(path: str) -> str:
     if not path:
         return ""
@@ -162,6 +167,45 @@ def persist_saved_policy_fingerprint(path: str, fingerprint: str) -> None:
     with open(tmp_path, "w", encoding="utf-8") as handle:
         handle.write(fingerprint.strip())
         handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp_path, path)
+
+
+def load_saved_update_offset(path: str) -> int:
+    if not path:
+        return 0
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = handle.read().strip()
+    except FileNotFoundError:
+        return 0
+    except OSError:
+        logging.exception("Failed to read saved update offset from %s", path)
+        return 0
+    if not raw:
+        return 0
+    try:
+        parsed = int(raw)
+    except ValueError:
+        logging.warning("Ignoring invalid saved update offset in %s: %r", path, raw)
+        return 0
+    if parsed < 0:
+        logging.warning("Ignoring negative saved update offset in %s: %s", path, parsed)
+        return 0
+    return parsed
+
+
+def persist_saved_update_offset(path: str, offset: int) -> None:
+    if not path:
+        return
+    directory = os.path.dirname(path)
+    if directory:
+        ensure_state_dir(directory)
+    sanitized_offset = max(int(offset), 0)
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        handle.write(f"{sanitized_offset}\n")
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(tmp_path, path)
@@ -356,6 +400,58 @@ def drop_pending_updates(client: ChannelAdapter) -> int:
 
 def should_discard_startup_backlog(config: Config) -> bool:
     return getattr(config, "channel_plugin", "telegram") == "telegram"
+
+
+def should_resume_saved_update_offset(config: Config) -> bool:
+    return not should_discard_startup_backlog(config)
+
+
+def inspect_channel_update_bounds(client: ChannelAdapter) -> Tuple[Optional[int], Optional[int]]:
+    updates = client.get_updates(0, timeout_seconds=0)
+    update_ids = [
+        update_id
+        for update in updates
+        for update_id in [update.get("update_id")]
+        if isinstance(update_id, int)
+    ]
+    if not update_ids:
+        return None, None
+    return min(update_ids), max(update_ids)
+
+
+def compute_initial_update_offset(
+    config: Config,
+    client: ChannelAdapter,
+) -> Tuple[int, Optional[str]]:
+    if should_discard_startup_backlog(config):
+        return 0, None
+
+    offset_state_path = build_update_offset_state_path(config.state_dir, config.channel_plugin)
+    saved_offset = load_saved_update_offset(offset_state_path)
+    queue_min_update_id, queue_max_update_id = inspect_channel_update_bounds(client)
+
+    offset = saved_offset
+    offset_reset = False
+    if (
+        saved_offset > 0
+        and queue_max_update_id is not None
+        and saved_offset > queue_max_update_id + 1
+    ):
+        offset = 0
+        offset_reset = True
+
+    emit_event(
+        "bridge.startup_offset_resume_checked",
+        fields={
+            "channel_plugin": config.channel_plugin,
+            "saved_offset": saved_offset,
+            "offset": offset,
+            "offset_reset": offset_reset,
+            "queue_min_update_id": queue_min_update_id,
+            "queue_max_update_id": queue_max_update_id,
+        },
+    )
+    return offset, offset_state_path
 
 
 MEDIA_GROUP_QUIET_WINDOW_SECONDS = 2.0
@@ -849,6 +945,7 @@ def run_bridge(config: Config) -> int:
     )
 
     offset = 0
+    offset_state_path: Optional[str] = None
     if should_discard_startup_backlog(config):
         try:
             offset = drop_pending_updates(client)
@@ -860,10 +957,25 @@ def run_bridge(config: Config) -> int:
             )
             offset = 0
     else:
+        try:
+            offset, offset_state_path = compute_initial_update_offset(config, client)
+        except Exception:
+            logging.exception("Failed to restore saved update offset; defaulting to offset=0")
+            emit_event(
+                "bridge.startup_offset_resume_failed",
+                level=logging.WARNING,
+                fields={"channel_plugin": config.channel_plugin},
+            )
+            offset = 0
+            offset_state_path = build_update_offset_state_path(config.state_dir, config.channel_plugin)
         emit_event(
             "bridge.startup_backlog_discard_skipped",
-            fields={"channel_plugin": config.channel_plugin},
+            fields={
+                "channel_plugin": config.channel_plugin,
+                "offset": offset,
+            },
         )
+        persist_saved_update_offset(offset_state_path, offset)
 
     logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
     logging.info("Channel plugin active=%s", config.channel_plugin)
@@ -982,6 +1094,8 @@ def run_bridge(config: Config) -> int:
             immediate_updates = buffer_pending_media_group_updates(state, updates)
             for update in immediate_updates:
                 handle_update(state, config, client, update, engine=engine)
+            if offset_state_path is not None:
+                persist_saved_update_offset(offset_state_path, offset)
         except (HTTPError, URLError, TimeoutError):
             logging.exception("Network/API error while polling Telegram")
             emit_event(

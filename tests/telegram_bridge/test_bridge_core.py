@@ -520,6 +520,57 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertFalse(bridge.should_discard_startup_backlog(make_config(channel_plugin="whatsapp")))
         self.assertFalse(bridge.should_discard_startup_backlog(make_config(channel_plugin="signal")))
 
+    def test_should_resume_saved_update_offset_for_non_telegram_only(self):
+        self.assertFalse(bridge.should_resume_saved_update_offset(make_config(channel_plugin="telegram")))
+        self.assertTrue(bridge.should_resume_saved_update_offset(make_config(channel_plugin="whatsapp")))
+        self.assertTrue(bridge.should_resume_saved_update_offset(make_config(channel_plugin="signal")))
+
+    def test_load_saved_update_offset_ignores_invalid_values(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            offset_path = Path(tmpdir) / "offset.txt"
+            offset_path.write_text("bad-value\n", encoding="utf-8")
+            self.assertEqual(bridge.load_saved_update_offset(str(offset_path)), 0)
+            offset_path.write_text("-7\n", encoding="utf-8")
+            self.assertEqual(bridge.load_saved_update_offset(str(offset_path)), 0)
+
+    def test_compute_initial_update_offset_resets_when_queue_counter_restarts(self):
+        config = make_config(channel_plugin="whatsapp", state_dir=tempfile.mkdtemp())
+        offset_path = Path(config.state_dir) / "whatsapp_update_offset.txt"
+        bridge.persist_saved_update_offset(str(offset_path), 40)
+
+        class FakeClient:
+            def get_updates(self, offset, timeout_seconds=0):
+                self.last_offset = offset
+                self.last_timeout_seconds = timeout_seconds
+                return [
+                    {"update_id": 1, "message": {}},
+                    {"update_id": 2, "message": {}},
+                    {"update_id": 3, "message": {}},
+                ]
+
+        client = FakeClient()
+        offset, state_path = bridge.compute_initial_update_offset(config, client)
+        self.assertEqual(offset, 0)
+        self.assertEqual(state_path, str(offset_path))
+        self.assertEqual(client.last_offset, 0)
+        self.assertEqual(client.last_timeout_seconds, 0)
+
+    def test_compute_initial_update_offset_reuses_saved_offset_with_live_queue(self):
+        config = make_config(channel_plugin="whatsapp", state_dir=tempfile.mkdtemp())
+        offset_path = Path(config.state_dir) / "whatsapp_update_offset.txt"
+        bridge.persist_saved_update_offset(str(offset_path), 10)
+
+        class FakeClient:
+            def get_updates(self, offset, timeout_seconds=0):
+                return [
+                    {"update_id": 8, "message": {}},
+                    {"update_id": 9, "message": {}},
+                ]
+
+        offset, state_path = bridge.compute_initial_update_offset(config, FakeClient())
+        self.assertEqual(offset, 10)
+        self.assertEqual(state_path, str(offset_path))
+
     def test_load_config_reads_require_prefix_in_private_override(self):
         with mock.patch.dict(
             os.environ,

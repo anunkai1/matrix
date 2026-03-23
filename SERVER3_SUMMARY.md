@@ -52,7 +52,7 @@ Last updated: 2026-03-23 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
-- 2026-03-23: stopped startup backlog discard for non-Telegram plugin channels in the shared Python bridge, so Govorun WhatsApp restarts no longer silently throw away queued WhatsApp updates while Telegram keeps its stale-backlog protection.
+- 2026-03-23: taught the shared Python bridge to persist per-channel HTTP update offsets and resume them on startup with queue-reset detection, so Govorun WhatsApp restarts no longer either drop queued updates or replay stale queued control messages like `/restart`; Telegram still keeps its explicit stale-backlog discard path.
 - 2026-03-23: taught the Govorun WhatsApp plugin ingress to batch consecutive inbound photo messages from the same sender/chat into one multi-image update with a short quiet window, aligning WhatsApp photo albums with the shared Python multi-image path and updating the Govorun runbook/bridge README to match.
 - 2026-03-23: hardened Architect Telegram album handling again by buffering `media_group_id` photo batches across poll cycles with a short quiet-window flush, so 3/5/6/10-photo sends no longer depend on all album items landing in the same `getUpdates` response.
 - 2026-03-23: taught the Architect Telegram bridge to collapse `media_group_id` albums into one request and carry multiple photo attachments through to Codex, so album-style image batches no longer fall into the per-chat busy guard after the first photo.
