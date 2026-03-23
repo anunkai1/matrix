@@ -22,6 +22,8 @@ class EngineAdapter(Protocol):
         thread_id: Optional[str],
         session_key: Optional[str] = None,
         channel_name: Optional[str] = None,
+        actor_chat_id: Optional[int] = None,
+        actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
@@ -39,6 +41,8 @@ class CodexEngineAdapter:
         thread_id: Optional[str],
         session_key: Optional[str] = None,
         channel_name: Optional[str] = None,
+        actor_chat_id: Optional[int] = None,
+        actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
@@ -63,6 +67,8 @@ class MavaliEthEngineAdapter:
         thread_id: Optional[str],
         session_key: Optional[str] = None,
         channel_name: Optional[str] = None,
+        actor_chat_id: Optional[int] = None,
+        actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
@@ -89,6 +95,8 @@ class MavaliEthEngineAdapter:
                 thread_id=thread_id,
                 session_key=session_key,
                 channel_name=channel_name,
+                actor_chat_id=actor_chat_id,
+                actor_user_id=actor_user_id,
                 image_path=image_path,
                 progress_callback=progress_callback,
                 cancel_event=cancel_event,
@@ -98,7 +106,12 @@ class MavaliEthEngineAdapter:
             runtime_config = MavaliEthConfig.from_env(getattr(config, "state_dir", None))
             service = MavaliEthService(runtime_config)
             resolved_session_key = session_key or f"{channel_name or 'telegram'}:default"
-            output = service.handle_prompt(resolved_session_key, prompt)
+            output = service.handle_prompt(
+                resolved_session_key,
+                prompt,
+                actor_chat_id=actor_chat_id,
+                actor_user_id=actor_user_id,
+            )
             if output == service._help_message():
                 return codex_fallback.run(
                     config=config,
@@ -106,6 +119,8 @@ class MavaliEthEngineAdapter:
                     thread_id=thread_id,
                     session_key=session_key,
                     channel_name=channel_name,
+                    actor_chat_id=actor_chat_id,
+                    actor_user_id=actor_user_id,
                     image_path=image_path,
                     progress_callback=progress_callback,
                     cancel_event=cancel_event,

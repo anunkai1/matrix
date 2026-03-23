@@ -2235,6 +2235,8 @@ def execute_prompt_with_retry(
                     thread_id=attempt_thread_id,
                     session_key=scope_key,
                     channel_name=getattr(client, "channel_name", "telegram"),
+                    actor_chat_id=chat_id,
+                    actor_user_id=actor_user_id,
                     image_path=image_path,
                     progress_callback=progress.handle_executor_event,
                     cancel_event=cancel_event,
@@ -3397,6 +3399,8 @@ def handle_update(
     chat_id = conversation_scope.chat_id
     message_thread_id = conversation_scope.message_thread_id
     scope_key = conversation_scope.scope_key
+    from_obj = message.get("from")
+    actor_user_id = from_obj.get("id") if isinstance(from_obj, dict) and isinstance(from_obj.get("id"), int) else None
     update_id = update.get("update_id")
     update_id_int = update_id if isinstance(update_id, int) else None
     emit_event(
