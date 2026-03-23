@@ -52,6 +52,9 @@ class FakeController:
     def act_press(self, payload):
         raise BrowserBrainError("bad_key", "bad key", status=422)
 
+    def act_upload(self, payload):
+        return {"ok": True, "payload": payload}
+
 
 def _request(server: BrowserBrainHTTPServer, method: str, path: str, payload: dict | None = None):
     base_url = f"http://127.0.0.1:{server.server_port}{path}"
@@ -87,6 +90,10 @@ class BrowserBrainHTTPServerTests(unittest.TestCase):
             status_code, body = _request(server, "POST", "/v1/act/press", {"key": "BadKey"})
             self.assertEqual(status_code, 422)
             self.assertEqual(body["error"], "bad_key")
+
+            status_code, body = _request(server, "POST", "/v1/act/upload", {"path": "/tmp/example.mp4"})
+            self.assertEqual(status_code, 200)
+            self.assertTrue(body["ok"])
         finally:
             server.shutdown()
             thread.join(timeout=3)

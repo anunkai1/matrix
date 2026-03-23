@@ -121,6 +121,7 @@ Routes:
 - `POST /v1/act/click`
 - `POST /v1/act/type`
 - `POST /v1/act/press`
+- `POST /v1/act/upload`
 
 Examples:
 
@@ -154,6 +155,7 @@ Wrapper examples:
 bash ops/browser_brain/browser_brain_ctl.sh open --url https://example.com
 bash ops/browser_brain/browser_brain_ctl.sh snapshot --tab-id tab-1234abcd
 bash ops/browser_brain/browser_brain_ctl.sh click --tab-id tab-1234abcd --snapshot-id snap-1234abcd --ref el-0001
+bash ops/browser_brain/browser_brain_ctl.sh upload --tab-id tab-1234abcd --snapshot-id snap-1234abcd --ref el-0002 --path /tmp/example.mp4
 ```
 
 ## Behavior Notes

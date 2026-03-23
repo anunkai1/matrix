@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import types
 import unittest
 from types import SimpleNamespace
 from unittest import mock
 
 from src.browser_brain.config import BrowserBrainConfig
-from src.browser_brain.service import BrowserBrainService
+from src.browser_brain.service import BrowserBrainError, BrowserBrainService
 
 
 class FakePage:
@@ -85,6 +86,38 @@ class BrowserBrainServiceTests(unittest.TestCase):
             self.assertFalse(stop_result["running"])
             connection.close.assert_not_called()
             playwright_handle.stop.assert_called_once()
+
+    def test_act_upload_sets_input_files_on_resolved_element(self) -> None:
+        config = BrowserBrainConfig()
+        service = BrowserBrainService(config)
+        page = object()
+        element = mock.Mock()
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4") as handle:
+            upload_path = handle.name
+            with (
+                mock.patch.object(service, "_page_for_payload", return_value=page),
+                mock.patch.object(service, "_resolve_element", return_value=element),
+                mock.patch.object(service, "_tab_payload", return_value={"tab_id": "tab-1", "url": "https://x.com/compose"}),
+                mock.patch.object(service, "_tab_id", return_value="tab-1"),
+                mock.patch.object(service, "_log_action"),
+            ):
+                result = service.act_upload(
+                    {"tab_id": "tab-1", "snapshot_id": "snap-1", "ref": "el-0007", "path": upload_path}
+                )
+
+        element.set_input_files.assert_called_once_with(upload_path, timeout=config.action_timeout_ms)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["files"], [upload_path])
+
+    def test_act_upload_rejects_missing_file(self) -> None:
+        config = BrowserBrainConfig()
+        service = BrowserBrainService(config)
+
+        with self.assertRaises(BrowserBrainError) as ctx:
+            service.act_upload({"tab_id": "tab-1", "snapshot_id": "snap-1", "ref": "el-0007", "path": "/tmp/does-not-exist.mp4"})
+
+        self.assertEqual(ctx.exception.code, "file_not_found")
 
 
 if __name__ == "__main__":

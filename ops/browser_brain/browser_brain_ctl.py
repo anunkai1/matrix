@@ -110,6 +110,12 @@ def build_parser() -> argparse.ArgumentParser:
     press_parser.add_argument("--snapshot-id")
     press_parser.add_argument("--ref")
 
+    upload_parser = subparsers.add_parser("upload")
+    upload_parser.add_argument("--tab-id", required=True)
+    upload_parser.add_argument("--snapshot-id", required=True)
+    upload_parser.add_argument("--ref", required=True)
+    upload_parser.add_argument("--path", dest="paths", action="append", required=True)
+
     return parser
 
 
@@ -173,6 +179,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.ref:
             request_payload["ref"] = args.ref
         payload = _request(args.base_url, "POST", "/v1/act/press", request_payload)
+    elif command == "upload":
+        payload = _request(
+            args.base_url,
+            "POST",
+            "/v1/act/upload",
+            {"tab_id": args.tab_id, "snapshot_id": args.snapshot_id, "ref": args.ref, "paths": args.paths},
+        )
     else:  # pragma: no cover
         raise AssertionError(f"Unhandled command: {command}")
 

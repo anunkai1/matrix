@@ -451,6 +451,57 @@ class BrowserBrainService:
             self._log_action("act.press", {"tab_id": self._tab_id(page), "key": key, "ref": payload.get("ref")})
             return {"tab": self._tab_payload(page), "key": key, "ok": True}
 
+    def act_upload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raw_paths = payload.get("paths")
+        if raw_paths is None:
+            single_path = str(payload.get("path") or "").strip()
+            if not single_path:
+                raise BrowserBrainError("missing_path", "act.upload requires path or paths")
+            candidate_paths = [single_path]
+        elif isinstance(raw_paths, list):
+            candidate_paths = [str(item or "").strip() for item in raw_paths]
+            if not candidate_paths:
+                raise BrowserBrainError("missing_path", "act.upload requires at least one file path")
+        else:
+            raise BrowserBrainError("invalid_paths", "act.upload paths must be a JSON array of file paths")
+
+        resolved_paths: list[str] = []
+        for raw_path in candidate_paths:
+            if not raw_path:
+                raise BrowserBrainError("invalid_path", "act.upload file paths must be non-empty strings")
+            candidate = Path(raw_path).expanduser()
+            if not candidate.exists():
+                raise BrowserBrainError(
+                    "file_not_found",
+                    f"Upload file not found: {candidate}",
+                    details={"path": str(candidate)},
+                )
+            if not candidate.is_file():
+                raise BrowserBrainError(
+                    "invalid_path",
+                    f"Upload path is not a file: {candidate}",
+                    details={"path": str(candidate)},
+                )
+            resolved_paths.append(str(candidate.resolve()))
+
+        with self._lock:
+            page = self._page_for_payload(payload)
+            element = self._resolve_element(page, payload)
+            files_arg: str | list[str] = resolved_paths[0] if len(resolved_paths) == 1 else resolved_paths
+            try:
+                element.set_input_files(files_arg, timeout=self.config.action_timeout_ms)
+            except Exception as exc:
+                raise BrowserBrainError(
+                    "upload_failed",
+                    "Failed to set files on the target input element",
+                    details={"exception": str(exc), "paths_count": len(resolved_paths)},
+                ) from exc
+            self._log_action(
+                "act.upload",
+                {"tab_id": self._tab_id(page), "ref": payload.get("ref"), "paths_count": len(resolved_paths)},
+            )
+            return {"tab": self._tab_payload(page), "ref": payload.get("ref"), "files": resolved_paths, "ok": True}
+
     def _ensure_started(self) -> None:
         if self._browser is None or not self._managed_browser_alive():
             self.start()

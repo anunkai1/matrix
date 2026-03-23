@@ -24,6 +24,7 @@ ROUTES = {
     ("POST", "/v1/act/click"): "act_click",
     ("POST", "/v1/act/type"): "act_type",
     ("POST", "/v1/act/press"): "act_press",
+    ("POST", "/v1/act/upload"): "act_upload",
 }
 
 
