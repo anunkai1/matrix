@@ -45,13 +45,28 @@ test('buildIncomingPhotoBatchKey prefers stable sender key over payload display 
       photo: [{ file_id: 'p1', file_size: 10 }],
       from: { username: 'Alice' }
     },
-    '61499999999@s.whatsapp.net'
+    '61499999999@s.whatsapp.net',
+    'group'
   );
 
   assert.equal(
     batchKey,
     '61400000000@s.whatsapp.net::61499999999@s.whatsapp.net'
   );
+});
+
+test('buildIncomingPhotoBatchKey uses chat-only key for private chats', () => {
+  const batchKey = buildIncomingPhotoBatchKey(
+    '61400000000@s.whatsapp.net',
+    {
+      photo: [{ file_id: 'p1', file_size: 10 }],
+      from: { username: 'Alice' }
+    },
+    '177816645709939:1@lid',
+    'private'
+  );
+
+  assert.equal(batchKey, '61400000000@s.whatsapp.net::dm');
 });
 
 test('IncomingPhotoBatcher emits one merged payload for a photo batch', () => {

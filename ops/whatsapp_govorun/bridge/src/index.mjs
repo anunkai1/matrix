@@ -766,8 +766,14 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
 async function enqueueIncomingUpdate(sock, msg, chatJid) {
   const payload = await buildIncomingMessagePayload(sock, msg, chatJid);
   if (!payload) return;
+  const chatType = String(payload.chat?.type || 'private').trim().toLowerCase();
   incomingPhotoBatcher.push(
-    buildIncomingPhotoBatchKey(chatJid, payload, buildIncomingSenderKey(msg, chatJid)),
+    buildIncomingPhotoBatchKey(
+      chatJid,
+      payload,
+      buildIncomingSenderKey(msg, chatJid),
+      chatType
+    ),
     payload
   );
 }

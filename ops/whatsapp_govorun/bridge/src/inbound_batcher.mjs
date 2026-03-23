@@ -13,10 +13,13 @@ function isPhotoBatchablePayload(payload) {
   return true;
 }
 
-function buildIncomingPhotoBatchKey(chatJid, payload, senderKey = '') {
+function buildIncomingPhotoBatchKey(chatJid, payload, senderKey = '', chatType = 'private') {
   if (!isPhotoBatchablePayload(payload)) return '';
   const normalizedChatJid = String(chatJid || '').trim();
   if (!normalizedChatJid) return '';
+  if (String(chatType || '').trim().toLowerCase() !== 'group') {
+    return `${normalizedChatJid}::dm`;
+  }
   const normalizedSenderKey = normalizeBatchSenderKey(senderKey) || normalizedChatJid;
   return `${normalizedChatJid}::${normalizedSenderKey}`;
 }
