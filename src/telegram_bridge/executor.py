@@ -85,6 +85,7 @@ def run_executor(
     prompt: str,
     thread_id: Optional[str],
     image_path: Optional[str] = None,
+    image_paths: Optional[List[str]] = None,
     progress_callback: Optional[Callable[[ExecutorProgressEvent], None]] = None,
     cancel_event: Optional[threading.Event] = None,
 ) -> subprocess.CompletedProcess[str]:
@@ -94,15 +95,22 @@ def run_executor(
         cmd.extend(["resume", thread_id])
     else:
         cmd.append("new")
-    if image_path:
-        cmd.extend(["--image", image_path])
+    normalized_image_paths: List[str] = []
+    for candidate in image_paths or []:
+        if candidate and candidate not in normalized_image_paths:
+            normalized_image_paths.append(candidate)
+    if image_path and image_path not in normalized_image_paths:
+        normalized_image_paths.append(image_path)
+    for candidate in normalized_image_paths:
+        cmd.extend(["--image", candidate])
     logging.info("Running executor command: %s", cmd)
     start = time.monotonic()
     emit_event(
         "bridge.executor_subprocess_start",
         fields={
             "mode": mode,
-            "has_image": bool(image_path),
+            "has_image": bool(normalized_image_paths),
+            "image_count": len(normalized_image_paths),
             "cmd": cmd,
         },
     )

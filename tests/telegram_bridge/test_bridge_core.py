@@ -1237,7 +1237,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(cfg.progress_elapsed_suffix, "")
 
     def test_extract_prompt_and_media_prefers_media_payload_for_photo_with_caption(self):
-        prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+        prompt, photo_file_ids, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
             {
                 "text": "photo caption",
                 "caption": "photo caption",
@@ -1248,12 +1248,12 @@ class BridgeCoreTests(unittest.TestCase):
             }
         )
         self.assertEqual(prompt, "photo caption")
-        self.assertEqual(photo_file_id, "p-large")
+        self.assertEqual(photo_file_ids, ["p-large"])
         self.assertIsNone(voice_file_id)
         self.assertIsNone(document)
 
     def test_extract_prompt_and_media_uses_text_fallback_for_document_without_caption(self):
-        prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+        prompt, photo_file_ids, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
             {
                 "text": "summarize this",
                 "document": {
@@ -1264,13 +1264,13 @@ class BridgeCoreTests(unittest.TestCase):
             }
         )
         self.assertEqual(prompt, "summarize this")
-        self.assertIsNone(photo_file_id)
+        self.assertEqual(photo_file_ids, [])
         self.assertIsNone(voice_file_id)
         self.assertIsNotNone(document)
         self.assertEqual(document.file_id, "doc-1")
 
     def test_extract_prompt_and_media_combines_caption_and_text_for_voice(self):
-        prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+        prompt, photo_file_ids, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
             {
                 "text": "extra context",
                 "caption": "@helper execute this",
@@ -1278,12 +1278,12 @@ class BridgeCoreTests(unittest.TestCase):
             }
         )
         self.assertEqual(prompt, "@helper execute this\n\nextra context")
-        self.assertIsNone(photo_file_id)
+        self.assertEqual(photo_file_ids, [])
         self.assertEqual(voice_file_id, "voice-3")
         self.assertIsNone(document)
 
     def test_extract_prompt_and_media_uses_replied_photo_when_current_message_has_no_media(self):
-        prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+        prompt, photo_file_ids, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
             {
                 "text": "what about the window?",
                 "reply_to_message": {
@@ -1295,12 +1295,12 @@ class BridgeCoreTests(unittest.TestCase):
             }
         )
         self.assertEqual(prompt, "what about the window?")
-        self.assertEqual(photo_file_id, "p-large")
+        self.assertEqual(photo_file_ids, ["p-large"])
         self.assertIsNone(voice_file_id)
         self.assertIsNone(document)
 
     def test_extract_prompt_and_media_uses_replied_document_when_current_message_has_no_media(self):
-        prompt, photo_file_id, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+        prompt, photo_file_ids, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
             {
                 "text": "summarize the quoted file",
                 "reply_to_message": {
@@ -1313,10 +1313,81 @@ class BridgeCoreTests(unittest.TestCase):
             }
         )
         self.assertEqual(prompt, "summarize the quoted file")
-        self.assertIsNone(photo_file_id)
+        self.assertEqual(photo_file_ids, [])
         self.assertIsNone(voice_file_id)
         self.assertIsNotNone(document)
         self.assertEqual(document.file_id, "doc-reply-1")
+
+    def test_extract_prompt_and_media_collects_album_photo_ids(self):
+        prompt, photo_file_ids, voice_file_id, document = bridge_handlers.extract_prompt_and_media(
+            {
+                "caption": "Nextcloud add these 3 pics to diary111.docx",
+                "media_group_messages": [
+                    {
+                        "caption": "Nextcloud add these 3 pics to diary111.docx",
+                        "photo": [
+                            {"file_id": "p1-small", "file_size": 10},
+                            {"file_id": "p1-large", "file_size": 20},
+                        ],
+                    },
+                    {
+                        "photo": [
+                            {"file_id": "p2-small", "file_size": 11},
+                            {"file_id": "p2-large", "file_size": 21},
+                        ],
+                    },
+                    {
+                        "photo": [
+                            {"file_id": "p3-small", "file_size": 12},
+                            {"file_id": "p3-large", "file_size": 22},
+                        ],
+                    },
+                ],
+            }
+        )
+        self.assertEqual(prompt, "Nextcloud add these 3 pics to diary111.docx")
+        self.assertEqual(photo_file_ids, ["p1-large", "p2-large", "p3-large"])
+        self.assertIsNone(voice_file_id)
+        self.assertIsNone(document)
+
+    def test_collapse_media_group_updates_merges_album_messages(self):
+        updates = [
+            {
+                "update_id": 101,
+                "message": {
+                    "message_id": 11,
+                    "media_group_id": "album-1",
+                    "caption": "album caption",
+                    "chat": {"id": 1},
+                    "photo": [{"file_id": "p1", "file_size": 10}],
+                },
+            },
+            {
+                "update_id": 102,
+                "message": {
+                    "message_id": 12,
+                    "media_group_id": "album-1",
+                    "chat": {"id": 1},
+                    "photo": [{"file_id": "p2", "file_size": 11}],
+                },
+            },
+            {
+                "update_id": 103,
+                "message": {
+                    "message_id": 13,
+                    "chat": {"id": 1},
+                    "text": "plain",
+                },
+            },
+        ]
+
+        collapsed = bridge_handlers.collapse_media_group_updates(updates)
+
+        self.assertEqual(len(collapsed), 2)
+        album_message = collapsed[0]["message"]
+        self.assertEqual(album_message["caption"], "album caption")
+        self.assertEqual(len(album_message["media_group_messages"]), 2)
+        self.assertEqual(collapsed[1]["message"]["text"], "plain")
 
     def test_build_reply_context_prompt_from_reply_to_message_text(self):
         prompt = bridge_handlers.build_reply_context_prompt(

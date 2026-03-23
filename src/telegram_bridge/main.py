@@ -19,7 +19,12 @@ try:
         parse_executor_output,
     )
     from .engine_adapter import EngineAdapter
-    from .handlers import DocumentPayload, extract_prompt_and_media, handle_update
+    from .handlers import (
+        DocumentPayload,
+        collapse_media_group_updates,
+        extract_prompt_and_media,
+        handle_update,
+    )
     from .media import TelegramFileDownloadSpec, download_telegram_file_to_temp
     from .memory_engine import MemoryEngine
     from .plugin_registry import build_default_plugin_registry
@@ -75,7 +80,12 @@ except ImportError:
         parse_executor_output,
     )
     from engine_adapter import EngineAdapter
-    from handlers import DocumentPayload, extract_prompt_and_media, handle_update
+    from handlers import (
+        DocumentPayload,
+        collapse_media_group_updates,
+        extract_prompt_and_media,
+        handle_update,
+    )
     from media import TelegramFileDownloadSpec, download_telegram_file_to_temp
     from memory_engine import MemoryEngine
     from plugin_registry import build_default_plugin_registry
@@ -843,6 +853,8 @@ def run_bridge(config: Config) -> int:
                 update_id = update.get("update_id")
                 if isinstance(update_id, int):
                     offset = max(offset, update_id + 1)
+            collapsed_updates = collapse_media_group_updates(updates)
+            for update in collapsed_updates:
                 handle_update(state, config, client, update, engine=engine)
         except (HTTPError, URLError, TimeoutError):
             logging.exception("Network/API error while polling Telegram")

@@ -177,6 +177,7 @@ class DocumentPayload:
 class PreparedPromptInput:
     prompt_text: str
     image_path: Optional[str] = None
+    image_paths: List[str] = field(default_factory=list)
     document_path: Optional[str] = None
     cleanup_paths: List[str] = field(default_factory=list)
     attachment_file_ids: List[str] = field(default_factory=list)
@@ -970,6 +971,77 @@ def normalize_optional_text(value: object) -> Optional[str]:
     return value.strip()
 
 
+def iter_media_group_messages(message: Dict[str, object]) -> List[Dict[str, object]]:
+    grouped = message.get("media_group_messages")
+    if isinstance(grouped, list):
+        messages = [item for item in grouped if isinstance(item, dict)]
+        if messages:
+            return messages
+    return [message]
+
+
+def collapse_media_group_updates(updates: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    collapsed: List[Dict[str, object]] = []
+    index = 0
+    while index < len(updates):
+        update = updates[index]
+        message = update.get("message")
+        if not isinstance(message, dict):
+            collapsed.append(update)
+            index += 1
+            continue
+
+        media_group_id = message.get("media_group_id")
+        chat = message.get("chat")
+        chat_id = chat.get("id") if isinstance(chat, dict) else None
+        if not isinstance(media_group_id, str) or not media_group_id.strip() or not isinstance(chat_id, int):
+            collapsed.append(update)
+            index += 1
+            continue
+
+        grouped_updates = [update]
+        next_index = index + 1
+        while next_index < len(updates):
+            candidate_update = updates[next_index]
+            candidate_message = candidate_update.get("message")
+            if not isinstance(candidate_message, dict):
+                break
+            candidate_group_id = candidate_message.get("media_group_id")
+            candidate_chat = candidate_message.get("chat")
+            candidate_chat_id = candidate_chat.get("id") if isinstance(candidate_chat, dict) else None
+            if candidate_group_id != media_group_id or candidate_chat_id != chat_id:
+                break
+            grouped_updates.append(candidate_update)
+            next_index += 1
+
+        if len(grouped_updates) == 1:
+            collapsed.append(update)
+            index = next_index
+            continue
+
+        grouped_messages = [
+            candidate_update["message"]
+            for candidate_update in grouped_updates
+            if isinstance(candidate_update.get("message"), dict)
+        ]
+        combined_update = dict(update)
+        combined_message = dict(message)
+        combined_message["media_group_messages"] = grouped_messages
+        for field_name in ("caption", "text"):
+            if normalize_optional_text(combined_message.get(field_name)):
+                continue
+            for grouped_message in grouped_messages:
+                candidate_text = normalize_optional_text(grouped_message.get(field_name))
+                if candidate_text:
+                    combined_message[field_name] = candidate_text
+                    break
+        combined_update["message"] = combined_message
+        collapsed.append(combined_update)
+        index = next_index
+
+    return collapsed
+
+
 def build_reply_context_prompt(message: Dict[str, object]) -> str:
     reply_to = message.get("reply_to_message")
     if not isinstance(reply_to, dict):
@@ -1032,28 +1104,43 @@ def extract_document_payload(message: Dict[str, object]) -> Optional[DocumentPay
 def extract_message_media_payload(
     message: Dict[str, object]
 ) -> tuple[Optional[str], Optional[str], Optional[DocumentPayload]]:
-    photo_items = message.get("photo")
-    if isinstance(photo_items, list) and photo_items:
-        file_id = pick_largest_photo_file_id(photo_items)
-        if file_id:
-            return file_id, None, None
+    photo_file_ids = extract_message_photo_file_ids(message)
+    if photo_file_ids:
+        return photo_file_ids[0], None, None
 
-    voice = message.get("voice")
-    if isinstance(voice, dict):
-        voice_file_id = voice.get("file_id")
-        if isinstance(voice_file_id, str) and voice_file_id.strip():
-            return None, voice_file_id.strip(), None
+    for candidate in iter_media_group_messages(message):
+        voice = candidate.get("voice")
+        if isinstance(voice, dict):
+            voice_file_id = voice.get("file_id")
+            if isinstance(voice_file_id, str) and voice_file_id.strip():
+                return None, voice_file_id.strip(), None
 
-    document = extract_document_payload(message)
-    if document is not None:
-        return None, None, document
+        document = extract_document_payload(candidate)
+        if document is not None:
+            return None, None, document
 
     return None, None, None
 
 
+def extract_message_photo_file_ids(message: Dict[str, object]) -> List[str]:
+    photo_file_ids: List[str] = []
+    for candidate in iter_media_group_messages(message):
+        photo_items = candidate.get("photo")
+        if not isinstance(photo_items, list) or not photo_items:
+            continue
+        file_id = pick_largest_photo_file_id(photo_items)
+        if not file_id or file_id in photo_file_ids:
+            continue
+        photo_file_ids.append(file_id)
+    return photo_file_ids
+
+
 def describe_message_media(message: Dict[str, object]) -> str:
-    photo_file_id, voice_file_id, document = extract_message_media_payload(message)
-    if photo_file_id:
+    photo_file_ids = extract_message_photo_file_ids(message)
+    _, voice_file_id, document = extract_message_media_payload(message)
+    if photo_file_ids:
+        if len(photo_file_ids) > 1:
+            return "В исходном сообщении были изображения."
         return "В исходном сообщении было изображение."
     if voice_file_id:
         return "В исходном сообщении было голосовое сообщение."
@@ -1066,44 +1153,50 @@ def describe_message_media(message: Dict[str, object]) -> str:
 
 def extract_prompt_and_media(
     message: Dict[str, object]
-) -> tuple[Optional[str], Optional[str], Optional[str], Optional[DocumentPayload]]:
+) -> tuple[Optional[str], List[str], Optional[str], Optional[DocumentPayload]]:
     text = normalize_optional_text(message.get("text"))
     caption = normalize_optional_text(message.get("caption"))
 
-    photo_file_id, voice_file_id, document = extract_message_media_payload(message)
-    if photo_file_id:
-        prompt = select_media_prompt(text, caption, "Please analyze this image.")
-        return prompt, photo_file_id, None, None
+    photo_file_ids = extract_message_photo_file_ids(message)
+    _, voice_file_id, document = extract_message_media_payload(message)
+    if photo_file_ids:
+        default_prompt = "Please analyze these images." if len(photo_file_ids) > 1 else "Please analyze this image."
+        prompt = select_media_prompt(text, caption, default_prompt)
+        return prompt, photo_file_ids, None, None
     if voice_file_id:
         prompt = select_media_prompt(text, caption, "")
-        return prompt, None, voice_file_id, None
+        return prompt, [], voice_file_id, None
     if document is not None:
         prompt = select_media_prompt(text, caption, "Please analyze this file.")
-        return prompt, None, None, document
+        return prompt, [], None, document
 
     reply_to = message.get("reply_to_message")
     if isinstance(reply_to, dict):
-        reply_photo_file_id, reply_voice_file_id, reply_document = extract_message_media_payload(
-            reply_to
-        )
-        if reply_photo_file_id:
-            prompt = select_media_prompt(text, caption, "Please analyze the referenced image.")
-            return prompt, reply_photo_file_id, None, None
+        reply_photo_file_ids = extract_message_photo_file_ids(reply_to)
+        _, reply_voice_file_id, reply_document = extract_message_media_payload(reply_to)
+        if reply_photo_file_ids:
+            default_prompt = (
+                "Please analyze the referenced images."
+                if len(reply_photo_file_ids) > 1
+                else "Please analyze the referenced image."
+            )
+            prompt = select_media_prompt(text, caption, default_prompt)
+            return prompt, reply_photo_file_ids, None, None
         if reply_voice_file_id:
             prompt = select_media_prompt(
                 text,
                 caption,
                 "Please transcribe the referenced voice message.",
             )
-            return prompt, None, reply_voice_file_id, None
+            return prompt, [], reply_voice_file_id, None
         if reply_document is not None:
             prompt = select_media_prompt(text, caption, "Please analyze the referenced file.")
-            return prompt, None, None, reply_document
+            return prompt, [], None, reply_document
 
     if text is not None:
-        return text, None, None, None
+        return text, [], None, None
 
-    return None, None, None, None
+    return None, [], None, None
 
 
 def extract_sender_name(message: Dict[str, object]) -> str:
@@ -1856,77 +1949,91 @@ def prepare_prompt_input(
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
     progress: ProgressReporter,
+    photo_file_ids: Optional[List[str]] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> Optional[PreparedPromptInput]:
     channel_name = getattr(client, "channel_name", "telegram")
     attachment_store = getattr(state, "attachment_store", None)
     prompt_text = prompt.strip()
     image_path: Optional[str] = None
+    image_paths: List[str] = []
     document_path: Optional[str] = None
     cleanup_paths: List[str] = []
     attachment_file_ids: List[str] = []
 
-    if photo_file_id:
-        attachment_file_ids.append(photo_file_id)
-        image_path, archived_summary_context = resolve_attachment_binary_or_summary(
-            attachment_store,
-            channel_name=channel_name,
-            file_id=photo_file_id,
-            media_label="image",
+    normalized_photo_file_ids = list(photo_file_ids or [])
+    if photo_file_id and photo_file_id not in normalized_photo_file_ids:
+        normalized_photo_file_ids.insert(0, photo_file_id)
+
+    if normalized_photo_file_ids:
+        progress.set_phase(
+            "Downloading images from Telegram." if len(normalized_photo_file_ids) > 1 else "Downloading image from Telegram."
         )
-        if image_path is None:
-            progress.set_phase("Downloading image from Telegram.")
-            try:
-                downloaded_image_path = download_photo_to_temp(client, config, photo_file_id)
-                archived_image_path = archive_media_path(
-                    attachment_store,
-                    channel_name=channel_name,
-                    file_id=photo_file_id,
-                    media_kind="photo",
-                    source_path=downloaded_image_path,
-                )
-                if archived_image_path:
-                    image_path = archived_image_path
-                    try:
-                        os.remove(downloaded_image_path)
-                    except OSError:
+        for current_photo_file_id in normalized_photo_file_ids:
+            attachment_file_ids.append(current_photo_file_id)
+            resolved_image_path, archived_summary_context = resolve_attachment_binary_or_summary(
+                attachment_store,
+                channel_name=channel_name,
+                file_id=current_photo_file_id,
+                media_label="image",
+            )
+            if resolved_image_path is None:
+                try:
+                    downloaded_image_path = download_photo_to_temp(client, config, current_photo_file_id)
+                    archived_image_path = archive_media_path(
+                        attachment_store,
+                        channel_name=channel_name,
+                        file_id=current_photo_file_id,
+                        media_kind="photo",
+                        source_path=downloaded_image_path,
+                    )
+                    if archived_image_path:
+                        resolved_image_path = archived_image_path
+                        try:
+                            os.remove(downloaded_image_path)
+                        except OSError:
+                            logging.warning(
+                                "Failed to remove temporary image after archiving: %s",
+                                downloaded_image_path,
+                            )
+                    else:
+                        resolved_image_path = downloaded_image_path
+                        cleanup_paths.append(downloaded_image_path)
+                except ValueError as exc:
+                    if archived_summary_context:
+                        if prompt_text:
+                            prompt_text = f"{prompt_text}\n\n{archived_summary_context}"
+                        else:
+                            prompt_text = archived_summary_context
+                    else:
+                        logging.warning("Photo rejected for chat_id=%s: %s", chat_id, exc)
+                        progress.mark_failure("Image request rejected.")
+                        client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+                        return None
+                except Exception:
+                    if archived_summary_context:
                         logging.warning(
-                            "Failed to remove temporary image after archiving: %s",
-                            downloaded_image_path,
+                            "Photo redownload failed for chat_id=%s; using archived summary fallback.",
+                            chat_id,
                         )
-                else:
-                    image_path = downloaded_image_path
-                    cleanup_paths.append(downloaded_image_path)
-            except ValueError as exc:
-                if archived_summary_context:
-                    if prompt_text:
-                        prompt_text = f"{prompt_text}\n\n{archived_summary_context}"
+                        if prompt_text:
+                            prompt_text = f"{prompt_text}\n\n{archived_summary_context}"
+                        else:
+                            prompt_text = archived_summary_context
                     else:
-                        prompt_text = archived_summary_context
-                else:
-                    logging.warning("Photo rejected for chat_id=%s: %s", chat_id, exc)
-                    progress.mark_failure("Image request rejected.")
-                    client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
-                    return None
-            except Exception:
-                if archived_summary_context:
-                    logging.warning(
-                        "Photo redownload failed for chat_id=%s; using archived summary fallback.",
-                        chat_id,
-                    )
-                    if prompt_text:
-                        prompt_text = f"{prompt_text}\n\n{archived_summary_context}"
-                    else:
-                        prompt_text = archived_summary_context
-                else:
-                    logging.exception("Photo download failed for chat_id=%s", chat_id)
-                    progress.mark_failure("Image download failed.")
-                    client.send_message(
-                        chat_id,
-                        config.image_download_error_message,
-                        reply_to_message_id=message_id,
-                    )
-                    return None
+                        logging.exception("Photo download failed for chat_id=%s", chat_id)
+                        progress.mark_failure("Image download failed.")
+                        client.send_message(
+                            chat_id,
+                            config.image_download_error_message,
+                            reply_to_message_id=message_id,
+                        )
+                        return None
+            if resolved_image_path is not None:
+                image_paths.append(resolved_image_path)
+
+        if image_paths:
+            image_path = image_paths[0]
 
     if voice_file_id:
         progress.set_phase("Transcribing voice message.")
@@ -2099,6 +2206,7 @@ def prepare_prompt_input(
     return PreparedPromptInput(
         prompt_text=prompt_text,
         image_path=image_path,
+        image_paths=image_paths,
         document_path=document_path,
         cleanup_paths=cleanup_paths,
         attachment_file_ids=attachment_file_ids,
@@ -2117,8 +2225,9 @@ def prewarm_attachment_archive_for_message(
         return
     channel_name = getattr(client, "channel_name", "telegram")
 
-    photo_file_id, _, document = extract_message_media_payload(message)
-    if photo_file_id:
+    photo_file_ids = extract_message_photo_file_ids(message)
+    _, _, document = extract_message_media_payload(message)
+    for photo_file_id in photo_file_ids:
         record, _ = resolve_attachment_binary_or_summary(
             attachment_store,
             channel_name=channel_name,
@@ -2186,8 +2295,9 @@ def execute_prompt_with_retry(
     message_id: Optional[int],
     prompt_text: str,
     previous_thread_id: Optional[str],
-    image_path: Optional[str],
     progress: ProgressReporter,
+    image_path: Optional[str] = None,
+    image_paths: Optional[List[str]] = None,
     cancel_event: Optional[threading.Event] = None,
     session_continuity_enabled: bool = True,
 ) -> Optional[subprocess.CompletedProcess[str]]:
@@ -2195,6 +2305,9 @@ def execute_prompt_with_retry(
     retry_attempted = False
     attempt_thread_id: Optional[str] = previous_thread_id
     attempt = 0
+    normalized_image_paths = list(image_paths or [])
+    if image_path and image_path not in normalized_image_paths:
+        normalized_image_paths.insert(0, image_path)
 
     while True:
         if cancel_event is not None and cancel_event.is_set():
@@ -2237,18 +2350,21 @@ def execute_prompt_with_retry(
                     channel_name=getattr(client, "channel_name", "telegram"),
                     actor_chat_id=chat_id,
                     actor_user_id=actor_user_id,
-                    image_path=image_path,
+                    image_paths=normalized_image_paths,
                     progress_callback=progress.handle_executor_event,
                     cancel_event=cancel_event,
                 )
             except TypeError as exc:
-                if "unexpected keyword argument 'session_key'" not in str(exc):
+                if (
+                    "unexpected keyword argument 'session_key'" not in str(exc)
+                    and "unexpected keyword argument 'image_paths'" not in str(exc)
+                ):
                     raise
                 result = engine.run(
                     config=config,
                     prompt=prompt_text,
                     thread_id=attempt_thread_id,
-                    image_path=image_path,
+                    image_path=normalized_image_paths[0] if normalized_image_paths else None,
                     progress_callback=progress.handle_executor_event,
                     cancel_event=cancel_event,
                 )
@@ -2482,6 +2598,7 @@ def process_prompt(
     cancel_event: Optional[threading.Event] = None,
     stateless: bool = False,
     sender_name: str = "Telegram User",
+    photo_file_ids: Optional[List[str]] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     channel_name = getattr(client, "channel_name", "telegram")
@@ -2492,6 +2609,7 @@ def process_prompt(
     previous_thread_id: Optional[str] = None
     turn_context: Optional[TurnContext] = None
     image_path: Optional[str] = None
+    image_paths: List[str] = []
     document_path: Optional[str] = None
     cleanup_paths: List[str] = []
     attachment_file_ids: List[str] = []
@@ -2518,6 +2636,7 @@ def process_prompt(
             message_id=message_id,
             prompt=prompt,
             photo_file_id=photo_file_id,
+            photo_file_ids=photo_file_ids,
             voice_file_id=voice_file_id,
             document=document,
             progress=progress,
@@ -2526,6 +2645,7 @@ def process_prompt(
         if prepared is None:
             return
         image_path = prepared.image_path
+        image_paths = list(prepared.image_paths)
         document_path = prepared.document_path
         cleanup_paths = list(prepared.cleanup_paths)
         attachment_file_ids = list(prepared.attachment_file_ids)
@@ -2586,7 +2706,7 @@ def process_prompt(
                 "chat_id": chat_id,
                 "message_id": message_id,
                 "prompt_chars": len(prompt or ""),
-                "has_photo": bool(photo_file_id),
+                "has_photo": bool(photo_file_ids or photo_file_id),
                 "has_voice": bool(voice_file_id),
                 "has_document": document is not None,
                 "has_previous_thread": bool(previous_thread_id),
@@ -2605,6 +2725,7 @@ def process_prompt(
             prompt_text=prompt_text,
             previous_thread_id=previous_thread_id,
             image_path=image_path,
+            image_paths=image_paths or ([image_path] if image_path else []),
             progress=progress,
             cancel_event=cancel_event,
             session_continuity_enabled=not stateless,
@@ -2694,6 +2815,7 @@ def process_message_worker(
     cancel_event: Optional[threading.Event] = None,
     stateless: bool = False,
     sender_name: str = "Telegram User",
+    photo_file_ids: Optional[List[str]] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     try:
@@ -2713,6 +2835,7 @@ def process_message_worker(
             cancel_event,
             stateless=stateless,
             sender_name=sender_name,
+            photo_file_ids=photo_file_ids,
             enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
         )
     except Exception:
@@ -3252,6 +3375,7 @@ def maybe_process_voice_alias_learning_confirmation(
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
+    photo_file_ids: Optional[List[str]] = None,
 ) -> None:
     if not prompt_input.strip():
         return
@@ -3259,7 +3383,7 @@ def maybe_process_voice_alias_learning_confirmation(
         return
     if priority_keyword_mode:
         return
-    if photo_file_id or voice_file_id or document is not None:
+    if photo_file_id or photo_file_ids or voice_file_id or document is not None:
         return
 
     learning_store = getattr(state, "voice_alias_learning_store", None)
@@ -3359,6 +3483,7 @@ def start_message_worker(
     cancel_event: Optional[threading.Event] = None,
     stateless: bool = False,
     sender_name: str = "Telegram User",
+    photo_file_ids: Optional[List[str]] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     worker = threading.Thread(
@@ -3379,6 +3504,7 @@ def start_message_worker(
             cancel_event,
             stateless,
             sender_name,
+            photo_file_ids,
             enforce_voice_prefix_from_transcript,
         ),
         daemon=True,
@@ -3434,8 +3560,8 @@ def handle_update(
             client.send_message(chat_id, config.denied_message, reply_to_message_id=message_id)
         return
 
-    prompt_input, photo_file_id, voice_file_id, document = extract_prompt_and_media(message)
-    if prompt_input is None and voice_file_id is None and document is None:
+    prompt_input, photo_file_ids, voice_file_id, document = extract_prompt_and_media(message)
+    if prompt_input is None and not photo_file_ids and voice_file_id is None and document is None:
         return
 
     prewarm_attachment_archive_for_message(
@@ -3525,7 +3651,8 @@ def handle_update(
             prompt_input=prompt_input,
             command=command,
             priority_keyword_mode=priority_keyword_mode,
-            photo_file_id=photo_file_id,
+            photo_file_id=photo_file_ids[0] if photo_file_ids else None,
+            photo_file_ids=photo_file_ids,
             voice_file_id=voice_file_id,
             document=document,
         )
@@ -3673,7 +3800,7 @@ def handle_update(
             "chat_id": chat_id,
             "message_id": message_id,
             "scope_key": scope_key,
-            "has_photo": bool(photo_file_id),
+            "has_photo": bool(photo_file_ids),
             "has_voice": bool(voice_file_id),
             "has_document": document is not None,
             "stateless": stateless,
@@ -3704,7 +3831,8 @@ def handle_update(
             message_thread_id=message_thread_id,
             message_id=message_id,
             prompt=prompt,
-            photo_file_id=photo_file_id,
+            photo_file_id=photo_file_ids[0] if photo_file_ids else None,
+            photo_file_ids=photo_file_ids,
             voice_file_id=voice_file_id,
             document=document,
             cancel_event=cancel_event,

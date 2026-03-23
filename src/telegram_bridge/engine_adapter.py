@@ -25,6 +25,7 @@ class EngineAdapter(Protocol):
         actor_chat_id: Optional[int] = None,
         actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
+        image_paths: Optional[list[str]] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
@@ -44,6 +45,7 @@ class CodexEngineAdapter:
         actor_chat_id: Optional[int] = None,
         actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
+        image_paths: Optional[list[str]] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
@@ -52,6 +54,7 @@ class CodexEngineAdapter:
             prompt=prompt,
             thread_id=thread_id,
             image_path=image_path,
+            image_paths=image_paths,
             progress_callback=progress_callback,
             cancel_event=cancel_event,
         )
@@ -70,6 +73,7 @@ class MavaliEthEngineAdapter:
         actor_chat_id: Optional[int] = None,
         actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
+        image_paths: Optional[list[str]] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
@@ -88,7 +92,7 @@ class MavaliEthEngineAdapter:
                 stderr="",
             )
 
-        if image_path:
+        if image_path or image_paths:
             return codex_fallback.run(
                 config=config,
                 prompt=prompt,
@@ -98,6 +102,7 @@ class MavaliEthEngineAdapter:
                 actor_chat_id=actor_chat_id,
                 actor_user_id=actor_user_id,
                 image_path=image_path,
+                image_paths=image_paths,
                 progress_callback=progress_callback,
                 cancel_event=cancel_event,
             )
@@ -122,6 +127,7 @@ class MavaliEthEngineAdapter:
                     actor_chat_id=actor_chat_id,
                     actor_user_id=actor_user_id,
                     image_path=image_path,
+                    image_paths=image_paths,
                     progress_callback=progress_callback,
                     cancel_event=cancel_event,
                 )
