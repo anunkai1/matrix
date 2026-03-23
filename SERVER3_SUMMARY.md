@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-22 (AEST, +10:00)
+Last updated: 2026-03-23 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -52,6 +52,7 @@ Last updated: 2026-03-22 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-23: extracted `mavali_eth` wallet bootstrap, keystore materialization, chain-id verification, and current-message normalization into a dedicated `service_runtime.py` helper, so `service.py` no longer owns that leftover runtime subsystem directly.
 - 2026-03-23: moved native ETH send staging into the existing `core_wallet_actions.py` handler, so `service.py` now delegates the last inline wallet action-preparation path instead of building that pending action itself.
 - 2026-03-23: extracted the remaining wallet/help/query presentation layer into `wallet_queries.py`, so `service.py` now delegates basic address/balance/gas/help/token query responses instead of formatting them inline.
 - 2026-03-23: extracted the bulky `mavali_eth` Polymarket read/query and preview-staging surface into `polymarket_queries.py`, so `service.py` no longer carries the long market/account/orderbook presentation block inline.
@@ -59,7 +60,6 @@ Last updated: 2026-03-22 (AEST, +10:00)
 - 2026-03-23: extracted `mavali_eth` prompt routing into a dedicated `prompt_router.py` helper so `service.py` now acts much more like a thin coordinator instead of carrying the entire command parser chain inline.
 - 2026-03-22: added a direct mainnet Uniswap execution path to `mavali_eth` for immediate ERC20 swaps, wiring `swap ... on uniswap` through live route quoting, exact-amount approvals, optional ETH->WETH wrap, a fixed `0.50%` slippage ceiling, and a hard `15 gwei` gas-price cap so the runtime now has a true onchain swap engine for cases where CowSwap’s resting-order model is the wrong fit.
 - 2026-03-23: hardened `mavali_eth` Uniswap execution after the Tenderly no-op incident by adding `eth_getCode` provider preflight checks, refusing to stage or confirm against an RPC that exposes empty router/factory/token code, centralizing transaction submission logic, caching ERC20 metadata reads, and treating below-minimum or zero-output receipts as failed executions instead of falsely reporting a confirmed swap.
-- 2026-03-23: removed duplicated mainnet token catalogs from the `mavali_eth` CowSwap and Uniswap modules by extracting a shared token registry, so aliases like `link` / `chainlink`, symbol formatting, and decimals no longer drift independently across protocol adapters.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
