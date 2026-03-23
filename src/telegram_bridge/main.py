@@ -354,6 +354,10 @@ def drop_pending_updates(client: ChannelAdapter) -> int:
     return offset
 
 
+def should_discard_startup_backlog(config: Config) -> bool:
+    return getattr(config, "channel_plugin", "telegram") == "telegram"
+
+
 MEDIA_GROUP_QUIET_WINDOW_SECONDS = 2.0
 
 
@@ -844,15 +848,22 @@ def run_bridge(config: Config) -> int:
         fields={"count": len(interrupted)},
     )
 
-    try:
-        offset = drop_pending_updates(client)
-    except Exception:
-        logging.exception("Failed to discard queued startup updates; defaulting to offset=0")
+    offset = 0
+    if should_discard_startup_backlog(config):
+        try:
+            offset = drop_pending_updates(client)
+        except Exception:
+            logging.exception("Failed to discard queued startup updates; defaulting to offset=0")
+            emit_event(
+                "bridge.startup_backlog_discard_failed",
+                level=logging.WARNING,
+            )
+            offset = 0
+    else:
         emit_event(
-            "bridge.startup_backlog_discard_failed",
-            level=logging.WARNING,
+            "bridge.startup_backlog_discard_skipped",
+            fields={"channel_plugin": config.channel_plugin},
         )
-        offset = 0
 
     logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
     logging.info("Channel plugin active=%s", config.channel_plugin)

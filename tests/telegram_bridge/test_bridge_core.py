@@ -515,6 +515,11 @@ class BridgeCoreTests(unittest.TestCase):
             config = bridge.load_config()
         self.assertEqual(config.signal_bridge_api_base, "http://127.0.0.1:18797")
 
+    def test_should_discard_startup_backlog_for_telegram_only(self):
+        self.assertTrue(bridge.should_discard_startup_backlog(make_config(channel_plugin="telegram")))
+        self.assertFalse(bridge.should_discard_startup_backlog(make_config(channel_plugin="whatsapp")))
+        self.assertFalse(bridge.should_discard_startup_backlog(make_config(channel_plugin="signal")))
+
     def test_load_config_reads_require_prefix_in_private_override(self):
         with mock.patch.dict(
             os.environ,
