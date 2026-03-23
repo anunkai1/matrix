@@ -23,7 +23,7 @@ import {
   parseInteger,
   readEnvFromFile
 } from './common.mjs';
-import { IncomingPhotoBatcher } from './inbound_batcher.mjs';
+import { buildIncomingPhotoBatchKey, IncomingPhotoBatcher } from './inbound_batcher.mjs';
 import { createLogger } from './logger.mjs';
 
 const localEnv = readEnvFromFile(path.join(process.cwd(), '.env'));
@@ -500,13 +500,13 @@ function pushUpdate(messagePayload) {
   }
 }
 
-function buildIncomingBatchKey(chatJid, payload) {
-  if (!payload || typeof payload !== 'object') return '';
-  if (!Array.isArray(payload.photo) || payload.photo.length === 0) return '';
-  if (payload.voice || payload.document) return '';
-  const sender = String(payload.from?.username || chatJid || '').trim();
-  if (!sender) return '';
-  return `${chatJid}::${sender}`;
+function buildIncomingSenderKey(msg, chatJid) {
+  const participant = String(msg?.key?.participant || '').trim();
+  if (participant) return participant;
+  const remoteJid = String(msg?.key?.remoteJid || '').trim();
+  if (remoteJid) return remoteJid;
+  const sender = String(msg?.pushName || chatJid || '').trim();
+  return sender;
 }
 
 function collectUpdates(offset, limit) {
@@ -766,7 +766,10 @@ async function buildIncomingMessagePayload(sock, msg, chatJid) {
 async function enqueueIncomingUpdate(sock, msg, chatJid) {
   const payload = await buildIncomingMessagePayload(sock, msg, chatJid);
   if (!payload) return;
-  incomingPhotoBatcher.push(buildIncomingBatchKey(chatJid, payload), payload);
+  incomingPhotoBatcher.push(
+    buildIncomingPhotoBatchKey(chatJid, payload, buildIncomingSenderKey(msg, chatJid)),
+    payload
+  );
 }
 
 function sendJson(res, status, payload) {

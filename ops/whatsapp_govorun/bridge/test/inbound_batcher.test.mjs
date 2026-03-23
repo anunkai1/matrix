@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildIncomingPhotoBatchKey,
   IncomingPhotoBatcher,
   isPhotoBatchablePayload,
   mergePhotoPayload
@@ -34,6 +35,22 @@ test('mergePhotoPayload combines photo lists and preserves first caption', () =>
   assert.deepEqual(
     merged.photo.map((item) => item.file_id),
     ['p1', 'p2']
+  );
+});
+
+test('buildIncomingPhotoBatchKey prefers stable sender key over payload display name', () => {
+  const batchKey = buildIncomingPhotoBatchKey(
+    '61400000000@s.whatsapp.net',
+    {
+      photo: [{ file_id: 'p1', file_size: 10 }],
+      from: { username: 'Alice' }
+    },
+    '61499999999@s.whatsapp.net'
+  );
+
+  assert.equal(
+    batchKey,
+    '61400000000@s.whatsapp.net::61499999999@s.whatsapp.net'
   );
 });
 

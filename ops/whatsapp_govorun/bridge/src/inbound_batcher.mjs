@@ -2,11 +2,23 @@ function clonePayload(payload) {
   return JSON.parse(JSON.stringify(payload || {}));
 }
 
+function normalizeBatchSenderKey(senderKey) {
+  return String(senderKey || '').trim();
+}
+
 function isPhotoBatchablePayload(payload) {
   if (!payload || typeof payload !== 'object') return false;
   if (!Array.isArray(payload.photo) || payload.photo.length === 0) return false;
   if (payload.voice || payload.document) return false;
   return true;
+}
+
+function buildIncomingPhotoBatchKey(chatJid, payload, senderKey = '') {
+  if (!isPhotoBatchablePayload(payload)) return '';
+  const normalizedChatJid = String(chatJid || '').trim();
+  if (!normalizedChatJid) return '';
+  const normalizedSenderKey = normalizeBatchSenderKey(senderKey) || normalizedChatJid;
+  return `${normalizedChatJid}::${normalizedSenderKey}`;
 }
 
 function mergePhotoPayload(basePayload, nextPayload) {
@@ -103,4 +115,4 @@ export class IncomingPhotoBatcher {
   }
 }
 
-export { clonePayload, isPhotoBatchablePayload, mergePhotoPayload };
+export { buildIncomingPhotoBatchKey, clonePayload, isPhotoBatchablePayload, mergePhotoPayload };
