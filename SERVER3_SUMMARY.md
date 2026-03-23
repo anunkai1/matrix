@@ -52,9 +52,9 @@ Last updated: 2026-03-23 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-23: extracted `mavali_eth` dependency assembly into `service_dependencies.py`, so `service.py` now initializes from a single wiring bundle instead of constructing every client, handler, and monitor inline.
 - 2026-03-23: extracted `mavali_eth` wallet bootstrap, keystore materialization, chain-id verification, and current-message normalization into a dedicated `service_runtime.py` helper, so `service.py` no longer owns that leftover runtime subsystem directly.
 - 2026-03-23: moved native ETH send staging into the existing `core_wallet_actions.py` handler, so `service.py` now delegates the last inline wallet action-preparation path instead of building that pending action itself.
-- 2026-03-23: extracted the remaining wallet/help/query presentation layer into `wallet_queries.py`, so `service.py` now delegates basic address/balance/gas/help/token query responses instead of formatting them inline.
 - 2026-03-23: extracted the bulky `mavali_eth` Polymarket read/query and preview-staging surface into `polymarket_queries.py`, so `service.py` no longer carries the long market/account/orderbook presentation block inline.
 - 2026-03-23: extracted `mavali_eth` pending-action confirmation dispatch and inbound transfer polling into dedicated `confirmation_router.py` and `inbound_monitor.py` modules, so `service.py` no longer carries those remaining generic control-flow loops inline.
 - 2026-03-23: extracted `mavali_eth` prompt routing into a dedicated `prompt_router.py` helper so `service.py` now acts much more like a thin coordinator instead of carrying the entire command parser chain inline.
