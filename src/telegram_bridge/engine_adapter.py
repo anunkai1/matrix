@@ -112,7 +112,7 @@ class MavaliEthEngineAdapter:
                 actor_chat_id=actor_chat_id,
                 actor_user_id=actor_user_id,
             )
-            if output == service._help_message():
+            if output == service.wallet_queries.help_message():
                 return codex_fallback.run(
                     config=config,
                     prompt=prompt,
