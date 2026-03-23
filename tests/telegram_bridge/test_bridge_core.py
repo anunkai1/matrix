@@ -525,6 +525,12 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(bridge.should_resume_saved_update_offset(make_config(channel_plugin="whatsapp")))
         self.assertTrue(bridge.should_resume_saved_update_offset(make_config(channel_plugin="signal")))
 
+    def test_should_reset_saved_update_offset_only_when_queue_counter_rolls_back(self):
+        self.assertFalse(bridge.should_reset_saved_update_offset(0, 3))
+        self.assertFalse(bridge.should_reset_saved_update_offset(10, None))
+        self.assertFalse(bridge.should_reset_saved_update_offset(10, 9))
+        self.assertTrue(bridge.should_reset_saved_update_offset(10, 2))
+
     def test_load_saved_update_offset_ignores_invalid_values(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             offset_path = Path(tmpdir) / "offset.txt"
@@ -570,6 +576,21 @@ class BridgeCoreTests(unittest.TestCase):
         offset, state_path = bridge.compute_initial_update_offset(config, FakeClient())
         self.assertEqual(offset, 10)
         self.assertEqual(state_path, str(offset_path))
+
+    def test_maybe_reset_stale_runtime_offset_resets_to_zero_when_live_queue_restarts(self):
+        config = make_config(channel_plugin="whatsapp", state_dir=tempfile.mkdtemp())
+
+        class FakeClient:
+            def get_updates(self, offset, timeout_seconds=0):
+                return [
+                    {"update_id": 1, "message": {}},
+                    {"update_id": 2, "message": {}},
+                ]
+
+        self.assertEqual(
+            bridge.maybe_reset_stale_runtime_offset(config, FakeClient(), 12),
+            0,
+        )
 
     def test_load_config_reads_require_prefix_in_private_override(self):
         with mock.patch.dict(

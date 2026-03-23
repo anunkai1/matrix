@@ -406,6 +406,13 @@ def should_resume_saved_update_offset(config: Config) -> bool:
     return not should_discard_startup_backlog(config)
 
 
+def should_reset_saved_update_offset(
+    offset: int,
+    queue_max_update_id: Optional[int],
+) -> bool:
+    return offset > 0 and queue_max_update_id is not None and offset > queue_max_update_id + 1
+
+
 def inspect_channel_update_bounds(client: ChannelAdapter) -> Tuple[Optional[int], Optional[int]]:
     updates = client.get_updates(0, timeout_seconds=0)
     update_ids = [
@@ -432,11 +439,7 @@ def compute_initial_update_offset(
 
     offset = saved_offset
     offset_reset = False
-    if (
-        saved_offset > 0
-        and queue_max_update_id is not None
-        and saved_offset > queue_max_update_id + 1
-    ):
+    if should_reset_saved_update_offset(saved_offset, queue_max_update_id):
         offset = 0
         offset_reset = True
 
@@ -452,6 +455,31 @@ def compute_initial_update_offset(
         },
     )
     return offset, offset_state_path
+
+
+def maybe_reset_stale_runtime_offset(
+    config: Config,
+    client: ChannelAdapter,
+    offset: int,
+) -> int:
+    if not should_resume_saved_update_offset(config) or offset <= 0:
+        return offset
+
+    queue_min_update_id, queue_max_update_id = inspect_channel_update_bounds(client)
+    if not should_reset_saved_update_offset(offset, queue_max_update_id):
+        return offset
+
+    emit_event(
+        "bridge.runtime_offset_reset",
+        level=logging.WARNING,
+        fields={
+            "channel_plugin": config.channel_plugin,
+            "offset_before": offset,
+            "queue_min_update_id": queue_min_update_id,
+            "queue_max_update_id": queue_max_update_id,
+        },
+    )
+    return 0
 
 
 MEDIA_GROUP_QUIET_WINDOW_SECONDS = 2.0
@@ -1077,6 +1105,12 @@ def run_bridge(config: Config) -> int:
 
             poll_timeout_seconds = compute_poll_timeout_seconds(state, config)
             updates = client.get_updates(offset, timeout_seconds=poll_timeout_seconds)
+            if not updates and offset_state_path is not None and offset > 0:
+                reset_offset = maybe_reset_stale_runtime_offset(config, client, offset)
+                if reset_offset != offset:
+                    offset = reset_offset
+                    persist_saved_update_offset(offset_state_path, offset)
+                    continue
             if updates:
                 emit_event(
                     "bridge.poll_updates_received",
