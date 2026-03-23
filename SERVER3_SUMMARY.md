@@ -52,10 +52,10 @@ Last updated: 2026-03-23 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-23: completed the remaining `mavali_eth` elegance backlog by adding shared formatting utilities, splitting parsing into domain modules behind a stable `parsing.py` facade, breaking Uniswap/CowSwap handlers into clearer preview vs execution internals, and extracting Polymarket query rendering into `polymarket_formatters.py`.
 - 2026-03-23: consolidated repeated `mavali_eth` core wallet gas-estimation, pending-envelope creation, and confirmation-message scaffolding inside `core_wallet_actions.py`, reducing local duplication without changing the live ETH/ERC20 action flow.
 - 2026-03-23: extracted `mavali_eth` dependency assembly into `service_dependencies.py`, so `service.py` now initializes from a single wiring bundle instead of constructing every client, handler, and monitor inline.
 - 2026-03-23: extracted `mavali_eth` wallet bootstrap, keystore materialization, chain-id verification, and current-message normalization into a dedicated `service_runtime.py` helper, so `service.py` no longer owns that leftover runtime subsystem directly.
-- 2026-03-23: extracted the bulky `mavali_eth` Polymarket read/query and preview-staging surface into `polymarket_queries.py`, so `service.py` no longer carries the long market/account/orderbook presentation block inline.
 - 2026-03-23: extracted `mavali_eth` pending-action confirmation dispatch and inbound transfer polling into dedicated `confirmation_router.py` and `inbound_monitor.py` modules, so `service.py` no longer carries those remaining generic control-flow loops inline.
 - 2026-03-23: extracted `mavali_eth` prompt routing into a dedicated `prompt_router.py` helper so `service.py` now acts much more like a thin coordinator instead of carrying the entire command parser chain inline.
 - 2026-03-22: added a direct mainnet Uniswap execution path to `mavali_eth` for immediate ERC20 swaps, wiring `swap ... on uniswap` through live route quoting, exact-amount approvals, optional ETH->WETH wrap, a fixed `0.50%` slippage ceiling, and a hard `15 gwei` gas-price cap so the runtime now has a true onchain swap engine for cases where CowSwap’s resting-order model is the wrong fit.
