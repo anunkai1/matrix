@@ -52,6 +52,7 @@ Last updated: 2026-03-23 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-23: refreshed the canonical shared Codex auth file at `/etc/server3-codex/auth.json` from Architect's current ChatGPT login, so trusted runtime users linked through the shared auth path now execute against the same OpenAI account as the active `architect` shell login.
 - 2026-03-23: hardened `mavali_eth` execution security by binding staged actions to the Telegram owner chat, adding 3-character confirmation tokens, threading Telegram actor ids through the bridge adapter, enforcing executor-side gas-cap policy, failing closed on missing/mismatched wallet keystores, and hardening local SQLite state/journal persistence.
 - 2026-03-23: completed the remaining `mavali_eth` elegance backlog by adding shared formatting utilities, splitting parsing into domain modules behind a stable `parsing.py` facade, breaking Uniswap/CowSwap handlers into clearer preview vs execution internals, and extracting Polymarket query rendering into `polymarket_formatters.py`.
 - 2026-03-23: consolidated repeated `mavali_eth` core wallet gas-estimation, pending-envelope creation, and confirmation-message scaffolding inside `core_wallet_actions.py`, reducing local duplication without changing the live ETH/ERC20 action flow.
@@ -59,7 +60,6 @@ Last updated: 2026-03-23 (AEST, +10:00)
 - 2026-03-23: extracted `mavali_eth` wallet bootstrap, keystore materialization, chain-id verification, and current-message normalization into a dedicated `service_runtime.py` helper, so `service.py` no longer owns that leftover runtime subsystem directly.
 - 2026-03-23: extracted `mavali_eth` pending-action confirmation dispatch and inbound transfer polling into dedicated `confirmation_router.py` and `inbound_monitor.py` modules, so `service.py` no longer carries those remaining generic control-flow loops inline.
 - 2026-03-23: extracted `mavali_eth` prompt routing into a dedicated `prompt_router.py` helper so `service.py` now acts much more like a thin coordinator instead of carrying the entire command parser chain inline.
-- 2026-03-22: added a direct mainnet Uniswap execution path to `mavali_eth` for immediate ERC20 swaps, wiring `swap ... on uniswap` through live route quoting, exact-amount approvals, optional ETH->WETH wrap, a fixed `0.50%` slippage ceiling, and a hard `15 gwei` gas-price cap so the runtime now has a true onchain swap engine for cases where CowSwap’s resting-order model is the wrong fit.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
