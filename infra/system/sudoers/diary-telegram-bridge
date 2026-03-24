@@ -1,0 +1,3 @@
+# Mirror of /etc/sudoers.d/diary-telegram-bridge on Server3.
+Defaults:diary !requiretty
+diary ALL=(root) NOPASSWD: /home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-diary-bridge.service

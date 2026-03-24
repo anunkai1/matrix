@@ -52,6 +52,32 @@
       ]
     },
     {
+      "name": "Diary",
+      "category": "secondary",
+      "runtime_layout": "shared-core-overlay",
+      "workspace_root": "/home/diary/diarybot",
+      "shared_core_root": "/home/architect/matrix",
+      "purpose": "Dedicated Telegram diary assistant for low-friction text, voice, and photo capture.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "isolated Diary workspace",
+        "Diary runtime environment",
+        "authenticated Codex executor"
+      ],
+      "owner_user": "diary",
+      "notes": [
+        "Runs the shared Telegram bridge with its own runtime root, AGENTS.md, and diary-oriented operating docs.",
+        "Initial rollout is owner-DM-only and is intended to treat dedicated-chat messages as diary material by default."
+      ],
+      "units": [
+        {
+          "name": "telegram-diary-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
       "name": "Tank",
       "category": "secondary",
       "runtime_layout": "shared-core-overlay",

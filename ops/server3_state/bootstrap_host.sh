@@ -107,6 +107,8 @@ ensure_user "macrorayd" "1008" "1008" "/home/macrorayd" "/bin/bash"
 ensure_user "trinity" "1009" "1009" "/home/trinity" "/bin/bash"
 ensure_user "browser_brain" "1010" "1010" "/home/browser_brain" "/bin/bash"
 ensure_user "agentsmith" "1011" "1011" "/home/agentsmith" "/bin/bash"
+ensure_user "mavali_eth" "1012" "1012" "/home/mavali_eth" "/bin/bash"
+ensure_user "diary" "1013" "1013" "/home/diary" "/bin/bash"
 
 mkdir -p /srv/external/server3-arr
 mkdir -p /srv/external/server3-backups

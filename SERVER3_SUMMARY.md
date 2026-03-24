@@ -23,6 +23,7 @@ Last updated: 2026-03-24 (AEST, +10:00)
 - Canonical runtime inventory now lives in `infra/server3-runtime-manifest.json`, with shared live inspection via `python3 ops/server3_runtime_status.py`
 - Shared runtime core now lives in `/home/architect/matrix/src/telegram_bridge`; Tank/Govorun/Oracle run as per-runtime overlays, while Trinity now runs from its own dedicated code tree under `/home/trinity/trinitybot`.
 - AgentSmith now runs as an isolated shared-core Telegram sibling runtime under `/home/agentsmith/agentsmithbot` with its own service/env/state.
+- Diary now runs as an isolated shared-core Telegram sibling runtime under `/home/diary/diarybot` with its own service/env/state.
 - Runtime personas now live canonically in `infra/runtime_personas`, companion runtime docs now live canonically in `docs/runtime_docs`, and the live runtime roots consume those tracked files through repo-backed symlinks verified by `bash ops/runtime_personas/check_runtime_repo_links.sh`.
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 - Runtime observer daily Telegram summary now appends a plain-English operator line indicating whether attention is needed.
@@ -31,7 +32,7 @@ Last updated: 2026-03-24 (AEST, +10:00)
 ## Runtime Inventory
 - Canonical manifest: `infra/server3-runtime-manifest.json`
 - Shared live status command: `python3 ops/server3_runtime_status.py`
-- Covered runtime groups: Architect, AgentSmith, Tank, Trinity, Govorun transport/bridge, Oracle transport/bridge, network layer, guardrail timers, optional UI.
+- Covered runtime groups: Architect, AgentSmith, Diary, Tank, Trinity, Govorun transport/bridge, Oracle transport/bridge, network layer, guardrail timers, optional UI.
 
 ## Operational Memory (Pinned)
 - Routing keywords:
@@ -52,7 +53,7 @@ Last updated: 2026-03-24 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
-- 2026-03-24: prepared a non-live repo scaffold for a dedicated `Diary` Telegram runtime (isolated persona docs, env template, and systemd unit); manifest/runtime-status integration is intentionally deferred until the bot token and live deployment are ready.
+- 2026-03-24: rolled out the live `Diary` Telegram runtime on Server3 by adding the isolated shared-core overlay/runtime inventory wiring, creating user `diary` at UID/GID `1013`, installing the owner-DM allowlisted env at `/etc/default/telegram-diary-bridge`, wiring shared Codex auth and repo-backed runtime docs under `/home/diary/diarybot`, fixing the initial readonly-state-path startup failure with `TELEGRAM_BRIDGE_STATE_DIR=/home/diary/.local/state/telegram-diary-bridge`, and verifying both `telegram-diary-bridge.service` and an outbound Bot API smoke to chat `211761499`.
 - 2026-03-24: allowlisted the recreated AgentSmith Telegram group `-5168463727` after the old group was deleted, then allowlisted the follow-on topics-enabled supergroup `-1003730519791` when Telegram assigned a new chat id, restarting `telegram-agentsmith-bridge.service` after each change and verifying clean reloads; topic-memory relink remains deferred pending owner decision.
 - 2026-03-24: fixed the shared Python bridge to treat Govorun WhatsApp flat `photo` descriptor arrays as multiple images instead of a single Telegram-style size list, so batched WhatsApp multi-photo updates now reach Codex with every image attached instead of only the largest file id.
 - 2026-03-24: fixed Govorun WhatsApp multi-photo batching at the actual ingress bottleneck by buffering raw inbound photo messages before media download and only materializing/merging payloads once per quiet-window batch, eliminating the serial per-image download gap that was still splitting one WhatsApp photo send into separate `chat_busy` requests.

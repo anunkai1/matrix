@@ -101,6 +101,7 @@ if [[ "${START_SERVICES}" == "yes" ]]; then
     media-stack.service \
     telegram-architect-bridge.service \
     telegram-agentsmith-bridge.service \
+    telegram-diary-bridge.service \
     telegram-tank-bridge.service \
     telegram-trinity-bridge.service \
     telegram-macrorayd-bridge.service \
@@ -123,6 +124,7 @@ if [[ "${START_SERVICES}" == "yes" ]]; then
     oracle-signal-bridge.service \
     telegram-architect-bridge.service \
     telegram-agentsmith-bridge.service \
+    telegram-diary-bridge.service \
     telegram-tank-bridge.service \
     telegram-trinity-bridge.service \
     telegram-macrorayd-bridge.service \
