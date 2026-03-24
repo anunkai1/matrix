@@ -52,7 +52,7 @@ Last updated: 2026-03-24 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
-- 2026-03-24: allowlisted the recreated AgentSmith Telegram group `-5168463727` after the old group was deleted, restarted `telegram-agentsmith-bridge.service`, and verified the bridge reloaded cleanly; topic-memory relink remains deferred pending owner decision.
+- 2026-03-24: allowlisted the recreated AgentSmith Telegram group `-5168463727` after the old group was deleted, then allowlisted the follow-on topics-enabled supergroup `-1003730519791` when Telegram assigned a new chat id, restarting `telegram-agentsmith-bridge.service` after each change and verifying clean reloads; topic-memory relink remains deferred pending owner decision.
 - 2026-03-24: fixed the shared Python bridge to treat Govorun WhatsApp flat `photo` descriptor arrays as multiple images instead of a single Telegram-style size list, so batched WhatsApp multi-photo updates now reach Codex with every image attached instead of only the largest file id.
 - 2026-03-24: fixed Govorun WhatsApp multi-photo batching at the actual ingress bottleneck by buffering raw inbound photo messages before media download and only materializing/merging payloads once per quiet-window batch, eliminating the serial per-image download gap that was still splitting one WhatsApp photo send into separate `chat_busy` requests.
 - 2026-03-24: narrowed Govorun WhatsApp photo batch identity again so private-chat photo batches merge by chat rather than by sender identity, avoiding PN/LID sender-id churn in WhatsApp MD that was still splitting one DM photo send into separate `chat_busy` updates.
