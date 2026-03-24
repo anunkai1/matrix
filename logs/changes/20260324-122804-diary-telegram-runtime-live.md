@@ -28,7 +28,8 @@ Provision a new isolated Telegram diary runtime for `Diary` using the shared bri
 ## Follow-up Fix During Rollout
 - The first service start failed because the env file did not yet set `TELEGRAM_BRIDGE_STATE_DIR`, so the bridge fell back to Architect's default state path and hit `sqlite3.OperationalError: attempt to write a readonly database`.
 - Fixed the env by setting `TELEGRAM_BRIDGE_STATE_DIR=/home/diary/.local/state/telegram-diary-bridge`, then restarted and re-verified the service.
-- A later owner voice-note test exposed that Diary still lacked `TELEGRAM_VOICE_TRANSCRIBE_CMD`; fixed the live env by reusing `/home/architect/matrix/ops/telegram-voice/transcribe_voice.sh {file}` with `TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS=180`, then restarted and re-verified the service.
+- A later owner voice-note test exposed that Diary still lacked `TELEGRAM_VOICE_TRANSCRIBE_CMD`; fixed the live env by reusing `/home/architect/matrix/ops/telegram-voice/transcribe_voice.sh {file}` with `TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS=180`.
+- The next voice-note test showed the transcribe command was reachable but the inherited Architect whisper venv path was not accessible to the `diary` user, so voice transcription was moved onto a Diary-local whisper runtime at `/home/diary/.local/share/telegram-voice/venv` with dedicated socket/log paths and the medium-class English model `medium.en`, then the service was restarted and re-verified.
 
 ## Verification
 - `bash /home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-diary-bridge.service` passed after the state-dir fix.

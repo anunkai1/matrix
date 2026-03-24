@@ -27,7 +27,7 @@ Last updated: 2026-03-24 (AEST, +10:00)
 ## Recent Changes
 - 2026-03-24: rolled out the live `Diary` Telegram runtime on Server3 with isolated runtime docs under `/home/diary/diarybot`, shared Codex auth wiring, owner DM allowlist `211761499`, installed env/systemd/sudoers, and verified outbound Bot API delivery.
 - 2026-03-24: fixed the initial live Diary startup failure by setting `TELEGRAM_BRIDGE_STATE_DIR=/home/diary/.local/state/telegram-diary-bridge` so the service no longer fell back to Architect's readonly default state path.
-- 2026-03-24: enabled voice transcription in the live Diary env by reusing `/home/architect/matrix/ops/telegram-voice/transcribe_voice.sh {file}` with a `180` second timeout, matching the working Architect/Tank pattern.
+- 2026-03-24: enabled voice transcription in the live Diary env with a Diary-local whisper runtime under `/home/diary/.local/share/telegram-voice/venv`, a dedicated socket/log path, and the medium-class English model `medium.en`.
 
 ## Current Risks/Watchouts
 - Dedicated diary behavior currently depends on runtime policy and prompt handling; any fully automatic save pipeline should still be verified end to end after deployment.
