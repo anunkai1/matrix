@@ -2,6 +2,16 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-24 (Summary Roll-Forward Trim for AgentSmith Recreated Group Allowlist)
+
+Summary:
+- Added a new rolling-summary entry for allowlisting the recreated AgentSmith Telegram group `-5168463727` after the original group was accidentally deleted, including the live bridge restart verification and the note that topic-memory relink is still deferred.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-23: hardened Architect Telegram album handling again by buffering `media_group_id` photo batches across poll cycles with a short quiet-window flush, so 3/5/6/10-photo sends no longer depend on all album items landing in the same `getUpdates` response.
+- 2026-03-23: taught the Architect Telegram bridge to collapse `media_group_id` albums into one request and carry multiple photo attachments through to Codex, so album-style image batches no longer fall into the per-chat busy guard after the first photo.
+
 ## 2026-03-22 (Runtime Doc Source-Of-Truth Migration)
 
 Summary:

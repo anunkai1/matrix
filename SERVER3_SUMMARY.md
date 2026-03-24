@@ -52,6 +52,7 @@ Last updated: 2026-03-24 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-24: allowlisted the recreated AgentSmith Telegram group `-5168463727` after the old group was deleted, restarted `telegram-agentsmith-bridge.service`, and verified the bridge reloaded cleanly; topic-memory relink remains deferred pending owner decision.
 - 2026-03-24: fixed the shared Python bridge to treat Govorun WhatsApp flat `photo` descriptor arrays as multiple images instead of a single Telegram-style size list, so batched WhatsApp multi-photo updates now reach Codex with every image attached instead of only the largest file id.
 - 2026-03-24: fixed Govorun WhatsApp multi-photo batching at the actual ingress bottleneck by buffering raw inbound photo messages before media download and only materializing/merging payloads once per quiet-window batch, eliminating the serial per-image download gap that was still splitting one WhatsApp photo send into separate `chat_busy` requests.
 - 2026-03-24: narrowed Govorun WhatsApp photo batch identity again so private-chat photo batches merge by chat rather than by sender identity, avoiding PN/LID sender-id churn in WhatsApp MD that was still splitting one DM photo send into separate `chat_busy` updates.
@@ -59,8 +60,6 @@ Last updated: 2026-03-24 (AEST, +10:00)
 - 2026-03-24: fixed Govorun WhatsApp photo batching again by deriving inbound photo batch keys from stable raw WhatsApp sender ids rather than variable display-name fields, so multi-photo sends in the same chat stop splitting into separate `chat_busy` requests.
 - 2026-03-23: taught the shared Python bridge to persist per-channel HTTP update offsets and resume them on startup with queue-reset detection, so Govorun WhatsApp restarts no longer either drop queued updates or replay stale queued control messages like `/restart`; Telegram still keeps its explicit stale-backlog discard path.
 - 2026-03-23: taught the Govorun WhatsApp plugin ingress to batch consecutive inbound photo messages from the same sender/chat into one multi-image update with a short quiet window, aligning WhatsApp photo albums with the shared Python multi-image path and updating the Govorun runbook/bridge README to match.
-- 2026-03-23: hardened Architect Telegram album handling again by buffering `media_group_id` photo batches across poll cycles with a short quiet-window flush, so 3/5/6/10-photo sends no longer depend on all album items landing in the same `getUpdates` response.
-- 2026-03-23: taught the Architect Telegram bridge to collapse `media_group_id` albums into one request and carry multiple photo attachments through to Codex, so album-style image batches no longer fall into the per-chat busy guard after the first photo.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
