@@ -84,6 +84,15 @@ class Config:
     signal_bridge_auth_token: str
     signal_poll_timeout_seconds: int
     keyword_routing_enabled: bool
+    diary_mode_enabled: bool = False
+    diary_capture_quiet_window_seconds: int = 75
+    diary_timezone: str = "Australia/Brisbane"
+    diary_local_root: str = ""
+    diary_nextcloud_enabled: bool = False
+    diary_nextcloud_base_url: str = ""
+    diary_nextcloud_username: str = ""
+    diary_nextcloud_app_password: str = ""
+    diary_nextcloud_remote_root: str = "/Diary"
     affective_runtime_enabled: bool = False
     affective_runtime_db_path: str = ""
     affective_runtime_ping_target: str = "1.1.1.1"
@@ -501,6 +510,46 @@ def load_config() -> Config:
         keyword_routing_enabled=parse_bool_env(
             "TELEGRAM_KEYWORD_ROUTING_ENABLED",
             True,
+        ),
+        diary_mode_enabled=parse_bool_env(
+            "TELEGRAM_DIARY_MODE_ENABLED",
+            False,
+        ),
+        diary_capture_quiet_window_seconds=parse_int_env(
+            "TELEGRAM_DIARY_CAPTURE_QUIET_WINDOW_SECONDS",
+            75,
+            minimum=1,
+        ),
+        diary_timezone=(
+            os.getenv("TELEGRAM_DIARY_TIMEZONE", "Australia/Brisbane").strip()
+            or "Australia/Brisbane"
+        ),
+        diary_local_root=(
+            os.getenv(
+                "TELEGRAM_DIARY_LOCAL_ROOT",
+                os.path.join(state_dir, "diary"),
+            ).strip()
+            or os.path.join(state_dir, "diary")
+        ),
+        diary_nextcloud_enabled=parse_bool_env(
+            "TELEGRAM_DIARY_NEXTCLOUD_ENABLED",
+            False,
+        ),
+        diary_nextcloud_base_url=os.getenv(
+            "TELEGRAM_DIARY_NEXTCLOUD_BASE_URL",
+            "",
+        ).strip(),
+        diary_nextcloud_username=os.getenv(
+            "TELEGRAM_DIARY_NEXTCLOUD_USERNAME",
+            "",
+        ).strip(),
+        diary_nextcloud_app_password=os.getenv(
+            "TELEGRAM_DIARY_NEXTCLOUD_APP_PASSWORD",
+            "",
+        ).strip(),
+        diary_nextcloud_remote_root=(
+            os.getenv("TELEGRAM_DIARY_NEXTCLOUD_REMOTE_ROOT", "/Diary").strip()
+            or "/Diary"
         ),
         affective_runtime_enabled=parse_bool_env(
             "TELEGRAM_AFFECTIVE_RUNTIME_ENABLED",

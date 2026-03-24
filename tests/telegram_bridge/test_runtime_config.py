@@ -114,6 +114,34 @@ class RuntimeConfigTests(unittest.TestCase):
         )
         self.assertEqual(config.affective_runtime_ping_target, "")
 
+    def test_load_config_reads_diary_overrides(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_DIARY_MODE_ENABLED": "true",
+                "TELEGRAM_DIARY_CAPTURE_QUIET_WINDOW_SECONDS": "42",
+                "TELEGRAM_DIARY_TIMEZONE": "Australia/Brisbane",
+                "TELEGRAM_DIARY_LOCAL_ROOT": "/var/lib/diary",
+                "TELEGRAM_DIARY_NEXTCLOUD_ENABLED": "true",
+                "TELEGRAM_DIARY_NEXTCLOUD_BASE_URL": "https://nextcloud.local",
+                "TELEGRAM_DIARY_NEXTCLOUD_USERNAME": "DiaryUser",
+                "TELEGRAM_DIARY_NEXTCLOUD_APP_PASSWORD": "secret",
+                "TELEGRAM_DIARY_NEXTCLOUD_REMOTE_ROOT": "/Travel Diary",
+            },
+            clear=True,
+        ):
+            config = runtime_config.load_config()
+        self.assertTrue(config.diary_mode_enabled)
+        self.assertEqual(config.diary_capture_quiet_window_seconds, 42)
+        self.assertEqual(config.diary_local_root, "/var/lib/diary")
+        self.assertTrue(config.diary_nextcloud_enabled)
+        self.assertEqual(config.diary_nextcloud_base_url, "https://nextcloud.local")
+        self.assertEqual(config.diary_nextcloud_username, "DiaryUser")
+        self.assertEqual(config.diary_nextcloud_app_password, "secret")
+        self.assertEqual(config.diary_nextcloud_remote_root, "/Travel Diary")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -45,6 +45,20 @@ class PendingMediaGroup:
 
 
 @dataclass
+class PendingDiaryBatch:
+    scope_key: str
+    chat_id: int
+    message_thread_id: Optional[int]
+    latest_message_id: Optional[int]
+    sender_name: str
+    actor_user_id: Optional[int]
+    messages: List[Dict[str, object]] = field(default_factory=list)
+    started_at: float = field(default_factory=time.time)
+    last_seen_at: float = field(default_factory=time.time)
+    worker_started: bool = False
+
+
+@dataclass
 class State:
     started_at: float = field(default_factory=time.time)
     busy_chats: Set[ScopeKey] = field(default_factory=set)
@@ -73,6 +87,7 @@ class State:
     voice_alias_learning_store: Optional[object] = None
     cancel_events: Dict[ScopeKey, threading.Event] = field(default_factory=dict)
     pending_media_groups: Dict[str, PendingMediaGroup] = field(default_factory=dict)
+    pending_diary_batches: Dict[ScopeKey, PendingDiaryBatch] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 

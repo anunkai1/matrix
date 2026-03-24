@@ -169,6 +169,15 @@ def make_config(**overrides):
         "signal_bridge_auth_token": "",
         "signal_poll_timeout_seconds": 20,
         "keyword_routing_enabled": True,
+        "diary_mode_enabled": False,
+        "diary_capture_quiet_window_seconds": 75,
+        "diary_timezone": "Australia/Brisbane",
+        "diary_local_root": "/tmp/diary",
+        "diary_nextcloud_enabled": False,
+        "diary_nextcloud_base_url": "",
+        "diary_nextcloud_username": "",
+        "diary_nextcloud_app_password": "",
+        "diary_nextcloud_remote_root": "/Diary",
     }
     base.update(overrides)
     return bridge.Config(**base)

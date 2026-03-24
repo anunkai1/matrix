@@ -7,6 +7,8 @@ import sys
 import tempfile
 import threading
 import time
+import datetime as dt
+import copy
 from difflib import SequenceMatcher
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +24,19 @@ try:
         should_reset_thread_after_resume_failure,
     )
     from .channel_adapter import ChannelAdapter
+    from .diary_store import (
+        DiaryEntry,
+        DiaryPhoto,
+        append_day_entry,
+        copy_photo_to_day_assets,
+        diary_day_docx_path,
+        diary_day_remote_docx_path,
+        diary_mode_enabled,
+        diary_nextcloud_enabled,
+        diary_timezone,
+        read_day_entries,
+        upload_to_nextcloud,
+    )
     from .engine_adapter import CodexEngineAdapter, EngineAdapter
     from .media import TelegramFileDownloadSpec, download_telegram_file_to_temp
     from .memory_engine import (
@@ -75,7 +90,7 @@ try:
         request_safe_restart,
         trigger_restart_async,
     )
-    from .state_store import State, StateRepository
+    from .state_store import PendingDiaryBatch, State, StateRepository
     from .structured_logging import emit_event
     from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 except ImportError:
@@ -87,6 +102,19 @@ except ImportError:
         should_reset_thread_after_resume_failure,
     )
     from channel_adapter import ChannelAdapter
+    from diary_store import (
+        DiaryEntry,
+        DiaryPhoto,
+        append_day_entry,
+        copy_photo_to_day_assets,
+        diary_day_docx_path,
+        diary_day_remote_docx_path,
+        diary_mode_enabled,
+        diary_nextcloud_enabled,
+        diary_timezone,
+        read_day_entries,
+        upload_to_nextcloud,
+    )
     from engine_adapter import CodexEngineAdapter, EngineAdapter
     from media import TelegramFileDownloadSpec, download_telegram_file_to_temp
     from memory_engine import (
@@ -140,7 +168,7 @@ except ImportError:
         request_safe_restart,
         trigger_restart_async,
     )
-    from state_store import State, StateRepository
+    from state_store import PendingDiaryBatch, State, StateRepository
     from structured_logging import emit_event
     from transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 
@@ -3459,6 +3487,342 @@ def maybe_process_voice_alias_learning_confirmation(
     )
 
 
+def diary_control_command(command: Optional[str]) -> bool:
+    return command in {"/today"}
+
+
+def build_diary_entry_title(
+    text_blocks: List[str],
+    voice_transcripts: List[str],
+    photo_count: int,
+) -> str:
+    for candidate in [*text_blocks, *voice_transcripts]:
+        cleaned = " ".join(candidate.split()).strip()
+        if not cleaned:
+            continue
+        words = cleaned.split()
+        snippet = " ".join(words[:6]).strip(" .,:;!-")
+        if snippet:
+            return snippet[:72]
+    if photo_count > 0:
+        return "Photo entry"
+    if voice_transcripts:
+        return "Voice note"
+    return "Diary entry"
+
+
+def build_diary_photo_caption(message: Dict[str, object], photo_index: int) -> str:
+    caption = normalize_optional_text(message.get("caption"))
+    if caption:
+        return caption
+    return f"Photo {photo_index}"
+
+
+def build_diary_today_status(config) -> str:
+    now = dt.datetime.now(diary_timezone(config))
+    entries = read_day_entries(config, now.date())
+    docx_path = diary_day_docx_path(config, now.date())
+    remote_path = diary_day_remote_docx_path(config, now.date()) or ""
+    lines = [
+        f"Today: {now.date().isoformat()}",
+        f"Entries saved: {len(entries)}",
+        f"Local document: {docx_path}",
+    ]
+    if diary_nextcloud_enabled(config):
+        lines.append(f"Nextcloud document: {remote_path}")
+    if entries:
+        latest = entries[-1]
+        lines.append(f"Latest entry: {latest.time_label} - {latest.title}")
+    return "\n".join(lines)
+
+
+def transcribe_voice_for_diary_batch(
+    config,
+    client: ChannelAdapter,
+    voice_file_id: str,
+) -> tuple[Optional[str], Optional[str]]:
+    voice_path: Optional[str] = None
+    try:
+        voice_path = download_voice_to_temp(client, config, voice_file_id)
+        transcript, _ = transcribe_voice(config, voice_path)
+        return transcript, None
+    except ValueError:
+        return None, config.voice_transcribe_empty_message
+    except subprocess.TimeoutExpired:
+        return None, config.timeout_message
+    except Exception:
+        return None, config.voice_transcribe_error_message
+    finally:
+        if voice_path:
+            try:
+                os.remove(voice_path)
+            except OSError:
+                logging.warning("Failed to remove temp diary voice file: %s", voice_path)
+
+
+def process_diary_batch(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+    pending: PendingDiaryBatch,
+) -> None:
+    progress = ProgressReporter(
+        client,
+        pending.chat_id,
+        pending.latest_message_id,
+        assistant_label(config),
+        getattr(config, "progress_label", ""),
+        getattr(config, "progress_elapsed_prefix", "Already"),
+        getattr(config, "progress_elapsed_suffix", "s"),
+    )
+    cleanup_paths: List[str] = []
+    state_repo = StateRepository(state)
+    cancel_event = register_cancel_event(state, scope_key)
+    state_repo.mark_in_flight_request(scope_key, pending.latest_message_id)
+    try:
+        progress.start()
+        progress.set_phase("Preparing diary entry.")
+        messages = sorted(
+            pending.messages,
+            key=lambda item: (
+                item.get("date") if isinstance(item.get("date"), int) else 0,
+                item.get("message_id") if isinstance(item.get("message_id"), int) else 0,
+            ),
+        )
+        tz = diary_timezone(config)
+        timestamp_value = messages[-1].get("date") if messages else None
+        if not isinstance(timestamp_value, int):
+            timestamp_value = int(time.time())
+        entry_dt = dt.datetime.fromtimestamp(timestamp_value, tz)
+        entry_id = entry_dt.strftime("%Y%m%dT%H%M%S")
+        text_blocks: List[str] = []
+        voice_transcripts: List[str] = []
+        notes: List[str] = []
+        photos: List[DiaryPhoto] = []
+        photo_index = 0
+
+        for message in messages:
+            text = normalize_optional_text(message.get("text"))
+            caption = normalize_optional_text(message.get("caption"))
+            if text:
+                text_blocks.append(text)
+            elif caption and not extract_message_photo_file_ids(message):
+                text_blocks.append(caption)
+
+            photo_file_ids = extract_message_photo_file_ids(message)
+            if photo_file_ids:
+                progress.set_phase(
+                    "Saving diary photos." if len(photo_file_ids) > 1 else "Saving diary photo."
+                )
+            for photo_file_id in photo_file_ids:
+                photo_index += 1
+                downloaded_photo_path: Optional[str] = None
+                try:
+                    downloaded_photo_path = download_photo_to_temp(client, config, photo_file_id)
+                    relative_path = copy_photo_to_day_assets(
+                        config=config,
+                        day=entry_dt.date(),
+                        source_path=downloaded_photo_path,
+                        entry_id=entry_id,
+                        index=photo_index,
+                    )
+                    photos.append(
+                        DiaryPhoto(
+                            relative_path=relative_path,
+                            caption=build_diary_photo_caption(message, photo_index),
+                        )
+                    )
+                finally:
+                    if downloaded_photo_path:
+                        try:
+                            os.remove(downloaded_photo_path)
+                        except OSError:
+                            logging.warning(
+                                "Failed to remove temporary diary photo file: %s",
+                                downloaded_photo_path,
+                            )
+
+            _, voice_file_id, _ = extract_message_media_payload(message)
+            if voice_file_id:
+                progress.set_phase("Transcribing diary voice note.")
+                transcript, error_message = transcribe_voice_for_diary_batch(
+                    config=config,
+                    client=client,
+                    voice_file_id=voice_file_id,
+                )
+                if transcript:
+                    voice_transcripts.append(transcript)
+                elif error_message:
+                    notes.append(f"Voice note was received but not transcribed: {error_message}")
+
+        if not text_blocks and not voice_transcripts and not photos:
+            progress.mark_failure("No diary content to save.")
+            client.send_message(
+                pending.chat_id,
+                "Nothing to save from that batch.",
+                reply_to_message_id=pending.latest_message_id,
+            )
+            return
+
+        entry = DiaryEntry(
+            entry_id=entry_id,
+            created_at=entry_dt.isoformat(),
+            time_label=entry_dt.strftime("%I:%M %p").lstrip("0"),
+            title=build_diary_entry_title(text_blocks, voice_transcripts, len(photos)),
+            text_blocks=text_blocks,
+            voice_transcripts=voice_transcripts,
+            notes=notes,
+            photos=photos,
+        )
+
+        progress.set_phase("Writing diary document.")
+        docx_path = append_day_entry(config, entry_dt.date(), entry)
+        remote_path = diary_day_remote_docx_path(config, entry_dt.date()) or ""
+        if diary_nextcloud_enabled(config):
+            progress.set_phase("Uploading diary document to Nextcloud.")
+            upload_to_nextcloud(config, docx_path, remote_path)
+
+        progress.mark_success()
+        counts = []
+        if text_blocks:
+            counts.append(f"{len(text_blocks)} text")
+        if voice_transcripts:
+            counts.append(f"{len(voice_transcripts)} voice")
+        if photos:
+            counts.append(f"{len(photos)} photo{'s' if len(photos) != 1 else ''}")
+        count_summary = ", ".join(counts) if counts else "no content"
+        message = (
+            f"Saved {entry.time_label} - {entry.title}.\n"
+            f"Included: {count_summary}.\n"
+            f"Local file: {docx_path}"
+        )
+        if diary_nextcloud_enabled(config):
+            message += f"\nNextcloud file: {remote_path}"
+        client.send_message(
+            pending.chat_id,
+            message,
+            reply_to_message_id=pending.latest_message_id,
+        )
+        emit_event(
+            "bridge.diary_batch_saved",
+            fields={
+                "chat_id": pending.chat_id,
+                "message_id": pending.latest_message_id,
+                "scope_key": scope_key,
+                "entry_id": entry.entry_id,
+                "photo_count": len(photos),
+                "voice_count": len(voice_transcripts),
+                "text_count": len(text_blocks),
+            },
+        )
+    except Exception:
+        logging.exception("Diary batch save failed for chat_id=%s", pending.chat_id)
+        progress.mark_failure("Diary save failed.")
+        client.send_message(
+            pending.chat_id,
+            config.generic_error_message,
+            reply_to_message_id=pending.latest_message_id,
+        )
+    finally:
+        progress.close()
+        clear_cancel_event(state, scope_key, expected_event=cancel_event)
+        for cleanup_path in cleanup_paths:
+            try:
+                os.remove(cleanup_path)
+            except OSError:
+                logging.warning("Failed to remove temp file: %s", cleanup_path)
+        finalize_chat_work(state, client, scope_key, pending.chat_id)
+        emit_event(
+            "bridge.diary_batch_finished",
+            fields={"chat_id": pending.chat_id, "message_id": pending.latest_message_id},
+        )
+
+
+def diary_batch_worker(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+) -> None:
+    while True:
+        with state.lock:
+            pending = state.pending_diary_batches.get(scope_key)
+            if pending is None:
+                return
+            quiet_window = float(getattr(config, "diary_capture_quiet_window_seconds", 75))
+            remaining = quiet_window - (time.time() - pending.last_seen_at)
+        if remaining > 0:
+            time.sleep(min(1.0, remaining))
+            continue
+        if not mark_busy(state, scope_key):
+            time.sleep(0.5)
+            continue
+        with state.lock:
+            pending = state.pending_diary_batches.pop(scope_key, None)
+        if pending is None:
+            clear_cancel_event(state, scope_key)
+            finalize_chat_work(state, client, scope_key, 0)
+            return
+        process_diary_batch(
+            state=state,
+            config=config,
+            client=client,
+            scope_key=scope_key,
+            pending=pending,
+        )
+        return
+
+
+def queue_diary_capture(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+    sender_name: str,
+    actor_user_id: Optional[int],
+    message: Dict[str, object],
+) -> None:
+    should_start_worker = False
+    with state.lock:
+        pending = state.pending_diary_batches.get(scope_key)
+        if pending is None:
+            pending = PendingDiaryBatch(
+                scope_key=scope_key,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                latest_message_id=message_id,
+                sender_name=sender_name,
+                actor_user_id=actor_user_id,
+            )
+            state.pending_diary_batches[scope_key] = pending
+        pending.messages.append(copy.deepcopy(message))
+        pending.last_seen_at = time.time()
+        pending.latest_message_id = message_id
+        if not pending.worker_started:
+            pending.worker_started = True
+            should_start_worker = True
+    emit_event(
+        "bridge.diary_batch_buffered",
+        fields={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "scope_key": scope_key,
+            "buffered_message_count": len(pending.messages),
+        },
+    )
+    if should_start_worker:
+        worker = threading.Thread(
+            target=diary_batch_worker,
+            args=(state, config, client, scope_key),
+            daemon=True,
+        )
+        worker.start()
+
+
 def handle_known_command(
     state: State,
     config,
@@ -3510,6 +3874,13 @@ def handle_known_command(
             message_id=message_id,
             raw_text=raw_text,
         )
+    if diary_mode_enabled(config) and command == "/today":
+        client.send_message(
+            chat_id,
+            build_diary_today_status(config),
+            reply_to_message_id=message_id,
+        )
+        return True
     return False
 
 
@@ -3657,6 +4028,38 @@ def handle_update(
     sender_name = extract_sender_name(message)
     stateless = False
     command = normalize_command(prompt_input or "")
+
+    if diary_mode_enabled(config):
+        if handle_known_command(
+            state,
+            config,
+            client,
+            scope_key,
+            chat_id,
+            message_thread_id,
+            message_id,
+            command,
+            prompt_input or "",
+        ):
+            emit_event(
+                "bridge.command_handled",
+                fields={"chat_id": chat_id, "message_id": message_id, "command": command or ""},
+            )
+            return
+        queue_diary_capture(
+            state=state,
+            config=config,
+            client=client,
+            scope_key=scope_key,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            message_id=message_id,
+            sender_name=sender_name,
+            actor_user_id=actor_user_id,
+            message=message,
+        )
+        return
+
     priority_keyword_mode = False
     youtube_route_url: Optional[str] = None
     keyword_result = apply_priority_keyword_routing(
