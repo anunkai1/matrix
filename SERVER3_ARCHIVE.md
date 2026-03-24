@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-24 (Summary Roll-Forward Trim for Diary Runtime Scaffold)
+
+Summary:
+- Added a new rolling-summary entry for the non-live `Diary` Telegram runtime scaffold, covering the isolated persona docs plus the env and systemd templates while deliberately deferring manifest/runtime-status integration until live deployment.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-23: taught the Govorun WhatsApp plugin ingress to batch consecutive inbound photo messages from the same sender/chat into one multi-image update with a short quiet window, aligning WhatsApp photo albums with the shared Python multi-image path and updating the Govorun runbook/bridge README to match.
+
 ## 2026-03-24 (Summary Roll-Forward Trim for AgentSmith Recreated Group Allowlist)
 
 Summary:
