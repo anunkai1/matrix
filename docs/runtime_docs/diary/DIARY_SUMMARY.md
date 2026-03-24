@@ -22,6 +22,7 @@ Last updated: 2026-03-24 (AEST, +10:00)
 - Voice should be transcribed before composing the diary entry.
 - Photo batches should stay together in one entry when they belong to the same user moment.
 - Diary capture now batches nearby messages before saving, so text + voice + photos can land in one entry block.
+- Closed diary batches now queue FIFO behind the active save, so later captures wait their turn instead of being merged into one long pending batch or hitting `chat_busy`.
 - Current owner private chat allowlist is `211761499`.
 - When save destination is ambiguous, ask once and then reuse the configured path.
 - Never claim a diary file was updated without verifying the resulting file.
@@ -31,7 +32,7 @@ Last updated: 2026-03-24 (AEST, +10:00)
 - 2026-03-24: rolled out the live `Diary` Telegram runtime on Server3 with isolated runtime docs under `/home/diary/diarybot`, shared Codex auth wiring, owner DM allowlist `211761499`, installed env/systemd/sudoers, and verified outbound Bot API delivery.
 - 2026-03-24: fixed the initial live Diary startup failure by setting `TELEGRAM_BRIDGE_STATE_DIR=/home/diary/.local/state/telegram-diary-bridge` so the service no longer fell back to Architect's readonly default state path.
 - 2026-03-24: enabled voice transcription in the live Diary env with a Diary-local whisper runtime under `/home/diary/.local/share/telegram-voice/venv`, a dedicated socket/log path, and the medium-class English model `medium.en`.
-- 2026-03-24: added the first deterministic diary-save pipeline in the shared bridge core: Diary-mode messages now batch on a quiet window, save structured per-day JSON under `/home/diary/.local/share/diary`, regenerate a daily `.docx`, and upload/verify that document in Nextcloud under `/Diary/YYYY/MM/`.
+- 2026-03-24: added the first deterministic diary-save pipeline in the shared bridge core: Diary-mode messages now batch on a quiet window, queue closed batches FIFO, save structured per-day JSON under `/home/diary/.local/share/diary`, regenerate a daily `.docx`, and upload/verify that document in Nextcloud under `/Diary/YYYY/MM/`.
 
 ## Current Risks/Watchouts
 - The deterministic diary-save path now exists, but live end-to-end verification still depends on a real post-deploy save through the running bot.

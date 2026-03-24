@@ -88,6 +88,8 @@ class State:
     cancel_events: Dict[ScopeKey, threading.Event] = field(default_factory=dict)
     pending_media_groups: Dict[str, PendingMediaGroup] = field(default_factory=dict)
     pending_diary_batches: Dict[ScopeKey, PendingDiaryBatch] = field(default_factory=dict)
+    queued_diary_batches: Dict[ScopeKey, List[PendingDiaryBatch]] = field(default_factory=dict)
+    diary_queue_processing_scopes: Set[ScopeKey] = field(default_factory=set)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 

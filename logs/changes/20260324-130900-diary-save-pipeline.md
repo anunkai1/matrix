@@ -3,6 +3,7 @@
 ## What changed
 - Added a Diary-only deterministic save path in the shared Telegram bridge core.
 - Diary-mode messages now batch on a quiet window instead of going through the generic executor path.
+- Closed Diary batches now queue FIFO behind the active save, so Diary capture no longer relies on `chat_busy` rejection semantics.
 - Each batch now writes structured per-day JSON and regenerates a daily `.docx`.
 - Added Nextcloud upload and verification support for the generated diary document.
 - Wired the live Diary service env for local diary storage and Nextcloud upload.

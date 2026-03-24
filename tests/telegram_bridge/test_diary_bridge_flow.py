@@ -4,6 +4,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -172,6 +173,73 @@ class DiaryBridgeFlowTests(unittest.TestCase):
             entries = diary_store.read_day_entries(config, today)
             self.assertEqual(len(entries), 1)
             self.assertIn("beach", entries[0].title.lower())
+
+    def test_diary_queue_keeps_later_batches_separate_while_first_is_processing(self) -> None:
+        config = make_config(tempfile.mkdtemp())
+        state = bridge_state_store.State()
+        client = FakeDiaryClient()
+        processed = []
+
+        def fake_process_diary_batch(state, config, client, scope_key, pending):
+            processed.append([message.get("text") for message in pending.messages])
+            time.sleep(2.0)
+            bridge_handlers.finalize_chat_work(state, client, scope_key, pending.chat_id)
+
+        with mock.patch.object(bridge_handlers, "process_diary_batch", side_effect=fake_process_diary_batch):
+            bridge_handlers.handle_update(
+                state,
+                config,
+                client,
+                {
+                    "update_id": 1,
+                    "message": {
+                        "message_id": 1,
+                        "date": int(time.time()),
+                        "chat": {"id": 1, "type": "private"},
+                        "from": {"id": 1, "first_name": "User"},
+                        "text": "first batch",
+                    },
+                },
+            )
+            time.sleep(1.3)
+            bridge_handlers.handle_update(
+                state,
+                config,
+                client,
+                {
+                    "update_id": 2,
+                    "message": {
+                        "message_id": 2,
+                        "date": int(time.time()),
+                        "chat": {"id": 1, "type": "private"},
+                        "from": {"id": 1, "first_name": "User"},
+                        "text": "second batch",
+                    },
+                },
+            )
+            time.sleep(1.3)
+            bridge_handlers.handle_update(
+                state,
+                config,
+                client,
+                {
+                    "update_id": 3,
+                    "message": {
+                        "message_id": 3,
+                        "date": int(time.time()),
+                        "chat": {"id": 1, "type": "private"},
+                        "from": {"id": 1, "first_name": "User"},
+                        "text": "third batch",
+                    },
+                },
+            )
+            deadline = time.time() + 8
+            while time.time() < deadline:
+                if len(processed) >= 3:
+                    break
+                time.sleep(0.25)
+
+        self.assertEqual(processed, [["first batch"], ["second batch"], ["third batch"]])
 
 
 if __name__ == "__main__":

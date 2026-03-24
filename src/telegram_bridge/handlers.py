@@ -3488,7 +3488,7 @@ def maybe_process_voice_alias_learning_confirmation(
 
 
 def diary_control_command(command: Optional[str]) -> bool:
-    return command in {"/today"}
+    return command in {"/today", "/queue"}
 
 
 def build_diary_entry_title(
@@ -3518,7 +3518,25 @@ def build_diary_photo_caption(message: Dict[str, object], photo_index: int) -> s
     return f"Photo {photo_index}"
 
 
-def build_diary_today_status(config) -> str:
+def build_diary_queue_status(state: State, scope_key: str) -> str:
+    with state.lock:
+        open_batch = state.pending_diary_batches.get(scope_key)
+        queued_batches = list(state.queued_diary_batches.get(scope_key, []))
+        processing = scope_key in state.diary_queue_processing_scopes or scope_key in state.busy_chats
+    lines = []
+    lines.append(f"Processing active: {processing}")
+    lines.append(f"Queued closed batches: {len(queued_batches)}")
+    if open_batch is not None:
+        lines.append(f"Open capture batch messages: {len(open_batch.messages)}")
+    else:
+        lines.append("Open capture batch messages: 0")
+    if queued_batches:
+        ahead = queued_batches[0]
+        lines.append(f"Next queued batch messages: {len(ahead.messages)}")
+    return "\n".join(lines)
+
+
+def build_diary_today_status(state: State, config, scope_key: str) -> str:
     now = dt.datetime.now(diary_timezone(config))
     entries = read_day_entries(config, now.date())
     docx_path = diary_day_docx_path(config, now.date())
@@ -3533,6 +3551,7 @@ def build_diary_today_status(config) -> str:
     if entries:
         latest = entries[-1]
         lines.append(f"Latest entry: {latest.time_label} - {latest.title}")
+    lines.append(build_diary_queue_status(state, scope_key))
     return "\n".join(lines)
 
 
@@ -3739,7 +3758,28 @@ def process_diary_batch(
         )
 
 
-def diary_batch_worker(
+def ensure_diary_queue_processor(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+) -> None:
+    should_start_worker = False
+    with state.lock:
+        if scope_key not in state.diary_queue_processing_scopes:
+            state.diary_queue_processing_scopes.add(scope_key)
+            should_start_worker = True
+    if not should_start_worker:
+        return
+    worker = threading.Thread(
+        target=diary_queue_worker,
+        args=(state, config, client, scope_key),
+        daemon=True,
+    )
+    worker.start()
+
+
+def diary_capture_batch_worker(
     state: State,
     config,
     client: ChannelAdapter,
@@ -3755,23 +3795,72 @@ def diary_batch_worker(
         if remaining > 0:
             time.sleep(min(1.0, remaining))
             continue
-        if not mark_busy(state, scope_key):
-            time.sleep(0.5)
-            continue
         with state.lock:
             pending = state.pending_diary_batches.pop(scope_key, None)
+            if pending is not None:
+                queue = state.queued_diary_batches.setdefault(scope_key, [])
+                queue.append(pending)
+                queue_depth = len(queue)
+            else:
+                queue_depth = 0
         if pending is None:
-            clear_cancel_event(state, scope_key)
-            finalize_chat_work(state, client, scope_key, 0)
             return
-        process_diary_batch(
-            state=state,
-            config=config,
-            client=client,
-            scope_key=scope_key,
-            pending=pending,
+        emit_event(
+            "bridge.diary_batch_enqueued",
+            fields={
+                "chat_id": pending.chat_id,
+                "message_id": pending.latest_message_id,
+                "scope_key": scope_key,
+                "queue_depth": queue_depth,
+            },
         )
+        if queue_depth > 1:
+            client.send_message(
+                pending.chat_id,
+                f"Queued. {queue_depth - 1} batch{'es' if queue_depth - 1 != 1 else ''} ahead.",
+                reply_to_message_id=pending.latest_message_id,
+            )
+        ensure_diary_queue_processor(state, config, client, scope_key)
         return
+
+
+def diary_queue_worker(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+) -> None:
+    try:
+        while True:
+            with state.lock:
+                queue = state.queued_diary_batches.get(scope_key, [])
+                pending = queue[0] if queue else None
+            if pending is None:
+                return
+            if not mark_busy(state, scope_key):
+                time.sleep(0.5)
+                continue
+            with state.lock:
+                queue = state.queued_diary_batches.get(scope_key, [])
+                pending = queue.pop(0) if queue else None
+                if not queue:
+                    state.queued_diary_batches.pop(scope_key, None)
+            if pending is None:
+                finalize_chat_work(state, client, scope_key, 0)
+                continue
+            process_diary_batch(
+                state=state,
+                config=config,
+                client=client,
+                scope_key=scope_key,
+                pending=pending,
+            )
+    finally:
+        with state.lock:
+            state.diary_queue_processing_scopes.discard(scope_key)
+            has_more = bool(state.queued_diary_batches.get(scope_key))
+        if has_more:
+            ensure_diary_queue_processor(state, config, client, scope_key)
 
 
 def queue_diary_capture(
@@ -3786,7 +3875,8 @@ def queue_diary_capture(
     actor_user_id: Optional[int],
     message: Dict[str, object],
 ) -> None:
-    should_start_worker = False
+    should_start_capture_worker = False
+    buffered_message_count = 0
     with state.lock:
         pending = state.pending_diary_batches.get(scope_key)
         if pending is None:
@@ -3802,21 +3892,22 @@ def queue_diary_capture(
         pending.messages.append(copy.deepcopy(message))
         pending.last_seen_at = time.time()
         pending.latest_message_id = message_id
+        buffered_message_count = len(pending.messages)
         if not pending.worker_started:
             pending.worker_started = True
-            should_start_worker = True
+            should_start_capture_worker = True
     emit_event(
         "bridge.diary_batch_buffered",
         fields={
             "chat_id": chat_id,
             "message_id": message_id,
             "scope_key": scope_key,
-            "buffered_message_count": len(pending.messages),
+            "buffered_message_count": buffered_message_count,
         },
     )
-    if should_start_worker:
+    if should_start_capture_worker:
         worker = threading.Thread(
-            target=diary_batch_worker,
+            target=diary_capture_batch_worker,
             args=(state, config, client, scope_key),
             daemon=True,
         )
@@ -3877,7 +3968,14 @@ def handle_known_command(
     if diary_mode_enabled(config) and command == "/today":
         client.send_message(
             chat_id,
-            build_diary_today_status(config),
+            build_diary_today_status(state, config, scope_key),
+            reply_to_message_id=message_id,
+        )
+        return True
+    if diary_mode_enabled(config) and command == "/queue":
+        client.send_message(
+            chat_id,
+            build_diary_queue_status(state, scope_key),
             reply_to_message_id=message_id,
         )
         return True
