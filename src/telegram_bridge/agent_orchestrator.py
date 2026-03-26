@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import tempfile
@@ -27,6 +28,13 @@ except ImportError:
 ORCHESTRATOR_HEADER = "Architect worker findings"
 MAX_WORKER_OUTPUT_CHARS = 3000
 ORCHESTRATOR_HARD_MAX_WORKERS = 3
+PLANNER_REASON_INSUFFICIENT_LANES = "insufficient_parallel_lanes"
+PLANNER_REASON_SINGLE_AGENT = "planner_single_agent"
+PLANNER_REASON_SELECTED = "planner_selected_multi_role_split"
+PLANNER_REASON_SELECTED_INSUFFICIENT = "planner_selected_insufficient_roles"
+PLANNER_REASON_FAILED_FALLBACK = "planner_failed_fallback"
+PLANNER_REASON_UNPARSEABLE_FALLBACK = "planner_unparseable_fallback"
+PLANNER_SUPPORTED_ARRAY_SCHEMA_KEYS = frozenset({"type", "items", "maxItems"})
 
 RUNTIME_KEYWORDS = (
     "log",
@@ -72,9 +80,8 @@ VERIFY_KEYWORDS = (
     "verification",
     "test",
     "tests",
-    "check",
-    "confirm",
     "validate",
+    "validation",
     "proof",
 )
 
@@ -97,10 +104,25 @@ class PlannerDecision:
     use_workers: bool
     reason: str
     worker_roles: List[str]
+    reason_code: str = ""
 
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
-    return any(keyword in text for keyword in keywords)
+    normalized = re.sub(r"[^a-z0-9]+", " ", text).strip()
+    if not normalized:
+        return False
+    token_set = set(normalized.split())
+    for keyword in keywords:
+        normalized_keyword = keyword.strip().lower()
+        if not normalized_keyword:
+            continue
+        if " " in normalized_keyword:
+            if normalized_keyword in normalized:
+                return True
+            continue
+        if normalized_keyword in token_set:
+            return True
+    return False
 
 
 def analyze_task_shape(prompt_text: str) -> Dict[str, object]:
@@ -148,6 +170,10 @@ def _worker_catalog() -> Dict[str, WorkerSpec]:
     }
 
 
+def _worker_roles(workers: List[WorkerSpec]) -> List[str]:
+    return [worker.role for worker in workers]
+
+
 def build_candidate_worker_plan(prompt_text: str, max_workers: int) -> List[WorkerSpec]:
     signals = analyze_task_shape(prompt_text)["signals"]
     catalog = _worker_catalog()
@@ -189,6 +215,52 @@ def build_candidate_worker_plan(prompt_text: str, max_workers: int) -> List[Work
             break
 
     return selected_workers[:capped_max_workers]
+
+
+def planner_schema_preflight(max_workers: int) -> Dict[str, Any]:
+    worker_catalog = _worker_catalog()
+    candidate_workers = [
+        worker_catalog["runtime-investigator"],
+        worker_catalog["codebase-mapper"],
+        worker_catalog["docs-researcher"],
+    ]
+    capped_max_workers = max(1, min(max_workers, ORCHESTRATOR_HARD_MAX_WORKERS))
+    schema = _planner_schema(candidate_workers, capped_max_workers)
+    worker_roles_schema = schema["properties"]["worker_roles"]
+    schema_keys = sorted(worker_roles_schema.keys())
+    unsupported_keys = [
+        key for key in schema_keys
+        if key not in PLANNER_SUPPORTED_ARRAY_SCHEMA_KEYS
+    ]
+    return {
+        "hard_max_workers": ORCHESTRATOR_HARD_MAX_WORKERS,
+        "configured_max_workers": max_workers,
+        "effective_max_workers": capped_max_workers,
+        "candidate_roles": _worker_roles(candidate_workers),
+        "worker_roles_schema_keys": schema_keys,
+        "unsupported_worker_roles_schema_keys": unsupported_keys,
+        "schema_supported": not unsupported_keys,
+    }
+
+
+def build_planner_preflight_report() -> Dict[str, Any]:
+    examples = {
+        "runtime_and_code": "Check service logs, inspect the code path, and report the likely fix.",
+        "runtime_code_docs_verify": (
+            "Check service logs, inspect the code path, read the runbook, "
+            "and verify the fix before you answer."
+        ),
+        "docs_and_verify": "Read the runbook and verify the migration plan before you answer.",
+        "simple": "What time is it?",
+    }
+    candidate_plans = {
+        name: _worker_roles(build_candidate_worker_plan(prompt, max_workers=ORCHESTRATOR_HARD_MAX_WORKERS))
+        for name, prompt in examples.items()
+    }
+    return {
+        "schema": planner_schema_preflight(ORCHESTRATOR_HARD_MAX_WORKERS),
+        "candidate_plans": candidate_plans,
+    }
 
 
 def build_planner_prompt(prompt_text: str, candidate_workers: List[WorkerSpec]) -> str:
@@ -401,18 +473,20 @@ def plan_worker_split(
     if not success:
         return PlannerDecision(
             use_workers=True,
-            reason="planner_failed_fallback",
+            reason=PLANNER_REASON_FAILED_FALLBACK,
             worker_roles=[worker.role for worker in candidate_workers[:max_workers]],
+            reason_code=PLANNER_REASON_FAILED_FALLBACK,
         )
     try:
         payload = json.loads(summary)
     except json.JSONDecodeError:
         return PlannerDecision(
             use_workers=True,
-            reason="planner_unparseable_fallback",
+            reason=PLANNER_REASON_UNPARSEABLE_FALLBACK,
             worker_roles=[worker.role for worker in candidate_workers[:max_workers]],
+            reason_code=PLANNER_REASON_UNPARSEABLE_FALLBACK,
         )
-    use_workers = bool(payload.get("use_workers"))
+    requested_split = bool(payload.get("use_workers"))
     reason = str(payload.get("reason") or "").strip() or "planner_decision"
     raw_roles = payload.get("worker_roles")
     planner_roles = raw_roles if isinstance(raw_roles, list) else []
@@ -425,10 +499,25 @@ def plan_worker_split(
         if not normalized or normalized not in allowed_roles or normalized in worker_roles:
             continue
         worker_roles.append(normalized)
+    if not requested_split:
+        return PlannerDecision(
+            use_workers=False,
+            reason=reason,
+            worker_roles=[],
+            reason_code=PLANNER_REASON_SINGLE_AGENT,
+        )
+    if len(worker_roles) < 2:
+        return PlannerDecision(
+            use_workers=False,
+            reason=reason,
+            worker_roles=worker_roles[:max_workers],
+            reason_code=PLANNER_REASON_SELECTED_INSUFFICIENT,
+        )
     return PlannerDecision(
-        use_workers=use_workers and len(worker_roles) >= 2,
+        use_workers=True,
         reason=reason,
         worker_roles=worker_roles[:max_workers],
+        reason_code=PLANNER_REASON_SELECTED,
     )
 
 
@@ -442,6 +531,17 @@ def build_worker_plan(
     max_workers = _orchestrator_max_workers(config)
     candidate_workers = build_candidate_worker_plan(prompt_text, max_workers=max_workers)
     if len(candidate_workers) < 2:
+        emit_event(
+            "bridge.orchestrator_planner_decision",
+            fields={
+                "enabled": False,
+                "reason": PLANNER_REASON_INSUFFICIENT_LANES,
+                "reason_code": PLANNER_REASON_INSUFFICIENT_LANES,
+                "candidate_roles": _worker_roles(candidate_workers),
+                "candidate_worker_count": len(candidate_workers),
+                "worker_count": 0,
+            },
+        )
         return []
     planner_decision = plan_worker_split(
         config=config,
@@ -452,7 +552,15 @@ def build_worker_plan(
     if not planner_decision.use_workers:
         emit_event(
             "bridge.orchestrator_planner_decision",
-            fields={"enabled": False, "reason": planner_decision.reason, "worker_count": 0},
+            fields={
+                "enabled": False,
+                "reason": planner_decision.reason,
+                "reason_code": planner_decision.reason_code or PLANNER_REASON_SINGLE_AGENT,
+                "candidate_roles": _worker_roles(candidate_workers),
+                "candidate_worker_count": len(candidate_workers),
+                "selected_roles": planner_decision.worker_roles,
+                "worker_count": 0,
+            },
         )
         return []
     worker_catalog = _worker_catalog()
@@ -466,6 +574,10 @@ def build_worker_plan(
         fields={
             "enabled": True,
             "reason": planner_decision.reason,
+            "reason_code": planner_decision.reason_code or PLANNER_REASON_SELECTED,
+            "candidate_roles": _worker_roles(candidate_workers),
+            "candidate_worker_count": len(candidate_workers),
+            "selected_roles": [worker.role for worker in selected_workers],
             "worker_roles": [worker.role for worker in selected_workers],
         },
     )

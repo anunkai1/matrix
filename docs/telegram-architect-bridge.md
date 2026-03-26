@@ -147,6 +147,7 @@ python3 ops/server3_runtime_status.py
 
 Restart helper note:
 - `ops/telegram-bridge/restart_and_verify.sh` is now drain-aware by default: before restarting it waits for persisted in-flight work to clear, using canonical session state when enabled, so operator-triggered restarts do not usually interrupt active chats.
+- Each restart helper run now also writes one durable status marker at `/tmp/restart_and_verify.<unit>.status.json`, so operators can check a single machine-readable pass/fail/timeout result instead of reconstructing state from transient shell logs.
 - Override only for emergencies by exporting `RESTART_WAIT_FOR_IDLE=false` for that shell invocation.
 
 Install/start the tank service profile:
@@ -315,6 +316,8 @@ Message handling:
   - intended for Architect-style multi-part requests; keep disabled on simpler sibling runtimes unless deliberately testing there
   - concurrency cap: `TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS` with a hard runtime maximum of `3`
   - current rollout is conservative: the orchestrator only triggers when the request usefully splits into multiple worker roles, keeps `2` workers as the normal split size, only adds a third worker for a genuinely separate lane, folds those read-only worker findings into one final Architect prompt, and keeps a single final writer/verifier path
+  - deterministic preflight helper: `python3 ops/telegram-bridge/planner_preflight.py`
+  - planner-decision logs now include machine-readable reason codes plus candidate/selected worker-role lists so split decisions are easier to audit from the journal
 - Optional canonical session-store mode:
   - enable with `TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`
   - default backend (JSON): `/home/architect/.local/state/telegram-architect-bridge/chat_sessions.json`

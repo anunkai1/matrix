@@ -7,6 +7,7 @@ CHAT_ROUTING_VALIDATOR="${REPO_ROOT}/ops/chat-routing/validate_chat_routing_cont
 RESTART_WAIT_FOR_IDLE="${RESTART_WAIT_FOR_IDLE:-true}"
 RESTART_IDLE_TIMEOUT_SECONDS="${RESTART_IDLE_TIMEOUT_SECONDS:-120}"
 RESTART_IDLE_POLL_SECONDS="${RESTART_IDLE_POLL_SECONDS:-2}"
+RESTART_STATUS_DIR="${RESTART_STATUS_DIR:-/tmp}"
 ALLOWED_UNITS=(
   "telegram-architect-bridge.service"
   "telegram-agentsmith-bridge.service"
@@ -219,16 +220,63 @@ timestamp_utc() {
   date -u +"%Y-%m-%d %H:%M:%S UTC"
 }
 
+status_path_for_unit() {
+  local sanitized
+  sanitized="$(printf '%s' "${UNIT_NAME}" | tr -c 'A-Za-z0-9._-' '_')"
+  printf '%s/restart_and_verify.%s.status.json' "${RESTART_STATUS_DIR}" "${sanitized}"
+}
+
+write_status() {
+  local phase="$1"
+  local verification="$2"
+  local reason="${3:-}"
+  python3 - "${STATUS_PATH}" "${phase}" "${verification}" "${reason}" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+phase = sys.argv[2]
+verification = sys.argv[3]
+reason = sys.argv[4]
+
+payload = {
+    "unit_name": os.environ.get("UNIT_NAME", ""),
+    "phase": phase,
+    "verification": verification,
+    "reason": reason,
+    "request_time": os.environ.get("REQUEST_TIME_UTC", ""),
+    "before_main_pid": os.environ.get("before_pid", ""),
+    "before_start_timestamp": os.environ.get("before_start", ""),
+    "after_main_pid": os.environ.get("after_pid", ""),
+    "after_start_timestamp": os.environ.get("after_start", ""),
+    "active_state": os.environ.get("active_state", ""),
+    "sub_state": os.environ.get("sub_state", ""),
+}
+path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}
+
 before_pid="$(show_prop MainPID)"
 before_start="$(show_prop ExecMainStartTimestamp)"
 before_mono="$(show_prop ExecMainStartTimestampMonotonic)"
+REQUEST_TIME_UTC="$(timestamp_utc)"
+STATUS_PATH="$(status_path_for_unit)"
+export REQUEST_TIME_UTC STATUS_PATH before_pid before_start
 
-echo "[restart_and_verify] request_time=$(timestamp_utc)"
+echo "[restart_and_verify] request_time=${REQUEST_TIME_UTC}"
 echo "[restart_and_verify] before_main_pid=${before_pid}"
 echo "[restart_and_verify] before_start_timestamp=${before_start}"
 echo "[restart_and_verify] before_start_monotonic=${before_mono}"
+echo "[restart_and_verify] status_path=${STATUS_PATH}"
 
-wait_for_idle_if_needed
+write_status "requested" "pending"
+
+if ! wait_for_idle_if_needed; then
+  write_status "failed" "failed" "idle_timeout"
+  exit 1
+fi
 
 systemctl restart "${UNIT_NAME}"
 
@@ -237,6 +285,7 @@ after_start="$(show_prop ExecMainStartTimestamp)"
 after_mono="$(show_prop ExecMainStartTimestampMonotonic)"
 active_state="$(show_prop ActiveState)"
 sub_state="$(show_prop SubState)"
+export after_pid after_start active_state sub_state
 
 echo "[restart_and_verify] after_main_pid=${after_pid}"
 echo "[restart_and_verify] after_start_timestamp=${after_start}"
@@ -246,6 +295,7 @@ echo "[restart_and_verify] sub_state=${sub_state}"
 
 if [[ "${active_state}" != "active" || "${sub_state}" != "running" ]]; then
   echo "[restart_and_verify] verification=failed reason=service_not_running"
+  write_status "failed" "failed" "service_not_running"
   systemctl --no-pager --full status "${UNIT_NAME}"
   exit 1
 fi
@@ -259,9 +309,11 @@ fi
 
 if [[ "${changed_marker}" != "yes" ]]; then
   echo "[restart_and_verify] verification=failed reason=no_restart_marker_change"
+  write_status "failed" "failed" "no_restart_marker_change"
   systemctl --no-pager --full status "${UNIT_NAME}"
   exit 2
 fi
 
 echo "[restart_and_verify] verification=pass"
+write_status "completed" "pass"
 systemctl --no-pager --full status "${UNIT_NAME}"
