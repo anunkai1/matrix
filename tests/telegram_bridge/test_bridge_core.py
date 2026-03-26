@@ -3203,6 +3203,42 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertEqual(plan, [])
 
+    def test_build_candidate_worker_plan_prefers_two_primary_lanes(self):
+        prompt = (
+            "Check the service logs, inspect the code path, read the runbook, "
+            "and verify the fix before you answer."
+        )
+
+        plan = bridge_agent_orchestrator.build_candidate_worker_plan(prompt, max_workers=2)
+
+        self.assertEqual(
+            [worker.role for worker in plan],
+            ["runtime-investigator", "codebase-mapper"],
+        )
+
+    def test_build_candidate_worker_plan_allows_one_optional_third_lane(self):
+        prompt = (
+            "Check the service logs, inspect the code path, read the runbook, "
+            "and verify the fix before you answer."
+        )
+
+        plan = bridge_agent_orchestrator.build_candidate_worker_plan(prompt, max_workers=5)
+
+        self.assertEqual(
+            [worker.role for worker in plan],
+            ["runtime-investigator", "codebase-mapper", "docs-researcher"],
+        )
+
+    def test_build_candidate_worker_plan_uses_two_secondary_lanes_when_needed(self):
+        prompt = "Read the runbook and verify the migration plan before you answer."
+
+        plan = bridge_agent_orchestrator.build_candidate_worker_plan(prompt, max_workers=3)
+
+        self.assertEqual(
+            [worker.role for worker in plan],
+            ["docs-researcher", "verification-planner"],
+        )
+
     def test_run_readonly_codex_prompt_clears_stdin_before_communicate(self):
         class FakeProcess:
             def __init__(self):

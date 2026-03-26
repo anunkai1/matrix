@@ -313,8 +313,8 @@ Message handling:
 - Optional Architect task orchestrator (feature-flagged):
   - enable with `TELEGRAM_AGENT_ORCHESTRATOR_ENABLED=true`
   - intended for Architect-style multi-part requests; keep disabled on simpler sibling runtimes unless deliberately testing there
-  - concurrency cap: `TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS`
-  - current rollout is conservative: the orchestrator only triggers when the request usefully splits into multiple worker roles, spawns read-only worker scouts in parallel, folds their findings into one final Architect prompt, and keeps a single final writer/verifier path
+  - concurrency cap: `TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS` with a hard runtime maximum of `3`
+  - current rollout is conservative: the orchestrator only triggers when the request usefully splits into multiple worker roles, keeps `2` workers as the normal split size, only adds a third worker for a genuinely separate lane, folds those read-only worker findings into one final Architect prompt, and keeps a single final writer/verifier path
 - Optional canonical session-store mode:
   - enable with `TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`
   - default backend (JSON): `/home/architect/.local/state/telegram-architect-bridge/chat_sessions.json`

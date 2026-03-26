@@ -26,6 +26,7 @@ except ImportError:
 
 ORCHESTRATOR_HEADER = "Architect worker findings"
 MAX_WORKER_OUTPUT_CHARS = 3000
+ORCHESTRATOR_HARD_MAX_WORKERS = 3
 
 RUNTIME_KEYWORDS = (
     "log",
@@ -149,19 +150,45 @@ def _worker_catalog() -> Dict[str, WorkerSpec]:
 
 def build_candidate_worker_plan(prompt_text: str, max_workers: int) -> List[WorkerSpec]:
     signals = analyze_task_shape(prompt_text)["signals"]
-    workers: List[WorkerSpec] = []
-    if signals["runtime"]:
-        workers.append(_worker_catalog()["runtime-investigator"])
-    if signals["docs"]:
-        workers.append(_worker_catalog()["docs-researcher"])
-    if signals["code"]:
-        workers.append(_worker_catalog()["codebase-mapper"])
-    if signals["verify"]:
-        workers.append(_worker_catalog()["verification-planner"])
+    catalog = _worker_catalog()
+    capped_max_workers = max(1, min(max_workers, ORCHESTRATOR_HARD_MAX_WORKERS))
 
-    if len(workers) < 2:
+    primary_workers: List[WorkerSpec] = []
+    if signals["runtime"]:
+        primary_workers.append(catalog["runtime-investigator"])
+    if signals["code"]:
+        primary_workers.append(catalog["codebase-mapper"])
+
+    secondary_workers: List[WorkerSpec] = []
+    if signals["docs"]:
+        secondary_workers.append(catalog["docs-researcher"])
+    if signals["verify"]:
+        secondary_workers.append(catalog["verification-planner"])
+
+    if len(primary_workers) + len(secondary_workers) < 2:
         return []
-    return workers[:max_workers]
+
+    selected_workers = list(primary_workers)
+    selected_roles = {worker.role for worker in selected_workers}
+
+    for worker in secondary_workers:
+        if len(selected_workers) >= 2:
+            break
+        if worker.role in selected_roles:
+            continue
+        selected_workers.append(worker)
+        selected_roles.add(worker.role)
+
+    # Keep the normal split size at two lanes. Only add one extra lane when the
+    # task already has two strong primary lanes and the third lane is explicitly separate.
+    if len(primary_workers) >= 2 and capped_max_workers > 2:
+        for worker in secondary_workers:
+            if worker.role in selected_roles:
+                continue
+            selected_workers.append(worker)
+            break
+
+    return selected_workers[:capped_max_workers]
 
 
 def build_planner_prompt(prompt_text: str, candidate_workers: List[WorkerSpec]) -> str:
@@ -174,6 +201,8 @@ def build_planner_prompt(prompt_text: str, candidate_workers: List[WorkerSpec]) 
         "Decide whether the request should stay single-agent or be split into temporary specialist workers.\n"
         "Only use workers when that split is materially helpful and at least two roles are justified.\n"
         "Prefer no split for simple or tightly sequential tasks.\n\n"
+        "When you do split, prefer two workers by default.\n"
+        "Only choose a third worker when it covers a genuinely separate lane that reduces coordination risk.\n\n"
         "Available worker roles:\n"
         f"{roles_text}\n\n"
         "Return a JSON object matching the schema exactly.\n\n"
@@ -198,6 +227,11 @@ def _planner_schema(candidate_workers: List[WorkerSpec], max_workers: int) -> Di
         "required": ["use_workers", "reason", "worker_roles"],
         "additionalProperties": False,
     }
+
+
+def _orchestrator_max_workers(config) -> int:
+    configured = int(getattr(config, "agent_orchestrator_max_workers", ORCHESTRATOR_HARD_MAX_WORKERS))
+    return max(1, min(configured, ORCHESTRATOR_HARD_MAX_WORKERS))
 
 
 def build_worker_prompt(worker: WorkerSpec, user_prompt: str) -> str:
@@ -355,7 +389,7 @@ def plan_worker_split(
     candidate_workers: List[WorkerSpec],
     cancel_event: Optional[threading.Event] = None,
 ) -> PlannerDecision:
-    max_workers = max(1, int(getattr(config, "agent_orchestrator_max_workers", 3)))
+    max_workers = _orchestrator_max_workers(config)
     planner_prompt = build_planner_prompt(prompt_text, candidate_workers)
     schema = _planner_schema(candidate_workers, max_workers=max_workers)
     success, summary = _run_readonly_codex_prompt(
@@ -405,7 +439,7 @@ def build_worker_plan(
 ) -> List[WorkerSpec]:
     if not bool(getattr(config, "agent_orchestrator_enabled", False)):
         return []
-    max_workers = max(1, int(getattr(config, "agent_orchestrator_max_workers", 3)))
+    max_workers = _orchestrator_max_workers(config)
     candidate_workers = build_candidate_worker_plan(prompt_text, max_workers=max_workers)
     if len(candidate_workers) < 2:
         return []

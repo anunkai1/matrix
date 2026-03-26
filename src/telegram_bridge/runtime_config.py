@@ -132,6 +132,11 @@ def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
     return parsed
 
 
+def parse_capped_int_env(name: str, default: int, *, minimum: int = 1, maximum: int) -> int:
+    parsed = parse_int_env(name, default, minimum=minimum)
+    return min(parsed, maximum)
+
+
 def parse_bool_env(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -517,10 +522,11 @@ def load_config() -> Config:
             "TELEGRAM_AGENT_ORCHESTRATOR_ENABLED",
             False,
         ),
-        agent_orchestrator_max_workers=parse_int_env(
+        agent_orchestrator_max_workers=parse_capped_int_env(
             "TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS",
             3,
             minimum=1,
+            maximum=3,
         ),
         diary_mode_enabled=parse_bool_env(
             "TELEGRAM_DIARY_MODE_ENABLED",

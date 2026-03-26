@@ -157,6 +157,20 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertTrue(config.agent_orchestrator_enabled)
         self.assertEqual(config.agent_orchestrator_max_workers, 2)
 
+    def test_load_config_clamps_agent_orchestrator_max_workers_to_three(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_AGENT_ORCHESTRATOR_ENABLED": "true",
+                "TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS": "9",
+            },
+            clear=True,
+        ):
+            config = runtime_config.load_config()
+        self.assertEqual(config.agent_orchestrator_max_workers, 3)
+
 
 if __name__ == "__main__":
     unittest.main()
