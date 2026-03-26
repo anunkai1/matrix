@@ -3239,6 +3239,53 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(summary, "planner ok")
 
+    def test_planner_schema_uses_supported_array_keywords(self):
+        workers = [
+            bridge_agent_orchestrator._worker_catalog()["runtime-investigator"],
+            bridge_agent_orchestrator._worker_catalog()["codebase-mapper"],
+        ]
+
+        schema = bridge_agent_orchestrator._planner_schema(workers, max_workers=3)
+
+        worker_roles_schema = schema["properties"]["worker_roles"]
+        self.assertEqual(worker_roles_schema["maxItems"], 3)
+        self.assertNotIn("uniqueItems", worker_roles_schema)
+
+    def test_plan_worker_split_dedupes_duplicate_roles_from_planner(self):
+        config = make_config(agent_orchestrator_enabled=True, agent_orchestrator_max_workers=3)
+        candidate_workers = [
+            bridge_agent_orchestrator._worker_catalog()["runtime-investigator"],
+            bridge_agent_orchestrator._worker_catalog()["codebase-mapper"],
+        ]
+        planner_payload = json.dumps(
+            {
+                "use_workers": True,
+                "reason": "multi_role_split",
+                "worker_roles": [
+                    "runtime-investigator",
+                    "runtime-investigator",
+                    "codebase-mapper",
+                ],
+            }
+        )
+
+        with mock.patch.object(
+            bridge_agent_orchestrator,
+            "_run_readonly_codex_prompt",
+            return_value=(True, planner_payload),
+        ):
+            decision = bridge_agent_orchestrator.plan_worker_split(
+                config,
+                "Inspect logs and code, then verify the fix.",
+                candidate_workers,
+            )
+
+        self.assertTrue(decision.use_workers)
+        self.assertEqual(
+            decision.worker_roles,
+            ["runtime-investigator", "codebase-mapper"],
+        )
+
     def test_build_canonical_sessions_from_legacy(self):
         worker = bridge.WorkerSession(
             created_at=1.0,

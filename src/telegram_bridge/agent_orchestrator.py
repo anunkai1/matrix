@@ -192,7 +192,6 @@ def _planner_schema(candidate_workers: List[WorkerSpec], max_workers: int) -> Di
             "worker_roles": {
                 "type": "array",
                 "items": {"type": "string", "enum": allowed_roles},
-                "uniqueItems": True,
                 "maxItems": max_workers,
             },
         },
@@ -384,11 +383,14 @@ def plan_worker_split(
     raw_roles = payload.get("worker_roles")
     planner_roles = raw_roles if isinstance(raw_roles, list) else []
     allowed_roles = {worker.role for worker in candidate_workers}
-    worker_roles = [
-        str(role).strip()
-        for role in planner_roles
-        if isinstance(role, str) and str(role).strip() in allowed_roles
-    ]
+    worker_roles: List[str] = []
+    for role in planner_roles:
+        if not isinstance(role, str):
+            continue
+        normalized = str(role).strip()
+        if not normalized or normalized not in allowed_roles or normalized in worker_roles:
+            continue
+        worker_roles.append(normalized)
     return PlannerDecision(
         use_workers=use_workers and len(worker_roles) >= 2,
         reason=reason,
