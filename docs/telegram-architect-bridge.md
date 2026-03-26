@@ -116,6 +116,8 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_PERSISTENT_WORKERS_ENABLED=false
 # TELEGRAM_PERSISTENT_WORKERS_MAX=4
 # TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS=2700
+# TELEGRAM_AGENT_ORCHESTRATOR_ENABLED=false
+# TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS=3
 # TELEGRAM_CANONICAL_SESSIONS_ENABLED=false
 # TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED=false
 # TELEGRAM_CANONICAL_SQLITE_ENABLED=false
@@ -304,6 +306,11 @@ Message handling:
   - default max workers: `TELEGRAM_PERSISTENT_WORKERS_MAX=4`
   - default idle expiry: `TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS=2700` (45 min)
   - worker session state file: `/home/architect/.local/state/telegram-architect-bridge/worker_sessions.json`
+- Optional Architect task orchestrator (feature-flagged):
+  - enable with `TELEGRAM_AGENT_ORCHESTRATOR_ENABLED=true`
+  - intended for Architect-style multi-part requests; keep disabled on simpler sibling runtimes unless deliberately testing there
+  - concurrency cap: `TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS`
+  - current rollout is conservative: the orchestrator only triggers when the request usefully splits into multiple worker roles, spawns read-only worker scouts in parallel, folds their findings into one final Architect prompt, and keeps a single final writer/verifier path
 - Optional canonical session-store mode:
   - enable with `TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`
   - default backend (JSON): `/home/architect/.local/state/telegram-architect-bridge/chat_sessions.json`

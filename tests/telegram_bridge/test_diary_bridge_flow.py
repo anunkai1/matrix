@@ -111,6 +111,8 @@ def make_config(state_dir: str):
         signal_bridge_auth_token="",
         signal_poll_timeout_seconds=20,
         keyword_routing_enabled=False,
+        agent_orchestrator_enabled=False,
+        agent_orchestrator_max_workers=3,
         diary_mode_enabled=True,
         diary_capture_quiet_window_seconds=1,
         diary_timezone="Australia/Brisbane",

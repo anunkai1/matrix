@@ -145,6 +145,8 @@ def make_config(**overrides):
         "signal_bridge_auth_token": "",
         "signal_poll_timeout_seconds": 20,
         "keyword_routing_enabled": True,
+        "agent_orchestrator_enabled": False,
+        "agent_orchestrator_max_workers": 3,
         "diary_mode_enabled": False,
         "diary_capture_quiet_window_seconds": 75,
         "diary_timezone": "Australia/Brisbane",
@@ -286,6 +288,45 @@ class AffectiveRuntimeTests(unittest.TestCase):
 
         self.assertEqual(client.messages[-1][1], "still works")
         self.assertIn("Affective runtime context", engine.prompts[0])
+
+    def test_orchestrator_augments_prompt_when_worker_findings_exist(self):
+        config = make_config(agent_orchestrator_enabled=True)
+        state = bridge_state_store.State()
+        client = FakeClient()
+        engine = RecordingEngine(output_text="orchestrated response")
+        engine.engine_name = "codex"
+        worker_prompt = (
+            "Please inspect logs, docs, code, and verify the fix before answering. "
+            "This request spans multiple areas and should be split carefully."
+        )
+
+        with unittest.mock.patch.object(
+            bridge_handlers,
+            "maybe_augment_prompt_with_worker_findings",
+            return_value=(
+                "Architect worker findings:\n"
+                "[runtime-investigator]\nSummary: runtime clue\n\n"
+                "Original user request:\n"
+                + worker_prompt
+            ),
+        ):
+            bridge_handlers.process_prompt(
+                state=state,
+                config=config,
+                client=client,
+                engine=engine,
+                scope_key="telegram:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=401,
+                prompt=worker_prompt,
+                photo_file_id=None,
+                voice_file_id=None,
+                document=None,
+            )
+
+        self.assertIn("Architect worker findings", engine.prompts[0])
+        self.assertEqual(client.messages[-1][1], "orchestrated response")
 
 
 if __name__ == "__main__":

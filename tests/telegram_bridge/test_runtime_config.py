@@ -142,6 +142,21 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(config.diary_nextcloud_app_password, "secret")
         self.assertEqual(config.diary_nextcloud_remote_root, "/Travel Diary")
 
+    def test_load_config_reads_agent_orchestrator_overrides(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_AGENT_ORCHESTRATOR_ENABLED": "true",
+                "TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS": "2",
+            },
+            clear=True,
+        ):
+            config = runtime_config.load_config()
+        self.assertTrue(config.agent_orchestrator_enabled)
+        self.assertEqual(config.agent_orchestrator_max_workers, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

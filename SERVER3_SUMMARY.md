@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-26 (AEST, +10:00)
+Last updated: 2026-03-27 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -17,7 +17,7 @@ Last updated: 2026-03-26 (AEST, +10:00)
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
 - Runtime pattern: Telegram long polling + local `codex exec`
-- Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
+- Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional Architect-side worker-scout orchestration, optional canonical session model, safe queued `/restart`
 - Browser Brain live mode is now `existing_session` on local CDP port `9223`; the visible `tv` Brave helper is the intended on-screen login path for sites like `x.com`.
 - Telegram reply-context wrappers now use English labels (`Reply Context`, `Original Message Author`, `Message User Replied To`, `Current User Message`) while downstream parsers remain backward-compatible with older Russian wrappers.
 - Canonical runtime inventory now lives in `infra/server3-runtime-manifest.json`, with shared live inspection via `python3 ops/server3_runtime_status.py`
@@ -53,6 +53,7 @@ Last updated: 2026-03-26 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-27: added a feature-gated Architect task orchestrator to the shared Telegram bridge core, allowing Architect to detect when a request cleanly splits into multiple worker roles, spawn bounded read-only Codex worker scouts in parallel for runtime/docs/code/verification reconnaissance, fold those findings into one final Architect prompt, and keep a single final writer path; enabled the feature only for Architect with a conservative live worker cap.
 - 2026-03-26: refreshed the canonical shared Codex auth from the current `architect` CLI login and relinked `architect`, `govorun`, `macrorayd`, `oracle`, `agentsmith`, `tank`, and `trinity` back to `/etc/server3-codex/auth.json`, so future Architect-side Codex logins propagate automatically to the trusted runtime users; restarted `govorun-whatsapp-bridge.service` and verified a live Govorun-side `codex exec` succeeds under the same shared account id.
 - 2026-03-24: added the first deterministic Diary save pipeline to the shared Telegram bridge core, with Diary-mode quiet-window batching, FIFO queueing of closed diary batches, per-day structured state under `/home/diary/.local/share/diary`, generated daily `.docx` exports, and Nextcloud upload/verification support for `/Diary/YYYY/MM/`.
 - 2026-03-24: rolled out the live `Diary` Telegram runtime on Server3 by adding the isolated shared-core overlay/runtime inventory wiring, creating user `diary` at UID/GID `1013`, installing the owner-DM allowlisted env at `/etc/default/telegram-diary-bridge`, wiring shared Codex auth and repo-backed runtime docs under `/home/diary/diarybot`, fixing the initial readonly-state-path startup failure with `TELEGRAM_BRIDGE_STATE_DIR=/home/diary/.local/state/telegram-diary-bridge`, then moving voice transcription onto a Diary-local whisper runtime under `/home/diary/.local/share/telegram-voice/venv` with the medium-class English model `medium.en`, and verifying both `telegram-diary-bridge.service` and an outbound Bot API smoke to chat `211761499`.
@@ -60,7 +61,6 @@ Last updated: 2026-03-26 (AEST, +10:00)
 - 2026-03-24: fixed the shared Python bridge to treat Govorun WhatsApp flat `photo` descriptor arrays as multiple images instead of a single Telegram-style size list, so batched WhatsApp multi-photo updates now reach Codex with every image attached instead of only the largest file id.
 - 2026-03-24: fixed Govorun WhatsApp multi-photo batching at the actual ingress bottleneck by buffering raw inbound photo messages before media download and only materializing/merging payloads once per quiet-window batch, eliminating the serial per-image download gap that was still splitting one WhatsApp photo send into separate `chat_busy` requests.
 - 2026-03-24: narrowed Govorun WhatsApp photo batch identity again so private-chat photo batches merge by chat rather than by sender identity, avoiding PN/LID sender-id churn in WhatsApp MD that was still splitting one DM photo send into separate `chat_busy` updates.
-- 2026-03-24: taught the shared Python bridge to detect mid-run HTTP queue counter rollbacks and reset its saved offset when the WhatsApp transport starts numbering fresh updates from a lower id, preventing the bridge from going blind to new messages after a transport restart.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.

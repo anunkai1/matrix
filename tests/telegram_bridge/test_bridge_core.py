@@ -30,6 +30,7 @@ import channel_adapter as bridge_channel_adapter
 import engine_adapter as bridge_engine_adapter
 import http_channel as bridge_http_channel
 import plugin_registry as bridge_plugin_registry
+import agent_orchestrator as bridge_agent_orchestrator
 import signal_channel as bridge_signal_channel
 import whatsapp_channel as bridge_whatsapp_channel
 import session_manager as bridge_session_manager
@@ -169,6 +170,8 @@ def make_config(**overrides):
         "signal_bridge_auth_token": "",
         "signal_poll_timeout_seconds": 20,
         "keyword_routing_enabled": True,
+        "agent_orchestrator_enabled": False,
+        "agent_orchestrator_max_workers": 3,
         "diary_mode_enabled": False,
         "diary_capture_quiet_window_seconds": 75,
         "diary_timezone": "Australia/Brisbane",
@@ -3149,6 +3152,27 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.returncode, 0)
         self.assertEqual(engine.calls, 1)
+
+    def test_orchestrator_plans_multiple_workers_for_multi_part_request(self):
+        config = make_config(agent_orchestrator_enabled=True)
+        prompt = (
+            "Check the service logs, read the runbook, inspect the code path, "
+            "and verify the fix before you answer."
+        )
+
+        plan = bridge_agent_orchestrator.build_worker_plan(config, prompt)
+
+        self.assertEqual(
+            [worker.role for worker in plan],
+            ["runtime-investigator", "docs-researcher", "codebase-mapper"],
+        )
+
+    def test_orchestrator_skips_simple_request(self):
+        config = make_config(agent_orchestrator_enabled=True)
+
+        plan = bridge_agent_orchestrator.build_worker_plan(config, "What time is it?")
+
+        self.assertEqual(plan, [])
 
     def test_build_canonical_sessions_from_legacy(self):
         worker = bridge.WorkerSession(
