@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-26 (Summary Roll-Forward Trim for Shared Codex Auth Relink)
+
+Summary:
+- Added a new rolling-summary entry for relinking the canonical shared Codex auth so `architect` now points at `/etc/server3-codex/auth.json` too, making future Architect CLI logins propagate automatically to the trusted sibling runtime users.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-24: fixed Govorun WhatsApp photo batching again by deriving inbound photo batch keys from stable raw WhatsApp sender ids rather than variable display-name fields, so multi-photo sends in the same chat stop splitting into separate `chat_busy` requests.
+
 ## 2026-03-24 (Summary Roll-Forward Trim for Diary Runtime Scaffold)
 
 Summary:
