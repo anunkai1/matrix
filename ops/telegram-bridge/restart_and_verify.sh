@@ -4,6 +4,9 @@ set -euo pipefail
 UNIT_NAME="${UNIT_NAME:-telegram-architect-bridge.service}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CHAT_ROUTING_VALIDATOR="${REPO_ROOT}/ops/chat-routing/validate_chat_routing_contract.py"
+RESTART_WAIT_FOR_IDLE="${RESTART_WAIT_FOR_IDLE:-true}"
+RESTART_IDLE_TIMEOUT_SECONDS="${RESTART_IDLE_TIMEOUT_SECONDS:-120}"
+RESTART_IDLE_POLL_SECONDS="${RESTART_IDLE_POLL_SECONDS:-2}"
 ALLOWED_UNITS=(
   "telegram-architect-bridge.service"
   "telegram-agentsmith-bridge.service"
@@ -24,6 +27,150 @@ is_allowed_unit() {
     fi
   done
   return 1
+}
+
+is_truthy() {
+  local value="${1:-}"
+  case "${value,,}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_environment_file() {
+  systemctl cat "${UNIT_NAME}" 2>/dev/null | sed -n 's/^EnvironmentFile=-\{0,1\}//p' | head -n 1
+}
+
+load_unit_environment() {
+  local env_file
+  local line key value
+  env_file="$(resolve_environment_file)"
+  if [[ -z "${env_file}" || ! -f "${env_file}" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    if [[ -z "${line}" || "${line}" == \#* ]]; then
+      continue
+    fi
+    if [[ "${line}" != *=* ]]; then
+      continue
+    fi
+    key="${line%%=*}"
+    value="${line#*=}"
+    if [[ ! "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      continue
+    fi
+    printf -v "${key}" '%s' "${value}"
+    export "${key}"
+  done < "${env_file}"
+}
+
+count_in_flight_requests() {
+  python3 - "$@" <<'PY'
+import json
+import sqlite3
+import sys
+from pathlib import Path
+
+state_dir = sys.argv[1]
+canonical_sqlite_enabled = sys.argv[2].strip().lower() in {"1", "true", "yes", "on"}
+canonical_sqlite_path = Path(sys.argv[3])
+canonical_json_path = Path(sys.argv[4])
+in_flight_json_path = Path(sys.argv[5])
+
+def count_canonical_json(path: Path):
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return sum(
+        1
+        for value in payload.values()
+        if isinstance(value, dict) and value.get("in_flight_started_at") is not None
+    )
+
+def count_legacy_json(path: Path):
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return len(payload)
+
+if canonical_sqlite_enabled and canonical_sqlite_path.exists():
+    try:
+        with sqlite3.connect(str(canonical_sqlite_path)) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM canonical_sessions WHERE in_flight_started_at IS NOT NULL"
+            ).fetchone()
+        print(int(row[0] or 0))
+        raise SystemExit(0)
+    except Exception:
+        pass
+
+canonical_json_count = count_canonical_json(canonical_json_path)
+if canonical_json_count is not None:
+    print(canonical_json_count)
+    raise SystemExit(0)
+
+legacy_count = count_legacy_json(in_flight_json_path)
+if legacy_count is not None:
+    print(legacy_count)
+    raise SystemExit(0)
+
+print(0)
+PY
+}
+
+wait_for_idle_if_needed() {
+  local state_dir canonical_sqlite_enabled canonical_sqlite_path canonical_json_path in_flight_json_path
+  local deadline now in_flight_count
+
+  if ! is_truthy "${RESTART_WAIT_FOR_IDLE}"; then
+    echo "[restart_and_verify] idle_wait=disabled"
+    return 0
+  fi
+
+  load_unit_environment
+  state_dir="${TELEGRAM_BRIDGE_STATE_DIR:-/home/architect/.local/state/telegram-architect-bridge}"
+  canonical_sqlite_enabled="${TELEGRAM_CANONICAL_SQLITE_ENABLED:-false}"
+  canonical_sqlite_path="${TELEGRAM_CANONICAL_SQLITE_PATH:-${state_dir}/chat_sessions.sqlite3}"
+  canonical_json_path="${state_dir}/chat_sessions.json"
+  in_flight_json_path="${state_dir}/in_flight_requests.json"
+  deadline=$(( $(date +%s) + RESTART_IDLE_TIMEOUT_SECONDS ))
+
+  while true; do
+    in_flight_count="$(
+      count_in_flight_requests \
+        "${state_dir}" \
+        "${canonical_sqlite_enabled}" \
+        "${canonical_sqlite_path}" \
+        "${canonical_json_path}" \
+        "${in_flight_json_path}"
+    )"
+    if [[ "${in_flight_count}" == "0" ]]; then
+      echo "[restart_and_verify] idle_wait=clear state_dir=${state_dir}"
+      return 0
+    fi
+
+    now="$(date +%s)"
+    if (( now >= deadline )); then
+      echo "[restart_and_verify] idle_wait=timeout in_flight_count=${in_flight_count} state_dir=${state_dir}" >&2
+      return 1
+    fi
+
+    echo "[restart_and_verify] idle_wait=waiting in_flight_count=${in_flight_count} state_dir=${state_dir}"
+    sleep "${RESTART_IDLE_POLL_SECONDS}"
+  done
 }
 
 while [[ $# -gt 0 ]]; do
@@ -80,6 +227,8 @@ echo "[restart_and_verify] request_time=$(timestamp_utc)"
 echo "[restart_and_verify] before_main_pid=${before_pid}"
 echo "[restart_and_verify] before_start_timestamp=${before_start}"
 echo "[restart_and_verify] before_start_monotonic=${before_mono}"
+
+wait_for_idle_if_needed
 
 systemctl restart "${UNIT_NAME}"
 

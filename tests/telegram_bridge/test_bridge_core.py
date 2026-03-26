@@ -2942,11 +2942,21 @@ class BridgeCoreTests(unittest.TestCase):
     def test_request_safe_restart_status_transitions(self):
         state = bridge.State()
 
-        status, busy = bridge_session_manager.request_safe_restart(state, chat_id=1, reply_to_message_id=None)
+        status, busy = bridge_session_manager.request_safe_restart(
+            state,
+            chat_id=1,
+            message_thread_id=None,
+            reply_to_message_id=None,
+        )
         self.assertEqual(status, "run_now")
         self.assertEqual(busy, 0)
 
-        status, busy = bridge_session_manager.request_safe_restart(state, chat_id=1, reply_to_message_id=None)
+        status, busy = bridge_session_manager.request_safe_restart(
+            state,
+            chat_id=1,
+            message_thread_id=None,
+            reply_to_message_id=None,
+        )
         self.assertEqual(status, "in_progress")
         self.assertEqual(busy, 0)
 
@@ -2954,11 +2964,21 @@ class BridgeCoreTests(unittest.TestCase):
         with state.lock:
             state.busy_chats.add(5)
 
-        status, busy = bridge_session_manager.request_safe_restart(state, chat_id=1, reply_to_message_id=None)
+        status, busy = bridge_session_manager.request_safe_restart(
+            state,
+            chat_id=1,
+            message_thread_id=None,
+            reply_to_message_id=None,
+        )
         self.assertEqual(status, "queued")
         self.assertEqual(busy, 1)
 
-        status, busy = bridge_session_manager.request_safe_restart(state, chat_id=1, reply_to_message_id=None)
+        status, busy = bridge_session_manager.request_safe_restart(
+            state,
+            chat_id=1,
+            message_thread_id=None,
+            reply_to_message_id=None,
+        )
         self.assertEqual(status, "already_queued")
         self.assertEqual(busy, 1)
 
@@ -3160,7 +3180,16 @@ class BridgeCoreTests(unittest.TestCase):
             "and verify the fix before you answer."
         )
 
-        plan = bridge_agent_orchestrator.build_worker_plan(config, prompt)
+        with mock.patch.object(
+            bridge_agent_orchestrator,
+            "plan_worker_split",
+            return_value=bridge_agent_orchestrator.PlannerDecision(
+                use_workers=True,
+                reason="planner_selected_multi_role_split",
+                worker_roles=["runtime-investigator", "docs-researcher", "codebase-mapper"],
+            ),
+        ):
+            plan = bridge_agent_orchestrator.build_worker_plan(config, prompt)
 
         self.assertEqual(
             [worker.role for worker in plan],
@@ -3173,6 +3202,42 @@ class BridgeCoreTests(unittest.TestCase):
         plan = bridge_agent_orchestrator.build_worker_plan(config, "What time is it?")
 
         self.assertEqual(plan, [])
+
+    def test_run_readonly_codex_prompt_clears_stdin_before_communicate(self):
+        class FakeProcess:
+            def __init__(self):
+                self.stdin = io.StringIO()
+                self.stdout = io.StringIO("")
+                self.stderr = io.StringIO("")
+
+            def poll(self):
+                return 0
+
+            def communicate(self, timeout=None):
+                del timeout
+                if self.stdin is not None:
+                    raise ValueError("stdin should be cleared before communicate")
+                return "", ""
+
+            def kill(self):
+                return None
+
+            def wait(self, timeout=None):
+                del timeout
+                return 0
+
+        with (
+            mock.patch.object(bridge_agent_orchestrator, "build_runtime_root", return_value=str(ROOT)),
+            mock.patch.object(bridge_agent_orchestrator.subprocess, "Popen", return_value=FakeProcess()),
+            mock.patch.object(Path, "read_text", return_value="planner ok"),
+        ):
+            success, summary = bridge_agent_orchestrator._run_readonly_codex_prompt(
+                "plan this",
+                role_label="split-planner",
+            )
+
+        self.assertTrue(success)
+        self.assertEqual(summary, "planner ok")
 
     def test_build_canonical_sessions_from_legacy(self):
         worker = bridge.WorkerSession(

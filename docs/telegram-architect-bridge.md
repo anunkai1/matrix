@@ -145,6 +145,10 @@ bash ops/telegram-bridge/restart_and_verify.sh
 python3 ops/server3_runtime_status.py
 ```
 
+Restart helper note:
+- `ops/telegram-bridge/restart_and_verify.sh` is now drain-aware by default: before restarting it waits for persisted in-flight work to clear, using canonical session state when enabled, so operator-triggered restarts do not usually interrupt active chats.
+- Override only for emergencies by exporting `RESTART_WAIT_FOR_IDLE=false` for that shell invocation.
+
 Install/start the tank service profile:
 
 ```bash
@@ -326,6 +330,7 @@ Message handling:
     - `TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED=true` mirrors canonical JSON (`chat_sessions.json`) even when SQLite is enabled
 - In-flight request markers are persisted at `/home/architect/.local/state/telegram-architect-bridge/in_flight_requests.json`.
 - If the bridge restarts while a request is in progress, the chat receives a one-time startup notice to resend the interrupted request.
+- Operator restarts through `ops/telegram-bridge/restart_and_verify.sh` now wait for persisted in-flight work to clear before calling `systemctl restart`, which reduces avoidable interruption notices during normal maintenance.
 - On resume failures, the bridge preserves saved thread context by default.
 - It only auto-resets thread context when executor error output clearly indicates an invalid or missing thread.
 - With persistent workers enabled:
