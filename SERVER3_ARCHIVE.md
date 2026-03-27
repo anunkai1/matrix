@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-27 (Summary Roll-Forward Trim for Planner Conversational Bypass)
+
+Summary:
+- Added a new rolling-summary entry for trimming Architect split-planner latency on obvious explanation/status/chatty turns by extracting the current-user focus text from wrapped prompts, bypassing the planner before any extra planner `codex exec` when the turn is clearly conversational, aligning the progress wording to evaluation rather than guaranteed splitting, and covering the reply-context false-positive path with regression tests.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-27: fixed the Architect split-planner JSON schema to remove the unsupported `uniqueItems` response-format keyword, kept role dedupe in local parsing, added regression coverage, and verified the live restart completed with worker orchestration still active on the fresh runtime.
+
 ## 2026-03-27 (Summary Roll-Forward Trim for Orchestrator Fail-Closed/Auth-Sync Tightening)
 
 Summary:

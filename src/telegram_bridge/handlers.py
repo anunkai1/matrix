@@ -2810,7 +2810,7 @@ def process_prompt(
             and active_engine.engine_name == "codex"
             and not (image_paths or image_path or document_path)
         ):
-            progress.set_phase(f"{assistant_label(config)} is splitting the task into worker executors.")
+            progress.set_phase(f"{assistant_label(config)} is evaluating whether worker executors would help.")
             try:
                 prompt_text = maybe_augment_prompt_with_worker_findings(
                     config=config,

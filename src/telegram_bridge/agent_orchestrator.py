@@ -32,12 +32,69 @@ ORCHESTRATOR_HARD_MAX_WORKERS = 3
 PLANNER_PROMPT_VERSION = "2026-03-27.2"
 PLANNER_SCHEMA_VERSION = "2026-03-27.2"
 PLANNER_REASON_INSUFFICIENT_LANES = "insufficient_parallel_lanes"
+PLANNER_REASON_BYPASSED_CONVERSATIONAL = "planner_bypassed_conversational_turn"
 PLANNER_REASON_SINGLE_AGENT = "planner_single_agent"
 PLANNER_REASON_SELECTED = "planner_selected_multi_role_split"
 PLANNER_REASON_SELECTED_INSUFFICIENT = "planner_selected_insufficient_roles"
 PLANNER_REASON_FAILED_FALLBACK = "planner_failed_fallback"
 PLANNER_REASON_UNPARSEABLE_FALLBACK = "planner_unparseable_fallback"
 PLANNER_SUPPORTED_ARRAY_SCHEMA_KEYS = frozenset({"type", "items", "maxItems"})
+PLANNER_FOCUS_LABELS = (
+    "Current User Message:",
+    "Original user request:",
+    "User request:",
+)
+CONVERSATIONAL_QUESTION_PREFIXES = (
+    "what ",
+    "what's ",
+    "whats ",
+    "why ",
+    "how ",
+    "when ",
+    "where ",
+    "who ",
+    "is ",
+    "are ",
+    "can ",
+    "could ",
+    "should ",
+    "would ",
+    "will ",
+    "do ",
+    "does ",
+    "did ",
+)
+CONVERSATIONAL_PHRASES = (
+    "what got done",
+    "what's taking so long",
+    "whats taking so long",
+    "how will you",
+    "why would i need",
+    "what is ",
+    "can you explain",
+    "do you mean",
+)
+EXECUTION_REQUEST_KEYWORDS = (
+    "check",
+    "inspect",
+    "read",
+    "review",
+    "compare",
+    "investigate",
+    "debug",
+    "look up",
+    "verify",
+    "validate",
+    "test",
+    "run",
+    "fix",
+    "patch",
+    "edit",
+    "change",
+    "implement",
+    "restart",
+    "logs",
+)
 
 RUNTIME_KEYWORDS = (
     "log",
@@ -139,6 +196,32 @@ def analyze_task_shape(prompt_text: str) -> Dict[str, object]:
         "verify": _contains_any(lowered, VERIFY_KEYWORDS),
     }
     return {"signals": signals}
+
+
+def extract_orchestrator_focus_text(prompt_text: str) -> str:
+    text = (prompt_text or "").strip()
+    if not text:
+        return ""
+    for label in PLANNER_FOCUS_LABELS:
+        marker_index = text.rfind(label)
+        if marker_index < 0:
+            continue
+        candidate = text[marker_index + len(label):].strip()
+        if candidate:
+            return candidate
+    return text
+
+
+def is_conversational_turn(prompt_text: str) -> bool:
+    focus_text = extract_orchestrator_focus_text(prompt_text)
+    normalized = re.sub(r"\s+", " ", focus_text.strip().lower())
+    if not normalized:
+        return False
+    if _contains_any(normalized, EXECUTION_REQUEST_KEYWORDS):
+        return False
+    if any(normalized.startswith(prefix) for prefix in CONVERSATIONAL_QUESTION_PREFIXES):
+        return True
+    return any(phrase in normalized for phrase in CONVERSATIONAL_PHRASES)
 
 
 def _worker_catalog() -> Dict[str, WorkerSpec]:
@@ -618,6 +701,22 @@ def build_worker_plan(
                 "enabled": False,
                 "reason": PLANNER_REASON_INSUFFICIENT_LANES,
                 "reason_code": PLANNER_REASON_INSUFFICIENT_LANES,
+                "planner_prompt_version": PLANNER_PROMPT_VERSION,
+                "planner_schema_version": PLANNER_SCHEMA_VERSION,
+                "disabled_roles": sorted(_disabled_worker_roles(config)),
+                "candidate_roles": _worker_roles(candidate_workers),
+                "candidate_worker_count": len(candidate_workers),
+                "worker_count": 0,
+            },
+        )
+        return []
+    if is_conversational_turn(prompt_text):
+        emit_event(
+            "bridge.orchestrator_planner_decision",
+            fields={
+                "enabled": False,
+                "reason": PLANNER_REASON_BYPASSED_CONVERSATIONAL,
+                "reason_code": PLANNER_REASON_BYPASSED_CONVERSATIONAL,
                 "planner_prompt_version": PLANNER_PROMPT_VERSION,
                 "planner_schema_version": PLANNER_SCHEMA_VERSION,
                 "disabled_roles": sorted(_disabled_worker_roles(config)),

@@ -3492,6 +3492,80 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertEqual(plan, [])
 
+    def test_extract_orchestrator_focus_text_prefers_current_user_message(self):
+        prompt = (
+            "Reply Context:\n"
+            "Original Message Author: Architect\n"
+            "Message User Replied To:\n"
+            "Check the service logs and inspect the code path.\n\n"
+            "Current User Message:\n"
+            "How will you do the first one"
+        )
+
+        focus_text = bridge_agent_orchestrator.extract_orchestrator_focus_text(prompt)
+
+        self.assertEqual(focus_text, "How will you do the first one")
+
+    def test_is_conversational_turn_ignores_reply_context_keywords(self):
+        prompt = (
+            "Reply Context:\n"
+            "Original Message Author: Architect\n"
+            "Message User Replied To:\n"
+            "Check the service logs, inspect the code path, and verify the fix.\n\n"
+            "Current User Message:\n"
+            "What's taking so long?"
+        )
+
+        self.assertTrue(bridge_agent_orchestrator.is_conversational_turn(prompt))
+
+    def test_orchestrator_bypasses_planner_for_conversational_follow_up(self):
+        config = make_config(agent_orchestrator_enabled=True)
+        prompt = (
+            "Reply Context:\n"
+            "Original Message Author: Architect\n"
+            "Message User Replied To:\n"
+            "Check the service logs, inspect the code path, and verify the fix.\n\n"
+            "Current User Message:\n"
+            "How will you do the first one"
+        )
+
+        with mock.patch.object(
+            bridge_agent_orchestrator,
+            "plan_worker_split",
+        ) as planner_mock:
+            plan = bridge_agent_orchestrator.build_worker_plan(config, prompt)
+
+        self.assertEqual(plan, [])
+        planner_mock.assert_not_called()
+
+    def test_orchestrator_still_uses_planner_for_execution_request_with_context(self):
+        config = make_config(agent_orchestrator_enabled=True)
+        prompt = (
+            "Reply Context:\n"
+            "Original Message Author: Architect\n"
+            "Message User Replied To:\n"
+            "The bridge is active and the split planner is available.\n\n"
+            "Current User Message:\n"
+            "Check the service logs, inspect the code path, and verify the fix."
+        )
+
+        with mock.patch.object(
+            bridge_agent_orchestrator,
+            "plan_worker_split",
+            return_value=bridge_agent_orchestrator.PlannerDecision(
+                use_workers=True,
+                reason="planner_selected_multi_role_split",
+                worker_roles=["runtime-investigator", "codebase-mapper"],
+            ),
+        ) as planner_mock:
+            plan = bridge_agent_orchestrator.build_worker_plan(config, prompt)
+
+        self.assertEqual(
+            [worker.role for worker in plan],
+            ["runtime-investigator", "codebase-mapper"],
+        )
+        planner_mock.assert_called_once()
+
     def test_build_candidate_worker_plan_prefers_two_primary_lanes(self):
         prompt = (
             "Check the service logs, inspect the code path, read the runbook, "
