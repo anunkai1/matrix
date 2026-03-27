@@ -64,6 +64,14 @@ if [[ "${runtime_root}" != /* ]]; then
 fi
 runtime_root="$(cd "${runtime_root}" && pwd)"
 
+auth_sync_script="${shared_core_root}/ops/codex/sync_shared_auth.sh"
+if [[ -x "${auth_sync_script}" ]]; then
+  # `codex login` can replace Architect's auth symlink with a standalone file.
+  # Refresh the shared auth before each exec so sibling runtimes follow the
+  # latest Architect CLI account automatically.
+  "${auth_sync_script}" >/dev/null 2>&1 || true
+fi
+
 cd "${runtime_root}"
 
 style_hint="${TELEGRAM_RESPONSE_STYLE_HINT:-}"

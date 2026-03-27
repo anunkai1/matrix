@@ -355,6 +355,71 @@ class BridgeCoreTests(unittest.TestCase):
             self.assertNotIn("TEMP_ORACLE_POLICY", result.stdout)
             self.assertIn("User request:\\nhello from overlay test", result.stdout)
 
+    def test_executor_script_runs_auth_sync_hook_when_available(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            repo_root = temp_root / "matrix"
+            script_dir = repo_root / "src" / "telegram_bridge"
+            script_dir.mkdir(parents=True)
+            script_path = script_dir / "executor.sh"
+            script_path.write_text(
+                (ROOT / "src" / "telegram_bridge" / "executor.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            script_path.chmod(0o755)
+
+            sync_dir = repo_root / "ops" / "codex"
+            sync_dir.mkdir(parents=True)
+            marker_path = repo_root / "auth-sync.marker"
+            sync_script = sync_dir / "sync_shared_auth.sh"
+            sync_script.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                f"printf 'synced\\n' > {str(marker_path)!r}\n",
+                encoding="utf-8",
+            )
+            sync_script.chmod(0o755)
+
+            bin_dir = temp_root / "bin"
+            bin_dir.mkdir()
+            fake_codex = bin_dir / "codex"
+            fake_codex.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env python3",
+                        "import json",
+                        "import sys",
+                        "payload = sys.stdin.read()",
+                        "print(json.dumps({",
+                        "    'type': 'item.completed',",
+                        "    'item': {",
+                        "        'type': 'agent_message',",
+                        "        'text': payload,",
+                        "    },",
+                        "}))",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            fake_codex.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+            env["CODEX_BIN"] = str(fake_codex)
+
+            result = subprocess.run(
+                ["bash", str(script_path), "new"],
+                input="hello with auth sync\n",
+                text=True,
+                capture_output=True,
+                cwd=str(ROOT),
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            self.assertEqual(marker_path.read_text(encoding="utf-8"), "synced\n")
+
     def test_normalize_command_and_trim_output_helpers(self):
         self.assertEqual(bridge_handlers.normalize_command("/h@architect_bot now"), "/h")
         self.assertIsNone(bridge_handlers.normalize_command("hello"))

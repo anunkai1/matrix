@@ -2,6 +2,17 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-27 (Summary Roll-Forward Trim for Shared Auth Auto-Refresh)
+
+Summary:
+- Added a new rolling-summary entry for auto-refreshing the shared Codex auth before each shared Telegram executor run, so sibling runtimes realign with Architect's current CLI login even after `codex login` recreates `/home/architect/.codex/auth.json` as a standalone file.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-26: refreshed the canonical shared Codex auth from the current `architect` CLI login and relinked `architect`, `govorun`, `macrorayd`, `oracle`, `agentsmith`, `tank`, and `trinity` back to `/etc/server3-codex/auth.json`, so future Architect-side Codex logins propagate automatically to the trusted runtime users; restarted `govorun-whatsapp-bridge.service` and verified a live Govorun-side `codex exec` succeeds under the same shared account id.
+- 2026-03-24: added the first deterministic Diary save pipeline to the shared Telegram bridge core, with Diary-mode quiet-window batching, FIFO queueing of closed diary batches, per-day structured state under `/home/diary/.local/share/diary`, generated daily `.docx` exports, and Nextcloud upload/verification support for `/Diary/YYYY/MM/`.
+- 2026-03-24: rolled out the live `Diary` Telegram runtime on Server3 by adding the isolated shared-core overlay/runtime inventory wiring, creating user `diary` at UID/GID `1013`, installing the owner-DM allowlisted env at `/etc/default/telegram-diary-bridge`, wiring shared Codex auth and repo-backed runtime docs under `/home/diary/diarybot`, fixing the initial readonly-state-path startup failure with `TELEGRAM_BRIDGE_STATE_DIR=/home/diary/.local/state/telegram-diary-bridge`, then moving voice transcription onto a Diary-local whisper runtime under `/home/diary/.local/share/telegram-voice/venv` with the medium-class English model `medium.en`, and verifying both `telegram-diary-bridge.service` and an outbound Bot API smoke to chat `211761499`.
+
 ## 2026-03-26 (Summary Roll-Forward Trim for Shared Codex Auth Relink)
 
 Summary:
