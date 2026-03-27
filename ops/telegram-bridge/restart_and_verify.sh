@@ -266,7 +266,7 @@ before_start="$(show_prop ExecMainStartTimestamp)"
 before_mono="$(show_prop ExecMainStartTimestampMonotonic)"
 REQUEST_TIME_UTC="$(timestamp_utc)"
 STATUS_PATH="$(status_path_for_unit)"
-export REQUEST_TIME_UTC STATUS_PATH before_pid before_start
+export UNIT_NAME REQUEST_TIME_UTC STATUS_PATH before_pid before_start
 
 echo "[restart_and_verify] request_time=${REQUEST_TIME_UTC}"
 echo "[restart_and_verify] before_main_pid=${before_pid}"

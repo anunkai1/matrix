@@ -3457,6 +3457,7 @@ class BridgeCoreTests(unittest.TestCase):
             payload = json.loads(status_path.read_text(encoding="utf-8"))
             self.assertEqual(payload["phase"], "completed")
             self.assertEqual(payload["verification"], "pass")
+            self.assertEqual(payload["unit_name"], "telegram-architect-bridge.service")
             self.assertEqual(payload["before_main_pid"], "111")
             self.assertEqual(payload["after_main_pid"], "222")
 
