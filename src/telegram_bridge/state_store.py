@@ -17,6 +17,13 @@ except ImportError:
 ScopeKey = str
 
 
+def normalize_scope_key(scope_key: object) -> ScopeKey:
+    normalized = normalize_scope_storage_key(scope_key)
+    if normalized is None:
+        raise ValueError(f"Invalid scope key: {scope_key!r}")
+    return normalized
+
+
 @dataclass
 class CanonicalSession:
     thread_id: str = ""
@@ -404,15 +411,15 @@ def persist_canonical_sessions_sqlite(
                 """,
                 [
                     (
-                        scope_key,
+                        normalize_scope_key(scope_key),
                         (
-                            parse_telegram_scope_key(scope_key).chat_id
-                            if scope_key.startswith("tg:")
+                            parse_telegram_scope_key(normalize_scope_key(scope_key)).chat_id
+                            if normalize_scope_key(scope_key).startswith("tg:")
                             else None
                         ),
                         (
-                            parse_telegram_scope_key(scope_key).message_thread_id
-                            if scope_key.startswith("tg:")
+                            parse_telegram_scope_key(normalize_scope_key(scope_key)).message_thread_id
+                            if normalize_scope_key(scope_key).startswith("tg:")
                             else None
                         ),
                         session.thread_id,
@@ -443,7 +450,7 @@ def load_or_import_canonical_sessions_sqlite(
     if not import_sessions:
         return {}, False
     persist_canonical_sessions_sqlite(path, import_sessions)
-    return dict(import_sessions), True
+    return load_canonical_sessions_sqlite(path), True
 
 
 def _build_canonical_session_for_scope(
@@ -582,14 +589,17 @@ def persist_json_state_file(path_value: str, serialized: Dict[str, object]) -> N
 
 def persist_chat_threads(state: State) -> None:
     with state.lock:
-        serialized = {scope_key: thread_id for scope_key, thread_id in state.chat_threads.items()}
+        serialized = {
+            normalize_scope_key(scope_key): thread_id
+            for scope_key, thread_id in state.chat_threads.items()
+        }
     persist_json_state_file(state.chat_thread_path, serialized)
 
 
 def persist_worker_sessions(state: State) -> None:
     with state.lock:
         serialized = {
-            scope_key: {
+            normalize_scope_key(scope_key): {
                 "created_at": session.created_at,
                 "last_used_at": session.last_used_at,
                 "thread_id": session.thread_id,
@@ -602,7 +612,10 @@ def persist_worker_sessions(state: State) -> None:
 
 def persist_in_flight_requests(state: State) -> None:
     with state.lock:
-        serialized = {scope_key: payload for scope_key, payload in state.in_flight_requests.items()}
+        serialized = {
+            normalize_scope_key(scope_key): payload
+            for scope_key, payload in state.in_flight_requests.items()
+        }
     persist_json_state_file(state.in_flight_path, serialized)
 
 
@@ -611,7 +624,7 @@ def persist_canonical_sessions(state: State) -> None:
         return
     with state.lock:
         sessions = {
-            scope_key: CanonicalSession(
+            normalize_scope_key(scope_key): CanonicalSession(
                 thread_id=session.thread_id,
                 worker_created_at=session.worker_created_at,
                 worker_last_used_at=session.worker_last_used_at,
@@ -660,6 +673,7 @@ def mirror_legacy_from_canonical(state: State, persist: bool = True) -> None:
 def sync_canonical_session(state: State, scope_key: ScopeKey) -> None:
     if not state.canonical_sessions_enabled:
         return
+    scope_key = normalize_scope_key(scope_key)
     changed = False
     with state.lock:
         session = _build_canonical_session_for_scope(
@@ -693,6 +707,7 @@ def sync_all_canonical_sessions(state: State) -> None:
 
 
 def clear_worker_session(state: State, scope_key: ScopeKey) -> bool:
+    scope_key = normalize_scope_key(scope_key)
     if state.canonical_sessions_enabled:
         changed = False
         with state.lock:
@@ -728,6 +743,7 @@ def clear_worker_session(state: State, scope_key: ScopeKey) -> bool:
 
 
 def get_thread_id(state: State, scope_key: ScopeKey) -> Optional[str]:
+    scope_key = normalize_scope_key(scope_key)
     if state.canonical_sessions_enabled:
         with state.lock:
             session = state.chat_sessions.get(scope_key)
@@ -740,6 +756,7 @@ def get_thread_id(state: State, scope_key: ScopeKey) -> Optional[str]:
 
 
 def set_thread_id(state: State, scope_key: ScopeKey, thread_id: str) -> None:
+    scope_key = normalize_scope_key(scope_key)
     if state.canonical_sessions_enabled:
         normalized_thread_id = thread_id.strip()
         changed = False
@@ -785,6 +802,7 @@ def set_thread_id(state: State, scope_key: ScopeKey, thread_id: str) -> None:
 
 
 def clear_thread_id(state: State, scope_key: ScopeKey) -> bool:
+    scope_key = normalize_scope_key(scope_key)
     if state.canonical_sessions_enabled:
         removed = False
         with state.lock:
@@ -828,6 +846,7 @@ def clear_thread_id(state: State, scope_key: ScopeKey) -> bool:
 
 
 def mark_in_flight_request(state: State, scope_key: ScopeKey, message_id: Optional[int]) -> None:
+    scope_key = normalize_scope_key(scope_key)
     if state.canonical_sessions_enabled:
         with state.lock:
             session = state.chat_sessions.get(scope_key)
@@ -853,6 +872,7 @@ def mark_in_flight_request(state: State, scope_key: ScopeKey, message_id: Option
 
 
 def clear_in_flight_request(state: State, scope_key: ScopeKey) -> None:
+    scope_key = normalize_scope_key(scope_key)
     if state.canonical_sessions_enabled:
         changed = False
         with state.lock:

@@ -1986,7 +1986,7 @@ class BridgeCoreTests(unittest.TestCase):
                 worker_sessions_path=str(Path(tmpdir) / "worker_sessions.json"),
                 in_flight_path=str(Path(tmpdir) / "in_flight_requests.json"),
                 worker_sessions={
-                    1: bridge.WorkerSession(
+                    "tg:1": bridge.WorkerSession(
                         created_at=1.0,
                         last_used_at=1.0,
                         thread_id="",
@@ -1999,12 +1999,12 @@ class BridgeCoreTests(unittest.TestCase):
             repo.set_thread_id(1, "thread-xyz")
             threads = json.loads(Path(state.chat_thread_path).read_text(encoding="utf-8"))
             sessions = json.loads(Path(state.worker_sessions_path).read_text(encoding="utf-8"))
-            self.assertEqual(threads, {"1": "thread-xyz"})
-            self.assertEqual(sessions["1"]["thread_id"], "thread-xyz")
+            self.assertEqual(threads, {"tg:1": "thread-xyz"})
+            self.assertEqual(sessions["tg:1"]["thread_id"], "thread-xyz")
 
             repo.mark_in_flight_request(1, 55)
             in_flight = json.loads(Path(state.in_flight_path).read_text(encoding="utf-8"))
-            self.assertEqual(in_flight["1"]["message_id"], 55)
+            self.assertEqual(in_flight["tg:1"]["message_id"], 55)
 
             repo.clear_in_flight_request(1)
             cleared = json.loads(Path(state.in_flight_path).read_text(encoding="utf-8"))
@@ -2060,9 +2060,9 @@ class BridgeCoreTests(unittest.TestCase):
             memory_engine.remember_explicit(live_key, "topic: separate")
 
             state = bridge.State(
-                chat_threads={1: "thread-live"},
+                chat_threads={"tg:1": "thread-live"},
                 worker_sessions={
-                    1: bridge.WorkerSession(
+                    "tg:1": bridge.WorkerSession(
                         created_at=1.0,
                         last_used_at=1.0,
                         thread_id="thread-live",
@@ -2318,7 +2318,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(client.messages)
         self.assertEqual(client.messages[-1][1], "Cancel requested. Stopping current request.")
         with state.lock:
-            self.assertTrue(state.cancel_events[1].is_set())
+            self.assertTrue(state.cancel_events["tg:1"].is_set())
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_ignores_non_prefixed_when_required(self, start_message_worker):
@@ -4162,9 +4162,9 @@ class BridgeCoreTests(unittest.TestCase):
             repo.mark_in_flight_request(7, 700)
 
             sessions = bridge.load_canonical_sessions(state.chat_sessions_path)
-            self.assertIn(7, sessions)
-            self.assertEqual(sessions[7].thread_id, "thread-7")
-            self.assertEqual(sessions[7].in_flight_message_id, 700)
+            self.assertIn("tg:7", sessions)
+            self.assertEqual(sessions["tg:7"].thread_id, "thread-7")
+            self.assertEqual(sessions["tg:7"].in_flight_message_id, 700)
 
     def test_state_repository_syncs_canonical_to_sqlite_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -4185,9 +4185,9 @@ class BridgeCoreTests(unittest.TestCase):
             repo.mark_in_flight_request(12, 1200)
 
             sessions = bridge.load_canonical_sessions_sqlite(sqlite_path)
-            self.assertIn(12, sessions)
-            self.assertEqual(sessions[12].thread_id, "thread-12")
-            self.assertEqual(sessions[12].in_flight_message_id, 1200)
+            self.assertIn("tg:12", sessions)
+            self.assertEqual(sessions["tg:12"].thread_id, "thread-12")
+            self.assertEqual(sessions["tg:12"].in_flight_message_id, 1200)
             self.assertFalse(Path(json_path).exists())
 
     def test_canonical_sqlite_json_mirror_writes_json_when_enabled(self):
@@ -4209,8 +4209,8 @@ class BridgeCoreTests(unittest.TestCase):
 
             sqlite_sessions = bridge.load_canonical_sessions_sqlite(sqlite_path)
             json_sessions = bridge.load_canonical_sessions(json_path)
-            self.assertEqual(sqlite_sessions[13].thread_id, "thread-13")
-            self.assertEqual(json_sessions[13].thread_id, "thread-13")
+            self.assertEqual(sqlite_sessions["tg:13"].thread_id, "thread-13")
+            self.assertEqual(json_sessions["tg:13"].thread_id, "thread-13")
 
     def test_load_or_import_canonical_sessions_sqlite_imports_only_when_empty(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -4223,7 +4223,7 @@ class BridgeCoreTests(unittest.TestCase):
                 import_sessions=initial_sessions,
             )
             self.assertTrue(imported)
-            self.assertEqual(loaded[1].thread_id, "thread-initial")
+            self.assertEqual(loaded["tg:1"].thread_id, "thread-initial")
 
             replacement_sessions = {
                 1: bridge.CanonicalSession(thread_id="thread-replacement"),
@@ -4234,12 +4234,12 @@ class BridgeCoreTests(unittest.TestCase):
                 import_sessions=replacement_sessions,
             )
             self.assertFalse(imported_again)
-            self.assertEqual(loaded_again[1].thread_id, "thread-initial")
-            self.assertNotIn(2, loaded_again)
+            self.assertEqual(loaded_again["tg:1"].thread_id, "thread-initial")
+            self.assertNotIn("tg:2", loaded_again)
 
     def test_build_legacy_from_canonical(self):
         canonical = {
-            9: bridge.CanonicalSession(
+            "tg:9": bridge.CanonicalSession(
                 thread_id="thread-9",
                 worker_created_at=1.0,
                 worker_last_used_at=2.0,
@@ -4249,9 +4249,9 @@ class BridgeCoreTests(unittest.TestCase):
             )
         }
         chat_threads, worker_sessions, in_flight = bridge.build_legacy_from_canonical(canonical)
-        self.assertEqual(chat_threads[9], "thread-9")
-        self.assertEqual(worker_sessions[9].policy_fingerprint, "fp")
-        self.assertEqual(in_flight[9]["message_id"], 90)
+        self.assertEqual(chat_threads["tg:9"], "thread-9")
+        self.assertEqual(worker_sessions["tg:9"].policy_fingerprint, "fp")
+        self.assertEqual(in_flight["tg:9"]["message_id"], 90)
 
     def test_canonical_first_set_thread_and_clear_worker_mirrors_legacy(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -4263,7 +4263,7 @@ class BridgeCoreTests(unittest.TestCase):
                 canonical_sessions_enabled=True,
                 canonical_legacy_mirror_enabled=True,
                 chat_sessions={
-                    5: bridge.CanonicalSession(
+                    "tg:5": bridge.CanonicalSession(
                         thread_id="old-thread",
                         worker_created_at=1.0,
                         worker_last_used_at=1.0,
@@ -4279,12 +4279,12 @@ class BridgeCoreTests(unittest.TestCase):
             repo.clear_worker_session(5)
 
             sessions = bridge.load_canonical_sessions(state.chat_sessions_path)
-            self.assertEqual(sessions[5].thread_id, "new-thread")
-            self.assertIsNone(sessions[5].worker_created_at)
+            self.assertEqual(sessions["tg:5"].thread_id, "new-thread")
+            self.assertIsNone(sessions["tg:5"].worker_created_at)
 
             threads = json.loads(Path(state.chat_thread_path).read_text(encoding="utf-8"))
             workers = json.loads(Path(state.worker_sessions_path).read_text(encoding="utf-8"))
-            self.assertEqual(threads["5"], "new-thread")
+            self.assertEqual(threads["tg:5"], "new-thread")
             self.assertEqual(workers, {})
 
     def test_canonical_first_without_legacy_mirror_skips_legacy_persist(self):
@@ -4301,14 +4301,14 @@ class BridgeCoreTests(unittest.TestCase):
             repo.set_thread_id(11, "thread-11")
 
             sessions = bridge.load_canonical_sessions(state.chat_sessions_path)
-            self.assertEqual(sessions[11].thread_id, "thread-11")
+            self.assertEqual(sessions["tg:11"].thread_id, "thread-11")
             self.assertFalse(Path(state.chat_thread_path).exists())
 
     def test_ensure_chat_worker_session_canonical_rejects_when_all_workers_busy(self):
         state = bridge.State(
             canonical_sessions_enabled=True,
             chat_sessions={
-                2: bridge.CanonicalSession(
+                "tg:2": bridge.CanonicalSession(
                     thread_id="thread-busy",
                     worker_created_at=1.0,
                     worker_last_used_at=10.0,
@@ -4333,7 +4333,7 @@ class BridgeCoreTests(unittest.TestCase):
         state = bridge.State(
             canonical_sessions_enabled=True,
             chat_sessions={
-                1: bridge.CanonicalSession(
+                "tg:1": bridge.CanonicalSession(
                     thread_id="thread-old",
                     worker_created_at=1.0,
                     worker_last_used_at=2.0,
@@ -4352,8 +4352,8 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(allowed)
         self.assertTrue(client.messages)
         self.assertIn("Policy/context files changed", client.messages[-1][1])
-        self.assertIn(1, state.chat_sessions)
-        self.assertEqual(state.chat_sessions[1].thread_id, "")
+        self.assertIn("tg:1", state.chat_sessions)
+        self.assertEqual(state.chat_sessions["tg:1"].thread_id, "")
 
     def test_state_repository_concurrent_inflight_persistence_is_safe(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -4399,7 +4399,7 @@ class BridgeCoreTests(unittest.TestCase):
 
         with mock.patch.object(bridge_session_manager, "StateRepository", FailingStateRepo):
             bridge_session_manager.finalize_chat_work(state, client, chat_id=1)
-        self.assertNotIn(1, state.busy_chats)
+        self.assertNotIn("tg:1", state.busy_chats)
 
 
 if __name__ == "__main__":

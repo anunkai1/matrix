@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 try:
-    from .conversation_scope import parse_telegram_scope_key
+    from .conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
     from .memory_engine import MemoryEngine
     from .memory_merge import merge_conversation_keys
     from .memory_scope import resolve_memory_conversation_key, resolve_shared_memory_archive_key
@@ -27,7 +27,7 @@ try:
     )
     from .structured_logging import emit_event
 except ImportError:
-    from conversation_scope import parse_telegram_scope_key
+    from conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
     from memory_engine import MemoryEngine
     from memory_merge import merge_conversation_keys
     from memory_scope import resolve_memory_conversation_key, resolve_shared_memory_archive_key
@@ -49,6 +49,40 @@ except ImportError:
 
 def build_repo_root() -> str:
     return build_shared_core_root()
+
+
+def _legacy_scope_alias(scope_key: str) -> Optional[int]:
+    try:
+        target = parse_telegram_scope_key(scope_key)
+    except ValueError:
+        return None
+    if target.message_thread_id is not None:
+        return None
+    return target.chat_id
+
+
+def _resolve_scope_key(
+    scope_key: Optional[str],
+    chat_id: int,
+    message_thread_id: Optional[int],
+) -> str:
+    if scope_key:
+        return scope_key
+    return build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
+
+
+def _normalize_scope_key(scope_key: object) -> str:
+    if isinstance(scope_key, int):
+        return build_telegram_scope_key(scope_key)
+    return str(scope_key or "").strip()
+
+
+def _scope_is_busy(state: State, scope_key: object) -> bool:
+    normalized_scope_key = _normalize_scope_key(scope_key)
+    legacy_alias = _legacy_scope_alias(normalized_scope_key)
+    return normalized_scope_key in state.busy_chats or (
+        legacy_alias is not None and legacy_alias in state.busy_chats
+    )
 
 
 def build_restart_script_path() -> str:
@@ -84,8 +118,15 @@ def compute_policy_fingerprint(paths: List[str]) -> str:
 
 def is_rate_limited(state: State, config, scope_key: str) -> bool:
     now = time.time()
+    legacy_alias = _legacy_scope_alias(scope_key)
     with state.lock:
-        entries = state.recent_requests.setdefault(scope_key, [])
+        entries = state.recent_requests.get(scope_key)
+        if entries is None and legacy_alias is not None:
+            entries = state.recent_requests.pop(legacy_alias, None)
+            if entries is not None:
+                state.recent_requests[scope_key] = entries
+        if entries is None:
+            entries = state.recent_requests.setdefault(scope_key, [])
         threshold = now - 60
         entries[:] = [t for t in entries if t >= threshold]
         if len(entries) >= config.rate_limit_per_minute:
@@ -95,16 +136,24 @@ def is_rate_limited(state: State, config, scope_key: str) -> bool:
 
 
 def mark_busy(state: State, scope_key: str) -> bool:
+    legacy_alias = _legacy_scope_alias(scope_key)
     with state.lock:
         if scope_key in state.busy_chats:
             return False
+        if legacy_alias is not None and legacy_alias in state.busy_chats:
+            return False
         state.busy_chats.add(scope_key)
+        if legacy_alias is not None:
+            state.busy_chats.discard(legacy_alias)
     return True
 
 
 def clear_busy(state: State, scope_key: str) -> None:
+    legacy_alias = _legacy_scope_alias(scope_key)
     with state.lock:
         state.busy_chats.discard(scope_key)
+        if legacy_alias is not None:
+            state.busy_chats.discard(legacy_alias)
 
 
 def _has_active_worker(session: Optional[CanonicalSession]) -> bool:
@@ -283,7 +332,7 @@ def _ensure_chat_worker_session_canonical(
             idle_candidates = [
                 (candidate_scope_key, candidate_session)
                 for candidate_scope_key, candidate_session in active_workers.items()
-                if candidate_scope_key not in state.busy_chats and candidate_scope_key != scope_key
+                if not _scope_is_busy(state, candidate_scope_key) and candidate_scope_key != scope_key
             ]
             if idle_candidates:
                 idle_candidates.sort(
@@ -370,7 +419,7 @@ def _ensure_chat_worker_session_legacy(
             idle_candidates = [
                 (candidate_scope_key, candidate_session)
                 for candidate_scope_key, candidate_session in state.worker_sessions.items()
-                if candidate_scope_key not in state.busy_chats and candidate_scope_key != scope_key
+                if not _scope_is_busy(state, candidate_scope_key) and candidate_scope_key != scope_key
             ]
             if idle_candidates:
                 idle_candidates.sort(key=lambda item: item[1].last_used_at)
@@ -420,11 +469,12 @@ def ensure_chat_worker_session(
     state: State,
     config,
     client,
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
+    scope_key: Optional[str] = None,
+    chat_id: int = 0,
+    message_thread_id: Optional[int] = None,
+    message_id: Optional[int] = None,
 ) -> bool:
+    scope_key = _resolve_scope_key(scope_key, chat_id, message_thread_id)
     if not config.persistent_workers_enabled:
         return True
 
@@ -507,7 +557,7 @@ def expire_idle_worker_sessions(
         changed = False
         with state.lock:
             for scope_key, session in list(state.chat_sessions.items()):
-                if scope_key in state.busy_chats:
+                if _scope_is_busy(state, scope_key):
                     continue
                 if not _has_active_worker(session):
                     continue
@@ -547,7 +597,7 @@ def expire_idle_worker_sessions(
         for scope_key in expired_scope_keys:
             _archive_expired_chat_memory(state, config, client, scope_key)
             try:
-                target = parse_telegram_scope_key(scope_key)
+                target = parse_telegram_scope_key(_normalize_scope_key(scope_key))
             except ValueError:
                 continue
             if target.chat_id not in config.allowed_chat_ids:
@@ -568,7 +618,7 @@ def expire_idle_worker_sessions(
     needs_persist_sessions = False
     with state.lock:
         for scope_key, session in list(state.worker_sessions.items()):
-            if scope_key in state.busy_chats:
+            if _scope_is_busy(state, scope_key):
                 continue
             if now - session.last_used_at < config.persistent_workers_idle_timeout_seconds:
                 continue
@@ -602,7 +652,7 @@ def expire_idle_worker_sessions(
     for scope_key in expired_scope_keys:
         _archive_expired_chat_memory(state, config, client, scope_key)
         try:
-            target = parse_telegram_scope_key(scope_key)
+            target = parse_telegram_scope_key(_normalize_scope_key(scope_key))
         except ValueError:
             continue
         if target.chat_id not in config.allowed_chat_ids:
@@ -785,9 +835,11 @@ def trigger_restart_async(
 def finalize_chat_work(
     state: State,
     client,
-    scope_key: str,
     chat_id: int,
+    scope_key: Optional[str] = None,
+    message_thread_id: Optional[int] = None,
 ) -> None:
+    scope_key = _resolve_scope_key(scope_key, chat_id, message_thread_id)
     state_repo = StateRepository(state)
     try:
         state_repo.clear_in_flight_request(scope_key)

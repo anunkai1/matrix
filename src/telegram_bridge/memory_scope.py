@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 try:
+    from .conversation_scope import parse_telegram_scope_key
     from .memory_engine import MemoryEngine
 except ImportError:
+    from conversation_scope import parse_telegram_scope_key
     from memory_engine import MemoryEngine
 
 
@@ -22,6 +24,14 @@ def resolve_memory_conversation_key(config, channel_name: str, scope_key: str | 
         scoped_key = str(scope_key or "").strip()
         if not scoped_key:
             raise ValueError("scope_key must not be empty")
+        normalized_channel = (channel_name or "telegram").strip().lower()
+        if normalized_channel != "telegram":
+            try:
+                parsed_scope = parse_telegram_scope_key(scoped_key)
+            except ValueError:
+                parsed_scope = None
+            if parsed_scope is not None and parsed_scope.message_thread_id is None:
+                scoped_key = MemoryEngine.channel_key(normalized_channel, parsed_scope.chat_id)
     if shared_archive_key:
         return f"{shared_archive_key}:session:{scoped_key}"
     return scoped_key

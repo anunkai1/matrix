@@ -18,7 +18,12 @@ from urllib.parse import urlparse
 try:
     from .agent_orchestrator import maybe_augment_prompt_with_worker_findings
     from .auth_state import refresh_runtime_auth_fingerprint
-    from .conversation_scope import ConversationScope, scope_from_message
+    from .conversation_scope import (
+        ConversationScope,
+        build_telegram_scope_key,
+        parse_telegram_scope_key,
+        scope_from_message,
+    )
     from .executor import (
         ExecutorCancelledError,
         ExecutorProgressEvent,
@@ -98,7 +103,12 @@ try:
 except ImportError:
     from agent_orchestrator import maybe_augment_prompt_with_worker_findings
     from auth_state import refresh_runtime_auth_fingerprint
-    from conversation_scope import ConversationScope, scope_from_message
+    from conversation_scope import (
+        ConversationScope,
+        build_telegram_scope_key,
+        parse_telegram_scope_key,
+        scope_from_message,
+    )
     from executor import (
         ExecutorCancelledError,
         ExecutorProgressEvent,
@@ -724,9 +734,25 @@ def clear_cancel_event(
 
 
 def request_chat_cancel(state: State, scope_key: str) -> str:
+    try:
+        parsed_scope = parse_telegram_scope_key(scope_key)
+    except ValueError:
+        parsed_scope = None
+    legacy_alias = (
+        parsed_scope.chat_id
+        if parsed_scope is not None and parsed_scope.message_thread_id is None
+        else None
+    )
     with state.lock:
-        is_busy = scope_key in state.busy_chats
+        is_busy = scope_key in state.busy_chats or (
+            legacy_alias is not None and legacy_alias in state.busy_chats
+        )
         cancel_event = state.cancel_events.get(scope_key)
+        if cancel_event is None and legacy_alias is not None:
+            cancel_event = state.cancel_events.get(legacy_alias)
+            if cancel_event is not None:
+                state.cancel_events[scope_key] = cancel_event
+                del state.cancel_events[legacy_alias]
         if not is_busy:
             if cancel_event is not None:
                 del state.cancel_events[scope_key]
@@ -1931,7 +1957,10 @@ def build_status_text(
     config,
     chat_id: Optional[int] = None,
     scope_key: Optional[str] = None,
+    message_thread_id: Optional[int] = None,
 ) -> str:
+    if scope_key is None and chat_id is not None:
+        scope_key = build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
     with state.lock:
         busy_count = len(state.busy_chats)
         restart_requested = state.restart_requested
@@ -2349,19 +2378,21 @@ def execute_prompt_with_retry(
     config,
     client: ChannelAdapter,
     engine: EngineAdapter,
-    scope_key: str,
     chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
     prompt_text: str,
     previous_thread_id: Optional[str],
     progress: ProgressReporter,
+    message_thread_id: Optional[int] = None,
+    message_id: Optional[int] = None,
+    scope_key: Optional[str] = None,
     image_path: Optional[str] = None,
     image_paths: Optional[List[str]] = None,
     actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
     session_continuity_enabled: bool = True,
 ) -> Optional[subprocess.CompletedProcess[str]]:
+    if scope_key is None:
+        scope_key = build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
     allow_automatic_retry = config.persistent_workers_enabled
     retry_attempted = False
     attempt_thread_id: Optional[str] = previous_thread_id
@@ -2618,12 +2649,15 @@ def finalize_prompt_success(
     state_repo: StateRepository,
     config,
     client: ChannelAdapter,
-    scope_key: str,
     chat_id: int,
     message_id: Optional[int],
     result: subprocess.CompletedProcess[str],
     progress: ProgressReporter,
+    scope_key: Optional[str] = None,
+    message_thread_id: Optional[int] = None,
 ) -> tuple[Optional[str], str]:
+    if scope_key is None:
+        scope_key = build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
     new_thread_id, output = parse_executor_output(result.stdout or "")
     if new_thread_id:
         state_repo.set_thread_id(scope_key, new_thread_id)
@@ -2903,7 +2937,7 @@ def process_prompt(
                 os.remove(cleanup_path)
             except OSError:
                 logging.warning("Failed to remove temp file: %s", cleanup_path)
-        finalize_chat_work(state, client, scope_key, chat_id)
+        finalize_chat_work(state, client, chat_id=chat_id, scope_key=scope_key)
         emit_event(
             "bridge.request_processing_finished",
             fields={"chat_id": chat_id, "message_id": message_id},
@@ -2973,15 +3007,17 @@ def process_youtube_request(
     config,
     client: ChannelAdapter,
     engine: Optional[EngineAdapter],
-    scope_key: str,
     chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
     request_text: str,
     youtube_url: str,
+    message_thread_id: Optional[int] = None,
+    message_id: Optional[int] = None,
+    scope_key: Optional[str] = None,
     actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
+    if scope_key is None:
+        scope_key = build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
     active_engine = engine or CodexEngineAdapter()
     state_repo = StateRepository(state)
     cleanup_paths: List[str] = []
@@ -3100,7 +3136,7 @@ def process_youtube_request(
                 os.remove(cleanup_path)
             except OSError:
                 logging.warning("Failed to remove temp file: %s", cleanup_path)
-        finalize_chat_work(state, client, scope_key, chat_id)
+        finalize_chat_work(state, client, chat_id=chat_id, scope_key=scope_key)
         emit_event(
             "bridge.request_processing_finished",
             fields={"chat_id": chat_id, "message_id": message_id},
@@ -3796,7 +3832,7 @@ def process_diary_batch(
                 os.remove(cleanup_path)
             except OSError:
                 logging.warning("Failed to remove temp file: %s", cleanup_path)
-        finalize_chat_work(state, client, scope_key, pending.chat_id)
+        finalize_chat_work(state, client, chat_id=pending.chat_id, scope_key=scope_key)
         emit_event(
             "bridge.diary_batch_finished",
             fields={"chat_id": pending.chat_id, "message_id": pending.latest_message_id},
@@ -3891,7 +3927,7 @@ def diary_queue_worker(
                 if not queue:
                     state.queued_diary_batches.pop(scope_key, None)
             if pending is None:
-                finalize_chat_work(state, client, scope_key, 0)
+                finalize_chat_work(state, client, chat_id=0, scope_key=scope_key)
                 continue
             process_diary_batch(
                 state=state,

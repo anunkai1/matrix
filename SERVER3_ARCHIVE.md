@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-27 (Summary Roll-Forward Trim for Scope-Key Compatibility Cleanup)
+
+Summary:
+- Added a new rolling-summary entry for cleaning up the shared Telegram bridge after the conversational-bypass follow-up by normalizing scope-key persistence/helper boundaries, restoring backward-compatible helper defaults, fixing non-Telegram memory conversation-key resolution, and bringing the focused bridge suite back to green.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-27: tuned Architect orchestration policy so the worker split stays conservative in code as well as prompt guidance: default no split, normal split size `2`, hard max `3`, and the optional third lane is only admitted when runtime and code are already both present and an explicitly separate docs/verification lane is also signaled; clamped the runtime config accordingly and documented the behavior.
+
 ## 2026-03-27 (Summary Roll-Forward Trim for Planner Conversational Bypass)
 
 Summary:
