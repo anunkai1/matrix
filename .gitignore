@@ -17,6 +17,7 @@ Thumbs.db
 # Python cache
 __pycache__/
 *.pyc
+.venv*/
 
 # Private local workspace (not published)
 private/*

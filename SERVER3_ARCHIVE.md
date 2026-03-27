@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-28 (Summary Roll-Forward Trim for Mavali ETH Venue Operations Expansion)
+
+Summary:
+- Added a new rolling-summary entry for broadening `Mavali ETH` from the earlier wallet-centric runtime into a venue-operations surface with generic bootstrap persistence, modular prompt routing, richer Aster/Hyperliquid command handling, bridge-side fallback safety, and updated operator docs/spec coverage.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-27: added deterministic Architect planner preflight tooling (`python3 ops/telegram-bridge/planner_preflight.py`), tightened worker-lane keyword matching to avoid accidental substring-triggered docs/verification lanes, added machine-readable planner reason codes and candidate/selected-role logging, and hardened the drain-aware restart helper so it persists one durable pass/fail/timeout status marker per unit under `/run/restart-and-verify/restart_and_verify.<unit>.status.json` and hands off to a transient `systemd-run` unit when it is asked to restart its own caller service, avoiding cgroup self-termination during post-restart verification.
+
 ## 2026-03-27 (Summary Roll-Forward Trim for Scope-Key Compatibility Cleanup)
 
 Summary:
