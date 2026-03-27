@@ -2682,6 +2682,103 @@ def finalize_prompt_success(
     return new_thread_id, delivered_output
 
 
+def begin_memory_turn(
+    memory_engine: Optional[MemoryEngine],
+    state_repo: StateRepository,
+    config,
+    channel_name: str,
+    scope_key: str,
+    prompt_text: str,
+    sender_name: str,
+    stateless: bool,
+    chat_id: int,
+) -> tuple[str, Optional[str], Optional[TurnContext]]:
+    if memory_engine is None:
+        return prompt_text, (None if stateless else state_repo.get_thread_id(scope_key)), None
+    try:
+        turn_context = memory_engine.begin_turn(
+            conversation_key=resolve_memory_conversation_key(config, channel_name, scope_key),
+            channel=channel_name,
+            sender_name=sender_name,
+            user_input=prompt_text,
+            stateless=stateless,
+            background_conversation_key=resolve_shared_memory_archive_key(
+                config,
+                channel_name,
+            ),
+        )
+        return turn_context.prompt_text, turn_context.thread_id, turn_context
+    except Exception:
+        logging.exception("Failed to prepare shared memory turn for chat_id=%s", chat_id)
+        return prompt_text, (None if stateless else state_repo.get_thread_id(scope_key)), None
+
+
+def begin_affective_turn(
+    affective_runtime,
+    prompt_text: str,
+    *,
+    chat_id: int,
+    message_id: Optional[int],
+) -> tuple[str, bool]:
+    if affective_runtime is None:
+        return prompt_text, False
+    affective_turn_started = False
+    try:
+        affective_runtime.begin_turn(prompt_text)
+        affective_turn_started = True
+        affective_prefix = (affective_runtime.prompt_prefix() or "").strip()
+        if affective_prefix:
+            prompt_text = f"{affective_prefix}\n\nUser request:\n{prompt_text}"
+            emit_event(
+                "bridge.affective_prompt_applied",
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "prefix_chars": len(affective_prefix),
+                },
+            )
+        return prompt_text, True
+    except Exception:
+        logging.exception(
+            "Affective runtime begin_turn failed for chat_id=%s; continuing without prefix.",
+            chat_id,
+        )
+        if affective_turn_started:
+            try:
+                affective_runtime.finish_turn(success=False)
+            except Exception:
+                logging.exception(
+                    "Affective runtime rollback failed after begin_turn error for chat_id=%s",
+                    chat_id,
+                )
+        return prompt_text, False
+
+
+def emit_request_processing_started(
+    *,
+    chat_id: int,
+    message_id: Optional[int],
+    prompt: str,
+    photo_file_ids: Optional[List[str]],
+    photo_file_id: Optional[str],
+    voice_file_id: Optional[str],
+    document: Optional[DocumentPayload],
+    previous_thread_id: Optional[str],
+) -> None:
+    emit_event(
+        "bridge.request_processing_started",
+        fields={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "prompt_chars": len(prompt or ""),
+            "has_photo": bool(photo_file_ids or photo_file_id),
+            "has_voice": bool(voice_file_id),
+            "has_document": document is not None,
+            "has_previous_thread": bool(previous_thread_id),
+        },
+    )
+
+
 def process_prompt(
     state: State,
     config,
@@ -2704,9 +2801,9 @@ def process_prompt(
 ) -> None:
     channel_name = getattr(client, "channel_name", "telegram")
     active_engine = engine or CodexEngineAdapter()
+    assistant_name_label = assistant_label(config)
     state_repo = StateRepository(state)
     memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
-    conversation_key = resolve_memory_conversation_key(config, channel_name, scope_key)
     previous_thread_id: Optional[str] = None
     turn_context: Optional[TurnContext] = None
     image_path: Optional[str] = None
@@ -2722,7 +2819,7 @@ def process_prompt(
         client,
         chat_id,
         message_id,
-        assistant_label(config),
+        assistant_name_label,
         getattr(config, "progress_label", ""),
         getattr(config, "progress_elapsed_prefix", "Already"),
         getattr(config, "progress_elapsed_suffix", "s"),
@@ -2735,7 +2832,7 @@ def process_prompt(
             logging.warning(
                 "Auth fingerprint changed mid-runtime; cleared stored thread state for %s "
                 "(threads=%s worker_sessions=%s canonical_sessions=%s memory_sessions=%s).",
-                assistant_label(config),
+                assistant_name_label,
                 counts["threads"],
                 counts["worker_sessions"],
                 counts["canonical_sessions"],
@@ -2775,69 +2872,34 @@ def process_prompt(
         cleanup_paths = list(prepared.cleanup_paths)
         attachment_file_ids = list(prepared.attachment_file_ids)
         prompt_text = prepared.prompt_text
-        if memory_engine is not None:
-            try:
-                turn_context = memory_engine.begin_turn(
-                    conversation_key=conversation_key,
-                    channel=channel_name,
-                    sender_name=sender_name,
-                    user_input=prompt_text,
-                    stateless=stateless,
-                    background_conversation_key=resolve_shared_memory_archive_key(
-                        config,
-                        channel_name,
-                    ),
-                )
-                prompt_text = turn_context.prompt_text
-                previous_thread_id = turn_context.thread_id
-            except Exception:
-                logging.exception("Failed to prepare shared memory turn for chat_id=%s", chat_id)
-                turn_context = None
-                previous_thread_id = None if stateless else state_repo.get_thread_id(scope_key)
-        else:
-            previous_thread_id = None if stateless else state_repo.get_thread_id(scope_key)
-        if affective_runtime is not None:
-            try:
-                affective_runtime.begin_turn(prompt_text)
-                affective_turn_started = True
-                affective_prefix = (affective_runtime.prompt_prefix() or "").strip()
-                if affective_prefix:
-                    prompt_text = f"{affective_prefix}\n\nUser request:\n{prompt_text}"
-                    emit_event(
-                        "bridge.affective_prompt_applied",
-                        fields={
-                            "chat_id": chat_id,
-                            "message_id": message_id,
-                            "prefix_chars": len(affective_prefix),
-                        },
-                    )
-            except Exception:
-                logging.exception(
-                    "Affective runtime begin_turn failed for chat_id=%s; continuing without prefix.",
-                    chat_id,
-                )
-                if affective_turn_started:
-                    try:
-                        affective_runtime.finish_turn(success=False)
-                    except Exception:
-                        logging.exception(
-                            "Affective runtime rollback failed after begin_turn error for chat_id=%s",
-                            chat_id,
-                        )
-                affective_turn_started = False
-        emit_event(
-            "bridge.request_processing_started",
-            fields={
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "prompt_chars": len(prompt or ""),
-                "has_photo": bool(photo_file_ids or photo_file_id),
-                "has_voice": bool(voice_file_id),
-                "has_document": document is not None,
-                "has_previous_thread": bool(previous_thread_id),
-            },
+        prompt_text, previous_thread_id, turn_context = begin_memory_turn(
+            memory_engine=memory_engine,
+            state_repo=state_repo,
+            config=config,
+            channel_name=channel_name,
+            scope_key=scope_key,
+            prompt_text=prompt_text,
+            sender_name=sender_name,
+            stateless=stateless,
+            chat_id=chat_id,
         )
-        progress.set_phase(f"Sending request to {assistant_label(config)}.")
+        prompt_text, affective_turn_started = begin_affective_turn(
+            affective_runtime,
+            prompt_text,
+            chat_id=chat_id,
+            message_id=message_id,
+        )
+        emit_request_processing_started(
+            chat_id=chat_id,
+            message_id=message_id,
+            prompt=prompt,
+            photo_file_ids=photo_file_ids,
+            photo_file_id=photo_file_id,
+            voice_file_id=voice_file_id,
+            document=document,
+            previous_thread_id=previous_thread_id,
+        )
+        progress.set_phase(f"Sending request to {assistant_name_label}.")
         result = execute_prompt_with_retry(
             state_repo=state_repo,
             config=config,
@@ -2898,7 +2960,7 @@ def process_prompt(
                     channel=channel_name,
                     assistant_text=output,
                     new_thread_id=new_thread_id,
-                    assistant_name=assistant_label(config),
+                    assistant_name=assistant_name_label,
                 )
             except Exception:
                 logging.exception("Failed to finish shared memory turn for chat_id=%s", chat_id)

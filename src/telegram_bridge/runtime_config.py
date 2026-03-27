@@ -129,12 +129,6 @@ def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
         raise ValueError(f"{name} must be >= {minimum}")
     return parsed
 
-
-def parse_capped_int_env(name: str, default: int, *, minimum: int = 1, maximum: int) -> int:
-    parsed = parse_int_env(name, default, minimum=minimum)
-    return min(parsed, maximum)
-
-
 def parse_bool_env(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
