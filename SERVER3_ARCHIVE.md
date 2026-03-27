@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-27 (Summary Roll-Forward Trim for Orchestrator Fail-Closed/Auth-Sync Tightening)
+
+Summary:
+- Added a new rolling-summary entry for tightening Architect spawned-executor orchestration so planner failures now fail closed, spawned worker/planner subprocesses refresh shared Codex auth before launch, and the separate orchestrator worker-timeout knob is gone in favor of the main executor timeout.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-27: hardened the shared Telegram bridge restart helper to wait for persisted in-flight work to clear before service restart, using canonical session state when enabled, and fixed the Architect split-planner worker helper so temporary planner runs no longer fail on closed-stdin subprocess handling.
+
 ## 2026-03-27 (Summary Roll-Forward Trim for Shared Auth Auto-Refresh)
 
 Summary:

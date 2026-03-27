@@ -18,11 +18,11 @@ from typing import Any, Dict, List, Optional
 
 try:
     from .executor import parse_executor_output
-    from .runtime_paths import build_runtime_root
+    from .runtime_paths import build_runtime_root, shared_core_path
     from .structured_logging import emit_event
 except ImportError:
     from executor import parse_executor_output
-    from runtime_paths import build_runtime_root
+    from runtime_paths import build_runtime_root, shared_core_path
     from structured_logging import emit_event
 
 
@@ -332,10 +332,7 @@ def _orchestrator_max_workers(config) -> int:
     return max(1, min(configured, ORCHESTRATOR_HARD_MAX_WORKERS))
 
 
-def _orchestrator_worker_timeout_seconds(config: Optional[object]) -> int:
-    configured = getattr(config, "agent_orchestrator_worker_timeout_seconds", None)
-    if configured is not None:
-        return max(1, int(configured))
+def _orchestrator_timeout_seconds(config: Optional[object]) -> int:
     exec_timeout_seconds = getattr(config, "exec_timeout_seconds", 300) if config is not None else 300
     return max(1, min(int(exec_timeout_seconds), 300))
 
@@ -350,6 +347,21 @@ def _kill_process_tree(process: subprocess.Popen[str]) -> None:
             process.kill()
         except ProcessLookupError:
             return
+
+
+def _sync_shared_auth_if_available() -> None:
+    sync_script = Path(shared_core_path("ops", "codex", "sync_shared_auth.sh"))
+    if not sync_script.is_file() or not os.access(sync_script, os.X_OK):
+        return
+    try:
+        subprocess.run(
+            [str(sync_script)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return
 
 
 def build_worker_prompt(worker: WorkerSpec, user_prompt: str) -> str:
@@ -400,6 +412,7 @@ def _run_codex_prompt(
     timeout_seconds: int = 300,
 ) -> tuple[bool, str]:
     runtime_root = build_runtime_root()
+    _sync_shared_auth_if_available()
     output_handle = tempfile.NamedTemporaryFile(
         prefix="architect-worker-",
         suffix=".txt",
@@ -517,7 +530,7 @@ def _run_worker_prompt(
         build_worker_prompt(worker, prompt_text),
         role_label=worker.role,
         cancel_event=cancel_event,
-        timeout_seconds=_orchestrator_worker_timeout_seconds(config),
+        timeout_seconds=_orchestrator_timeout_seconds(config),
     )
     return WorkerResult(role=worker.role, success=success, summary=summary)
 
@@ -536,21 +549,22 @@ def plan_worker_split(
         output_schema=schema,
         role_label="split-planner",
         cancel_event=cancel_event,
+        timeout_seconds=_orchestrator_timeout_seconds(config),
     )
     if not success:
         return PlannerDecision(
-            use_workers=True,
+            use_workers=False,
             reason=PLANNER_REASON_FAILED_FALLBACK,
-            worker_roles=[worker.role for worker in candidate_workers[:max_workers]],
+            worker_roles=[],
             reason_code=PLANNER_REASON_FAILED_FALLBACK,
         )
     try:
         payload = json.loads(summary)
     except json.JSONDecodeError:
         return PlannerDecision(
-            use_workers=True,
+            use_workers=False,
             reason=PLANNER_REASON_UNPARSEABLE_FALLBACK,
-            worker_roles=[worker.role for worker in candidate_workers[:max_workers]],
+            worker_roles=[],
             reason_code=PLANNER_REASON_UNPARSEABLE_FALLBACK,
         )
     requested_split = bool(payload.get("use_workers"))

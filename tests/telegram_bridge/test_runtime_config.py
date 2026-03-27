@@ -150,7 +150,6 @@ class RuntimeConfigTests(unittest.TestCase):
                 "TELEGRAM_ALLOWED_CHAT_IDS": "1",
                 "TELEGRAM_AGENT_ORCHESTRATOR_ENABLED": "true",
                 "TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS": "2",
-                "TELEGRAM_AGENT_ORCHESTRATOR_WORKER_TIMEOUT_SECONDS": "45",
                 "TELEGRAM_AGENT_ORCHESTRATOR_DISABLED_ROLES": "runtime-investigator,docs-researcher",
             },
             clear=True,
@@ -158,7 +157,6 @@ class RuntimeConfigTests(unittest.TestCase):
             config = runtime_config.load_config()
         self.assertTrue(config.agent_orchestrator_enabled)
         self.assertEqual(config.agent_orchestrator_max_workers, 2)
-        self.assertEqual(config.agent_orchestrator_worker_timeout_seconds, 45)
         self.assertEqual(
             config.agent_orchestrator_disabled_roles,
             ["runtime-investigator", "docs-researcher"],
@@ -178,7 +176,7 @@ class RuntimeConfigTests(unittest.TestCase):
             config = runtime_config.load_config()
         self.assertEqual(config.agent_orchestrator_max_workers, 3)
 
-    def test_load_config_defaults_worker_timeout_to_five_minutes_or_exec_timeout(self):
+    def test_load_config_does_not_expose_separate_orchestrator_timeout_knob(self):
         with mock.patch.dict(
             os.environ,
             {
@@ -186,11 +184,12 @@ class RuntimeConfigTests(unittest.TestCase):
                 "TELEGRAM_ALLOWED_CHAT_IDS": "1",
                 "TELEGRAM_EXEC_TIMEOUT_SECONDS": "120",
                 "TELEGRAM_AGENT_ORCHESTRATOR_ENABLED": "true",
+                "TELEGRAM_AGENT_ORCHESTRATOR_WORKER_TIMEOUT_SECONDS": "45",
             },
             clear=True,
         ):
             config = runtime_config.load_config()
-        self.assertEqual(config.agent_orchestrator_worker_timeout_seconds, 120)
+        self.assertFalse(hasattr(config, "agent_orchestrator_worker_timeout_seconds"))
 
 
 if __name__ == "__main__":

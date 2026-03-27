@@ -3573,6 +3573,7 @@ class BridgeCoreTests(unittest.TestCase):
                 return 0
 
         with (
+            mock.patch.object(bridge_agent_orchestrator, "_sync_shared_auth_if_available"),
             mock.patch.object(bridge_agent_orchestrator, "build_runtime_root", return_value=str(ROOT)),
             mock.patch.object(bridge_agent_orchestrator.subprocess, "Popen", return_value=FakeProcess()),
             mock.patch.object(Path, "read_text", return_value="planner ok"),
@@ -3584,6 +3585,34 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertTrue(success)
         self.assertEqual(summary, "planner ok")
+
+    def test_sync_shared_auth_runs_hook_when_available(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            sync_script = temp_root / "sync_shared_auth.sh"
+            sync_script.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n",
+                encoding="utf-8",
+            )
+            sync_script.chmod(0o755)
+
+            with (
+                mock.patch.object(
+                    bridge_agent_orchestrator,
+                    "shared_core_path",
+                    return_value=str(sync_script),
+                ),
+                mock.patch.object(bridge_agent_orchestrator.subprocess, "run") as run_mock,
+            ):
+                bridge_agent_orchestrator._sync_shared_auth_if_available()
+
+        run_mock.assert_called_once_with(
+            [str(sync_script)],
+            stdout=bridge_agent_orchestrator.subprocess.DEVNULL,
+            stderr=bridge_agent_orchestrator.subprocess.DEVNULL,
+            check=False,
+        )
 
     def test_build_worker_command_uses_full_architect_access(self):
         cmd = bridge_agent_orchestrator._build_worker_command("/tmp/worker-output.txt")
@@ -3630,6 +3659,7 @@ class BridgeCoreTests(unittest.TestCase):
         emit_event_mock = mock.Mock()
 
         with (
+            mock.patch.object(bridge_agent_orchestrator, "_sync_shared_auth_if_available"),
             mock.patch.object(bridge_agent_orchestrator, "build_runtime_root", return_value=str(ROOT)),
             mock.patch.object(bridge_agent_orchestrator.subprocess, "Popen", popen_mock),
             mock.patch.object(bridge_agent_orchestrator, "emit_event", emit_event_mock),
@@ -3758,6 +3788,58 @@ class BridgeCoreTests(unittest.TestCase):
             decision.worker_roles,
             ["runtime-investigator", "codebase-mapper"],
         )
+
+    def test_plan_worker_split_fails_closed_when_planner_fails(self):
+        config = make_config(
+            agent_orchestrator_enabled=True,
+            agent_orchestrator_max_workers=3,
+            exec_timeout_seconds=120,
+        )
+        candidate_workers = [
+            bridge_agent_orchestrator._worker_catalog()["runtime-investigator"],
+            bridge_agent_orchestrator._worker_catalog()["codebase-mapper"],
+        ]
+
+        with mock.patch.object(
+            bridge_agent_orchestrator,
+            "_run_codex_prompt",
+            return_value=(False, "Worker timed out"),
+        ) as run_prompt_mock:
+            decision = bridge_agent_orchestrator.plan_worker_split(
+                config,
+                "Inspect logs and code, then verify the fix.",
+                candidate_workers,
+            )
+
+        self.assertFalse(decision.use_workers)
+        self.assertEqual(decision.reason_code, bridge_agent_orchestrator.PLANNER_REASON_FAILED_FALLBACK)
+        self.assertEqual(decision.worker_roles, [])
+        self.assertEqual(run_prompt_mock.call_args.kwargs["timeout_seconds"], 120)
+
+    def test_plan_worker_split_fails_closed_when_planner_output_is_unparseable(self):
+        config = make_config(agent_orchestrator_enabled=True, agent_orchestrator_max_workers=3)
+        candidate_workers = [
+            bridge_agent_orchestrator._worker_catalog()["runtime-investigator"],
+            bridge_agent_orchestrator._worker_catalog()["codebase-mapper"],
+        ]
+
+        with mock.patch.object(
+            bridge_agent_orchestrator,
+            "_run_codex_prompt",
+            return_value=(True, "not json"),
+        ):
+            decision = bridge_agent_orchestrator.plan_worker_split(
+                config,
+                "Inspect logs and code, then verify the fix.",
+                candidate_workers,
+            )
+
+        self.assertFalse(decision.use_workers)
+        self.assertEqual(
+            decision.reason_code,
+            bridge_agent_orchestrator.PLANNER_REASON_UNPARSEABLE_FALLBACK,
+        )
+        self.assertEqual(decision.worker_roles, [])
 
     def test_plan_worker_split_marks_single_agent_reason_code(self):
         config = make_config(agent_orchestrator_enabled=True, agent_orchestrator_max_workers=3)
