@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -300,11 +301,11 @@ class AffectiveRuntimeTests(unittest.TestCase):
             "This request spans multiple areas and should be split carefully."
         )
 
-        with unittest.mock.patch.object(
+        with mock.patch.object(
             bridge_handlers,
             "maybe_augment_prompt_with_worker_findings",
             return_value=(
-                "Architect worker findings:\n"
+                "Architect worker execution context:\n"
                 "[runtime-investigator]\nSummary: runtime clue\n\n"
                 "Original user request:\n"
                 + worker_prompt
@@ -325,7 +326,7 @@ class AffectiveRuntimeTests(unittest.TestCase):
                 document=None,
             )
 
-        self.assertIn("Architect worker findings", engine.prompts[0])
+        self.assertIn("Architect worker execution context", engine.prompts[0])
         self.assertEqual(client.messages[-1][1], "orchestrated response")
 
 

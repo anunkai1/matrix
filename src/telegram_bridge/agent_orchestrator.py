@@ -25,7 +25,7 @@ except ImportError:
     from structured_logging import emit_event
 
 
-ORCHESTRATOR_HEADER = "Architect worker findings"
+ORCHESTRATOR_HEADER = "Architect worker execution context"
 MAX_WORKER_OUTPUT_CHARS = 3000
 ORCHESTRATOR_HARD_MAX_WORKERS = 3
 PLANNER_PROMPT_VERSION = "2026-03-27.2"
@@ -333,7 +333,7 @@ def _orchestrator_max_workers(config) -> int:
 
 def build_worker_prompt(worker: WorkerSpec, user_prompt: str) -> str:
     return (
-        "You are a temporary specialist worker supporting Architect on Server3.\n"
+        "You are a temporary specialist executor supporting Architect on Server3.\n"
         "You have the same execution rights as Architect for this task.\n"
         "You do not own the final answer, but you may inspect, edit, test, or perform runtime operations when that materially helps your objective.\n"
         "Keep changes narrowly scoped, avoid unnecessary destructive actions, and report exactly what you changed or ran.\n\n"
@@ -673,7 +673,8 @@ def maybe_augment_prompt_with_worker_findings(
     findings_text = "\n\n".join(findings_blocks)
     return (
         f"{ORCHESTRATOR_HEADER}:\n"
-        "Use these worker findings as advisory context only. "
+        "Use these worker results as execution context only. "
+        "Workers may have already inspected, edited, tested, or performed runtime actions. "
         "You remain responsible for the final answer, commands, edits, and verification.\n\n"
         f"{findings_text}\n\n"
         "Original user request:\n"

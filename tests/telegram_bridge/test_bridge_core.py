@@ -3374,9 +3374,42 @@ class BridgeCoreTests(unittest.TestCase):
 
         prompt = bridge_agent_orchestrator.build_worker_prompt(worker, "Check the logs.")
 
+        self.assertIn("temporary specialist executor", prompt)
         self.assertIn("same execution rights as Architect", prompt)
         self.assertIn("may inspect, edit, test, or perform runtime operations", prompt)
         self.assertIn("report exactly what you changed or ran", prompt)
+
+    def test_maybe_augment_prompt_wraps_worker_results_as_execution_context(self):
+        config = make_config(agent_orchestrator_enabled=True)
+        workers = [
+            bridge_agent_orchestrator._worker_catalog()["runtime-investigator"],
+            bridge_agent_orchestrator._worker_catalog()["codebase-mapper"],
+        ]
+
+        def fake_run_worker_prompt(worker, prompt_text, cancel_event=None):
+            del prompt_text, cancel_event
+            return bridge_agent_orchestrator.WorkerResult(
+                role=worker.role,
+                success=True,
+                summary="Summary: changed something",
+            )
+
+        with (
+            mock.patch.object(bridge_agent_orchestrator, "build_worker_plan", return_value=workers),
+            mock.patch.object(bridge_agent_orchestrator, "_run_worker_prompt", side_effect=fake_run_worker_prompt),
+        ):
+            prompt = bridge_agent_orchestrator.maybe_augment_prompt_with_worker_findings(
+                config,
+                "Check the logs and code path.",
+            )
+
+        self.assertIn("Architect worker execution context:", prompt)
+        self.assertIn("Use these worker results as execution context only.", prompt)
+        self.assertIn(
+            "Workers may have already inspected, edited, tested, or performed runtime actions.",
+            prompt,
+        )
+        self.assertIn("Original user request:\nCheck the logs and code path.", prompt)
 
     def test_planner_schema_uses_supported_array_keywords(self):
         workers = [
