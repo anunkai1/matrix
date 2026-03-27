@@ -3602,6 +3602,62 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("may inspect, edit, test, or perform runtime operations", prompt)
         self.assertIn("report exactly what you changed or ran", prompt)
 
+    def test_run_codex_prompt_times_out_and_kills_worker_process_group(self):
+        class FakeProcess:
+            def __init__(self):
+                self.stdin = io.StringIO()
+                self.stdout = io.StringIO("")
+                self.stderr = io.StringIO("")
+                self.pid = 43210
+
+            def poll(self):
+                return None
+
+            def communicate(self, timeout=None):
+                del timeout
+                if self.stdin is not None:
+                    raise ValueError("stdin should be cleared before communicate")
+                return "", "worker still running"
+
+            def kill(self):
+                return None
+
+            def wait(self, timeout=None):
+                del timeout
+                return -9
+
+        popen_mock = mock.Mock(return_value=FakeProcess())
+        emit_event_mock = mock.Mock()
+
+        with (
+            mock.patch.object(bridge_agent_orchestrator, "build_runtime_root", return_value=str(ROOT)),
+            mock.patch.object(bridge_agent_orchestrator.subprocess, "Popen", popen_mock),
+            mock.patch.object(bridge_agent_orchestrator, "emit_event", emit_event_mock),
+            mock.patch.object(bridge_agent_orchestrator.time, "monotonic", side_effect=[100.0, 401.0]),
+            mock.patch.object(bridge_agent_orchestrator.os, "getpgid", return_value=43210),
+            mock.patch.object(bridge_agent_orchestrator.os, "killpg") as killpg_mock,
+        ):
+            success, summary = bridge_agent_orchestrator._run_codex_prompt(
+                "plan this",
+                role_label="split-planner",
+                timeout_seconds=300,
+            )
+
+        self.assertFalse(success)
+        self.assertIn("Worker timed out after 300s.", summary)
+        self.assertIn("worker still running", summary)
+        self.assertEqual(killpg_mock.call_args.args, (43210, bridge_agent_orchestrator.signal.SIGKILL))
+        self.assertTrue(popen_mock.call_args.kwargs["start_new_session"])
+        emit_event_mock.assert_any_call(
+            "bridge.orchestrator_worker_finished",
+            fields={
+                "role": "split-planner",
+                "success": False,
+                "reason": "timeout",
+                "timeout_seconds": 300,
+            },
+        )
+
     def test_maybe_augment_prompt_wraps_worker_results_as_execution_context(self):
         config = make_config(agent_orchestrator_enabled=True)
         workers = [
@@ -3609,8 +3665,8 @@ class BridgeCoreTests(unittest.TestCase):
             bridge_agent_orchestrator._worker_catalog()["codebase-mapper"],
         ]
 
-        def fake_run_worker_prompt(worker, prompt_text, cancel_event=None):
-            del prompt_text, cancel_event
+        def fake_run_worker_prompt(worker, prompt_text, config=None, cancel_event=None):
+            del prompt_text, config, cancel_event
             return bridge_agent_orchestrator.WorkerResult(
                 role=worker.role,
                 success=True,

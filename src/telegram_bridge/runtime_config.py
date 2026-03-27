@@ -86,6 +86,7 @@ class Config:
     keyword_routing_enabled: bool
     agent_orchestrator_enabled: bool = False
     agent_orchestrator_max_workers: int = 3
+    agent_orchestrator_worker_timeout_seconds: int = 300
     agent_orchestrator_disabled_roles: List[str] = None
     diary_mode_enabled: bool = False
     diary_capture_quiet_window_seconds: int = 75
@@ -368,13 +369,18 @@ def load_config() -> Config:
         ).strip()
         or "Another request is still running. Please wait."
     )
+    exec_timeout_seconds = parse_int_env("TELEGRAM_EXEC_TIMEOUT_SECONDS", 36000)
+    agent_orchestrator_worker_timeout_seconds = parse_int_env(
+        "TELEGRAM_AGENT_ORCHESTRATOR_WORKER_TIMEOUT_SECONDS",
+        min(exec_timeout_seconds, 300),
+    )
     return Config(
         token=token,
         allowed_chat_ids=allowed_chat_ids,
         api_base=os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/"),
         poll_timeout_seconds=parse_int_env("TELEGRAM_POLL_TIMEOUT_SECONDS", 30),
         retry_sleep_seconds=float(os.getenv("TELEGRAM_RETRY_SLEEP_SECONDS", "3")),
-        exec_timeout_seconds=parse_int_env("TELEGRAM_EXEC_TIMEOUT_SECONDS", 36000),
+        exec_timeout_seconds=exec_timeout_seconds,
         max_input_chars=parse_int_env("TELEGRAM_MAX_INPUT_CHARS", TELEGRAM_LIMIT),
         max_output_chars=parse_int_env("TELEGRAM_MAX_OUTPUT_CHARS", 20000),
         max_image_bytes=parse_int_env("TELEGRAM_MAX_IMAGE_BYTES", 10 * 1024 * 1024, minimum=1024),
@@ -544,6 +550,7 @@ def load_config() -> Config:
             minimum=1,
             maximum=3,
         ),
+        agent_orchestrator_worker_timeout_seconds=agent_orchestrator_worker_timeout_seconds,
         agent_orchestrator_disabled_roles=parse_string_list_env(
             "TELEGRAM_AGENT_ORCHESTRATOR_DISABLED_ROLES",
         ),

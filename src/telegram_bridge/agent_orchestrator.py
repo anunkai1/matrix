@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import tempfile
 import threading
@@ -331,6 +332,26 @@ def _orchestrator_max_workers(config) -> int:
     return max(1, min(configured, ORCHESTRATOR_HARD_MAX_WORKERS))
 
 
+def _orchestrator_worker_timeout_seconds(config: Optional[object]) -> int:
+    configured = getattr(config, "agent_orchestrator_worker_timeout_seconds", None)
+    if configured is not None:
+        return max(1, int(configured))
+    exec_timeout_seconds = getattr(config, "exec_timeout_seconds", 300) if config is not None else 300
+    return max(1, min(int(exec_timeout_seconds), 300))
+
+
+def _kill_process_tree(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        try:
+            process.kill()
+        except ProcessLookupError:
+            return
+
+
 def build_worker_prompt(worker: WorkerSpec, user_prompt: str) -> str:
     return (
         "You are a temporary specialist executor supporting Architect on Server3.\n"
@@ -376,6 +397,7 @@ def _run_codex_prompt(
     output_schema: Optional[Dict[str, Any]] = None,
     role_label: str,
     cancel_event: Optional[threading.Event] = None,
+    timeout_seconds: int = 300,
 ) -> tuple[bool, str]:
     runtime_root = build_runtime_root()
     output_handle = tempfile.NamedTemporaryFile(
@@ -412,6 +434,7 @@ def _run_codex_prompt(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        start_new_session=True,
     )
     try:
         if process.stdin is not None:
@@ -422,20 +445,37 @@ def _run_codex_prompt(
             process.stdin = None
     except Exception:
         process.stdin = None
-        process.kill()
+        _kill_process_tree(process)
         process.wait(timeout=5)
         raise
 
+    deadline = time.monotonic() + float(max(1, timeout_seconds))
     try:
         while True:
             if cancel_event is not None and cancel_event.is_set():
-                process.kill()
+                _kill_process_tree(process)
                 _stdout, stderr = process.communicate(timeout=5)
                 emit_event(
                     "bridge.orchestrator_worker_finished",
                     fields={"role": role_label, "success": False, "reason": "cancelled"},
                 )
                 return False, f"Worker cancelled. stderr={str(stderr or '').strip()[:400]}"
+            if time.monotonic() >= deadline:
+                _kill_process_tree(process)
+                _stdout, stderr = process.communicate(timeout=5)
+                emit_event(
+                    "bridge.orchestrator_worker_finished",
+                    fields={
+                        "role": role_label,
+                        "success": False,
+                        "reason": "timeout",
+                        "timeout_seconds": timeout_seconds,
+                    },
+                )
+                return (
+                    False,
+                    f"Worker timed out after {timeout_seconds}s. stderr={str(stderr or '').strip()[:400]}",
+                )
             return_code = process.poll()
             if return_code is not None:
                 stdout, stderr = process.communicate(timeout=5)
@@ -470,12 +510,14 @@ def _run_codex_prompt(
 def _run_worker_prompt(
     worker: WorkerSpec,
     prompt_text: str,
+    config=None,
     cancel_event: Optional[threading.Event] = None,
 ) -> WorkerResult:
     success, summary = _run_codex_prompt(
         build_worker_prompt(worker, prompt_text),
         role_label=worker.role,
         cancel_event=cancel_event,
+        timeout_seconds=_orchestrator_worker_timeout_seconds(config),
     )
     return WorkerResult(role=worker.role, success=success, summary=summary)
 
@@ -647,7 +689,7 @@ def maybe_augment_prompt_with_worker_findings(
     results: List[WorkerResult] = []
     with ThreadPoolExecutor(max_workers=len(workers)) as pool:
         future_map = {
-            pool.submit(_run_worker_prompt, worker, prompt_text, cancel_event): worker
+            pool.submit(_run_worker_prompt, worker, prompt_text, config, cancel_event): worker
             for worker in workers
         }
         for future in as_completed(future_map):
