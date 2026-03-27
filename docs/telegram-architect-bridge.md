@@ -319,7 +319,8 @@ Message handling:
   - implemented in the shared `src/telegram_bridge` core, so other sibling runtimes can use it too; Architect is simply the only runtime with it enabled live right now
   - concurrency cap: `TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS` with a hard runtime maximum of `3`
   - optional capability-aware role filter: `TELEGRAM_AGENT_ORCHESTRATOR_DISABLED_ROLES=runtime-investigator,docs-researcher`
-  - current rollout is conservative: the orchestrator only triggers when the request usefully splits into multiple worker roles, keeps `2` workers as the normal split size, only adds a third worker for a genuinely separate lane, folds those read-only worker findings into one final Architect prompt, and keeps a single final writer/verifier path
+  - current rollout is conservative: the orchestrator only triggers when the request usefully splits into multiple worker roles, keeps `2` workers as the normal split size, only adds a third worker for a genuinely separate lane, folds those worker findings into one final Architect prompt, and keeps a single final writer/verifier path
+  - spawned workers now inherit the same Codex approval/sandbox posture as the main Architect executor, so they can inspect, edit, test, and run the same runtime operations when needed; the main agent still owns final integration and the user-facing answer
   - deterministic preflight helper: `python3 ops/telegram-bridge/planner_preflight.py`
   - operator health report / self-check: `python3 ops/telegram-bridge/orchestrator_health_report.py --unit telegram-architect-bridge.service --since '6 hours ago' --fail-on-bad-state`
   - planner-decision logs now include machine-readable reason codes plus candidate/selected worker-role lists so split decisions are easier to audit from the journal

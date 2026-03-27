@@ -1,4 +1,4 @@
-"""Conservative task orchestration with read-only worker scouts."""
+"""Conservative task orchestration with full-rights specialist workers."""
 
 from __future__ import annotations
 
@@ -334,12 +334,12 @@ def _orchestrator_max_workers(config) -> int:
 def build_worker_prompt(worker: WorkerSpec, user_prompt: str) -> str:
     return (
         "You are a temporary specialist worker supporting Architect on Server3.\n"
-        "You do not own the final answer.\n"
-        "Operate read-only. Do not edit files, apply patches, restart services, or make destructive changes.\n"
-        "Inspect only what is needed for your objective and return concise factual findings.\n\n"
+        "You have the same execution rights as Architect for this task.\n"
+        "You do not own the final answer, but you may inspect, edit, test, or perform runtime operations when that materially helps your objective.\n"
+        "Keep changes narrowly scoped, avoid unnecessary destructive actions, and report exactly what you changed or ran.\n\n"
         f"Worker role: {worker.role}\n"
         f"Objective: {worker.objective}\n"
-        f"Capability hint: {worker.capability_hint or 'generic_read_only'}\n\n"
+        f"Capability hint: {worker.capability_hint or 'architect_full_access'}\n\n"
         "Return exactly these sections:\n"
         "Summary:\n"
         "Evidence:\n"
@@ -354,9 +354,8 @@ def _build_worker_command(output_path: str, output_schema_path: Optional[str] = 
     cmd = [
         code_bin,
         "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
         "--skip-git-repo-check",
-        "--sandbox",
-        "read-only",
         "--color",
         "never",
         "--output-last-message",
@@ -371,7 +370,7 @@ def _build_worker_command(output_path: str, output_schema_path: Optional[str] = 
     return cmd
 
 
-def _run_readonly_codex_prompt(
+def _run_codex_prompt(
     prompt_text: str,
     *,
     output_schema: Optional[Dict[str, Any]] = None,
@@ -473,7 +472,7 @@ def _run_worker_prompt(
     prompt_text: str,
     cancel_event: Optional[threading.Event] = None,
 ) -> WorkerResult:
-    success, summary = _run_readonly_codex_prompt(
+    success, summary = _run_codex_prompt(
         build_worker_prompt(worker, prompt_text),
         role_label=worker.role,
         cancel_event=cancel_event,
@@ -490,7 +489,7 @@ def plan_worker_split(
     max_workers = _orchestrator_max_workers(config)
     planner_prompt = build_planner_prompt(prompt_text, candidate_workers)
     schema = _planner_schema(candidate_workers, max_workers=max_workers)
-    success, summary = _run_readonly_codex_prompt(
+    success, summary = _run_codex_prompt(
         planner_prompt,
         output_schema=schema,
         role_label="split-planner",

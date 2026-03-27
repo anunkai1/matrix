@@ -3261,7 +3261,7 @@ class BridgeCoreTests(unittest.TestCase):
             ["codebase-mapper", "docs-researcher"],
         )
 
-    def test_run_readonly_codex_prompt_clears_stdin_before_communicate(self):
+    def test_run_codex_prompt_clears_stdin_before_communicate(self):
         class FakeProcess:
             def __init__(self):
                 self.stdin = io.StringIO()
@@ -3289,13 +3289,29 @@ class BridgeCoreTests(unittest.TestCase):
             mock.patch.object(bridge_agent_orchestrator.subprocess, "Popen", return_value=FakeProcess()),
             mock.patch.object(Path, "read_text", return_value="planner ok"),
         ):
-            success, summary = bridge_agent_orchestrator._run_readonly_codex_prompt(
+            success, summary = bridge_agent_orchestrator._run_codex_prompt(
                 "plan this",
                 role_label="split-planner",
             )
 
         self.assertTrue(success)
         self.assertEqual(summary, "planner ok")
+
+    def test_build_worker_command_uses_full_architect_access(self):
+        cmd = bridge_agent_orchestrator._build_worker_command("/tmp/worker-output.txt")
+
+        self.assertIn("--dangerously-bypass-approvals-and-sandbox", cmd)
+        self.assertNotIn("--sandbox", cmd)
+        self.assertNotIn("read-only", cmd)
+
+    def test_build_worker_prompt_grants_architect_level_rights(self):
+        worker = bridge_agent_orchestrator._worker_catalog()["runtime-investigator"]
+
+        prompt = bridge_agent_orchestrator.build_worker_prompt(worker, "Check the logs.")
+
+        self.assertIn("same execution rights as Architect", prompt)
+        self.assertIn("may inspect, edit, test, or perform runtime operations", prompt)
+        self.assertIn("report exactly what you changed or ran", prompt)
 
     def test_planner_schema_uses_supported_array_keywords(self):
         workers = [
@@ -3351,7 +3367,7 @@ class BridgeCoreTests(unittest.TestCase):
 
         with mock.patch.object(
             bridge_agent_orchestrator,
-            "_run_readonly_codex_prompt",
+            "_run_codex_prompt",
             return_value=(True, planner_payload),
         ):
             decision = bridge_agent_orchestrator.plan_worker_split(
@@ -3382,7 +3398,7 @@ class BridgeCoreTests(unittest.TestCase):
 
         with mock.patch.object(
             bridge_agent_orchestrator,
-            "_run_readonly_codex_prompt",
+            "_run_codex_prompt",
             return_value=(True, planner_payload),
         ):
             decision = bridge_agent_orchestrator.plan_worker_split(
