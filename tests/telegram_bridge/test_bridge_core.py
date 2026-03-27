@@ -3364,6 +3364,102 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertFalse(decision.use_workers)
         self.assertEqual(decision.reason_code, bridge_agent_orchestrator.PLANNER_REASON_SINGLE_AGENT)
 
+    def test_restart_helper_uses_shared_run_status_dir_by_default(self):
+        script_text = (ROOT / "ops" / "telegram-bridge" / "restart_and_verify.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            'RESTART_STATUS_DIR="${RESTART_STATUS_DIR:-/run/restart-and-verify}"',
+            script_text,
+        )
+
+    def test_restart_helper_writes_status_marker(self):
+        script_path = ROOT / "ops" / "telegram-bridge" / "restart_and_verify.sh"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            bin_dir = temp_root / "bin"
+            bin_dir.mkdir()
+            state_path = temp_root / "systemctl_state.json"
+            status_dir = temp_root / "status"
+            status_path = status_dir / "restart_and_verify.telegram-architect-bridge.service.status.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "MainPID": "111",
+                        "ExecMainStartTimestamp": "before-start",
+                        "ExecMainStartTimestampMonotonic": "100",
+                        "ActiveState": "active",
+                        "SubState": "running",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            (bin_dir / "id").write_text("#!/usr/bin/env bash\necho 0\n", encoding="utf-8")
+            (bin_dir / "id").chmod(0o755)
+            (bin_dir / "systemctl").write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env python3",
+                        "import json",
+                        "import os",
+                        "import sys",
+                        "from pathlib import Path",
+                        "",
+                        "state_path = Path(os.environ['FAKE_SYSTEMCTL_STATE'])",
+                        "state = json.loads(state_path.read_text(encoding='utf-8'))",
+                        "args = sys.argv[1:]",
+                        "while args and args[0].startswith('-'):",
+                        "    if args[0] == '-p':",
+                        "        break",
+                        "    args = args[1:]",
+                        "cmd = args[0]",
+                        "if cmd == 'show':",
+                        "    key = args[2]",
+                        "    print(state.get(key, ''))",
+                        "    raise SystemExit(0)",
+                        "if cmd == 'restart':",
+                        "    state['MainPID'] = '222'",
+                        "    state['ExecMainStartTimestamp'] = 'after-start'",
+                        "    state['ExecMainStartTimestampMonotonic'] = '200'",
+                        "    state_path.write_text(json.dumps(state), encoding='utf-8')",
+                        "    raise SystemExit(0)",
+                        "if cmd == 'status':",
+                        "    print('fake status ok')",
+                        "    raise SystemExit(0)",
+                        "raise SystemExit(f'unsupported systemctl args: {sys.argv[1:]}')",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (bin_dir / "systemctl").chmod(0o755)
+
+            result = subprocess.run(
+                ["bash", str(script_path), "--unit", "telegram-architect-bridge.service"],
+                check=False,
+                cwd=str(ROOT),
+                env={
+                    **os.environ,
+                    "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                    "RESTART_WAIT_FOR_IDLE": "false",
+                    "RESTART_STATUS_DIR": str(status_dir),
+                    "FAKE_SYSTEMCTL_STATE": str(state_path),
+                },
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+            self.assertTrue(status_path.exists(), msg=result.stdout)
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["phase"], "completed")
+            self.assertEqual(payload["verification"], "pass")
+            self.assertEqual(payload["before_main_pid"], "111")
+            self.assertEqual(payload["after_main_pid"], "222")
+
     def test_build_canonical_sessions_from_legacy(self):
         worker = bridge.WorkerSession(
             created_at=1.0,

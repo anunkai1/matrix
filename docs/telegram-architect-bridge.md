@@ -147,7 +147,8 @@ python3 ops/server3_runtime_status.py
 
 Restart helper note:
 - `ops/telegram-bridge/restart_and_verify.sh` is now drain-aware by default: before restarting it waits for persisted in-flight work to clear, using canonical session state when enabled, so operator-triggered restarts do not usually interrupt active chats.
-- Each restart helper run now also writes one durable status marker at `/tmp/restart_and_verify.<unit>.status.json`, so operators can check a single machine-readable pass/fail/timeout result instead of reconstructing state from transient shell logs.
+- Each restart helper run now also writes one durable status marker at `/run/restart-and-verify/restart_and_verify.<unit>.status.json`, so operators can check a single machine-readable pass/fail/timeout result instead of reconstructing state from transient shell logs.
+- The helper uses `/run/restart-and-verify` instead of `/tmp` because `telegram-architect-bridge.service` runs with `PrivateTmp=true`; a bridge-triggered restart would otherwise write the marker into the service-private tmp namespace instead of the host-visible path operators inspect.
 - Override only for emergencies by exporting `RESTART_WAIT_FOR_IDLE=false` for that shell invocation.
 
 Install/start the tank service profile:

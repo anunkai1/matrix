@@ -7,7 +7,7 @@ CHAT_ROUTING_VALIDATOR="${REPO_ROOT}/ops/chat-routing/validate_chat_routing_cont
 RESTART_WAIT_FOR_IDLE="${RESTART_WAIT_FOR_IDLE:-true}"
 RESTART_IDLE_TIMEOUT_SECONDS="${RESTART_IDLE_TIMEOUT_SECONDS:-120}"
 RESTART_IDLE_POLL_SECONDS="${RESTART_IDLE_POLL_SECONDS:-2}"
-RESTART_STATUS_DIR="${RESTART_STATUS_DIR:-/tmp}"
+RESTART_STATUS_DIR="${RESTART_STATUS_DIR:-/run/restart-and-verify}"
 ALLOWED_UNITS=(
   "telegram-architect-bridge.service"
   "telegram-agentsmith-bridge.service"
@@ -240,6 +240,7 @@ path = Path(sys.argv[1])
 phase = sys.argv[2]
 verification = sys.argv[3]
 reason = sys.argv[4]
+path.parent.mkdir(parents=True, exist_ok=True)
 
 payload = {
     "unit_name": os.environ.get("UNIT_NAME", ""),
@@ -254,7 +255,9 @@ payload = {
     "active_state": os.environ.get("active_state", ""),
     "sub_state": os.environ.get("sub_state", ""),
 }
-path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+tmp_path = path.with_name(path.name + ".tmp")
+tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+tmp_path.replace(path)
 PY
 }
 
