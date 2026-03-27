@@ -28,6 +28,8 @@ except ImportError:
 ORCHESTRATOR_HEADER = "Architect worker findings"
 MAX_WORKER_OUTPUT_CHARS = 3000
 ORCHESTRATOR_HARD_MAX_WORKERS = 3
+PLANNER_PROMPT_VERSION = "2026-03-27.2"
+PLANNER_SCHEMA_VERSION = "2026-03-27.2"
 PLANNER_REASON_INSUFFICIENT_LANES = "insufficient_parallel_lanes"
 PLANNER_REASON_SINGLE_AGENT = "planner_single_agent"
 PLANNER_REASON_SELECTED = "planner_selected_multi_role_split"
@@ -90,6 +92,7 @@ VERIFY_KEYWORDS = (
 class WorkerSpec:
     role: str
     objective: str
+    capability_hint: str = ""
 
 
 @dataclass
@@ -145,6 +148,7 @@ def _worker_catalog() -> Dict[str, WorkerSpec]:
                 "Inspect runtime, service, and log context relevant to the request. "
                 "Focus on concrete evidence, likely failure points, and the most relevant commands or files."
             ),
+            capability_hint="host_runtime_access",
         ),
         "docs-researcher": WorkerSpec(
             role="docs-researcher",
@@ -174,21 +178,34 @@ def _worker_roles(workers: List[WorkerSpec]) -> List[str]:
     return [worker.role for worker in workers]
 
 
-def build_candidate_worker_plan(prompt_text: str, max_workers: int) -> List[WorkerSpec]:
+def _disabled_worker_roles(config: Optional[object] = None) -> set[str]:
+    configured = getattr(config, "agent_orchestrator_disabled_roles", None) if config is not None else None
+    if configured is None:
+        raw = os.getenv("TELEGRAM_AGENT_ORCHESTRATOR_DISABLED_ROLES", "").strip()
+        configured = [item.strip() for item in raw.split(",") if item.strip()]
+    return {str(role).strip() for role in configured or [] if str(role).strip()}
+
+
+def build_candidate_worker_plan(
+    prompt_text: str,
+    max_workers: int,
+    config: Optional[object] = None,
+) -> List[WorkerSpec]:
     signals = analyze_task_shape(prompt_text)["signals"]
     catalog = _worker_catalog()
+    disabled_roles = _disabled_worker_roles(config)
     capped_max_workers = max(1, min(max_workers, ORCHESTRATOR_HARD_MAX_WORKERS))
 
     primary_workers: List[WorkerSpec] = []
-    if signals["runtime"]:
+    if signals["runtime"] and "runtime-investigator" not in disabled_roles:
         primary_workers.append(catalog["runtime-investigator"])
-    if signals["code"]:
+    if signals["code"] and "codebase-mapper" not in disabled_roles:
         primary_workers.append(catalog["codebase-mapper"])
 
     secondary_workers: List[WorkerSpec] = []
-    if signals["docs"]:
+    if signals["docs"] and "docs-researcher" not in disabled_roles:
         secondary_workers.append(catalog["docs-researcher"])
-    if signals["verify"]:
+    if signals["verify"] and "verification-planner" not in disabled_roles:
         secondary_workers.append(catalog["verification-planner"])
 
     if len(primary_workers) + len(secondary_workers) < 2:
@@ -233,6 +250,8 @@ def planner_schema_preflight(max_workers: int) -> Dict[str, Any]:
         if key not in PLANNER_SUPPORTED_ARRAY_SCHEMA_KEYS
     ]
     return {
+        "prompt_version": PLANNER_PROMPT_VERSION,
+        "schema_version": PLANNER_SCHEMA_VERSION,
         "hard_max_workers": ORCHESTRATOR_HARD_MAX_WORKERS,
         "configured_max_workers": max_workers,
         "effective_max_workers": capped_max_workers,
@@ -258,6 +277,9 @@ def build_planner_preflight_report() -> Dict[str, Any]:
         for name, prompt in examples.items()
     }
     return {
+        "prompt_version": PLANNER_PROMPT_VERSION,
+        "schema_version": PLANNER_SCHEMA_VERSION,
+        "disabled_roles": sorted(_disabled_worker_roles()),
         "schema": planner_schema_preflight(ORCHESTRATOR_HARD_MAX_WORKERS),
         "candidate_plans": candidate_plans,
     }
@@ -266,10 +288,13 @@ def build_planner_preflight_report() -> Dict[str, Any]:
 def build_planner_prompt(prompt_text: str, candidate_workers: List[WorkerSpec]) -> str:
     role_lines = []
     for worker in candidate_workers:
-        role_lines.append(f"- {worker.role}: {worker.objective}")
+        capability_suffix = f" [capability_hint={worker.capability_hint}]" if worker.capability_hint else ""
+        role_lines.append(f"- {worker.role}: {worker.objective}{capability_suffix}")
     roles_text = "\n".join(role_lines)
     return (
         "You are a planning worker for Architect on Server3.\n"
+        f"Planner prompt version: {PLANNER_PROMPT_VERSION}\n"
+        f"Planner schema version: {PLANNER_SCHEMA_VERSION}\n"
         "Decide whether the request should stay single-agent or be split into temporary specialist workers.\n"
         "Only use workers when that split is materially helpful and at least two roles are justified.\n"
         "Prefer no split for simple or tightly sequential tasks.\n\n"
@@ -313,7 +338,8 @@ def build_worker_prompt(worker: WorkerSpec, user_prompt: str) -> str:
         "Operate read-only. Do not edit files, apply patches, restart services, or make destructive changes.\n"
         "Inspect only what is needed for your objective and return concise factual findings.\n\n"
         f"Worker role: {worker.role}\n"
-        f"Objective: {worker.objective}\n\n"
+        f"Objective: {worker.objective}\n"
+        f"Capability hint: {worker.capability_hint or 'generic_read_only'}\n\n"
         "Return exactly these sections:\n"
         "Summary:\n"
         "Evidence:\n"
@@ -529,7 +555,7 @@ def build_worker_plan(
     if not bool(getattr(config, "agent_orchestrator_enabled", False)):
         return []
     max_workers = _orchestrator_max_workers(config)
-    candidate_workers = build_candidate_worker_plan(prompt_text, max_workers=max_workers)
+    candidate_workers = build_candidate_worker_plan(prompt_text, max_workers=max_workers, config=config)
     if len(candidate_workers) < 2:
         emit_event(
             "bridge.orchestrator_planner_decision",
@@ -537,6 +563,9 @@ def build_worker_plan(
                 "enabled": False,
                 "reason": PLANNER_REASON_INSUFFICIENT_LANES,
                 "reason_code": PLANNER_REASON_INSUFFICIENT_LANES,
+                "planner_prompt_version": PLANNER_PROMPT_VERSION,
+                "planner_schema_version": PLANNER_SCHEMA_VERSION,
+                "disabled_roles": sorted(_disabled_worker_roles(config)),
                 "candidate_roles": _worker_roles(candidate_workers),
                 "candidate_worker_count": len(candidate_workers),
                 "worker_count": 0,
@@ -556,6 +585,9 @@ def build_worker_plan(
                 "enabled": False,
                 "reason": planner_decision.reason,
                 "reason_code": planner_decision.reason_code or PLANNER_REASON_SINGLE_AGENT,
+                "planner_prompt_version": PLANNER_PROMPT_VERSION,
+                "planner_schema_version": PLANNER_SCHEMA_VERSION,
+                "disabled_roles": sorted(_disabled_worker_roles(config)),
                 "candidate_roles": _worker_roles(candidate_workers),
                 "candidate_worker_count": len(candidate_workers),
                 "selected_roles": planner_decision.worker_roles,
@@ -575,9 +607,13 @@ def build_worker_plan(
             "enabled": True,
             "reason": planner_decision.reason,
             "reason_code": planner_decision.reason_code or PLANNER_REASON_SELECTED,
+            "planner_prompt_version": PLANNER_PROMPT_VERSION,
+            "planner_schema_version": PLANNER_SCHEMA_VERSION,
+            "disabled_roles": sorted(_disabled_worker_roles(config)),
             "candidate_roles": _worker_roles(candidate_workers),
             "candidate_worker_count": len(candidate_workers),
             "selected_roles": [worker.role for worker in selected_workers],
+            "worker_count": len(selected_workers),
             "worker_roles": [worker.role for worker in selected_workers],
         },
     )

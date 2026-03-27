@@ -150,12 +150,17 @@ class RuntimeConfigTests(unittest.TestCase):
                 "TELEGRAM_ALLOWED_CHAT_IDS": "1",
                 "TELEGRAM_AGENT_ORCHESTRATOR_ENABLED": "true",
                 "TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS": "2",
+                "TELEGRAM_AGENT_ORCHESTRATOR_DISABLED_ROLES": "runtime-investigator,docs-researcher",
             },
             clear=True,
         ):
             config = runtime_config.load_config()
         self.assertTrue(config.agent_orchestrator_enabled)
         self.assertEqual(config.agent_orchestrator_max_workers, 2)
+        self.assertEqual(
+            config.agent_orchestrator_disabled_roles,
+            ["runtime-investigator", "docs-researcher"],
+        )
 
     def test_load_config_clamps_agent_orchestrator_max_workers_to_three(self):
         with mock.patch.dict(

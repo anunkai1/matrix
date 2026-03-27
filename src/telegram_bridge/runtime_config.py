@@ -86,6 +86,7 @@ class Config:
     keyword_routing_enabled: bool
     agent_orchestrator_enabled: bool = False
     agent_orchestrator_max_workers: int = 3
+    agent_orchestrator_disabled_roles: List[str] = None
     diary_mode_enabled: bool = False
     diary_capture_quiet_window_seconds: int = 75
     diary_timezone: str = "Australia/Brisbane"
@@ -197,6 +198,21 @@ def parse_prefixes_env(name: str) -> List[str]:
         if key in seen:
             continue
         seen.add(key)
+        parsed.append(value)
+    return parsed
+
+
+def parse_string_list_env(name: str) -> List[str]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    seen: Set[str] = set()
+    parsed: List[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
         parsed.append(value)
     return parsed
 
@@ -527,6 +543,9 @@ def load_config() -> Config:
             3,
             minimum=1,
             maximum=3,
+        ),
+        agent_orchestrator_disabled_roles=parse_string_list_env(
+            "TELEGRAM_AGENT_ORCHESTRATOR_DISABLED_ROLES",
         ),
         diary_mode_enabled=parse_bool_env(
             "TELEGRAM_DIARY_MODE_ENABLED",

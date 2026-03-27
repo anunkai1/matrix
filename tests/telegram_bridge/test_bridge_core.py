@@ -172,6 +172,7 @@ def make_config(**overrides):
         "keyword_routing_enabled": True,
         "agent_orchestrator_enabled": False,
         "agent_orchestrator_max_workers": 3,
+        "agent_orchestrator_disabled_roles": [],
         "diary_mode_enabled": False,
         "diary_capture_quiet_window_seconds": 75,
         "diary_timezone": "Australia/Brisbane",
@@ -3239,6 +3240,27 @@ class BridgeCoreTests(unittest.TestCase):
             ["docs-researcher", "verification-planner"],
         )
 
+    def test_build_candidate_worker_plan_skips_disabled_runtime_lane(self):
+        prompt = (
+            "Check the service logs, inspect the code path, read the runbook, "
+            "and verify the fix before you answer."
+        )
+        config = make_config(
+            agent_orchestrator_enabled=True,
+            agent_orchestrator_disabled_roles=["runtime-investigator"],
+        )
+
+        plan = bridge_agent_orchestrator.build_candidate_worker_plan(
+            prompt,
+            max_workers=3,
+            config=config,
+        )
+
+        self.assertEqual(
+            [worker.role for worker in plan],
+            ["codebase-mapper", "docs-researcher"],
+        )
+
     def test_run_readonly_codex_prompt_clears_stdin_before_communicate(self):
         class FakeProcess:
             def __init__(self):
@@ -3288,17 +3310,25 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertNotIn("uniqueItems", worker_roles_schema)
 
     def test_planner_preflight_report_is_schema_supported(self):
-        report = bridge_agent_orchestrator.build_planner_preflight_report()
+        with mock.patch.dict(
+            os.environ,
+            {"TELEGRAM_AGENT_ORCHESTRATOR_DISABLED_ROLES": "runtime-investigator"},
+            clear=False,
+        ):
+            report = bridge_agent_orchestrator.build_planner_preflight_report()
 
         self.assertTrue(report["schema"]["schema_supported"])
+        self.assertEqual(report["prompt_version"], bridge_agent_orchestrator.PLANNER_PROMPT_VERSION)
+        self.assertEqual(report["schema_version"], bridge_agent_orchestrator.PLANNER_SCHEMA_VERSION)
+        self.assertEqual(report["disabled_roles"], ["runtime-investigator"])
         self.assertEqual(report["schema"]["effective_max_workers"], 3)
         self.assertEqual(
             report["candidate_plans"]["runtime_and_code"],
-            ["runtime-investigator", "codebase-mapper"],
+            [],
         )
         self.assertEqual(
             report["candidate_plans"]["runtime_code_docs_verify"],
-            ["runtime-investigator", "codebase-mapper", "docs-researcher"],
+            ["codebase-mapper", "docs-researcher"],
         )
 
     def test_plan_worker_split_dedupes_duplicate_roles_from_planner(self):
