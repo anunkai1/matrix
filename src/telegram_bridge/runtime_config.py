@@ -84,9 +84,6 @@ class Config:
     signal_bridge_auth_token: str
     signal_poll_timeout_seconds: int
     keyword_routing_enabled: bool
-    agent_orchestrator_enabled: bool = False
-    agent_orchestrator_max_workers: int = 3
-    agent_orchestrator_disabled_roles: List[str] = None
     diary_mode_enabled: bool = False
     diary_capture_quiet_window_seconds: int = 75
     diary_timezone: str = "Australia/Brisbane"
@@ -534,19 +531,6 @@ def load_config() -> Config:
         keyword_routing_enabled=parse_bool_env(
             "TELEGRAM_KEYWORD_ROUTING_ENABLED",
             True,
-        ),
-        agent_orchestrator_enabled=parse_bool_env(
-            "TELEGRAM_AGENT_ORCHESTRATOR_ENABLED",
-            False,
-        ),
-        agent_orchestrator_max_workers=parse_capped_int_env(
-            "TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS",
-            3,
-            minimum=1,
-            maximum=3,
-        ),
-        agent_orchestrator_disabled_roles=parse_string_list_env(
-            "TELEGRAM_AGENT_ORCHESTRATOR_DISABLED_ROLES",
         ),
         diary_mode_enabled=parse_bool_env(
             "TELEGRAM_DIARY_MODE_ENABLED",

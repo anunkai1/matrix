@@ -111,8 +111,6 @@ def make_config(state_dir: str):
         signal_bridge_auth_token="",
         signal_poll_timeout_seconds=20,
         keyword_routing_enabled=False,
-        agent_orchestrator_enabled=False,
-        agent_orchestrator_max_workers=3,
         diary_mode_enabled=True,
         diary_capture_quiet_window_seconds=1,
         diary_timezone="Australia/Brisbane",
@@ -185,7 +183,12 @@ class DiaryBridgeFlowTests(unittest.TestCase):
         def fake_process_diary_batch(state, config, client, scope_key, pending):
             processed.append([message.get("text") for message in pending.messages])
             time.sleep(2.0)
-            bridge_handlers.finalize_chat_work(state, client, scope_key, pending.chat_id)
+            bridge_handlers.finalize_chat_work(
+                state,
+                client,
+                chat_id=pending.chat_id,
+                scope_key=scope_key,
+            )
 
         with mock.patch.object(bridge_handlers, "process_diary_batch", side_effect=fake_process_diary_batch):
             bridge_handlers.handle_update(

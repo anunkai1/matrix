@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 try:
-    from .agent_orchestrator import maybe_augment_prompt_with_worker_findings
     from .auth_state import refresh_runtime_auth_fingerprint
     from .conversation_scope import (
         ConversationScope,
@@ -101,7 +100,6 @@ try:
     from .structured_logging import emit_event
     from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 except ImportError:
-    from agent_orchestrator import maybe_augment_prompt_with_worker_findings
     from auth_state import refresh_runtime_auth_fingerprint
     from conversation_scope import (
         ConversationScope,
@@ -2839,23 +2837,6 @@ def process_prompt(
                 "has_previous_thread": bool(previous_thread_id),
             },
         )
-        if (
-            getattr(config, "agent_orchestrator_enabled", False)
-            and active_engine.engine_name == "codex"
-            and not (image_paths or image_path or document_path)
-        ):
-            progress.set_phase(f"{assistant_label(config)} is evaluating whether worker executors would help.")
-            try:
-                prompt_text = maybe_augment_prompt_with_worker_findings(
-                    config=config,
-                    prompt_text=prompt_text,
-                    cancel_event=cancel_event,
-                )
-            except Exception:
-                logging.exception(
-                    "Task orchestration failed for chat_id=%s; continuing with direct execution.",
-                    chat_id,
-                )
         progress.set_phase(f"Sending request to {assistant_label(config)}.")
         result = execute_prompt_with_retry(
             state_repo=state_repo,

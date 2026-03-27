@@ -116,9 +116,6 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_PERSISTENT_WORKERS_ENABLED=false
 # TELEGRAM_PERSISTENT_WORKERS_MAX=4
 # TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS=2700
-# TELEGRAM_AGENT_ORCHESTRATOR_ENABLED=false
-# TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS=3
-# TELEGRAM_AGENT_ORCHESTRATOR_DISABLED_ROLES=
 # TELEGRAM_CANONICAL_SESSIONS_ENABLED=false
 # TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED=false
 # TELEGRAM_CANONICAL_SQLITE_ENABLED=false
@@ -314,17 +311,6 @@ Message handling:
   - default max workers: `TELEGRAM_PERSISTENT_WORKERS_MAX=4`
   - default idle expiry: `TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS=2700` (45 min)
   - worker session state file: `/home/architect/.local/state/telegram-architect-bridge/worker_sessions.json`
-- Optional Architect task orchestrator (feature-flagged):
-  - enable with `TELEGRAM_AGENT_ORCHESTRATOR_ENABLED=true`
-  - implemented in the shared `src/telegram_bridge` core, so other sibling runtimes can use it too; Architect is simply the only runtime with it enabled live right now
-  - concurrency cap: `TELEGRAM_AGENT_ORCHESTRATOR_MAX_WORKERS` with a hard runtime maximum of `3`
-  - optional capability-aware role filter: `TELEGRAM_AGENT_ORCHESTRATOR_DISABLED_ROLES=runtime-investigator,docs-researcher`
-  - current rollout is conservative: the orchestrator only triggers when the request usefully splits into multiple worker roles, keeps `2` workers as the normal split size, only adds a third worker for a genuinely separate lane, folds those worker findings into one final Architect prompt, and keeps a single final writer/verifier path
-  - spawned workers now inherit the same Codex approval/sandbox posture as the main Architect executor, so they can inspect, edit, test, and run the same runtime operations when needed; the main agent still owns final integration and the user-facing answer
-  - deterministic preflight helper: `python3 ops/telegram-bridge/planner_preflight.py`
-  - operator health report / self-check: `python3 ops/telegram-bridge/orchestrator_health_report.py --unit telegram-architect-bridge.service --since '6 hours ago' --fail-on-bad-state`
-  - planner-decision logs now include machine-readable reason codes plus candidate/selected worker-role lists so split decisions are easier to audit from the journal
-  - planner prompt/schema are now explicitly versioned in preflight and planner-decision logs for safer future tuning
 - Optional canonical session-store mode:
   - enable with `TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`
   - default backend (JSON): `/home/architect/.local/state/telegram-architect-bridge/chat_sessions.json`
