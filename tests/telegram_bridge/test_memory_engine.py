@@ -263,6 +263,11 @@ class MemoryEngineTests(unittest.TestCase):
             self.assertIn("Session continuity reset", reset_session.response or "")
             self.assertIsNone(engine.get_session_thread_id(key))
 
+            engine.set_session_thread_id(key, "thread-before-global-reset")
+            cleared_sessions = engine.clear_all_session_threads()
+            self.assertEqual(cleared_sessions, 1)
+            self.assertIsNone(engine.get_session_thread_id(key))
+
             hard_reset = memory.handle_memory_command(engine, key, "/hard-reset-memory")
             self.assertIn("Hard reset complete", hard_reset.response or "")
             status = engine.get_status(key)

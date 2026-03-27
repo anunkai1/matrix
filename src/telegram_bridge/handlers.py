@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 try:
     from .agent_orchestrator import maybe_augment_prompt_with_worker_findings
+    from .auth_state import refresh_runtime_auth_fingerprint
     from .conversation_scope import ConversationScope, scope_from_message
     from .executor import (
         ExecutorCancelledError,
@@ -96,6 +97,7 @@ try:
     from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 except ImportError:
     from agent_orchestrator import maybe_augment_prompt_with_worker_findings
+    from auth_state import refresh_runtime_auth_fingerprint
     from conversation_scope import ConversationScope, scope_from_message
     from executor import (
         ExecutorCancelledError,
@@ -2695,6 +2697,30 @@ def process_prompt(
     )
     try:
         progress.start()
+        auth_reset_result = refresh_runtime_auth_fingerprint(state)
+        if auth_reset_result["applied"]:
+            counts = auth_reset_result["counts"]
+            logging.warning(
+                "Auth fingerprint changed mid-runtime; cleared stored thread state for %s "
+                "(threads=%s worker_sessions=%s canonical_sessions=%s memory_sessions=%s).",
+                assistant_label(config),
+                counts["threads"],
+                counts["worker_sessions"],
+                counts["canonical_sessions"],
+                counts["memory_sessions"],
+            )
+            emit_event(
+                "bridge.thread_state_reset_for_auth_change",
+                level=logging.WARNING,
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "thread_count": counts["threads"],
+                    "worker_session_count": counts["worker_sessions"],
+                    "canonical_session_count": counts["canonical_sessions"],
+                    "memory_session_count": counts["memory_sessions"],
+                },
+            )
         prepared = prepare_prompt_input(
             state=state,
             config=config,

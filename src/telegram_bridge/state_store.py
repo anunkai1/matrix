@@ -90,7 +90,10 @@ class State:
     pending_diary_batches: Dict[ScopeKey, PendingDiaryBatch] = field(default_factory=dict)
     queued_diary_batches: Dict[ScopeKey, List[PendingDiaryBatch]] = field(default_factory=dict)
     diary_queue_processing_scopes: Set[ScopeKey] = field(default_factory=set)
+    auth_fingerprint_path: str = ""
+    auth_fingerprint: str = ""
     lock: threading.Lock = field(default_factory=threading.Lock)
+    auth_change_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 def ensure_state_dir(path: str) -> None:

@@ -1728,6 +1728,16 @@ class MemoryEngine:
             self._next_prune_deadline.clear()
             return counts
 
+    def clear_all_session_threads(self) -> int:
+        with self._lock, self._connect() as conn:
+            count = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM sessions WHERE TRIM(thread_id) <> ''"
+                ).fetchone()[0]
+            )
+            conn.execute("DELETE FROM sessions")
+            return count
+
     def get_status(self, conversation_key: str) -> MemoryStatus:
         with self._lock, self._connect() as conn:
             self._ensure_memory_rows(conn, conversation_key)

@@ -11,6 +11,12 @@ from urllib.error import HTTPError, URLError
 
 try:
     from .affective_runtime import build_affective_runtime
+    from .auth_state import (
+        apply_auth_change_thread_reset,
+        build_auth_fingerprint_state_path,
+        clear_loaded_thread_state,
+        compute_current_auth_fingerprint,
+    )
     from .attachment_store import AttachmentStore
     from .channel_adapter import ChannelAdapter
     from .conversation_scope import parse_telegram_scope_key
@@ -73,6 +79,12 @@ try:
     from .voice_alias_learning import VoiceAliasLearningStore
 except ImportError:
     from affective_runtime import build_affective_runtime
+    from auth_state import (
+        apply_auth_change_thread_reset,
+        build_auth_fingerprint_state_path,
+        clear_loaded_thread_state,
+        compute_current_auth_fingerprint,
+    )
     from attachment_store import AttachmentStore
     from channel_adapter import ChannelAdapter
     from conversation_scope import parse_telegram_scope_key
@@ -216,40 +228,11 @@ def clear_thread_state_for_policy_change(
     loaded_worker_sessions: Dict[int, WorkerSession],
     loaded_canonical_sessions: Dict[int, CanonicalSession],
 ) -> Dict[str, int]:
-    cleared_thread_count = sum(1 for thread_id in loaded_threads.values() if thread_id.strip())
-    cleared_worker_session_count = len(loaded_worker_sessions)
-    cleared_canonical_session_count = 0
-
-    if loaded_threads:
-        loaded_threads.clear()
-    if loaded_worker_sessions:
-        loaded_worker_sessions.clear()
-
-    for chat_id in list(loaded_canonical_sessions):
-        session = loaded_canonical_sessions[chat_id]
-        changed = False
-        if session.thread_id.strip():
-            session.thread_id = ""
-            changed = True
-        if (
-            session.worker_created_at is not None
-            or session.worker_last_used_at is not None
-            or session.worker_policy_fingerprint.strip()
-        ):
-            session.worker_created_at = None
-            session.worker_last_used_at = None
-            session.worker_policy_fingerprint = ""
-            changed = True
-        if changed:
-            cleared_canonical_session_count += 1
-        if canonical_session_is_empty(session):
-            del loaded_canonical_sessions[chat_id]
-
-    return {
-        "threads": cleared_thread_count,
-        "worker_sessions": cleared_worker_session_count,
-        "canonical_sessions": cleared_canonical_session_count,
-    }
+    return clear_loaded_thread_state(
+        loaded_threads,
+        loaded_worker_sessions,
+        loaded_canonical_sessions,
+    )
 
 
 def apply_policy_change_thread_reset(
@@ -838,6 +821,36 @@ def run_bridge(config: Config) -> int:
                     fields=memory_reset_counts,
                 )
 
+    current_auth_fingerprint = compute_current_auth_fingerprint()
+    auth_reset_result = apply_auth_change_thread_reset(
+        state_dir=config.state_dir,
+        current_auth_fingerprint=current_auth_fingerprint,
+        loaded_threads=loaded_threads,
+        loaded_worker_sessions=loaded_worker_sessions,
+        loaded_canonical_sessions=loaded_canonical_sessions,
+        memory_engine=memory_engine,
+    )
+    if auth_reset_result["applied"]:
+        counts = auth_reset_result["counts"]
+        logging.warning(
+            "Auth fingerprint changed; cleared stored thread state "
+            "(threads=%s worker_sessions=%s canonical_sessions=%s memory_sessions=%s).",
+            counts["threads"],
+            counts["worker_sessions"],
+            counts["canonical_sessions"],
+            counts["memory_sessions"],
+        )
+        emit_event(
+            "bridge.thread_state_reset_for_auth_change",
+            level=logging.WARNING,
+            fields={
+                "thread_count": counts["threads"],
+                "worker_session_count": counts["worker_sessions"],
+                "canonical_session_count": counts["canonical_sessions"],
+                "memory_session_count": counts["memory_sessions"],
+            },
+        )
+
     if config.persistent_workers_enabled:
         now = time.time()
         if not current_policy_fingerprint:
@@ -893,6 +906,8 @@ def run_bridge(config: Config) -> int:
         affective_runtime=affective_runtime,
         attachment_store=attachment_store,
         voice_alias_learning_store=voice_alias_learning_store,
+        auth_fingerprint_path=build_auth_fingerprint_state_path(config.state_dir),
+        auth_fingerprint=current_auth_fingerprint,
     )
     state_repo = StateRepository(state)
     registry = build_default_plugin_registry()
