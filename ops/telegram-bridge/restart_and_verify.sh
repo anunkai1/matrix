@@ -216,6 +216,61 @@ show_prop() {
   systemctl show -p "${key}" --value "${UNIT_NAME}"
 }
 
+current_cgroup_path() {
+  if [[ -n "${RESTART_CGROUP_PATH_OVERRIDE:-}" ]]; then
+    printf '%s\n' "${RESTART_CGROUP_PATH_OVERRIDE}"
+    return 0
+  fi
+
+  python3 - <<'PY'
+from pathlib import Path
+
+for line in Path("/proc/self/cgroup").read_text(encoding="utf-8").splitlines():
+    parts = line.split(":", 2)
+    if len(parts) == 3 and parts[0] == "0":
+        print(parts[2])
+        raise SystemExit(0)
+print("")
+PY
+}
+
+should_handoff_to_transient_unit() {
+  local target_cgroup current_cgroup
+
+  if [[ "${RESTART_DETACHED_RUN:-0}" == "1" ]]; then
+    return 1
+  fi
+
+  target_cgroup="$(show_prop ControlGroup)"
+  current_cgroup="$(current_cgroup_path)"
+  if [[ -z "${target_cgroup}" || -z "${current_cgroup}" ]]; then
+    return 1
+  fi
+
+  [[ "${current_cgroup}" == "${target_cgroup}"* ]]
+}
+
+launch_transient_restart_unit() {
+  local sanitized transient_unit
+  sanitized="$(printf '%s' "${UNIT_NAME}" | tr -c 'A-Za-z0-9._-' '-')"
+  transient_unit="restart-verify-${sanitized}-$(date +%s)"
+  echo "[restart_and_verify] handoff=transient_unit unit=${transient_unit}"
+  exec systemd-run \
+    --quiet \
+    --collect \
+    --unit "${transient_unit}" \
+    --property "Type=exec" \
+    --property "WorkingDirectory=${REPO_ROOT}" \
+    /usr/bin/env \
+    UNIT_NAME="${UNIT_NAME}" \
+    RESTART_DETACHED_RUN=1 \
+    RESTART_WAIT_FOR_IDLE="${RESTART_WAIT_FOR_IDLE}" \
+    RESTART_IDLE_TIMEOUT_SECONDS="${RESTART_IDLE_TIMEOUT_SECONDS}" \
+    RESTART_IDLE_POLL_SECONDS="${RESTART_IDLE_POLL_SECONDS}" \
+    RESTART_STATUS_DIR="${RESTART_STATUS_DIR}" \
+    bash "${REPO_ROOT}/ops/telegram-bridge/restart_and_verify.sh" --unit "${UNIT_NAME}"
+}
+
 timestamp_utc() {
   date -u +"%Y-%m-%d %H:%M:%S UTC"
 }
@@ -260,6 +315,10 @@ tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encodi
 tmp_path.replace(path)
 PY
 }
+
+if should_handoff_to_transient_unit; then
+  launch_transient_restart_unit
+fi
 
 before_pid="$(show_prop MainPID)"
 before_start="$(show_prop ExecMainStartTimestamp)"
