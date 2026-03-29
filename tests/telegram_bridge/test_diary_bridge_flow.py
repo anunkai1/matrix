@@ -39,8 +39,19 @@ class FakeDiaryClient:
         self.messages = []
         self.chat_actions = []
 
-    def send_message_get_id(self, chat_id, text, reply_to_message_id=None):
-        self.send_message(chat_id, text, reply_to_message_id=reply_to_message_id)
+    def send_message_get_id(
+        self,
+        chat_id,
+        text,
+        reply_to_message_id=None,
+        message_thread_id=None,
+    ):
+        self.send_message(
+            chat_id,
+            text,
+            reply_to_message_id=reply_to_message_id,
+            message_thread_id=message_thread_id,
+        )
         return len(self.messages)
 
     def send_message(self, chat_id, text, reply_to_message_id=None, message_thread_id=None):

@@ -335,6 +335,9 @@ class BridgeCoreTests(unittest.TestCase):
             env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
             env["CODEX_BIN"] = str(fake_codex)
             env["CODEX_POLICY_FILE"] = "AGENTS.md"
+            env.pop("TELEGRAM_RUNTIME_ROOT", None)
+            env.pop("TELEGRAM_SHARED_CORE_ROOT", None)
+            env.pop("TELEGRAM_CODEX_WORKDIR", None)
 
             result = subprocess.run(
                 ["bash", str(script_path), "new"],
@@ -396,6 +399,8 @@ class BridgeCoreTests(unittest.TestCase):
             env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
             env["CODEX_BIN"] = str(fake_codex)
             env["CODEX_POLICY_FILE"] = "AGENTS.md"
+            env.pop("TELEGRAM_SHARED_CORE_ROOT", None)
+            env.pop("TELEGRAM_CODEX_WORKDIR", None)
             env["TELEGRAM_RUNTIME_ROOT"] = str(runtime_root)
 
             result = subprocess.run(
