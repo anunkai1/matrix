@@ -80,10 +80,33 @@ def extract_executor_progress_event(payload: Dict[str, object]) -> Optional[Exec
     return None
 
 
+def extract_executor_phase_timing(payload: Dict[str, object]) -> Optional[Dict[str, object]]:
+    if payload.get("type") != "executor.phase_timing":
+        return None
+    phase = payload.get("phase")
+    duration_ms = payload.get("duration_ms")
+    if not isinstance(phase, str) or not phase:
+        return None
+    if not isinstance(duration_ms, int):
+        return None
+    result: Dict[str, object] = {
+        "phase": phase,
+        "duration_ms": duration_ms,
+    }
+    payload_mode = payload.get("mode")
+    if isinstance(payload_mode, str) and payload_mode:
+        result["mode"] = payload_mode
+    return result
+
+
 def run_executor(
     config,
     prompt: str,
     thread_id: Optional[str],
+    session_key: Optional[str] = None,
+    channel_name: Optional[str] = None,
+    actor_chat_id: Optional[int] = None,
+    actor_user_id: Optional[int] = None,
     image_path: Optional[str] = None,
     image_paths: Optional[List[str]] = None,
     progress_callback: Optional[Callable[[ExecutorProgressEvent], None]] = None,
@@ -137,6 +160,14 @@ def run_executor(
     if process.stdin is None or process.stdout is None or process.stderr is None:
         raise RuntimeError("Failed to initialize executor process pipes")
 
+    def close_process_pipes() -> None:
+        for pipe in (process.stdin, process.stdout, process.stderr):
+            try:
+                if pipe is not None and not pipe.closed:
+                    pipe.close()
+            except Exception:
+                pass
+
     def drain_stdout() -> None:
         for raw_line in process.stdout:
             stdout_buffer.append(raw_line)
@@ -153,6 +184,23 @@ def run_executor(
     def drain_stderr() -> None:
         for raw_line in process.stderr:
             stderr_buffer.append(raw_line)
+            payload = parse_stream_json_line(raw_line)
+            if payload is None:
+                continue
+            timing = extract_executor_phase_timing(payload)
+            if timing is None:
+                continue
+            fields: Dict[str, object] = dict(timing)
+            fields.setdefault("mode", mode)
+            if actor_chat_id is not None:
+                fields["chat_id"] = actor_chat_id
+            if actor_user_id is not None:
+                fields["actor_user_id"] = actor_user_id
+            if session_key:
+                fields["session_key"] = session_key
+            if channel_name:
+                fields["channel_name"] = channel_name
+            emit_event("bridge.executor_phase_timing", fields=fields)
 
     stdout_worker = threading.Thread(target=drain_stdout, daemon=True)
     stderr_worker = threading.Thread(target=drain_stderr, daemon=True)
@@ -167,6 +215,7 @@ def run_executor(
     except Exception:
         process.kill()
         process.wait(timeout=5)
+        close_process_pipes()
         raise
 
     deadline = time.monotonic() + float(config.exec_timeout_seconds)
@@ -177,6 +226,7 @@ def run_executor(
             process.wait(timeout=5)
             stdout_worker.join(timeout=1.5)
             stderr_worker.join(timeout=1.5)
+            close_process_pipes()
             emit_event(
                 "bridge.executor_subprocess_cancelled",
                 level=logging.INFO,
@@ -190,6 +240,7 @@ def run_executor(
             process.wait(timeout=5)
             stdout_worker.join(timeout=1.5)
             stderr_worker.join(timeout=1.5)
+            close_process_pipes()
             emit_event(
                 "bridge.executor_subprocess_timeout",
                 level=logging.WARNING,
@@ -210,6 +261,7 @@ def run_executor(
 
     stdout_worker.join(timeout=1.5)
     stderr_worker.join(timeout=1.5)
+    close_process_pipes()
     duration_ms = int((time.monotonic() - start) * 1000)
     emit_event(
         "bridge.executor_subprocess_finish",

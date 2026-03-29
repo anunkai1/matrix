@@ -2430,6 +2430,7 @@ def execute_prompt_with_retry(
                 "automatic_retry_enabled": allow_automatic_retry,
             },
         )
+        engine_started_at = time.monotonic()
         try:
             try:
                 result = engine.run(
@@ -2443,6 +2444,15 @@ def execute_prompt_with_retry(
                     image_paths=normalized_image_paths,
                     progress_callback=progress.handle_executor_event,
                     cancel_event=cancel_event,
+                )
+                emit_phase_timing(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    phase="engine_run",
+                    started_at_monotonic=engine_started_at,
+                    attempt=attempt,
+                    success=True,
+                    returncode=result.returncode,
                 )
             except TypeError as exc:
                 exc_text = str(exc)
@@ -2465,7 +2475,26 @@ def execute_prompt_with_retry(
                     progress_callback=progress.handle_executor_event,
                     cancel_event=cancel_event,
                 )
+                emit_phase_timing(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    phase="engine_run",
+                    started_at_monotonic=engine_started_at,
+                    attempt=attempt,
+                    success=True,
+                    returncode=result.returncode,
+                    fallback_signature=True,
+                )
         except ExecutorCancelledError:
+            emit_phase_timing(
+                chat_id=chat_id,
+                message_id=message_id,
+                phase="engine_run",
+                started_at_monotonic=engine_started_at,
+                attempt=attempt,
+                success=False,
+                error_type="ExecutorCancelledError",
+            )
             logging.info("Executor canceled for chat_id=%s", chat_id)
             emit_event(
                 "bridge.request_cancelled",
@@ -2480,6 +2509,15 @@ def execute_prompt_with_retry(
             )
             return None
         except subprocess.TimeoutExpired:
+            emit_phase_timing(
+                chat_id=chat_id,
+                message_id=message_id,
+                phase="engine_run",
+                started_at_monotonic=engine_started_at,
+                attempt=attempt,
+                success=False,
+                error_type="TimeoutExpired",
+            )
             logging.warning("Executor timeout for chat_id=%s", chat_id)
             emit_event(
                 "bridge.request_timeout",
@@ -2495,6 +2533,15 @@ def execute_prompt_with_retry(
             )
             return None
         except FileNotFoundError:
+            emit_phase_timing(
+                chat_id=chat_id,
+                message_id=message_id,
+                phase="engine_run",
+                started_at_monotonic=engine_started_at,
+                attempt=attempt,
+                success=False,
+                error_type="FileNotFoundError",
+            )
             logging.exception("Executor command not found: %s", config.executor_cmd)
             emit_event(
                 "bridge.executor_missing",
@@ -2510,6 +2557,15 @@ def execute_prompt_with_retry(
             )
             return None
         except Exception:
+            emit_phase_timing(
+                chat_id=chat_id,
+                message_id=message_id,
+                phase="engine_run",
+                started_at_monotonic=engine_started_at,
+                attempt=attempt,
+                success=False,
+                error_type="Exception",
+            )
             logging.exception("Unexpected executor error for chat_id=%s", chat_id)
             emit_event(
                 "bridge.executor_exception",
@@ -2779,6 +2835,26 @@ def emit_request_processing_started(
     )
 
 
+def emit_phase_timing(
+    *,
+    chat_id: int,
+    message_id: Optional[int],
+    phase: str,
+    started_at_monotonic: float,
+    **extra_fields,
+) -> None:
+    fields = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "phase": phase,
+        "duration_ms": int(max(0.0, (time.monotonic() - started_at_monotonic) * 1000.0)),
+    }
+    for key, value in extra_fields.items():
+        if value is not None:
+            fields[key] = value
+    emit_event("bridge.request_phase_timing", fields=fields)
+
+
 def process_prompt(
     state: State,
     config,
@@ -2799,6 +2875,7 @@ def process_prompt(
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
+    total_started_at = time.monotonic()
     channel_name = getattr(client, "channel_name", "telegram")
     active_engine = engine or CodexEngineAdapter()
     assistant_name_label = assistant_label(config)
@@ -2850,6 +2927,7 @@ def process_prompt(
                     "memory_session_count": counts["memory_sessions"],
                 },
             )
+        prepare_started_at = time.monotonic()
         prepared = prepare_prompt_input(
             state=state,
             config=config,
@@ -2864,6 +2942,13 @@ def process_prompt(
             progress=progress,
             enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
         )
+        emit_phase_timing(
+            chat_id=chat_id,
+            message_id=message_id,
+            phase="prepare_prompt_input",
+            started_at_monotonic=prepare_started_at,
+            has_prepared_prompt=prepared is not None,
+        )
         if prepared is None:
             return
         image_path = prepared.image_path
@@ -2872,6 +2957,7 @@ def process_prompt(
         cleanup_paths = list(prepared.cleanup_paths)
         attachment_file_ids = list(prepared.attachment_file_ids)
         prompt_text = prepared.prompt_text
+        memory_started_at = time.monotonic()
         prompt_text, previous_thread_id, turn_context = begin_memory_turn(
             memory_engine=memory_engine,
             state_repo=state_repo,
@@ -2883,11 +2969,29 @@ def process_prompt(
             stateless=stateless,
             chat_id=chat_id,
         )
+        emit_phase_timing(
+            chat_id=chat_id,
+            message_id=message_id,
+            phase="begin_memory_turn",
+            started_at_monotonic=memory_started_at,
+            memory_enabled=memory_engine is not None,
+            stateless=stateless,
+            reused_thread=bool(previous_thread_id),
+        )
+        affective_started_at = time.monotonic()
         prompt_text, affective_turn_started = begin_affective_turn(
             affective_runtime,
             prompt_text,
             chat_id=chat_id,
             message_id=message_id,
+        )
+        emit_phase_timing(
+            chat_id=chat_id,
+            message_id=message_id,
+            phase="begin_affective_turn",
+            started_at_monotonic=affective_started_at,
+            affective_enabled=affective_runtime is not None,
+            affective_applied=affective_turn_started,
         )
         emit_request_processing_started(
             chat_id=chat_id,
@@ -2900,6 +3004,7 @@ def process_prompt(
             previous_thread_id=previous_thread_id,
         )
         progress.set_phase(f"Sending request to {assistant_name_label}.")
+        execute_started_at = time.monotonic()
         result = execute_prompt_with_retry(
             state_repo=state_repo,
             config=config,
@@ -2918,8 +3023,16 @@ def process_prompt(
             cancel_event=cancel_event,
             session_continuity_enabled=not stateless,
         )
+        emit_phase_timing(
+            chat_id=chat_id,
+            message_id=message_id,
+            phase="execute_prompt_with_retry",
+            started_at_monotonic=execute_started_at,
+            success=result is not None,
+        )
         if result is None:
             return
+        finalize_started_at = time.monotonic()
         new_thread_id, output = finalize_prompt_success(
             state_repo=state_repo,
             config=config,
@@ -2929,6 +3042,14 @@ def process_prompt(
             message_id=message_id,
             result=result,
             progress=progress,
+        )
+        emit_phase_timing(
+            chat_id=chat_id,
+            message_id=message_id,
+            phase="finalize_prompt_success",
+            started_at_monotonic=finalize_started_at,
+            new_thread_id=bool(new_thread_id),
+            output_chars=len(output),
         )
         if stateless:
             state_repo.clear_thread_id(scope_key)
@@ -2981,6 +3102,12 @@ def process_prompt(
             except OSError:
                 logging.warning("Failed to remove temp file: %s", cleanup_path)
         finalize_chat_work(state, client, chat_id=chat_id, scope_key=scope_key)
+        emit_phase_timing(
+            chat_id=chat_id,
+            message_id=message_id,
+            phase="process_prompt_total",
+            started_at_monotonic=total_started_at,
+        )
         emit_event(
             "bridge.request_processing_finished",
             fields={"chat_id": chat_id, "message_id": message_id},
@@ -4160,6 +4287,7 @@ def handle_update(
     update: Dict[str, object],
     engine: Optional[EngineAdapter] = None,
 ) -> None:
+    handle_update_started_at = time.monotonic()
     message, conversation_scope, message_id = extract_chat_context(update)
     if message is None or conversation_scope is None:
         return
@@ -4518,5 +4646,13 @@ def handle_update(
     emit_event(
         "bridge.worker_started",
         fields={"chat_id": chat_id, "message_id": message_id},
+    )
+    emit_phase_timing(
+        chat_id=chat_id,
+        message_id=message_id,
+        phase="handle_update_pre_worker",
+        started_at_monotonic=handle_update_started_at,
+        routed_youtube=bool(youtube_route_url),
+        stateless=stateless,
     )
     return

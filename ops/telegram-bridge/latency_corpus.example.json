@@ -1,0 +1,16 @@
+[
+  {
+    "name": "short_status_reply",
+    "prompt": "What services are running?",
+    "expected_reply": "Benchmark reply: services look healthy.",
+    "engine_output": "Benchmark reply: services look healthy.",
+    "engine_delay_ms": 8
+  },
+  {
+    "name": "slightly_longer_reply",
+    "prompt": "Summarize the latest deployment changes.",
+    "expected_reply": "Benchmark reply: deployment changes summarized cleanly.",
+    "engine_output": "Benchmark reply: deployment changes summarized cleanly.",
+    "engine_delay_ms": 15
+  }
+]

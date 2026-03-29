@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+now_ms() {
+  date +%s%3N
+}
+
+emit_phase_timing() {
+  local phase="$1"
+  local duration_ms="$2"
+  printf '{"type":"executor.phase_timing","phase":"%s","duration_ms":%s,"mode":"%s"}\n' \
+    "${phase}" "${duration_ms}" "${mode}" >&2
+}
+
 mode="${1:-new}"
 if [[ "${mode}" != "new" && "${mode}" != "resume" ]]; then
   echo "Usage: $0 [new|resume] [thread_id] [--image FILE]..." >&2
@@ -45,6 +56,7 @@ while (($#)); do
   esac
 done
 
+bootstrap_started_ms="$(now_ms)"
 prompt="$(cat)"
 if [[ -z "${prompt}" ]]; then
   echo "Prompt is empty" >&2
@@ -66,10 +78,13 @@ runtime_root="$(cd "${runtime_root}" && pwd)"
 
 auth_sync_script="${shared_core_root}/ops/codex/sync_shared_auth.sh"
 if [[ -x "${auth_sync_script}" ]]; then
+  auth_sync_started_ms="$(now_ms)"
   # `codex login` can replace Architect's auth symlink with a standalone file.
   # Refresh the shared auth before each exec so sibling runtimes follow the
   # latest Architect CLI account automatically.
   "${auth_sync_script}" >/dev/null 2>&1 || true
+  auth_sync_finished_ms="$(now_ms)"
+  emit_phase_timing "auth_sync" "$((auth_sync_finished_ms - auth_sync_started_ms))"
 fi
 
 cd "${runtime_root}"
@@ -101,4 +116,14 @@ else
   CMD=("${CODEX_BIN}" exec --dangerously-bypass-approvals-and-sandbox "${EXEC_NEW_ARGS[@]}" "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" -)
 fi
 
+bootstrap_finished_ms="$(now_ms)"
+emit_phase_timing "wrapper_bootstrap" "$((bootstrap_finished_ms - bootstrap_started_ms))"
+
+codex_started_ms="$(now_ms)"
+set +e
 printf '%s\n' "${prompt}" | "${CMD[@]}"
+codex_rc=$?
+set -e
+codex_finished_ms="$(now_ms)"
+emit_phase_timing "codex_exec" "$((codex_finished_ms - codex_started_ms))"
+exit "${codex_rc}"
