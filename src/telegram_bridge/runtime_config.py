@@ -114,7 +114,7 @@ class Config:
     voice_transcribe_empty_message: str = (
         "Voice transcription was empty. Please send clearer audio."
     )
-    empty_output_message: str = "(No output from Architect)"
+    empty_output_message: str = "(No output from assistant)"
 
 
 def parse_int_env(name: str, default: int, minimum: int = 1) -> int:

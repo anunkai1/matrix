@@ -786,6 +786,7 @@ class ProgressReporter:
         client: ChannelAdapter,
         chat_id: int,
         reply_to_message_id: Optional[int],
+        message_thread_id: Optional[int],
         assistant_name: str,
         progress_label: str = "",
         compact_elapsed_prefix: str = "Already",
@@ -794,6 +795,7 @@ class ProgressReporter:
         self.client = client
         self.chat_id = chat_id
         self.reply_to_message_id = reply_to_message_id
+        self.message_thread_id = message_thread_id
         self.assistant_name = assistant_name
         self.progress_label = progress_label.strip()
         if compact_elapsed_prefix is None:
@@ -834,6 +836,7 @@ class ProgressReporter:
                 self.chat_id,
                 text,
                 reply_to_message_id=self.reply_to_message_id,
+                message_thread_id=self.message_thread_id,
             )
         except Exception:
             logging.exception("Failed to send initial progress message for chat_id=%s", self.chat_id)
@@ -925,7 +928,11 @@ class ProgressReporter:
 
     def _send_typing(self) -> None:
         try:
-            self.client.send_chat_action(self.chat_id, action="typing")
+            self.client.send_chat_action(
+                self.chat_id,
+                action="typing",
+                message_thread_id=self.message_thread_id,
+            )
         except Exception:
             logging.debug("Failed to send typing action for chat_id=%s", self.chat_id)
 
@@ -2896,6 +2903,7 @@ def process_prompt(
         client,
         chat_id,
         message_id,
+        message_thread_id,
         assistant_name_label,
         getattr(config, "progress_label", ""),
         getattr(config, "progress_elapsed_prefix", "Already"),
@@ -3195,6 +3203,7 @@ def process_youtube_request(
         client,
         chat_id,
         message_id,
+        message_thread_id,
         assistant_label(config),
         getattr(config, "progress_label", ""),
         getattr(config, "progress_elapsed_prefix", "Already"),
@@ -3841,6 +3850,7 @@ def process_diary_batch(
         client,
         pending.chat_id,
         pending.latest_message_id,
+        pending.message_thread_id,
         assistant_label(config),
         getattr(config, "progress_label", ""),
         getattr(config, "progress_elapsed_prefix", "Already"),

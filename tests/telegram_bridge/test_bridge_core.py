@@ -130,13 +130,24 @@ class FakeProgressEditClient:
     channel_name = "whatsapp"
     supports_message_edits = True
 
-    def send_message_get_id(self, chat_id, text, reply_to_message_id=None):
+    def __init__(self) -> None:
+        self.last_thread_id = None
+
+    def send_message_get_id(
+        self,
+        chat_id,
+        text,
+        reply_to_message_id=None,
+        message_thread_id=None,
+    ):
+        self.last_thread_id = message_thread_id
         return 101
 
     def edit_message(self, chat_id, message_id, text):
         raise RuntimeError("WhatsApp bridge HTTP 502: message edit failed")
 
-    def send_chat_action(self, chat_id, action="typing"):
+    def send_chat_action(self, chat_id, action="typing", message_thread_id=None):
+        self.last_thread_id = message_thread_id
         return None
 
 
@@ -144,13 +155,19 @@ class FakeSignalProgressClient:
     channel_name = "signal"
     supports_message_edits = False
 
-    def send_message_get_id(self, chat_id, text, reply_to_message_id=None):
+    def send_message_get_id(
+        self,
+        chat_id,
+        text,
+        reply_to_message_id=None,
+        message_thread_id=None,
+    ):
         return 202
 
     def edit_message(self, chat_id, message_id, text):
         raise AssertionError("edit_message should not be called for signal")
 
-    def send_chat_action(self, chat_id, action="typing"):
+    def send_chat_action(self, chat_id, action="typing", message_thread_id=None):
         return None
 
 
@@ -1380,6 +1397,7 @@ class BridgeCoreTests(unittest.TestCase):
             client=client,
             chat_id=1,
             reply_to_message_id=5,
+            message_thread_id=None,
             assistant_name="Architect",
             progress_label="Говорун размышляет",
         )
@@ -1396,6 +1414,7 @@ class BridgeCoreTests(unittest.TestCase):
             client=client,
             chat_id=1,
             reply_to_message_id=5,
+            message_thread_id=None,
             assistant_name="Oracle",
         )
         reporter.progress_message_id = 202
@@ -1411,6 +1430,7 @@ class BridgeCoreTests(unittest.TestCase):
             client=client,
             chat_id=1,
             reply_to_message_id=5,
+            message_thread_id=None,
             assistant_name="Oracle",
             progress_label="Oracle is thinking",
             compact_elapsed_prefix="",
@@ -1418,6 +1438,22 @@ class BridgeCoreTests(unittest.TestCase):
         )
 
         self.assertEqual(reporter._render_progress_text(), "Oracle is thinking...")
+
+    def test_progress_reporter_passes_message_thread_id_to_progress_calls(self):
+        client = FakeProgressEditClient()
+        reporter = bridge_handlers.ProgressReporter(
+            client=client,
+            chat_id=1,
+            reply_to_message_id=5,
+            message_thread_id=77,
+            assistant_name="Sentinel",
+        )
+
+        reporter.start()
+        self.assertEqual(client.last_thread_id, 77)
+
+        reporter._send_typing()
+        self.assertEqual(client.last_thread_id, 77)
 
     def test_load_config_preserves_blank_progress_elapsed_fields(self):
         env = {

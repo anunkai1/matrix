@@ -6,9 +6,19 @@ from pathlib import Path
 from typing import Callable, Optional, Protocol
 
 try:
-    from .executor import ExecutorProgressEvent, parse_executor_output, run_executor
+    from .executor import (
+        ExecutorCancelledError,
+        ExecutorProgressEvent,
+        parse_executor_output,
+        run_executor,
+    )
 except ImportError:
-    from executor import ExecutorProgressEvent, parse_executor_output, run_executor
+    from executor import (
+        ExecutorCancelledError,
+        ExecutorProgressEvent,
+        parse_executor_output,
+        run_executor,
+    )
 
 ProgressCallback = Callable[[ExecutorProgressEvent], None]
 
@@ -182,6 +192,8 @@ class MavaliEthEngineAdapter:
                         ),
                     )
                 return fallback_result
+        except (ExecutorCancelledError, subprocess.TimeoutExpired):
+            raise
         except Exception as exc:
             output = str(exc) or "mavali_eth execution failed."
 

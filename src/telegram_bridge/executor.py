@@ -46,9 +46,9 @@ def parse_stream_json_line(raw_line: str) -> Optional[Dict[str, object]]:
 def extract_executor_progress_event(payload: Dict[str, object]) -> Optional[ExecutorProgressEvent]:
     payload_type = payload.get("type")
     if payload_type == "turn.started":
-        return ExecutorProgressEvent("turn_started", "Architect started working.")
+        return ExecutorProgressEvent("turn_started", "Assistant started working.")
     if payload_type == "turn.completed":
-        return ExecutorProgressEvent("turn_completed", "Architect finished reasoning.")
+        return ExecutorProgressEvent("turn_completed", "Assistant finished reasoning.")
 
     item = payload.get("item")
     if isinstance(item, dict):
