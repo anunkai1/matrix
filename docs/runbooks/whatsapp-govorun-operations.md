@@ -105,11 +105,11 @@
 - DM behavior: always respond
 - Prefix behavior in DM/private chats is controlled by `TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE` (set `false` for 1:1 without prefix).
 - Allow private chats that are not in `TELEGRAM_ALLOWED_CHAT_IDS`: set `TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED=true`.
-- Optional language/tone control: set `TELEGRAM_RESPONSE_STYLE_HINT` in `/etc/default/govorun-whatsapp-bridge` to pin Govorun's default reply language and tone. This is Govorun-only and does not affect the Telegram bots or other sibling runtimes.
+- Optional language/tone control: set `TELEGRAM_RESPONSE_STYLE_HINT` in `/etc/default/govorun-whatsapp-bridge` to pin Govorun's default reply language and tone. Server3 currently pins WhatsApp Govorun to Russian-only replies. This is Govorun-only and does not affect the Telegram bots or other sibling runtimes.
 - Enforcement detail: Govorun uses the shared executor/core from `/home/architect/matrix`, but the executor now changes into `/home/govorun/govorunbot` before running Codex so native `AGENTS.md` resolution comes from the Govorun runtime directory itself.
 - Policy refresh guardrail: keep `TELEGRAM_POLICY_WATCH_FILES=/home/govorun/govorunbot/AGENTS.md` so bridge session state is cleared when Govorun's policy file changes; add `TELEGRAM_POLICY_RESET_MEMORY_ON_CHANGE=true` when you also want old bridge memory wiped so stale instruction context cannot carry forward.
 - Attachment archive guardrail: the shared bridge now keeps a bounded local attachment archive under `TELEGRAM_BRIDGE_STATE_DIR` so replied-to images/files can be re-opened later; tune with `TELEGRAM_ATTACHMENT_RETENTION_SECONDS` and `TELEGRAM_ATTACHMENT_MAX_TOTAL_BYTES` when the defaults (14 days, 10 GiB) are not appropriate.
-- Optional busy-lock wording: set `TELEGRAM_BUSY_MESSAGE` (for example `Даю справку: уже занят предыдущим запросом. Скоро вернусь.`).
+- Optional busy-lock wording: set `TELEGRAM_BUSY_MESSAGE` (for example `Коротко: я ещё занят предыдущим запросом. Скоро вернусь.`).
 - Optional speed/profile override: set `ARCHITECT_EXEC_ARGS` (for example `--model gpt-5.3-codex --config model_reasoning_effort="high"`). This is applied by `executor.sh` to both new and resumed chats.
 - `/restart` path override for Govorun runtime: set `TELEGRAM_RESTART_SCRIPT=/home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh` and `TELEGRAM_RESTART_UNIT=govorun-whatsapp-bridge.service`.
 - Bare YouTube links are auto-routed into transcript-first YouTube link mode even without the summon prefix; the shared bridge uses `yt-dlp` metadata/captions first and falls back to local transcription when captions are unavailable.
@@ -117,7 +117,7 @@
 - Voice notes: require `TELEGRAM_VOICE_TRANSCRIBE_CMD`; in group chats transcript is checked against required prefix and silently ignored when prefix is missing.
 - WhatsApp group admin command exception: `/voice-alias ...` bypasses summon prefix so operators can run `list/approve/reject/add` directly.
 - Voice prefix learning: repeated near-match prefix mishears (for example `govoron` vs `govorun`) create normal `/voice-alias` suggestions for approval.
-- Low-confidence guardrail: set `TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD` (Server3 tuned to `0.35`) and short prompt `TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE="Не понял что вы промурлычили, скажите ещё раз"` for retry guidance.
+- Low-confidence guardrail: set `TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD` (Server3 tuned to `0.35`) and short prompt `TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE="Не понял что вы промурлычили, скажите ещё раз."` for retry guidance.
 - Language guardrail: set `TELEGRAM_VOICE_WHISPER_LANGUAGE=ru` for Russian trigger words/prefixes (`говорун`) so transcription does not force English transliteration.
 
 ## Plugin API mode
