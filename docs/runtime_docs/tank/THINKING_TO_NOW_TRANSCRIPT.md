@@ -365,7 +365,7 @@ Actually can you put the whole prompt in a .md file and send it to me? It's too 
 ## Assistant
 Saved. You can send this file directly:
 
-- [ARCHITECT_HANDOVER_PROMPT.md](/home/tank/tankbot/ARCHITECT_HANDOVER_PROMPT.md)
+- [ARCHITECT_HANDOVER_PROMPT.md](./ARCHITECT_HANDOVER_PROMPT.md)
 
 If you want, I can also generate a shorter “Telegram-sized” version plus a one-line instruction to tell Architect where to read this file.
 

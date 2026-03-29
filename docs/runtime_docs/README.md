@@ -9,6 +9,7 @@ Purpose:
 
 Current state:
 - AgentSmith companion docs are repo-backed from this directory
+- Diary companion docs are repo-backed from this directory
 - Tank handoff docs are repo-backed from this directory
 - Govorun runtime README is repo-backed from this directory
 - verify live symlink wiring with:

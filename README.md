@@ -1,6 +1,6 @@
 # Matrix (Server3 Operations)
 
-Source-of-truth repository for Server3 automation and operations. The current primary workload is the Telegram Architect bridge that forwards Telegram prompts to local Codex execution on Server3, alongside sibling Telegram, WhatsApp, and Signal runtimes that reuse the same bridge core.
+Source-of-truth repository for Server3 automation and operations. The current primary workload is the Telegram Architect bridge that forwards Telegram prompts to local Codex execution on Server3, alongside sibling Telegram, WhatsApp, and Signal runtimes built around the same bridge model, mostly through the shared core and in a few cases through dedicated runtime roots.
 
 ## Current Status
 

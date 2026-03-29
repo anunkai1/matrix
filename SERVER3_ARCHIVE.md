@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-29 (Summary Roll-Forward Trim for Remaining Doc Polish)
+
+Summary:
+- Added a new rolling-summary entry for the last small doc-polish pass after the main sync, covering the README shared-core wording refinement, the Diary inventory addition in `docs/runtime_docs/README.md`, and the Tank transcript link change from a host-absolute path to a repo-local path.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-27: refined Architect spawned-executor orchestration so planner failures now fail closed to the single-agent path instead of spawning fallback full-rights workers, worker/planner subprocesses refresh shared Codex auth through the same pre-exec sync hook used by the main bridge path, and the old separate orchestrator worker-timeout knob was removed so both planner and workers now derive their bound from the main executor timeout; added focused regression coverage for the new fail-closed planner behavior, auth-sync hook invocation, and config simplification.
+
 ## 2026-03-29 (Summary Roll-Forward Trim for Active Doc Sync)
 
 Summary:
