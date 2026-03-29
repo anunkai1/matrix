@@ -170,7 +170,7 @@ bash ops/browser_brain/browser_brain_ctl.sh upload --tab-id tab-1234abcd --snaps
 
 ## Out Of Scope For This MVP
 
-- Existing-session attach to a human browser profile
+- Arbitrary existing-session attachment beyond the local trusted TV-helper/CDP path
 - Arbitrary JavaScript evaluation through the public API
 - Browser actions exposed over a non-local network interface
 - Replacing the existing `Server3 TV` browser helpers

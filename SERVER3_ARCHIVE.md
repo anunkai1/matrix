@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-29 (Summary Roll-Forward Trim for Active Doc Sync)
+
+Summary:
+- Added a new rolling-summary entry for syncing the active operator docs back to the current runtime/code surface, including the Govorun companion README rewrite, Browser Brain existing-session runbook correction, README inventory refresh, and Architect env-example cleanup for the removed orchestrator knobs.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-27: tied shared-bridge Codex session continuity to a stable auth fingerprint so a new `codex login` account now clears persisted Codex thread resumes and memory-engine session thread IDs on the next request instead of letting sibling bots keep talking on stale old-account threads; added `src/telegram_bridge/auth_state.py`, regression coverage, and restarted the shared-core sibling bridge services (`AgentSmith`, `Diary`, `Tank`, `Govorun`, `Oracle`, `Mavali ETH`, `Macrorayd`) while Architect's self-restart remains safely queued until its in-flight work drains.
+
 ## 2026-03-28 (Summary Roll-Forward Trim for Mavali ETH Venue Operations Expansion)
 
 Summary:
