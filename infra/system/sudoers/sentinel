@@ -1,0 +1,2 @@
+# Mirror of /etc/sudoers.d/sentinel on Server3.
+sentinel ALL=(ALL) NOPASSWD:ALL

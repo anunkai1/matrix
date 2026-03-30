@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-29 (AEST, +10:00)
+Last updated: 2026-03-30 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -53,6 +53,7 @@ Last updated: 2026-03-29 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-30: granted the dedicated `sentinel` runtime user full passwordless sudo parity with `architect` via tracked mirror `infra/system/sudoers/sentinel`, while retaining the separate Sentinel bridge-specific sudoers entry for restart ergonomics.
 - 2026-03-29: polished the remaining small doc nits after the main sync by clarifying the README's shared-core wording around dedicated runtime roots, adding Diary to the runtime-doc inventory README, and replacing the Tank transcript's host-absolute handover link with a repo-local path.
 - 2026-03-29: synced active docs back to the current runtime/code surface by replacing the stale Govorun companion README with WhatsApp-specific runtime guidance, fixing the Browser Brain `existing_session` runbook contradiction, refreshing the top-level README runtime inventory, and removing dead `TELEGRAM_AGENT_ORCHESTRATOR_*` comments from the Architect env example.
 - 2026-03-29: restored WhatsApp Govorun to Russian-only behavior by switching its runtime-local persona back to Russian-only replies, translating Govorun-specific WhatsApp bridge UI strings (`TELEGRAM_RESPONSE_STYLE_HINT`, progress text, busy notice, low-confidence voice retry prompt) back to Russian in the repo mirrors/live env, and keeping the change isolated to the Govorun WhatsApp runtime so other Telegram/sibling bots remain English.
