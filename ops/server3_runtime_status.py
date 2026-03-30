@@ -204,10 +204,18 @@ def evaluate_unit(spec: UnitSpec, status: UnitStatus) -> UnitStatus:
         issues.append(
             f"expected {spec.expected_state}, got {compact_state(status.active_state, status.sub_state)}"
         )
+    expected_substate = spec.expected_substate
+    if (
+        spec.kind == "timer"
+        and expected_substate == "waiting"
+        and status.active_state == "active"
+        and status.sub_state == "running"
+    ):
+        expected_substate = "running"
     if (
         status.available
-        and spec.expected_substate
-        and status.sub_state != spec.expected_substate
+        and expected_substate
+        and status.sub_state != expected_substate
     ):
         issues.append(f"expected substate {spec.expected_substate}, got {status.sub_state}")
     return UnitStatus(

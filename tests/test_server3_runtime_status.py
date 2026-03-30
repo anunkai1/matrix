@@ -110,6 +110,42 @@ class Server3RuntimeStatusTests(unittest.TestCase):
         self.assertFalse(evaluated.matches_expected)
         self.assertEqual(evaluated.units[0].issues, ["expected active, got inactive"])
 
+    def test_evaluate_runtime_accepts_active_running_timer_when_waiting_expected(self) -> None:
+        runtime = server3_runtime_status.RuntimeSpec(
+            name="Mavali ETH",
+            category="secondary",
+            purpose="Receipt monitor timer",
+            expected_default_state="active",
+            dependencies=[],
+            owner_user="mavali_eth",
+            notes=[],
+            units=[
+                server3_runtime_status.UnitSpec(
+                    name="mavali-eth-receipt-monitor.timer",
+                    kind="timer",
+                    expected_state="active",
+                    expected_substate="waiting",
+                )
+            ],
+        )
+        statuses = {
+            "mavali-eth-receipt-monitor.timer": server3_runtime_status.UnitStatus(
+                name="mavali-eth-receipt-monitor.timer",
+                load_state="loaded",
+                active_state="active",
+                sub_state="running",
+                unit_file_state="enabled",
+                available=True,
+                matches_expected=False,
+                issues=[],
+            )
+        }
+
+        evaluated = server3_runtime_status.evaluate_runtime(runtime, statuses)
+
+        self.assertTrue(evaluated.matches_expected)
+        self.assertEqual(evaluated.live_state, "active")
+
 
 if __name__ == "__main__":
     unittest.main()
