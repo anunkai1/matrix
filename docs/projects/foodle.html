@@ -214,6 +214,9 @@
     }
 
     .tracker {
+      display: grid;
+      grid-template-rows: auto auto auto;
+      align-content: start;
       padding: 14px;
       border-radius: 22px;
       border: 1px solid var(--line);
@@ -229,6 +232,7 @@
       justify-content: space-between;
       gap: 16px;
       align-items: flex-start;
+      min-height: 118px;
       margin-bottom: 14px;
     }
 
@@ -690,9 +694,9 @@
 
       <aside class="today-panel">
         <section class="panel date-box">
-          <div class="date-label">Today</div>
+          <div class="date-label">Logging day</div>
           <div class="date-value" id="todayLabel"></div>
-          <p class="tiny">If a friend opens this page, they get their own private streaks in their own browser.</p>
+          <p class="tiny">This page is set up for end-of-day check-ins, so the buttons update yesterday's date. If a friend opens it, they get their own private streaks in their own browser.</p>
         </section>
 
         <section class="share-card">
@@ -765,6 +769,13 @@
     function dateFromKey(key) {
       const [year, month, day] = key.split("-").map(Number);
       return new Date(year, month - 1, day);
+    }
+
+    function logDate() {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - 1);
+      return date;
     }
 
     function loadData() {
@@ -895,6 +906,8 @@
       const weeks = currentCalendarWeeks();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      const activeDate = logDate();
+      const activeKey = keyForDate(activeDate);
 
       const currentWeekStart = new Date(today);
       currentWeekStart.setDate(today.getDate() - today.getDay());
@@ -921,7 +934,7 @@
           cells.push({
             weekIndex,
             dayIndex,
-            isToday: key === keyForDate(today),
+            isToday: key === activeKey,
             title: [
               formatDate(date),
               ...trackers.map((tracker) => {
@@ -974,11 +987,9 @@
 
     function update() {
       const data = loadData();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayKey = keyForDate(today);
+      const targetDate = logDate();
 
-      document.getElementById("todayLabel").textContent = formatDate(today);
+      document.getElementById("todayLabel").textContent = formatDate(targetDate);
       document.getElementById("sharePreview").textContent = shareText(data);
 
       document.getElementById("heroSugar").textContent = bestStreakFor(data, "sugar");
@@ -1050,12 +1061,12 @@
       list.innerHTML = "";
 
       for (const tracker of trackers) {
-        const status = readStatus(data, today, tracker.id);
+        const status = readStatus(data, targetDate, tracker.id);
         const isScheduled = tracker.mode === "scheduled";
         const primaryValue = isScheduled ? successCountFor(data, tracker.id) : streakFor(data, tracker.id);
         const primaryLabel = isScheduled ? "fasting days" : "current streak";
-        const actionGoodText = isScheduled ? "Completed fast today" : "Stayed clean today";
-        const actionBadText = isScheduled ? "Did not fast today" : "Had some today";
+        const actionGoodText = isScheduled ? "Completed fast yesterday" : "Stayed clean yesterday";
+        const actionBadText = isScheduled ? "Did not fast yesterday" : "Had some yesterday";
         const secondaryText = isScheduled
           ? `Last fast: ${lastSuccessDateFor(data, tracker.id)}`
           : `Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}`;
@@ -1079,7 +1090,7 @@
             <button class="decision clear" type="button" data-action="clear" data-id="${tracker.id}">Clear</button>
           </div>
           <div class="tracker-foot">
-            <span>${status === true ? (isScheduled ? "Today: fasting completed" : "Today: success") : status === false ? (isScheduled ? "Today: fasting skipped" : "Today: streak broken") : "Today: not logged yet"}</span>
+            <span>${status === true ? (isScheduled ? "Yesterday: fasting completed" : "Yesterday: success") : status === false ? (isScheduled ? "Yesterday: fasting skipped" : "Yesterday: streak broken") : "Yesterday: not logged yet"}</span>
             <span>${secondaryText}</span>
           </div>
         `;
@@ -1094,10 +1105,9 @@
       }
 
       const data = loadData();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayKey = keyForDate(today);
-      const legacyTodayKey = legacyKeyForDate(today);
+      const targetDate = logDate();
+      const todayKey = keyForDate(targetDate);
+      const legacyTodayKey = legacyKeyForDate(targetDate);
       data.days[todayKey] = data.days[todayKey] || {};
 
       const trackerId = button.dataset.id;
