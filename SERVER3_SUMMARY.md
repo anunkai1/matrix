@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-03-30 (AEST, +10:00)
+Last updated: 2026-03-31 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -53,6 +53,7 @@ Last updated: 2026-03-30 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-03-31: added a standalone static `docs/projects/streakdle.html` page for simple browser-local sugar/carbs/dairy streak tracking with one-tap daily logging, seven-day visual history, longest-streak summaries, and mobile-friendly share-sheet/clipboard sharing for Wordle-style progress updates.
 - 2026-03-30: hardened `ops/server3_runtime_status.py` so healthy systemd timers that report `active/running` instead of `active/waiting` no longer produce false runtime warnings; live status now clears the spurious `Mavali ETH` receipt-monitor alert and leaves only genuine deviations such as the currently active optional UI layer.
 - 2026-03-30: granted the dedicated `sentinel` runtime user full passwordless sudo parity with `architect` via tracked mirror `infra/system/sudoers/sentinel`, while retaining the separate Sentinel bridge-specific sudoers entry for restart ergonomics.
 - 2026-03-29: polished the remaining small doc nits after the main sync by clarifying the README's shared-core wording around dedicated runtime roots, adding Diary to the runtime-doc inventory README, and replacing the Tank transcript's host-absolute handover link with a repo-local path.
@@ -61,7 +62,6 @@ Last updated: 2026-03-30 (AEST, +10:00)
 - 2026-03-28: expanded `Mavali ETH` into a venue-operations runtime by landing the generic venue-bootstrap substrate, persisted bootstrap run/credential state, modular prompt routing, richer owner-bound Aster and Hyperliquid command parsing/execution paths, the bridge-side guard that blocks Codex fallback from advertising `confirm` when no real `mavali_eth` pending action exists, focused regression coverage for the new service/store/bridge paths, and updated operator docs/spec coverage for the live Mavali ETH current-state/bootstrap surface.
 - 2026-03-28: applied the post-orchestrator elegance cleanup by removing the now-unused `parse_capped_int_env` helper from `src/telegram_bridge/runtime_config.py` and splitting `process_prompt` in `src/telegram_bridge/handlers.py` into smaller internal phases for memory-turn setup, affective-turn setup, and request-start logging without changing behavior; focused bridge regression coverage remains green (`python3 -m unittest tests/telegram_bridge/test_bridge_core.py tests/telegram_bridge/test_runtime_config.py tests/telegram_bridge/test_affective_runtime.py tests/telegram_bridge/test_diary_bridge_flow.py`).
 - 2026-03-27: removed the shared-bridge worker-split orchestrator entirely after live latency evidence showed the planner/worker subprocess fan-out was too expensive for interactive use; Architect now always goes straight to the main executor path, the `TELEGRAM_AGENT_ORCHESTRATOR_*` config surface and related docs/env examples are gone, the standalone orchestrator helper scripts/module were deleted, and the focused bridge regression suite stays green (`python3 -m unittest tests/telegram_bridge/test_bridge_core.py tests/telegram_bridge/test_runtime_config.py tests/telegram_bridge/test_affective_runtime.py tests/telegram_bridge/test_diary_bridge_flow.py`).
-- 2026-03-27: cleaned up shared-bridge scope-key compatibility after the conversational-bypass follow-up by normalizing canonical session persistence and worker/session helper boundaries to the string scope model, restoring backward-compatible defaults on bridge helper entry points, fixing non-Telegram memory conversation-key resolution from wrapped Telegram scopes, and updating the focused bridge regression suite back to green (`python3 -m unittest tests/telegram_bridge/test_bridge_core.py tests/telegram_bridge/test_runtime_config.py`).
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.

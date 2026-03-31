@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streakdle</title>
+  <style>
+    :root {
+      --bg: #f4efe4;
+      --paper: rgba(255, 251, 244, 0.92);
+      --panel: rgba(255, 246, 232, 0.96);
+      --ink: #1f1b16;
+      --muted: #716657;
+      --line: rgba(63, 50, 33, 0.13);
+      --sugar: #ea6d5a;
+      --carbs: #d19a29;
+      --dairy: #4d8dc7;
+      --ok: #2f8f5b;
+      --bad: #c64545;
+      --shadow: 0 20px 60px rgba(70, 44, 11, 0.12);
+      --radius: 24px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(234, 109, 90, 0.22), transparent 28%),
+        radial-gradient(circle at top right, rgba(77, 141, 199, 0.18), transparent 24%),
+        linear-gradient(180deg, #f8f2e8 0%, var(--bg) 100%);
+    }
+
+    .wrap {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 32px;
+      box-shadow: var(--shadow);
+      padding: 32px;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -100px auto;
+      width: 260px;
+      height: 260px;
+      background: radial-gradient(circle, rgba(209, 154, 41, 0.18), transparent 70%);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(31, 27, 22, 0.05);
+      color: var(--muted);
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 16px 0 12px;
+      font-size: clamp(2.4rem, 6vw, 4.7rem);
+      line-height: 0.95;
+      letter-spacing: -0.05em;
+    }
+
+    .lead {
+      max-width: 640px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.6;
+    }
+
+    .hero-grid {
+      display: grid;
+      gap: 18px;
+      margin-top: 24px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .mini-stat {
+      padding: 18px;
+      border-radius: 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+
+    .mini-label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-bottom: 8px;
+    }
+
+    .mini-value {
+      font-size: clamp(1.9rem, 4vw, 2.8rem);
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.3fr 0.9fr;
+      gap: 22px;
+      margin-top: 22px;
+    }
+
+    .panel {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+
+    .section-title {
+      margin: 0 0 8px;
+      font-size: 1.35rem;
+    }
+
+    .section-copy {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .tracker-list {
+      display: grid;
+      gap: 16px;
+    }
+
+    .tracker {
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(255,255,255,0.18));
+    }
+
+    .tracker-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+
+    .tracker-title {
+      margin: 0;
+      font-size: 1.15rem;
+    }
+
+    .tracker-copy {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .badge {
+      min-width: 92px;
+      padding: 10px 12px;
+      border-radius: 18px;
+      text-align: center;
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.95rem;
+    }
+
+    .badge small {
+      display: block;
+      font-size: 0.72rem;
+      opacity: 0.85;
+      margin-top: 2px;
+      font-weight: 600;
+    }
+
+    .sugar { background: var(--sugar); }
+    .carbs { background: var(--carbs); }
+    .dairy { background: var(--dairy); }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      cursor: pointer;
+      border-radius: 16px;
+      font: inherit;
+      transition: transform 140ms ease, opacity 140ms ease, box-shadow 140ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .decision {
+      flex: 1 1 180px;
+      min-height: 54px;
+      padding: 14px 16px;
+      color: #fff;
+      font-weight: 700;
+      box-shadow: inset 0 -3px 0 rgba(0,0,0,0.08);
+    }
+
+    .decision.good { background: var(--ok); }
+    .decision.bad { background: var(--bad); }
+    .decision.clear {
+      background: rgba(31, 27, 22, 0.08);
+      color: var(--ink);
+      box-shadow: none;
+      font-weight: 600;
+    }
+
+    .tracker-foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .week-strip {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .day-cell {
+      border-radius: 16px;
+      padding: 10px 6px;
+      text-align: center;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.4);
+    }
+
+    .day-cell .dow {
+      display: block;
+      color: var(--muted);
+      font-size: 0.75rem;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+
+    .day-cell .mark {
+      display: inline-flex;
+      width: 24px;
+      height: 24px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    .mark.good { background: var(--ok); }
+    .mark.bad { background: var(--bad); }
+    .mark.empty {
+      background: rgba(31, 27, 22, 0.08);
+      color: var(--muted);
+    }
+
+    .today-panel {
+      display: grid;
+      gap: 16px;
+    }
+
+    .date-box {
+      padding: 18px;
+      border-radius: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+
+    .date-label {
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .date-value {
+      margin-top: 8px;
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+
+    .share-card {
+      padding: 18px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(31, 27, 22, 0.96), rgba(58, 44, 31, 0.92));
+      color: #fff7ed;
+    }
+
+    .share-card p {
+      margin: 8px 0 14px;
+      color: rgba(255, 247, 237, 0.78);
+      line-height: 1.5;
+    }
+
+    .share-button {
+      width: 100%;
+      padding: 14px 16px;
+      background: linear-gradient(135deg, #f0bb5d, #ea6d5a);
+      color: #24170c;
+      font-weight: 800;
+    }
+
+    .share-preview {
+      white-space: pre-wrap;
+      font-size: 0.95rem;
+      line-height: 1.55;
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .tiny {
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    .status {
+      min-height: 1.3em;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 860px) {
+      .hero-grid,
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .tracker-head,
+      .tracker-foot {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <span class="eyebrow">Simple daily streak tracker</span>
+      <h1>Streakdle</h1>
+      <p class="lead">
+        Tap once at the end of each day. Keep separate streaks for sugar, carbs, and dairy.
+        Your data stays in your browser, and the share button turns your streaks into a clean message you can send to friends.
+      </p>
+      <div class="hero-grid">
+        <article class="mini-stat">
+          <span class="mini-label">Longest sugar streak</span>
+          <strong class="mini-value" id="heroSugar">0</strong>
+        </article>
+        <article class="mini-stat">
+          <span class="mini-label">Longest carb streak</span>
+          <strong class="mini-value" id="heroCarbs">0</strong>
+        </article>
+        <article class="mini-stat">
+          <span class="mini-label">Longest dairy streak</span>
+          <strong class="mini-value" id="heroDairy">0</strong>
+        </article>
+      </div>
+    </section>
+
+    <section class="layout">
+      <section class="panel">
+        <h2 class="section-title">Log today</h2>
+        <p class="section-copy">
+          Choose one result for today for each category. That is enough to keep the streak going.
+        </p>
+        <div class="tracker-list" id="trackerList"></div>
+      </section>
+
+      <aside class="today-panel">
+        <section class="panel date-box">
+          <div class="date-label">Today</div>
+          <div class="date-value" id="todayLabel"></div>
+          <p class="tiny">If a friend opens this page, they get their own private streaks in their own browser.</p>
+        </section>
+
+        <section class="share-card">
+          <strong>Share your streaks</strong>
+          <p>Works with the browser share sheet on mobile and copies the text if sharing is not available.</p>
+          <button class="share-button" id="shareButton" type="button">Share progress</button>
+          <div class="status" id="shareStatus"></div>
+          <div class="share-preview" id="sharePreview"></div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "streakdle-v1";
+    const trackers = [
+      {
+        id: "sugar",
+        label: "Sugar-free",
+        accent: "sugar",
+        copy: "No sweets, desserts, sugary drinks, or added sugar today."
+      },
+      {
+        id: "carbs",
+        label: "Carb-light",
+        accent: "carbs",
+        copy: "No bread, pasta, rice, or other carb-heavy meals today."
+      },
+      {
+        id: "dairy",
+        label: "Dairy-free",
+        accent: "dairy",
+        copy: "No milk, cheese, yogurt, cream, or dairy-based foods today."
+      }
+    ];
+
+    function formatDate(date) {
+      return date.toLocaleDateString("en-AU", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric"
+      });
+    }
+
+    function keyForDate(date) {
+      return date.toISOString().slice(0, 10);
+    }
+
+    function dateFromKey(key) {
+      const [year, month, day] = key.split("-").map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    function loadData() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { days: {} };
+      } catch {
+        return { days: {} };
+      }
+    }
+
+    function saveData(data) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function streakFor(data, trackerId) {
+      const cursor = new Date();
+      cursor.setHours(0, 0, 0, 0);
+      const todayStatus = data.days[keyForDate(cursor)]?.[trackerId];
+
+      if (todayStatus === undefined) {
+        cursor.setDate(cursor.getDate() - 1);
+      }
+
+      let streak = 0;
+      while (true) {
+        const key = keyForDate(cursor);
+        const status = data.days[key]?.[trackerId];
+        if (status !== true) {
+          break;
+        }
+        streak += 1;
+        cursor.setDate(cursor.getDate() - 1);
+      }
+
+      return streak;
+    }
+
+    function bestStreakFor(data, trackerId) {
+      const keys = Object.keys(data.days).sort();
+      if (keys.length === 0) {
+        return 0;
+      }
+
+      let best = 0;
+      let current = 0;
+      const cursor = dateFromKey(keys[0]);
+      cursor.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      while (cursor <= today) {
+        const key = keyForDate(cursor);
+        const status = data.days[key]?.[trackerId];
+        if (status === true) {
+          current += 1;
+          best = Math.max(best, current);
+        } else {
+          current = 0;
+        }
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      return best;
+    }
+
+    function historyFor(data, trackerId) {
+      const days = [];
+      const cursor = new Date();
+      cursor.setHours(0, 0, 0, 0);
+
+      for (let index = 0; index < 7; index += 1) {
+        const date = new Date(cursor);
+        date.setDate(cursor.getDate() - (6 - index));
+        const key = keyForDate(date);
+        days.push({
+          label: date.toLocaleDateString("en-AU", { weekday: "short" }),
+          status: data.days[key]?.[trackerId]
+        });
+      }
+      return days;
+    }
+
+    function shareText(data) {
+      const lines = [
+        "My Streakdle update",
+        ""
+      ];
+
+      for (const tracker of trackers) {
+        const streak = streakFor(data, tracker.id);
+        const best = bestStreakFor(data, tracker.id);
+        lines.push(`${tracker.label}: ${streak} day${streak === 1 ? "" : "s"} current, ${best} best`);
+      }
+
+      lines.push("");
+      lines.push("Logged today in Streakdle.");
+      return lines.join("\n");
+    }
+
+    function setStatus(text) {
+      document.getElementById("shareStatus").textContent = text;
+    }
+
+    function update() {
+      const data = loadData();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayKey = keyForDate(today);
+
+      document.getElementById("todayLabel").textContent = formatDate(today);
+      document.getElementById("sharePreview").textContent = shareText(data);
+
+      document.getElementById("heroSugar").textContent = bestStreakFor(data, "sugar");
+      document.getElementById("heroCarbs").textContent = bestStreakFor(data, "carbs");
+      document.getElementById("heroDairy").textContent = bestStreakFor(data, "dairy");
+
+      const list = document.getElementById("trackerList");
+      list.innerHTML = "";
+
+      for (const tracker of trackers) {
+        const status = data.days[todayKey]?.[tracker.id];
+        const streak = streakFor(data, tracker.id);
+        const history = historyFor(data, tracker.id);
+
+        const card = document.createElement("article");
+        card.className = "tracker";
+        card.innerHTML = `
+          <div class="tracker-head">
+            <div>
+              <h3 class="tracker-title">${tracker.label}</h3>
+              <p class="tracker-copy">${tracker.copy}</p>
+            </div>
+            <div class="badge ${tracker.accent}">
+              ${streak} days
+              <small>current streak</small>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="decision good" type="button" data-action="true" data-id="${tracker.id}">Stayed clean today</button>
+            <button class="decision bad" type="button" data-action="false" data-id="${tracker.id}">Had some today</button>
+            <button class="decision clear" type="button" data-action="clear" data-id="${tracker.id}">Clear</button>
+          </div>
+          <div class="tracker-foot">
+            <span>${status === true ? "Today: success" : status === false ? "Today: streak broken" : "Today: not logged yet"}</span>
+            <span>Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}</span>
+          </div>
+          <div class="week-strip">
+            ${history.map((day) => `
+              <div class="day-cell">
+                <span class="dow">${day.label}</span>
+                <span class="mark ${day.status === true ? "good" : day.status === false ? "bad" : "empty"}">
+                  ${day.status === true ? "✓" : day.status === false ? "×" : "·"}
+                </span>
+              </div>
+            `).join("")}
+          </div>
+        `;
+        list.appendChild(card);
+      }
+    }
+
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button) {
+        return;
+      }
+
+      const data = loadData();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayKey = keyForDate(today);
+      data.days[todayKey] = data.days[todayKey] || {};
+
+      const trackerId = button.dataset.id;
+      const action = button.dataset.action;
+
+      if (action === "clear") {
+        delete data.days[todayKey][trackerId];
+      } else {
+        data.days[todayKey][trackerId] = action === "true";
+      }
+
+      saveData(data);
+      setStatus("Saved.");
+      update();
+    });
+
+    document.getElementById("shareButton").addEventListener("click", async () => {
+      const text = shareText(loadData());
+
+      try {
+        if (navigator.share) {
+          await navigator.share({
+            title: "My Streakdle update",
+            text
+          });
+          setStatus("Shared.");
+          return;
+        }
+
+        await navigator.clipboard.writeText(text);
+        setStatus("Copied to clipboard.");
+      } catch (error) {
+        setStatus("Share cancelled or unavailable.");
+      }
+    });
+
+    update();
+  </script>
+</body>
+</html>
