@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-31T22:37:54.855308+10:00",
+  "generatedAt": "2026-03-31T23:48:22.735188+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
@@ -9,10 +9,10 @@
     "approvalCopy": "explicit human gates from live Server3 state",
     "jobValue": "5 tracked",
     "jobCopy": "timers, approvals, and continuity work in one surface",
-    "hostValue": "load 7.97 / ram 48%",
+    "hostValue": "load 3.59 / ram 51%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "31 Mar 2026 22:37 AEST",
+      "31 Mar 2026 23:48 AEST",
       "snapshot file server3-control-plane-data.js",
       "1 approval item(s)"
     ],
@@ -82,7 +82,7 @@
   },
   "activity": [
     {
-      "time": "22:37:55",
+      "time": "23:48:23",
       "title": "Optional UI layer is active",
       "channel": "host",
       "statusClass": "danger",
@@ -90,7 +90,7 @@
       "copy": "expected inactive, got active"
     },
     {
-      "time": "22:37:55",
+      "time": "23:48:23",
       "title": "UI layer is active outside its default posture",
       "channel": "approval",
       "statusClass": "danger",
@@ -98,12 +98,12 @@
       "copy": "expected inactive, got active"
     },
     {
-      "time": "22:37:40",
+      "time": "23:48:20",
       "title": "Oracle recent service activity",
       "channel": "signal runtime",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "2026-03-31 22:37:40,497 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
+      "copy": "2026-03-31 23:48:20,266 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
     },
     {
       "time": "21:15:04",
@@ -119,7 +119,7 @@
       "channel": "browser control surface",
       "statusClass": "busy",
       "statusText": "attached",
-      "copy": "snapshot | server3-browser-brain"
+      "copy": "(1) Lydia Hallie ✨ on X: \"We're aware people are hitting usage limits in Claude C... | x session live; manual login tab open"
     },
     {
       "time": "20:02:14",
@@ -169,7 +169,7 @@
       "title": "Receipt monitor",
       "tagClass": "busy",
       "tagText": "not scheduled",
-      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 31 Mar 22:21."
+      "body": "mavali-eth-receipt-monitor.timer is active. Last trigger: 31 Mar 23:21."
     }
   ],
   "floor": [
@@ -185,7 +185,7 @@
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 7.97 / ram 48%",
+      "value": "load 3.59 / ram 51%",
       "body": "primary route nordlynx / 10.5.0.2",
       "statusLine": "host: server3"
     },
@@ -274,7 +274,8 @@
       ],
       "unitNames": [
         "telegram-architect-bridge.service"
-      ]
+      ],
+      "browserLane": null
     },
     {
       "key": "tank",
@@ -343,7 +344,8 @@
       ],
       "unitNames": [
         "telegram-tank-bridge.service"
-      ]
+      ],
+      "browserLane": null
     },
     {
       "key": "diary",
@@ -412,7 +414,8 @@
       ],
       "unitNames": [
         "telegram-diary-bridge.service"
-      ]
+      ],
+      "browserLane": null
     },
     {
       "key": "govorun",
@@ -486,7 +489,8 @@
       "unitNames": [
         "whatsapp-govorun-bridge.service",
         "govorun-whatsapp-bridge.service"
-      ]
+      ],
+      "browserLane": null
     },
     {
       "key": "oracle",
@@ -522,7 +526,7 @@
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "22:37:40 2026-03-31 22:37:40,497 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
+          "value": "23:48:20 2026-03-31 23:48:20,266 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
         },
         {
           "label": "oracle-signal-bridge.service",
@@ -560,7 +564,8 @@
       "unitNames": [
         "signal-oracle-bridge.service",
         "oracle-signal-bridge.service"
-      ]
+      ],
+      "browserLane": null
     },
     {
       "key": "mavali",
@@ -590,7 +595,7 @@
         },
         {
           "label": "live state",
-          "value": "mixed"
+          "value": "active"
         }
       ],
       "recentJobs": [
@@ -630,7 +635,8 @@
       "unitNames": [
         "telegram-mavali-eth-bridge.service",
         "mavali-eth-receipt-monitor.timer"
-      ]
+      ],
+      "browserLane": null
     },
     {
       "key": "browser",
@@ -641,7 +647,7 @@
       "operatorNote": "existing-session browser runtime",
       "summary": "Dedicated local browser-control service for structured automation against a managed Brave profile.",
       "actions": [
-        "restart runtime",
+        "show browser lane",
         "show recent logs",
         "refresh snapshot"
       ],
@@ -665,8 +671,16 @@
       ],
       "recentJobs": [
         {
-          "label": "server3-browser-brain.service",
-          "value": "20:31:04 snapshot | server3-browser-brain"
+          "label": "20:31:04 snapshot",
+          "value": "261 elements | snap-cbe972f8"
+        },
+        {
+          "label": "20:31:04 snapshot",
+          "value": "235 elements | snap-adee1db6"
+        },
+        {
+          "label": "20:31:03 snapshot",
+          "value": "168 elements | snap-593918bc"
         }
       ],
       "watchouts": [
@@ -699,7 +713,89 @@
       ],
       "unitNames": [
         "server3-browser-brain.service"
-      ]
+      ],
+      "browserLane": {
+        "state": [
+          {
+            "label": "connection",
+            "value": "existing_session / running"
+          },
+          {
+            "label": "auth posture",
+            "value": "x session live; manual login tab open"
+          },
+          {
+            "label": "manual takeover",
+            "value": "server3 (1) Evan Luthra on X: \"POV: Sam Altman refreshing Anthropic’s X account e..."
+          },
+          {
+            "label": "tab footprint",
+            "value": "14 live tabs / x.com x11, example.com x1"
+          }
+        ],
+        "targets": [
+          {
+            "label": "current target",
+            "value": "(1) Lydia Hallie ✨ on X: \"We're aware people are hitting usage limits in Claude C..."
+          },
+          {
+            "label": "tab-e9e43e68",
+            "value": "(1) QuarkQ (@QuarkQ143033) / X"
+          },
+          {
+            "label": "tab-5a0f810f",
+            "value": "(1) Elon Musk on X: \"Cool, well Grok will get even better every week!\" / X"
+          },
+          {
+            "label": "tab-adc826c0",
+            "value": "(1) QuarkQ (@QuarkQ143033) / X"
+          },
+          {
+            "label": "tab-80ad9b7d",
+            "value": "(1) Explore / X"
+          }
+        ],
+        "captures": [
+          {
+            "label": "20260322T114237Z-smo_vz_status_viewport.png",
+            "value": "22 Mar 21:42 / 308 KiB"
+          },
+          {
+            "label": "20260322T114217Z-smo_vz_status.png",
+            "value": "22 Mar 21:42 / 1873 KiB"
+          },
+          {
+            "label": "20260322T084947Z-compose-tab.png",
+            "value": "22 Mar 18:49 / 1098 KiB"
+          }
+        ],
+        "activity": [
+          {
+            "label": "20:31:04 snapshot",
+            "value": "261 elements | snap-cbe972f8"
+          },
+          {
+            "label": "20:31:04 snapshot",
+            "value": "235 elements | snap-adee1db6"
+          },
+          {
+            "label": "20:31:03 snapshot",
+            "value": "168 elements | snap-593918bc"
+          },
+          {
+            "label": "20:31:03 snapshot",
+            "value": "138 elements | snap-c5ede80c"
+          }
+        ],
+        "summary": {
+          "current_target": "(1) Lydia Hallie ✨ on X: \"We're aware people are hitting usage limits in Claude C...",
+          "tab_count": 14,
+          "auth_posture": "x session live; manual login tab open",
+          "manual_takeover": "visible tv helper open",
+          "capture_dir": "/var/lib/server3-browser-brain/captures",
+          "started_at": "2026-03-22T08:48:16.273908+00:00"
+        }
+      }
     }
   ]
 }

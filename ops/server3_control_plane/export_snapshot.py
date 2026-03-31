@@ -11,10 +11,12 @@ import shutil
 import socket
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 
@@ -303,6 +305,180 @@ else:
     return json.loads(value)
 
 
+def browser_brain_status() -> Optional[Dict[str, Any]]:
+    result = run_capture(["python3", str(ROOT / "ops" / "browser_brain" / "browser_brain_ctl.py"), "status"])
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def browser_brain_recent_events(limit: int = 8) -> List[Dict[str, str]]:
+    result = run_capture(["journalctl", "-u", "server3-browser-brain.service", "-n", "60", "--output=json", "--no-pager", "-q"])
+    rows = [row.strip() for row in result.stdout.splitlines() if row.strip()]
+    events: List[Dict[str, str]] = []
+    for row in reversed(rows):
+        try:
+            payload = json.loads(row)
+        except json.JSONDecodeError:
+            continue
+        message = payload.get("MESSAGE")
+        if not isinstance(message, str) or not message.startswith("{"):
+            continue
+        try:
+            data = json.loads(message)
+        except json.JSONDecodeError:
+            continue
+        action = str(data.get("action") or "").strip()
+        timestamp = parse_iso_datetime(str(data.get("ts") or ""))
+        if not action:
+            continue
+        detail_parts: List[str] = []
+        if data.get("url"):
+            detail_parts.append(compact_url(str(data["url"])))
+        if data.get("value"):
+            detail_parts.append(str(data["value"]))
+        if data.get("elements"):
+            detail_parts.append(f"{data['elements']} elements")
+        if data.get("snapshot_id"):
+            detail_parts.append(str(data["snapshot_id"]))
+        events.append(
+            {
+                "time": format_clock(timestamp),
+                "action": action,
+                "tab_id": str(data.get("tab_id") or ""),
+                "detail": " | ".join(detail_parts) or "browser event",
+            }
+        )
+        if len(events) >= limit:
+            break
+    return events
+
+
+def compact_url(url: str) -> str:
+    if not url:
+        return "unknown"
+    if url.startswith("data:"):
+        return "session tab"
+    parsed = urlparse(url)
+    host = parsed.netloc or url
+    path = parsed.path.rstrip("/")
+    if not path:
+        return host
+    short_path = path if len(path) <= 36 else path[:33] + "..."
+    return f"{host}{short_path}"
+
+
+def compact_title(title: str, *, max_chars: int = 72) -> str:
+    text = " ".join((title or "").split())
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
+
+
+def browser_tv_window() -> Optional[str]:
+    command = [
+        "sudo",
+        "-n",
+        "-u",
+        "tv",
+        "bash",
+        "-lc",
+        "export DISPLAY=:0 XAUTHORITY=/home/tv/.Xauthority; wmctrl -lx | grep -i 'server3-browser-brain-brave-profile' || true",
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    line = next((row.strip() for row in result.stdout.splitlines() if row.strip()), "")
+    if not line:
+        return None
+    return line.split(None, 4)[-1] if len(line.split(None, 4)) >= 5 else line
+
+
+def browser_capture_rows(limit: int = 3) -> List[Tuple[str, str]]:
+    capture_dir = Path("/var/lib/server3-browser-brain/captures")
+    if not capture_dir.exists():
+        return [("captures", "capture directory missing")]
+    files = sorted(capture_dir.glob("*"), key=lambda path: path.stat().st_mtime, reverse=True)
+    rows: List[Tuple[str, str]] = []
+    for capture in files[:limit]:
+        stamp = datetime.fromtimestamp(capture.stat().st_mtime, tz=ZoneInfo(DEFAULT_TZ))
+        size_kib = round(capture.stat().st_size / 1024)
+        rows.append((capture.name, f"{stamp.strftime('%d %b %H:%M')} / {size_kib} KiB"))
+    if not rows:
+        rows.append(("captures", "no retained captures"))
+    return rows
+
+
+def browser_auth_posture(tabs: List[Dict[str, Any]]) -> str:
+    urls = [str(tab.get("url") or "") for tab in tabs]
+    titles = [str(tab.get("title") or "") for tab in tabs]
+    notes: List[str] = []
+    if any(url.startswith("https://x.com/home") for url in urls):
+        notes.append("x session live")
+    if any("sign-in" in title.lower() or "login" in title.lower() for title in titles):
+        notes.append("manual login tab open")
+    if not notes:
+        notes.append("no explicit auth cue")
+    return "; ".join(notes[:2])
+
+
+def browser_current_target(status_payload: Optional[Dict[str, Any]], recent_events: List[Dict[str, str]]) -> str:
+    tabs = {str(tab.get("tab_id") or ""): tab for tab in (status_payload or {}).get("tabs", [])}
+    for event in recent_events:
+        tab = tabs.get(event["tab_id"])
+        if tab:
+            return compact_title(str(tab.get("title") or compact_url(str(tab.get("url") or ""))), max_chars=84)
+    if tabs:
+        first = next(iter(tabs.values()))
+        return compact_title(str(first.get("title") or compact_url(str(first.get("url") or ""))), max_chars=84)
+    return "no live browser target"
+
+
+def browser_domain_mix(tabs: List[Dict[str, Any]]) -> str:
+    hosts = [urlparse(str(tab.get("url") or "")).netloc for tab in tabs if str(tab.get("url") or "").startswith("http")]
+    if not hosts:
+        return "no http tabs"
+    top = Counter(hosts).most_common(2)
+    return ", ".join(f"{host} x{count}" for host, count in top)
+
+
+def build_browser_lane() -> Dict[str, object]:
+    status_payload = browser_brain_status() or {}
+    tabs = list(status_payload.get("tabs") or [])
+    recent_events = browser_brain_recent_events()
+    tv_window = browser_tv_window()
+    current_target = browser_current_target(status_payload, recent_events)
+    targets: List[Tuple[str, str]] = [("current target", current_target)]
+    for tab in tabs[:4]:
+        targets.append((str(tab.get("tab_id") or "tab"), compact_title(str(tab.get("title") or compact_url(str(tab.get("url") or ""))), max_chars=84)))
+    activity_rows: List[Tuple[str, str]] = []
+    for event in recent_events[:4]:
+        activity_rows.append((f"{event['time']} {event['action']}", event["detail"]))
+    if not activity_rows:
+        activity_rows.append(("recent activity", "no browser events surfaced"))
+    return {
+        "state": [
+            {"label": "connection", "value": f"{status_payload.get('connection_mode', 'unknown')} / {'running' if status_payload.get('running') else 'stopped'}"},
+            {"label": "auth posture", "value": browser_auth_posture(tabs)},
+            {"label": "manual takeover", "value": compact_title(tv_window or "tv helper not visible", max_chars=84)},
+            {"label": "tab footprint", "value": f"{len(tabs)} live tabs / {browser_domain_mix(tabs)}"},
+        ],
+        "targets": [{"label": label, "value": value} for label, value in targets[:5]],
+        "captures": [{"label": label, "value": value} for label, value in browser_capture_rows()],
+        "activity": [{"label": label, "value": value} for label, value in activity_rows],
+        "summary": {
+            "current_target": current_target,
+            "tab_count": len(tabs),
+            "auth_posture": browser_auth_posture(tabs),
+            "manual_takeover": "visible tv helper open" if tv_window else "tv helper not visible",
+            "capture_dir": str(status_payload.get("capture_dir") or "/var/lib/server3-browser-brain/captures"),
+            "started_at": str(status_payload.get("started_at") or ""),
+        },
+    }
+
+
 def classify_state(matches_expected: bool, live_state: str, issues: Iterable[str], *, default_ok: str = "ok") -> Tuple[str, str]:
     issue_list = [item for item in issues if item]
     lowered = live_state.lower()
@@ -316,7 +492,8 @@ def classify_state(matches_expected: bool, live_state: str, issues: Iterable[str
 
 
 def action_labels(name: str) -> List[str]:
-    _ = name
+    if name == "Browser Brain":
+        return ["show browser lane", "show recent logs", "refresh snapshot"]
     return ["restart runtime", "show recent logs", "refresh snapshot"]
 
 
@@ -370,6 +547,7 @@ def build_selected_runtimes(
     pending_action: Optional[Dict[str, object]],
 ) -> List[Dict[str, object]]:
     runtimes = {row["name"]: row for row in runtime_status_payload.get("runtimes", [])}
+    browser_lane = build_browser_lane()
 
     selected: List[Tuple[str, List[str], str, str]] = [
         ("architect", ["Architect"], "Telegram primary", "owner-facing runtime"),
@@ -429,6 +607,8 @@ def build_selected_runtimes(
             watchouts.append(("operator note", notes[0]))
         if key == "browser":
             watchouts.append(("recovery path", resolve_browser_note(live_rows[0])))
+            watchouts.append(("current target", str(browser_lane["summary"]["current_target"])))
+            recent_jobs = [(row["label"], row["value"]) for row in browser_lane["activity"][:3]]
         if key == "govorun":
             watchouts.append(("routing contract", "daily contract drift timer should stay green"))
         if key == "oracle":
@@ -462,6 +642,7 @@ def build_selected_runtimes(
                 "watchouts": [{"label": label, "value": value} for label, value in watchouts[:3]],
                 "docsAndLogs": [{"label": label, "value": value} for label, value in runtime_docs("Browser Brain" if key == "browser" else "Govorun" if key == "govorun" else "Oracle" if key == "oracle" else str(live_rows[0]["name"]))],
                 "unitNames": unit_names,
+                "browserLane": browser_lane if key == "browser" else None,
             }
         )
     return rows
@@ -538,6 +719,9 @@ def build_activity(
     for runtime in selected_runtimes:
         unit_name = str(runtime["unitNames"][0])
         journal_dt, message = latest_journal_line(unit_name)
+        if runtime["name"] == "Browser Brain" and runtime.get("browserLane"):
+            summary = runtime["browserLane"].get("summary", {})
+            message = f"{summary.get('current_target', 'browser target unknown')} | {summary.get('auth_posture', 'auth posture unknown')}"
         entries.append(
             (
                 journal_dt,

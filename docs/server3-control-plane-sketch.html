@@ -899,6 +899,18 @@
             <div class="fact-grid" id="recentJobs"></div>
           </section>
 
+          <section class="drawer-panel" id="browserLanePanel" hidden>
+            <h3>Browser lane</h3>
+            <div class="drawer-subtitle">session + takeover + targets</div>
+            <div class="fact-grid" id="browserLaneState"></div>
+            <div class="drawer-subtitle">live tabs</div>
+            <div class="fact-grid" id="browserLaneTargets"></div>
+            <div class="drawer-subtitle">recent captures</div>
+            <div class="fact-grid" id="browserLaneCaptures"></div>
+            <div class="drawer-subtitle">recent browser activity</div>
+            <div class="fact-grid" id="browserLaneActivity"></div>
+          </section>
+
           <section class="drawer-panel">
             <h3>Failures / watchouts</h3>
             <div class="fact-grid" id="watchouts"></div>
@@ -1024,6 +1036,11 @@
     const actionThree = document.getElementById("actionThree");
     const serviceStats = document.getElementById("serviceStats");
     const recentJobs = document.getElementById("recentJobs");
+    const browserLanePanel = document.getElementById("browserLanePanel");
+    const browserLaneState = document.getElementById("browserLaneState");
+    const browserLaneTargets = document.getElementById("browserLaneTargets");
+    const browserLaneCaptures = document.getElementById("browserLaneCaptures");
+    const browserLaneActivity = document.getElementById("browserLaneActivity");
     const watchouts = document.getElementById("watchouts");
     const docsAndLogs = document.getElementById("docsAndLogs");
 
@@ -1180,6 +1197,10 @@
       return `<div class="log-row"><span class="micro">${escapeHtml(label)}</span><span class="log-copy mono">${escapeHtml(value)}</span></div>`;
     }
 
+    function browserLaneHtml(items) {
+      return (items || []).map((item) => rowHtml(item.label, item.value)).join("");
+    }
+
     function selectRuntime(key) {
       const runtime = runtimeLookup[key];
       if (!runtime) return;
@@ -1199,6 +1220,19 @@
       [actionOne.textContent, actionTwo.textContent, actionThree.textContent] = runtime.actions || ["action one", "action two", "action three"];
       serviceStats.innerHTML = (runtime.serviceStats || []).map((item) => rowHtml(item.label, item.value)).join("");
       recentJobs.innerHTML = (runtime.recentJobs || []).map((item) => rowHtml(item.label, item.value)).join("");
+      if (runtime.browserLane) {
+        browserLanePanel.hidden = false;
+        browserLaneState.innerHTML = browserLaneHtml(runtime.browserLane.state || []);
+        browserLaneTargets.innerHTML = browserLaneHtml(runtime.browserLane.targets || []);
+        browserLaneCaptures.innerHTML = browserLaneHtml(runtime.browserLane.captures || []);
+        browserLaneActivity.innerHTML = browserLaneHtml(runtime.browserLane.activity || []);
+      } else {
+        browserLanePanel.hidden = true;
+        browserLaneState.innerHTML = "";
+        browserLaneTargets.innerHTML = "";
+        browserLaneCaptures.innerHTML = "";
+        browserLaneActivity.innerHTML = "";
+      }
       watchouts.innerHTML = (runtime.watchouts || []).map((item) => rowHtml(item.label, item.value)).join("");
       docsAndLogs.innerHTML = (runtime.docsAndLogs || []).map((item) => logHtml(item.label, item.value)).join("");
     }
@@ -1390,6 +1424,11 @@
         clearOperatorMode();
       });
       actionOne.addEventListener("click", () => {
+        if (currentRuntimeKey === "browser") {
+          browserLanePanel.hidden = false;
+          browserLanePanel.scrollIntoView({ behavior: "smooth", block: "start" });
+          return;
+        }
         restartRuntime();
       });
       actionTwo.addEventListener("click", () => {
