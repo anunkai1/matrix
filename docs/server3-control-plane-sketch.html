@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Server3 Control Plane Sketch</title>
+  <style>
+    :root {
+      --text: #ecf5ff;
+      --muted: #8ca2b6;
+      --line: rgba(150, 196, 231, 0.12);
+      --cyan: #55d6ff;
+      --amber: #ffc86a;
+      --lime: #6ce5a1;
+      --red: #ff7d7d;
+      --shadow: 0 30px 80px rgba(0, 0, 0, 0.38);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(85, 214, 255, 0.16), transparent 26%),
+        radial-gradient(circle at 86% 10%, rgba(141, 163, 255, 0.16), transparent 22%),
+        radial-gradient(circle at 50% 100%, rgba(108, 229, 161, 0.12), transparent 34%),
+        linear-gradient(180deg, #071019 0%, #08131d 34%, #091a26 100%);
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.34;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(circle at center, black 54%, transparent 100%);
+    }
+
+    .frame {
+      width: min(1580px, calc(100% - 44px));
+      margin: 22px auto;
+      padding: 18px;
+      border-radius: 34px;
+      border: 1px solid rgba(158, 208, 255, 0.12);
+      background: rgba(5, 11, 18, 0.64);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+      padding: 10px 10px 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .brand-mark {
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      border-radius: 18px;
+      background:
+        linear-gradient(135deg, rgba(85, 214, 255, 0.26), rgba(141, 163, 255, 0.14)),
+        rgba(10, 23, 35, 0.95);
+      border: 1px solid rgba(113, 198, 255, 0.28);
+      color: var(--cyan);
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .brand h1 {
+      margin: 4px 0 0;
+      font-size: 2.2rem;
+      line-height: 0.96;
+      letter-spacing: -0.05em;
+    }
+
+    .brand p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      max-width: 580px;
+      font-size: 0.96rem;
+    }
+
+    .status-strip {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(9, 19, 30, 0.88);
+      color: var(--muted);
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    .pill strong {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: var(--lime);
+      box-shadow: 0 0 18px rgba(108, 229, 161, 0.72);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1.2fr) 380px;
+      gap: 18px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: rgba(10, 20, 31, 0.84);
+      backdrop-filter: blur(16px);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      padding: 20px 22px 14px;
+      border-bottom: 1px solid rgba(150, 196, 231, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .panel-head h2 {
+      margin: 0;
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .panel-head span {
+      color: var(--muted);
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .panel-body {
+      padding: 18px 18px 20px;
+    }
+
+    .runtime-list,
+    .timeline-grid,
+    .detail-shell,
+    .approval-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .runtime-card,
+    .timeline-card,
+    .detail-panel,
+    .approval,
+    .metric,
+    .mini-card {
+      border-radius: 18px;
+      background: rgba(11, 24, 36, 0.9);
+      border: 1px solid rgba(150, 196, 231, 0.08);
+    }
+
+    .runtime-card {
+      padding: 14px;
+    }
+
+    .runtime-card.active {
+      background:
+        linear-gradient(135deg, rgba(85, 214, 255, 0.14), rgba(141, 163, 255, 0.08)),
+        rgba(15, 28, 41, 0.92);
+      border-color: rgba(85, 214, 255, 0.32);
+    }
+
+    .runtime-top,
+    .timeline-top,
+    .metric-top,
+    .approval-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .runtime-name {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .runtime-note,
+    .timeline-meta,
+    .detail-copy,
+    .mini-copy,
+    .approval-meta {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .status {
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .healthy {
+      background: rgba(108, 229, 161, 0.14);
+      color: var(--lime);
+    }
+
+    .busy {
+      background: rgba(85, 214, 255, 0.14);
+      color: var(--cyan);
+    }
+
+    .risk {
+      background: rgba(255, 200, 106, 0.14);
+      color: var(--amber);
+    }
+
+    .issue {
+      background: rgba(255, 125, 125, 0.14);
+      color: var(--red);
+    }
+
+    .timeline-card,
+    .detail-panel,
+    .mini-card,
+    .approval {
+      padding: 16px;
+    }
+
+    .timeline-card.hero {
+      padding: 18px;
+      background:
+        linear-gradient(140deg, rgba(85, 214, 255, 0.16), rgba(141, 163, 255, 0.08)),
+        rgba(11, 24, 36, 0.94);
+      border-color: rgba(85, 214, 255, 0.24);
+    }
+
+    .timeline-card h3,
+    .detail-panel h3,
+    .mini-card h3 {
+      margin: 0;
+    }
+
+    .hero-title {
+      font-size: 1.55rem;
+      letter-spacing: -0.03em;
+    }
+
+    .hero-grid,
+    .mini-grid,
+    .action-row,
+    .bottom-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .hero-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-top: 16px;
+    }
+
+    .metric {
+      padding: 14px;
+      background: rgba(7, 18, 28, 0.62);
+    }
+
+    .metric-value,
+    .detail-big,
+    .mini-big {
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .metric-value {
+      margin-top: 10px;
+      font-size: 1.65rem;
+    }
+
+    .detail-big {
+      font-size: 2rem;
+      margin: 10px 0 0;
+    }
+
+    .action-row {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 14px;
+    }
+
+    .action-btn {
+      padding: 12px 10px;
+      border-radius: 14px;
+      border: 1px solid rgba(150, 196, 231, 0.12);
+      background: rgba(6, 15, 24, 0.88);
+      color: var(--text);
+      text-align: center;
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .approval {
+      border-color: rgba(255, 200, 106, 0.12);
+    }
+
+    .bottom-grid {
+      grid-template-columns: 1.1fr 1fr;
+      margin-top: 18px;
+    }
+
+    .mini-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .mini-card h3 {
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .mini-big {
+      margin-top: 12px;
+      font-size: 1.5rem;
+    }
+
+    .footer-note {
+      margin-top: 16px;
+      padding: 0 6px 6px;
+      color: rgba(178, 201, 223, 0.72);
+      font-size: 0.82rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 1280px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .bottom-grid,
+      .hero-grid,
+      .mini-grid,
+      .action-row {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="frame">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">S3</div>
+        <div>
+          <div class="eyebrow">Server3 Control Plane</div>
+          <h1>Mission Control for every runtime, queue, and approval.</h1>
+          <p>This is the operator surface: not Grafana, not chat, not shell. One view for state, action, and drift.</p>
+        </div>
+      </div>
+      <div class="status-strip">
+        <div class="pill"><span class="dot"></span><strong>Healthy</strong> 9/11 runtimes nominal</div>
+        <div class="pill"><strong>16:42</strong> AEST</div>
+        <div class="pill"><strong>2</strong> approvals waiting</div>
+        <div class="pill"><strong>1</strong> disk risk</div>
+      </div>
+    </header>
+
+    <section class="layout">
+      <aside class="panel">
+        <div class="panel-head">
+          <h2>Runtimes</h2>
+          <span>Primary rail</span>
+        </div>
+        <div class="panel-body">
+          <div class="runtime-list">
+            <article class="runtime-card active">
+              <div class="runtime-top">
+                <h3 class="runtime-name">Architect</h3>
+                <span class="status busy">Busy</span>
+              </div>
+              <p class="runtime-note">Telegram primary. Active request running with progress heartbeat.</p>
+            </article>
+            <article class="runtime-card">
+              <div class="runtime-top">
+                <h3 class="runtime-name">Browser Brain</h3>
+                <span class="status healthy">Attached</span>
+              </div>
+              <p class="runtime-note">Existing-session mode on local CDP. Manual-login path available.</p>
+            </article>
+            <article class="runtime-card">
+              <div class="runtime-top">
+                <h3 class="runtime-name">Diary</h3>
+                <span class="status healthy">Healthy</span>
+              </div>
+              <p class="runtime-note">Save queue empty. Nextcloud sync verified on last batch.</p>
+            </article>
+            <article class="runtime-card">
+              <div class="runtime-top">
+                <h3 class="runtime-name">Govorun</h3>
+                <span class="status healthy">Healthy</span>
+              </div>
+              <p class="runtime-note">WhatsApp transport and bridge nominal. Russian-only persona active.</p>
+            </article>
+            <article class="runtime-card">
+              <div class="runtime-top">
+                <h3 class="runtime-name">Oracle</h3>
+                <span class="status healthy">Healthy</span>
+              </div>
+              <p class="runtime-note">Signal transport sidecar up. Queue depth within target.</p>
+            </article>
+            <article class="runtime-card">
+              <div class="runtime-top">
+                <h3 class="runtime-name">Mavali ETH</h3>
+                <span class="status risk">Needs approval</span>
+              </div>
+              <p class="runtime-note">One staged venue action and one upstream provider risk still visible.</p>
+            </article>
+            <article class="runtime-card">
+              <div class="runtime-top">
+                <h3 class="runtime-name">Storage Plane</h3>
+                <span class="status issue">Watch</span>
+              </div>
+              <p class="runtime-note">External Arr/media disk mounted. Treat as fragile live data plane.</p>
+            </article>
+          </div>
+        </div>
+      </aside>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Live Activity</h2>
+          <span>Timeline + jobs</span>
+        </div>
+        <div class="panel-body">
+          <article class="timeline-card hero">
+            <div class="timeline-top">
+              <h3 class="hero-title">Server3 is a platform now, not just a bridge pile.</h3>
+              <span class="status healthy">Stable</span>
+            </div>
+            <p class="detail-copy">This center column is the heartbeat: everything interesting lands here first. Requests, failures, approvals, timers, restarts, browser sessions, disk warnings.</p>
+            <div class="hero-grid">
+              <div class="metric">
+                <div class="metric-top">
+                  <span class="mini-copy">Open Jobs</span>
+                  <span class="status busy">6 active</span>
+                </div>
+                <div class="metric-value">06</div>
+              </div>
+              <div class="metric">
+                <div class="metric-top">
+                  <span class="mini-copy">Messages / hr</span>
+                  <span class="status healthy">Normal</span>
+                </div>
+                <div class="metric-value">142</div>
+              </div>
+              <div class="metric">
+                <div class="metric-top">
+                  <span class="mini-copy">Pending Approvals</span>
+                  <span class="status risk">Action</span>
+                </div>
+                <div class="metric-value">02</div>
+              </div>
+              <div class="metric">
+                <div class="metric-top">
+                  <span class="mini-copy">Host Load</span>
+                  <span class="status healthy">Within band</span>
+                </div>
+                <div class="metric-value">0.84</div>
+              </div>
+            </div>
+          </article>
+
+          <div class="timeline-grid">
+            <article class="timeline-card">
+              <div class="timeline-top">
+                <h3>16:41 Architect replied in Telegram</h3>
+                <span class="status busy">Running</span>
+              </div>
+              <p class="timeline-meta">Current task: control-plane sketch. Progress updates active. No queue contention.</p>
+            </article>
+            <article class="timeline-card">
+              <div class="timeline-top">
+                <h3>16:39 Browser Brain reused existing visible Brave session</h3>
+                <span class="status healthy">Recovered</span>
+              </div>
+              <p class="timeline-meta">CDP attach succeeded without switching to headed browser automation mode.</p>
+            </article>
+            <article class="timeline-card">
+              <div class="timeline-top">
+                <h3>16:35 Mavali ETH staged venue action awaits confirm</h3>
+                <span class="status risk">Approval</span>
+              </div>
+              <p class="timeline-meta">Exact route, notional, and provider assumptions visible before execution.</p>
+            </article>
+            <article class="timeline-card">
+              <div class="timeline-top">
+                <h3>16:31 External Arr disk warning surfaced</h3>
+                <span class="status issue">Operator attention</span>
+              </div>
+              <p class="timeline-meta">The control plane keeps platform risk beside chat/runtime events instead of burying it in logs.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-head">
+          <h2>Action Drawer</h2>
+          <span>Selected runtime</span>
+        </div>
+        <div class="panel-body">
+          <div class="detail-shell">
+            <section class="detail-panel">
+              <h3>Architect</h3>
+              <div class="detail-big">Healthy, busy, owner-facing</div>
+              <p class="detail-copy">This panel is where restarts, logs, env fingerprints, queue state, memory state, and docs all converge.</p>
+              <div class="action-row">
+                <div class="action-btn">Restart</div>
+                <div class="action-btn">Open Logs</div>
+                <div class="action-btn">Inspect Memory</div>
+              </div>
+            </section>
+
+            <section class="detail-panel">
+              <div class="approval-top">
+                <h3>Approvals Inbox</h3>
+                <span class="status risk">2 waiting</span>
+              </div>
+              <div class="approval-list">
+                <article class="approval">
+                  <strong>Mavali ETH</strong>
+                  <p class="approval-meta">Approve staged venue action after quote + risk preflight review.</p>
+                </article>
+                <article class="approval">
+                  <strong>Browser Brain</strong>
+                  <p class="approval-meta">Allow workflow to reuse attached authenticated session for `x.com`.</p>
+                </article>
+              </div>
+            </section>
+
+            <section class="detail-panel">
+              <h3>Recent Evidence</h3>
+              <p class="detail-copy">Last health report: runtime observer clear. Last backup: monthly state snapshot green. Last doc drift check: clean.</p>
+            </section>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="bottom-grid">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Operator Strip</h2>
+          <span>Host + storage + timers</span>
+        </div>
+        <div class="panel-body">
+          <div class="mini-grid">
+            <article class="mini-card">
+              <h3>Storage</h3>
+              <div class="mini-big">82% used</div>
+              <p class="mini-copy">External media/data plane mounted. Backup disk seen. Any detach is a real event.</p>
+            </article>
+            <article class="mini-card">
+              <h3>Timers</h3>
+              <div class="mini-big">3 next runs</div>
+              <p class="mini-copy">Observer 08:05. Backup monthly. Contract drift check daily.</p>
+            </article>
+            <article class="mini-card">
+              <h3>Network</h3>
+              <div class="mini-big">Online</div>
+              <p class="mini-copy">Telegram, WhatsApp, Signal, and browser local-control surfaces reachable.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Design Intent</h2>
+          <span>What makes this different</span>
+        </div>
+        <div class="panel-body">
+          <div class="mini-grid">
+            <article class="mini-card">
+              <h3>No box soup</h3>
+              <p class="mini-copy">Left rail for runtimes. Center timeline for truth. Right drawer for action. Bottom strip for machine state.</p>
+            </article>
+            <article class="mini-card">
+              <h3>Chat-native</h3>
+              <p class="mini-copy">The control plane complements Telegram instead of replacing it. Chat triggers work; the UI shows the whole machine.</p>
+            </article>
+            <article class="mini-card">
+              <h3>Approval-first</h3>
+              <p class="mini-copy">Anything risky or staged becomes inspectable, not hidden inside prompt text or logs.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <div class="footer-note">Sketch v1 • intended as a local web app for Server3 desktop + phone viewing</div>
+  </main>
+</body>
+</html>
