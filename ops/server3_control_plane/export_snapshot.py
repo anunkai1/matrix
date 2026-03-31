@@ -1,0 +1,725 @@
+#!/usr/bin/env python3
+"""Export a browser-local Server3 control-plane snapshot for the static sketch."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from zoneinfo import ZoneInfo
+
+
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_JSON_OUT = ROOT / "docs" / "server3-control-plane-data.json"
+DEFAULT_JS_OUT = ROOT / "docs" / "server3-control-plane-data.js"
+DEFAULT_TZ = "Australia/Brisbane"
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    stdout: str
+    stderr: str
+    returncode: int
+
+
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json-out", type=Path, default=DEFAULT_JSON_OUT)
+    parser.add_argument("--js-out", type=Path, default=DEFAULT_JS_OUT)
+    return parser.parse_args(argv)
+
+
+def run_capture(command: Sequence[str]) -> CommandResult:
+    attempts: List[List[str]] = [list(command)]
+    if os.geteuid() != 0 and shutil.which("sudo"):
+        attempts.append(["sudo", "-n", *command])
+    last: Optional[subprocess.CompletedProcess[str]] = None
+    for attempt in attempts:
+        result = subprocess.run(attempt, capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            return CommandResult(stdout=result.stdout, stderr=result.stderr, returncode=result.returncode)
+        last = result
+    if last is None:
+        raise RuntimeError(f"failed to run command: {' '.join(command)}")
+    return CommandResult(stdout=last.stdout, stderr=last.stderr, returncode=last.returncode)
+
+
+def parse_key_value_output(text: str) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip()
+    return values
+
+
+def compact_state(active_state: str, sub_state: str) -> str:
+    active = (active_state or "unknown").strip() or "unknown"
+    sub = (sub_state or "unknown").strip() or "unknown"
+    if active in {"active", "inactive", "failed"} and sub not in {"", "dead", "running", "exited", "waiting"}:
+        return f"{active}({sub})"
+    if active == "active" and sub == "waiting":
+        return "active(waiting)"
+    return active
+
+
+def systemctl_show(unit: str, *properties: str) -> Dict[str, str]:
+    command = ["systemctl", "show", unit, "--no-pager"]
+    for prop in properties:
+        command.extend(["-p", prop])
+    result = run_capture(command)
+    return parse_key_value_output(result.stdout)
+
+
+def parse_runtime_status_payload() -> Dict[str, object]:
+    result = run_capture(["python3", str(ROOT / "ops" / "server3_runtime_status.py"), "--json"])
+    if result.returncode != 0 and not result.stdout.strip():
+        raise RuntimeError(result.stderr.strip() or "runtime status command failed")
+    return json.loads(result.stdout)
+
+
+def load_runtime_manifest() -> Dict[str, Dict[str, object]]:
+    payload = json.loads((ROOT / "infra" / "server3-runtime-manifest.json").read_text(encoding="utf-8"))
+    return {runtime["name"]: runtime for runtime in payload.get("runtimes", [])}
+
+
+def parse_iso_datetime(value: str) -> Optional[datetime]:
+    value = value.strip()
+    if not value or value in {"n/a", "0"}:
+        return None
+    for fmt in ("%a %Y-%m-%d %H:%M:%S %Z", "%a %Y-%m-%d %H:%M:%S %z", "%Y-%m-%d %H:%M:%S %Z", "%Y-%m-%d %H:%M:%S %z"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def local_now() -> datetime:
+    return datetime.now(ZoneInfo(DEFAULT_TZ))
+
+
+def format_local_compact(value: Optional[datetime]) -> str:
+    if value is None:
+        return "not scheduled"
+    return value.astimezone(ZoneInfo(DEFAULT_TZ)).strftime("%d %b %H:%M")
+
+
+def format_clock(value: Optional[datetime]) -> str:
+    if value is None:
+        return "--:--:--"
+    return value.astimezone(ZoneInfo(DEFAULT_TZ)).strftime("%H:%M:%S")
+
+
+def timer_snapshot(unit: str, label: str) -> Dict[str, str]:
+    fields = systemctl_show(
+        unit,
+        "ActiveState",
+        "SubState",
+        "NextElapseUSecRealtime",
+        "LastTriggerUSec",
+        "UnitFileState",
+    )
+    next_dt = parse_iso_datetime(fields.get("NextElapseUSecRealtime", ""))
+    last_dt = parse_iso_datetime(fields.get("LastTriggerUSec", ""))
+    state = compact_state(fields.get("ActiveState", "unknown"), fields.get("SubState", "unknown"))
+    return {
+        "unit": unit,
+        "label": label,
+        "state": state,
+        "next": format_local_compact(next_dt),
+        "last": format_local_compact(last_dt),
+        "unit_file_state": fields.get("UnitFileState", "unknown"),
+    }
+
+
+def latest_journal_line(unit: str) -> Tuple[Optional[datetime], str]:
+    result = run_capture(["journalctl", "-u", unit, "-n", "1", "--output=short-iso", "--no-pager"])
+    line = next((row.strip() for row in result.stdout.splitlines() if row.strip()), "")
+    if not line:
+        return None, "no recent log line"
+    parts = line.split(" ", 2)
+    timestamp = None
+    if len(parts) >= 2:
+        try:
+            timestamp = datetime.fromisoformat(f"{parts[0]}T{parts[1]}")
+        except ValueError:
+            timestamp = None
+    message = parts[2] if len(parts) >= 3 else line
+    if ": " in message:
+        message = message.split(": ", 1)[1]
+    return timestamp, message
+
+
+def path_disk_summary(path: Path) -> Dict[str, str]:
+    if not path.exists():
+        return {"path": str(path), "status": "missing", "usage": "missing"}
+    usage = shutil.disk_usage(path)
+    used_pct = 0 if usage.total <= 0 else round((usage.used / usage.total) * 100)
+    total_gb = usage.total / (1024 ** 3)
+    free_gb = usage.free / (1024 ** 3)
+    host_state = f"{load_avg_summary()} / {memory_summary()}"
+    return {
+        "path": str(path),
+        "status": "present",
+        "usage": f"{used_pct}% used",
+        "detail": f"{free_gb:.0f} GiB free of {total_gb:.0f} GiB",
+    }
+
+
+def memory_summary() -> str:
+    try:
+        fields: Dict[str, int] = {}
+        for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+            key, value = line.split(":", 1)
+            fields[key] = int(value.strip().split()[0])
+        total = fields.get("MemTotal", 0)
+        available = fields.get("MemAvailable", 0)
+        if total <= 0:
+            return "ram unknown"
+        used_pct = round(((total - available) / total) * 100)
+        return f"ram {used_pct}%"
+    except Exception:
+        return "ram unknown"
+
+
+def network_summary() -> str:
+    result = run_capture(["ip", "-4", "route", "get", "1.1.1.1"])
+    line = next((row.strip() for row in result.stdout.splitlines() if row.strip()), "")
+    if not line:
+        return "route unknown"
+    parts = line.split()
+    iface = parts[parts.index("dev") + 1] if "dev" in parts else "?"
+    src = parts[parts.index("src") + 1] if "src" in parts else "?"
+    return f"{iface} / {src}"
+
+
+def load_avg_summary() -> str:
+    try:
+        load1, _, _ = os.getloadavg()
+        return f"load {load1:.2f}"
+    except OSError:
+        return "load unknown"
+
+
+def resolve_browser_note(runtime: Dict[str, object]) -> str:
+    if runtime.get("matches_expected"):
+        return "existing-session path available"
+    issues = []
+    for unit in runtime.get("units", []):
+        issues.extend(unit.get("issues", []))
+    return "; ".join(issues[:2]) or "review browser service"
+
+
+def read_pending_action() -> Optional[Dict[str, object]]:
+    default_db = Path("/home/mavali_eth/.local/state/telegram-mavali-eth-bridge/mavali_eth.sqlite3")
+    query = """
+import json, sqlite3
+from pathlib import Path
+db_path = Path("/home/mavali_eth/.local/state/telegram-mavali-eth-bridge/mavali_eth.sqlite3")
+if not db_path.exists():
+    print("null")
+    raise SystemExit(0)
+conn = sqlite3.connect(db_path)
+conn.row_factory = sqlite3.Row
+row = conn.execute(
+    "SELECT action_id, session_key, action_kind, module, summary, payload_json, created_at, expires_at "
+    "FROM pending_action_envelopes ORDER BY created_at DESC LIMIT 1"
+).fetchone()
+if row is None:
+    print("null")
+else:
+    payload = dict(row)
+    payload["payload_json"] = json.loads(payload["payload_json"])
+    print(json.dumps(payload, ensure_ascii=True))
+"""
+    result = run_capture(["python3", "-c", query])
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    value = result.stdout.strip()
+    if value == "null":
+        return None
+    return json.loads(value)
+
+
+def classify_state(matches_expected: bool, live_state: str, issues: Iterable[str], *, default_ok: str = "ok") -> Tuple[str, str]:
+    issue_list = [item for item in issues if item]
+    lowered = live_state.lower()
+    if "failed" in lowered:
+        return "danger", "failed"
+    if lowered.startswith("inactive"):
+        return "danger", "offline"
+    if issue_list or not matches_expected:
+        return "danger", "degraded"
+    return default_ok, "healthy"
+
+
+def action_labels(name: str) -> List[str]:
+    if name == "Architect":
+        return ["restart service", "open recent logs", "inspect workspace"]
+    if name == "Tank":
+        return ["restart tank", "open bridge logs", "check runtime root"]
+    if name == "Diary":
+        return ["restart diary", "open capture logs", "check sync paths"]
+    if name == "Govorun":
+        return ["restart whatsapp bridge", "inspect reconnects", "check routing drift"]
+    if name == "Oracle":
+        return ["restart oracle", "open signal logs", "check voice worker"]
+    if name == "Mavali ETH":
+        return ["view staged action", "open wallet logs", "inspect policy"]
+    return ["re-attach service", "open logs", "review recovery path"]
+
+
+def runtime_docs(name: str) -> List[Tuple[str, str]]:
+    if name == "Architect":
+        return [
+            ("logs", "journalctl -u telegram-architect-bridge.service"),
+            ("docs", "docs/telegram-architect-bridge.md"),
+            ("policy", "ARCHITECT_INSTRUCTION.md"),
+        ]
+    if name == "Tank":
+        return [
+            ("logs", "journalctl -u telegram-tank-bridge.service"),
+            ("docs", "docs/runtime_docs/tank"),
+            ("runbook", "ops/runtime_personas/check_runtime_repo_links.sh"),
+        ]
+    if name == "Diary":
+        return [
+            ("logs", "journalctl -u telegram-diary-bridge.service"),
+            ("docs", "docs/runtime_docs/diary"),
+            ("policy", "docs/runtime_docs/diary/DIARY_INSTRUCTION.md"),
+        ]
+    if name == "Govorun":
+        return [
+            ("logs", "journalctl -u whatsapp-govorun-bridge.service -u govorun-whatsapp-bridge.service"),
+            ("docs", "docs/runbooks/whatsapp-govorun-operations.md"),
+            ("guard", "ops/chat-routing/validate_chat_routing_contract.py"),
+        ]
+    if name == "Oracle":
+        return [
+            ("logs", "journalctl -u signal-oracle-bridge.service -u oracle-signal-bridge.service"),
+            ("docs", "docs/runbooks/oracle-signal-operations.md"),
+            ("voice", "ops/telegram-voice/transcribe_voice.sh"),
+        ]
+    if name == "Mavali ETH":
+        return [
+            ("logs", "journalctl -u telegram-mavali-eth-bridge.service"),
+            ("docs", "docs/runbooks/mavali-eth-operations.md"),
+            ("guard", "bridge-side pending-action guard"),
+        ]
+    return [
+        ("logs", "journalctl -u server3-browser-brain.service"),
+        ("summary", "SERVER3_SUMMARY.md"),
+        ("policy", "existing_session is canonical"),
+    ]
+
+
+def build_selected_runtimes(
+    runtime_status_payload: Dict[str, object],
+    manifest: Dict[str, Dict[str, object]],
+    pending_action: Optional[Dict[str, object]],
+) -> List[Dict[str, object]]:
+    runtimes = {row["name"]: row for row in runtime_status_payload.get("runtimes", [])}
+
+    selected: List[Tuple[str, List[str], str, str]] = [
+        ("architect", ["Architect"], "Telegram primary", "owner-facing runtime"),
+        ("tank", ["Tank"], "Telegram sibling", "isolated Telegram runtime"),
+        ("diary", ["Diary"], "capture runtime", "capture-focused sibling"),
+        ("govorun", ["Govorun transport", "Govorun bridge"], "WhatsApp runtime", "dual transport + bridge"),
+        ("oracle", ["Oracle transport", "Oracle bridge"], "Signal runtime", "transport + bridge"),
+        ("mavali", ["Mavali ETH"], "venue operations runtime", "owner-bound wallet runtime"),
+        ("browser", ["Browser brain"], "browser control surface", "existing-session browser runtime"),
+    ]
+    rows: List[Dict[str, object]] = []
+    for key, source_names, role, operator_note in selected:
+        live_rows = [runtimes[name] for name in source_names if name in runtimes]
+        if not live_rows:
+            continue
+        issue_list: List[str] = []
+        unit_names: List[str] = []
+        live_states: List[str] = []
+        notes: List[str] = []
+        workspace_root = ""
+        owner = ""
+        for source_name in source_names:
+            manifest_row = manifest.get(source_name, {})
+            if not workspace_root:
+                workspace_root = str(manifest_row.get("workspace_root") or "")
+        for row in live_rows:
+            live_states.append(str(row.get("live_state", "unknown")))
+            unit_names.extend(unit["name"] for unit in row.get("units", []))
+            owner = owner or str(row.get("owner_user") or "")
+            notes.extend(str(item) for item in row.get("notes", []))
+            for unit in row.get("units", []):
+                issue_list.extend(str(item) for item in unit.get("issues", []))
+        state_class, state_text = classify_state(
+            all(bool(row.get("matches_expected")) for row in live_rows),
+            " / ".join(live_states),
+            issue_list,
+        )
+        if key == "mavali" and pending_action is not None:
+            state_class, state_text = "warn", "waiting"
+        elif key == "browser" and all(bool(row.get("matches_expected")) for row in live_rows):
+            state_class, state_text = "busy", "attached"
+
+        recent_jobs: List[Tuple[str, str]] = []
+        watchouts: List[Tuple[str, str]] = []
+        for unit_name in unit_names[:2]:
+            journal_dt, message = latest_journal_line(unit_name)
+            recent_jobs.append((unit_name, f"{format_clock(journal_dt)} {message}"))
+        if key == "mavali" and pending_action is not None:
+            recent_jobs.insert(0, ("pending action", str(pending_action.get("summary") or pending_action.get("action_kind") or "staged action")))
+            watchouts.append(("approval gate", "reply path remains explicit: approve, reject, or clear the pending action"))
+            watchouts.append(("infra risk", "temporary public RPC remains a live production caveat"))
+        elif issue_list:
+            watchouts.append(("current issue", issue_list[0]))
+        else:
+            watchouts.append(("current issue", "no active unit mismatch detected"))
+        if notes:
+            watchouts.append(("operator note", notes[0]))
+        if key == "browser":
+            watchouts.append(("recovery path", resolve_browser_note(live_rows[0])))
+        if key == "govorun":
+            watchouts.append(("routing contract", "daily contract drift timer should stay green"))
+        if key == "oracle":
+            watchouts.append(("voice path", "keep local transcription runtime separate from transport health"))
+        if key == "tank":
+            watchouts.append(("identity", "preserve isolated runtime root and Joplin profile"))
+        if key == "diary":
+            watchouts.append(("delivery", "capture routing should stay friction-light"))
+        if key == "architect":
+            watchouts.append(("change control", "persistent repo edits still require commit and push proof"))
+
+        service_stats = [
+            ("unit set", ", ".join(unit_names)),
+            ("workspace", workspace_root or "runtime-local"),
+            ("owner", owner or "system"),
+            ("live state", " / ".join(live_states)),
+        ]
+
+        rows.append(
+            {
+                "key": key,
+                "name": "Govorun" if key == "govorun" else "Oracle" if key == "oracle" else "Browser Brain" if key == "browser" else live_rows[0]["name"],
+                "stateClass": state_class,
+                "stateText": state_text,
+                "role": role,
+                "operatorNote": operator_note,
+                "summary": str(live_rows[0].get("purpose") or ""),
+                "actions": action_labels("Browser Brain" if key == "browser" else "Govorun" if key == "govorun" else "Oracle" if key == "oracle" else str(live_rows[0]["name"])),
+                "serviceStats": [{"label": label, "value": value} for label, value in service_stats],
+                "recentJobs": [{"label": label, "value": value} for label, value in recent_jobs[:3]],
+                "watchouts": [{"label": label, "value": value} for label, value in watchouts[:3]],
+                "docsAndLogs": [{"label": label, "value": value} for label, value in runtime_docs("Browser Brain" if key == "browser" else "Govorun" if key == "govorun" else "Oracle" if key == "oracle" else str(live_rows[0]["name"]))],
+                "unitNames": unit_names,
+            }
+        )
+    return rows
+
+
+def build_approvals(pending_action: Optional[Dict[str, object]], ui_layer_issue: Optional[str]) -> List[Dict[str, str]]:
+    items: List[Dict[str, str]] = []
+    if pending_action is not None:
+        payload = pending_action.get("payload_json") or {}
+        detail = []
+        for key in ("submission_state", "symbol", "side", "quantity_display", "price_display", "amount_display"):
+            value = payload.get(key)
+            if value:
+                detail.append(f"{key}={value}")
+        body = str(pending_action.get("summary") or pending_action.get("action_kind") or "pending action")
+        if detail:
+            body += ". " + ", ".join(detail[:4])
+        items.append(
+            {
+                "title": "Mavali ETH staged action",
+                "riskClass": "warn",
+                "riskText": "high risk",
+                "body": body,
+                "approveLabel": "approve exact action",
+                "rejectLabel": "clear pending",
+            }
+        )
+    if ui_layer_issue:
+        items.append(
+            {
+                "title": "UI layer is active outside its default posture",
+                "riskClass": "danger",
+                "riskText": "operator review",
+                "body": ui_layer_issue,
+                "approveLabel": "accept for session",
+                "rejectLabel": "turn desktop off",
+            }
+        )
+    return items
+
+
+def build_jobs(timers: List[Dict[str, str]], approvals: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    items: List[Dict[str, str]] = []
+    for timer in timers:
+        tag_class = "busy" if timer["state"].startswith("active") else "danger"
+        items.append(
+            {
+                "title": timer["label"],
+                "tagClass": tag_class,
+                "tagText": timer["next"],
+                "body": f"{timer['unit']} is {timer['state']}. Last trigger: {timer['last']}.",
+            }
+        )
+    if approvals:
+        items.insert(
+            0,
+            {
+                "title": "Approval queue",
+                "tagClass": "warn",
+                "tagText": f"{len(approvals)} waiting",
+                "body": "Pending actions are rendered here as operator work, not buried in prompt text.",
+            },
+        )
+    return items[:5]
+
+
+def build_activity(
+    selected_runtimes: List[Dict[str, object]],
+    approvals: List[Dict[str, str]],
+    timers: List[Dict[str, str]],
+    ui_layer_issue: Optional[str],
+) -> List[Dict[str, str]]:
+    entries: List[Tuple[Optional[datetime], Dict[str, str]]] = []
+    for runtime in selected_runtimes:
+        unit_name = str(runtime["unitNames"][0])
+        journal_dt, message = latest_journal_line(unit_name)
+        entries.append(
+            (
+                journal_dt,
+                {
+                    "time": format_clock(journal_dt),
+                    "title": f"{runtime['name']} recent service activity",
+                    "channel": runtime["role"].lower(),
+                    "statusClass": str(runtime["stateClass"]),
+                    "statusText": str(runtime["stateText"]),
+                    "copy": message,
+                },
+            )
+        )
+    if approvals:
+        entries.append(
+            (
+                local_now(),
+                {
+                    "time": local_now().strftime("%H:%M:%S"),
+                    "title": approvals[0]["title"],
+                    "channel": "approval",
+                    "statusClass": approvals[0]["riskClass"],
+                    "statusText": approvals[0]["riskText"],
+                    "copy": approvals[0]["body"],
+                },
+            )
+        )
+    if ui_layer_issue:
+        entries.append(
+            (
+                local_now(),
+                {
+                    "time": local_now().strftime("%H:%M:%S"),
+                    "title": "Optional UI layer is active",
+                    "channel": "host",
+                    "statusClass": "danger",
+                    "statusText": "watch",
+                    "copy": ui_layer_issue,
+                },
+            )
+        )
+    for timer in timers[:2]:
+        entries.append(
+            (
+                None,
+                {
+                    "time": timer["next"],
+                    "title": timer["label"],
+                    "channel": "timer",
+                    "statusClass": "busy",
+                    "statusText": timer["state"],
+                    "copy": f"Next run {timer['next']} | last trigger {timer['last']}",
+                },
+            )
+        )
+    entries.sort(key=lambda item: item[0] or datetime.min.replace(tzinfo=ZoneInfo(DEFAULT_TZ)), reverse=True)
+    return [payload for _, payload in entries[:6]]
+
+
+def build_overview(summary_counts: Dict[str, int], approvals: List[Dict[str, str]], ui_layer_issue: Optional[str]) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
+    bands = [
+        {
+            "title": "Nominal lane",
+            "stateClass": "ok",
+            "stateText": "healthy",
+            "body": f"{summary_counts['healthy']} selected runtimes match expected live posture.",
+        },
+        {
+            "title": "Approval lane",
+            "stateClass": "warn" if approvals else "ok",
+            "stateText": "approval" if approvals else "clear",
+            "body": f"{len(approvals)} operator approval item(s) currently surfaced.",
+        },
+        {
+            "title": "Watch lane",
+            "stateClass": "danger" if ui_layer_issue else "ok",
+            "stateText": "watch" if ui_layer_issue else "clear",
+            "body": ui_layer_issue or "No selected runtime is currently off its default expected posture.",
+        },
+        {
+            "title": "Offline lane",
+            "stateClass": "danger" if summary_counts["offline"] else "ok",
+            "stateText": "offline" if summary_counts["offline"] else "none",
+            "body": f"{summary_counts['offline']} selected runtime(s) are currently offline.",
+        },
+    ]
+    side = [
+        {"label": "service footprint", "value": str(summary_counts["tracked"]), "copy": "selected runtimes in the operator rail"},
+        {"label": "operator gates", "value": str(len(approvals)), "copy": "explicit human approvals, not implicit risk"},
+    ]
+    return bands, side
+
+
+def build_floor(timers: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    arr_disk = path_disk_summary(Path("/srv/external/server3-arr"))
+    backup_disk = path_disk_summary(Path("/srv/external/server3-backups"))
+    data_disk = path_disk_summary(Path("/data/downloads"))
+    host_state = f"{load_avg_summary()} / {memory_summary()}"
+    return [
+        {
+            "title": "Disk posture",
+            "stateClass": "warn",
+            "stateText": "watch",
+            "value": arr_disk.get("usage", "unknown"),
+            "body": f"{arr_disk['path']} | {arr_disk.get('detail', 'path unavailable')}",
+            "statusLine": f"backup disk: {backup_disk.get('usage', 'unknown')}",
+        },
+        {
+            "title": "Host health",
+            "stateClass": "ok",
+            "stateText": "nominal",
+            "value": host_state,
+            "body": f"primary route {network_summary()}",
+            "statusLine": f"host: {socket.gethostname()}",
+        },
+        {
+            "title": "Key paths",
+            "stateClass": "busy",
+            "stateText": "live",
+            "value": data_disk["path"],
+            "body": f"{data_disk.get('usage', 'unknown')} | {data_disk.get('detail', 'path unavailable')}",
+            "statusLine": "canonical media namespace is /data/downloads and /data/media/...",
+        },
+        {
+            "title": "Schedules",
+            "stateClass": "busy",
+            "stateText": "queued",
+            "value": ", ".join(timer["label"] for timer in timers[:3]),
+            "body": "Visible timers stay on the floor so continuity work is never hidden behind another tool.",
+            "statusLine": f"next: {timers[0]['next']}" if timers else "next: unknown",
+        },
+    ]
+
+
+def build_snapshot() -> Dict[str, object]:
+    runtime_status_payload = parse_runtime_status_payload()
+    manifest = load_runtime_manifest()
+    pending_action = read_pending_action()
+    selected_runtimes = build_selected_runtimes(runtime_status_payload, manifest, pending_action)
+    ui_layer = next((row for row in runtime_status_payload.get("runtimes", []) if row.get("name") == "UI layer"), None)
+    ui_layer_issue = None
+    if ui_layer and not ui_layer.get("matches_expected"):
+        issues = []
+        for unit in ui_layer.get("units", []):
+            issues.extend(unit.get("issues", []))
+        ui_layer_issue = issues[0] if issues else "UI layer is active while its default posture expects inactivity."
+    approvals = build_approvals(pending_action, ui_layer_issue)
+    timers = [
+        timer_snapshot("server3-runtime-observer.timer", "Observer summary"),
+        timer_snapshot("server3-chat-routing-contract-check.timer", "Routing drift check"),
+        timer_snapshot("server3-state-backup.timer", "State backup"),
+        timer_snapshot("mavali-eth-receipt-monitor.timer", "Receipt monitor"),
+    ]
+    summary_counts = {
+        "tracked": len(selected_runtimes),
+        "healthy": sum(1 for runtime in selected_runtimes if runtime["stateText"] in {"healthy", "attached"}),
+        "busy": sum(1 for runtime in selected_runtimes if runtime["stateText"] in {"busy", "attached"}),
+        "waiting": sum(1 for runtime in selected_runtimes if runtime["stateText"] == "waiting"),
+        "degraded": sum(1 for runtime in selected_runtimes if runtime["stateText"] == "degraded"),
+        "offline": sum(1 for runtime in selected_runtimes if runtime["stateText"] == "offline"),
+    }
+    overview_bands, overview_side = build_overview(summary_counts, approvals, ui_layer_issue)
+    generated_at = parse_iso_datetime(str(runtime_status_payload.get("generated_at", ""))) or local_now()
+    host_state = f"{load_avg_summary()} / {memory_summary()}"
+    return {
+        "generatedAt": generated_at.isoformat(),
+        "timezone": DEFAULT_TZ,
+        "defaultRuntime": "architect",
+        "summary": {
+            "runtimeValue": f"{summary_counts['tracked']} live",
+            "runtimeCopy": (
+                f"{summary_counts['healthy']} healthy, {summary_counts['degraded']} degraded, "
+                f"{summary_counts['waiting']} waiting, {summary_counts['offline']} offline"
+            ),
+            "approvalValue": f"{len(approvals)} pending",
+            "approvalCopy": "explicit human gates from live Server3 state",
+            "jobValue": f"{len(timers) + len(approvals)} tracked",
+            "jobCopy": "timers, approvals, and continuity work in one surface",
+            "hostValue": host_state,
+            "hostCopy": "browser, timers, storage, and network summarized from the host",
+            "currentPicture": [
+                generated_at.astimezone(ZoneInfo(DEFAULT_TZ)).strftime("%d %b %Y %H:%M AEST"),
+                f"snapshot file {DEFAULT_JS_OUT.name}",
+                f"{len(approvals)} approval item(s)",
+            ],
+            "surfaceBias": [
+                "read-only live snapshot",
+                "browser-local file:// compatible",
+                "state color only",
+            ],
+            "chips": [
+                {"tone": "ok", "label": "live status loaded"},
+                {"tone": "busy", "label": timers[0]["label"].lower()},
+                {"tone": "warn", "label": f"{len(approvals)} approval item(s)"},
+                {"tone": "danger", "label": "storage remains continuity sensitive"},
+            ],
+        },
+        "overview": {
+            "bands": overview_bands,
+            "side": overview_side,
+        },
+        "activity": build_activity(selected_runtimes, approvals, timers, ui_layer_issue),
+        "approvals": approvals,
+        "jobs": build_jobs(timers, approvals),
+        "floor": build_floor(timers),
+        "runtimes": selected_runtimes,
+    }
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = parse_args(argv)
+    snapshot = build_snapshot()
+    args.json_out.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    args.js_out.write_text(
+        "window.SERVER3_CONTROL_PLANE_DATA = " + json.dumps(snapshot, indent=2, ensure_ascii=False) + ";\n",
+        encoding="utf-8",
+    )
+    print(json.dumps({"json_out": str(args.json_out), "js_out": str(args.js_out)}, ensure_ascii=True))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

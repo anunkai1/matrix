@@ -1,0 +1,705 @@
+{
+  "generatedAt": "2026-03-31T21:45:14.365328+10:00",
+  "timezone": "Australia/Brisbane",
+  "defaultRuntime": "architect",
+  "summary": {
+    "runtimeValue": "7 live",
+    "runtimeCopy": "7 healthy, 0 degraded, 0 waiting, 0 offline",
+    "approvalValue": "1 pending",
+    "approvalCopy": "explicit human gates from live Server3 state",
+    "jobValue": "5 tracked",
+    "jobCopy": "timers, approvals, and continuity work in one surface",
+    "hostValue": "load 5.62 / ram 48%",
+    "hostCopy": "browser, timers, storage, and network summarized from the host",
+    "currentPicture": [
+      "31 Mar 2026 21:45 AEST",
+      "snapshot file server3-control-plane-data.js",
+      "1 approval item(s)"
+    ],
+    "surfaceBias": [
+      "read-only live snapshot",
+      "browser-local file:// compatible",
+      "state color only"
+    ],
+    "chips": [
+      {
+        "tone": "ok",
+        "label": "live status loaded"
+      },
+      {
+        "tone": "busy",
+        "label": "observer summary"
+      },
+      {
+        "tone": "warn",
+        "label": "1 approval item(s)"
+      },
+      {
+        "tone": "danger",
+        "label": "storage remains continuity sensitive"
+      }
+    ]
+  },
+  "overview": {
+    "bands": [
+      {
+        "title": "Nominal lane",
+        "stateClass": "ok",
+        "stateText": "healthy",
+        "body": "7 selected runtimes match expected live posture."
+      },
+      {
+        "title": "Approval lane",
+        "stateClass": "warn",
+        "stateText": "approval",
+        "body": "1 operator approval item(s) currently surfaced."
+      },
+      {
+        "title": "Watch lane",
+        "stateClass": "danger",
+        "stateText": "watch",
+        "body": "expected inactive, got active"
+      },
+      {
+        "title": "Offline lane",
+        "stateClass": "ok",
+        "stateText": "none",
+        "body": "0 selected runtime(s) are currently offline."
+      }
+    ],
+    "side": [
+      {
+        "label": "service footprint",
+        "value": "7",
+        "copy": "selected runtimes in the operator rail"
+      },
+      {
+        "label": "operator gates",
+        "value": "1",
+        "copy": "explicit human approvals, not implicit risk"
+      }
+    ]
+  },
+  "activity": [
+    {
+      "time": "21:45:14",
+      "title": "Optional UI layer is active",
+      "channel": "host",
+      "statusClass": "danger",
+      "statusText": "watch",
+      "copy": "expected inactive, got active"
+    },
+    {
+      "time": "21:45:14",
+      "title": "UI layer is active outside its default posture",
+      "channel": "approval",
+      "statusClass": "danger",
+      "statusText": "operator review",
+      "copy": "expected inactive, got active"
+    },
+    {
+      "time": "--:--:--",
+      "title": "Architect recent service activity",
+      "channel": "telegram primary",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "pam_unix(sudo:session): session closed for user architect"
+    },
+    {
+      "time": "--:--:--",
+      "title": "Tank recent service activity",
+      "channel": "telegram sibling",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "entries --"
+    },
+    {
+      "time": "--:--:--",
+      "title": "Diary recent service activity",
+      "channel": "capture runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "entries --"
+    },
+    {
+      "time": "--:--:--",
+      "title": "Govorun recent service activity",
+      "channel": "whatsapp runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "entries --"
+    }
+  ],
+  "approvals": [
+    {
+      "title": "UI layer is active outside its default posture",
+      "riskClass": "danger",
+      "riskText": "operator review",
+      "body": "expected inactive, got active",
+      "approveLabel": "accept for session",
+      "rejectLabel": "turn desktop off"
+    }
+  ],
+  "jobs": [
+    {
+      "title": "Approval queue",
+      "tagClass": "warn",
+      "tagText": "1 waiting",
+      "body": "Pending actions are rendered here as operator work, not buried in prompt text."
+    },
+    {
+      "title": "Observer summary",
+      "tagClass": "busy",
+      "tagText": "01 Apr 08:05",
+      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 31 Mar 08:05."
+    },
+    {
+      "title": "Routing drift check",
+      "tagClass": "busy",
+      "tagText": "01 Apr 06:15",
+      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 31 Mar 06:15."
+    },
+    {
+      "title": "State backup",
+      "tagClass": "busy",
+      "tagText": "01 Apr 05:00",
+      "body": "server3-state-backup.timer is active(waiting). Last trigger: not scheduled."
+    },
+    {
+      "title": "Receipt monitor",
+      "tagClass": "busy",
+      "tagText": "not scheduled",
+      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 31 Mar 21:21."
+    }
+  ],
+  "floor": [
+    {
+      "title": "Disk posture",
+      "stateClass": "warn",
+      "stateText": "watch",
+      "value": "18% used",
+      "body": "/srv/external/server3-arr | 1402 GiB free of 1833 GiB",
+      "statusLine": "backup disk: 7% used"
+    },
+    {
+      "title": "Host health",
+      "stateClass": "ok",
+      "stateText": "nominal",
+      "value": "load 5.62 / ram 48%",
+      "body": "primary route nordlynx / 10.5.0.2",
+      "statusLine": "host: server3"
+    },
+    {
+      "title": "Key paths",
+      "stateClass": "busy",
+      "stateText": "live",
+      "value": "/data/downloads",
+      "body": "missing | path unavailable",
+      "statusLine": "canonical media namespace is /data/downloads and /data/media/..."
+    },
+    {
+      "title": "Schedules",
+      "stateClass": "busy",
+      "stateText": "queued",
+      "value": "Observer summary, Routing drift check, State backup",
+      "body": "Visible timers stay on the floor so continuity work is never hidden behind another tool.",
+      "statusLine": "next: 01 Apr 08:05"
+    }
+  ],
+  "runtimes": [
+    {
+      "key": "architect",
+      "name": "Architect",
+      "stateClass": "ok",
+      "stateText": "healthy",
+      "role": "Telegram primary",
+      "operatorNote": "owner-facing runtime",
+      "summary": "Main Telegram and CLI runtime for Server3 operations.",
+      "actions": [
+        "restart service",
+        "open recent logs",
+        "inspect workspace"
+      ],
+      "serviceStats": [
+        {
+          "label": "unit set",
+          "value": "telegram-architect-bridge.service"
+        },
+        {
+          "label": "workspace",
+          "value": "/home/architect/matrix"
+        },
+        {
+          "label": "owner",
+          "value": "architect"
+        },
+        {
+          "label": "live state",
+          "value": "active"
+        }
+      ],
+      "recentJobs": [
+        {
+          "label": "telegram-architect-bridge.service",
+          "value": "--:--:-- pam_unix(sudo:session): session closed for user architect"
+        }
+      ],
+      "watchouts": [
+        {
+          "label": "current issue",
+          "value": "no active unit mismatch detected"
+        },
+        {
+          "label": "operator note",
+          "value": "Primary operator entry point on Server3."
+        },
+        {
+          "label": "change control",
+          "value": "persistent repo edits still require commit and push proof"
+        }
+      ],
+      "docsAndLogs": [
+        {
+          "label": "logs",
+          "value": "journalctl -u telegram-architect-bridge.service"
+        },
+        {
+          "label": "docs",
+          "value": "docs/telegram-architect-bridge.md"
+        },
+        {
+          "label": "policy",
+          "value": "ARCHITECT_INSTRUCTION.md"
+        }
+      ],
+      "unitNames": [
+        "telegram-architect-bridge.service"
+      ]
+    },
+    {
+      "key": "tank",
+      "name": "Tank",
+      "stateClass": "ok",
+      "stateText": "healthy",
+      "role": "Telegram sibling",
+      "operatorNote": "isolated Telegram runtime",
+      "summary": "Sibling Telegram assistant with isolated runtime state.",
+      "actions": [
+        "restart tank",
+        "open bridge logs",
+        "check runtime root"
+      ],
+      "serviceStats": [
+        {
+          "label": "unit set",
+          "value": "telegram-tank-bridge.service"
+        },
+        {
+          "label": "workspace",
+          "value": "/home/tank/tankbot"
+        },
+        {
+          "label": "owner",
+          "value": "tank"
+        },
+        {
+          "label": "live state",
+          "value": "active"
+        }
+      ],
+      "recentJobs": [
+        {
+          "label": "telegram-tank-bridge.service",
+          "value": "--:--:-- entries --"
+        }
+      ],
+      "watchouts": [
+        {
+          "label": "current issue",
+          "value": "no active unit mismatch detected"
+        },
+        {
+          "label": "operator note",
+          "value": "Uses the shared bridge pattern with its own workspace and memory."
+        },
+        {
+          "label": "identity",
+          "value": "preserve isolated runtime root and Joplin profile"
+        }
+      ],
+      "docsAndLogs": [
+        {
+          "label": "logs",
+          "value": "journalctl -u telegram-tank-bridge.service"
+        },
+        {
+          "label": "docs",
+          "value": "docs/runtime_docs/tank"
+        },
+        {
+          "label": "runbook",
+          "value": "ops/runtime_personas/check_runtime_repo_links.sh"
+        }
+      ],
+      "unitNames": [
+        "telegram-tank-bridge.service"
+      ]
+    },
+    {
+      "key": "diary",
+      "name": "Diary",
+      "stateClass": "ok",
+      "stateText": "healthy",
+      "role": "capture runtime",
+      "operatorNote": "capture-focused sibling",
+      "summary": "Dedicated Telegram diary assistant for low-friction text, voice, and photo capture.",
+      "actions": [
+        "restart diary",
+        "open capture logs",
+        "check sync paths"
+      ],
+      "serviceStats": [
+        {
+          "label": "unit set",
+          "value": "telegram-diary-bridge.service"
+        },
+        {
+          "label": "workspace",
+          "value": "/home/diary/diarybot"
+        },
+        {
+          "label": "owner",
+          "value": "diary"
+        },
+        {
+          "label": "live state",
+          "value": "active"
+        }
+      ],
+      "recentJobs": [
+        {
+          "label": "telegram-diary-bridge.service",
+          "value": "--:--:-- entries --"
+        }
+      ],
+      "watchouts": [
+        {
+          "label": "current issue",
+          "value": "no active unit mismatch detected"
+        },
+        {
+          "label": "operator note",
+          "value": "Runs the shared Telegram bridge with its own runtime root, AGENTS.md, and diary-oriented operating docs."
+        },
+        {
+          "label": "delivery",
+          "value": "capture routing should stay friction-light"
+        }
+      ],
+      "docsAndLogs": [
+        {
+          "label": "logs",
+          "value": "journalctl -u telegram-diary-bridge.service"
+        },
+        {
+          "label": "docs",
+          "value": "docs/runtime_docs/diary"
+        },
+        {
+          "label": "policy",
+          "value": "docs/runtime_docs/diary/DIARY_INSTRUCTION.md"
+        }
+      ],
+      "unitNames": [
+        "telegram-diary-bridge.service"
+      ]
+    },
+    {
+      "key": "govorun",
+      "name": "Govorun",
+      "stateClass": "ok",
+      "stateText": "healthy",
+      "role": "WhatsApp runtime",
+      "operatorNote": "dual transport + bridge",
+      "summary": "WhatsApp transport/API runtime used by the Govorun bridge.",
+      "actions": [
+        "restart whatsapp bridge",
+        "inspect reconnects",
+        "check routing drift"
+      ],
+      "serviceStats": [
+        {
+          "label": "unit set",
+          "value": "whatsapp-govorun-bridge.service, govorun-whatsapp-bridge.service"
+        },
+        {
+          "label": "workspace",
+          "value": "/home/govorun/whatsapp-govorun/app"
+        },
+        {
+          "label": "owner",
+          "value": "govorun"
+        },
+        {
+          "label": "live state",
+          "value": "active / active"
+        }
+      ],
+      "recentJobs": [
+        {
+          "label": "whatsapp-govorun-bridge.service",
+          "value": "--:--:-- entries --"
+        },
+        {
+          "label": "govorun-whatsapp-bridge.service",
+          "value": "--:--:-- entries --"
+        }
+      ],
+      "watchouts": [
+        {
+          "label": "current issue",
+          "value": "no active unit mismatch detected"
+        },
+        {
+          "label": "operator note",
+          "value": "Node transport sidecar for the Python Govorun bridge."
+        },
+        {
+          "label": "routing contract",
+          "value": "daily contract drift timer should stay green"
+        }
+      ],
+      "docsAndLogs": [
+        {
+          "label": "logs",
+          "value": "journalctl -u whatsapp-govorun-bridge.service -u govorun-whatsapp-bridge.service"
+        },
+        {
+          "label": "docs",
+          "value": "docs/runbooks/whatsapp-govorun-operations.md"
+        },
+        {
+          "label": "guard",
+          "value": "ops/chat-routing/validate_chat_routing_contract.py"
+        }
+      ],
+      "unitNames": [
+        "whatsapp-govorun-bridge.service",
+        "govorun-whatsapp-bridge.service"
+      ]
+    },
+    {
+      "key": "oracle",
+      "name": "Oracle",
+      "stateClass": "ok",
+      "stateText": "healthy",
+      "role": "Signal runtime",
+      "operatorNote": "transport + bridge",
+      "summary": "Signal transport sidecar used by the Oracle bridge.",
+      "actions": [
+        "restart oracle",
+        "open signal logs",
+        "check voice worker"
+      ],
+      "serviceStats": [
+        {
+          "label": "unit set",
+          "value": "signal-oracle-bridge.service, oracle-signal-bridge.service"
+        },
+        {
+          "label": "workspace",
+          "value": "/home/oracle/signal-oracle/app"
+        },
+        {
+          "label": "owner",
+          "value": "oracle"
+        },
+        {
+          "label": "live state",
+          "value": "active / active"
+        }
+      ],
+      "recentJobs": [
+        {
+          "label": "signal-oracle-bridge.service",
+          "value": "--:--:-- entries --"
+        },
+        {
+          "label": "oracle-signal-bridge.service",
+          "value": "--:--:-- entries --"
+        }
+      ],
+      "watchouts": [
+        {
+          "label": "current issue",
+          "value": "no active unit mismatch detected"
+        },
+        {
+          "label": "operator note",
+          "value": "Transport sidecar for the Oracle Signal runtime."
+        },
+        {
+          "label": "voice path",
+          "value": "keep local transcription runtime separate from transport health"
+        }
+      ],
+      "docsAndLogs": [
+        {
+          "label": "logs",
+          "value": "journalctl -u signal-oracle-bridge.service -u oracle-signal-bridge.service"
+        },
+        {
+          "label": "docs",
+          "value": "docs/runbooks/oracle-signal-operations.md"
+        },
+        {
+          "label": "voice",
+          "value": "ops/telegram-voice/transcribe_voice.sh"
+        }
+      ],
+      "unitNames": [
+        "signal-oracle-bridge.service",
+        "oracle-signal-bridge.service"
+      ]
+    },
+    {
+      "key": "mavali",
+      "name": "Mavali ETH",
+      "stateClass": "ok",
+      "stateText": "healthy",
+      "role": "venue operations runtime",
+      "operatorNote": "owner-bound wallet runtime",
+      "summary": "Wallet-first Ethereum mainnet runtime with deterministic wallet actions and Codex fallback for non-wallet prompts.",
+      "actions": [
+        "view staged action",
+        "open wallet logs",
+        "inspect policy"
+      ],
+      "serviceStats": [
+        {
+          "label": "unit set",
+          "value": "telegram-mavali-eth-bridge.service, mavali-eth-receipt-monitor.timer"
+        },
+        {
+          "label": "workspace",
+          "value": "/home/mavali_eth/mavali_ethbot"
+        },
+        {
+          "label": "owner",
+          "value": "mavali_eth"
+        },
+        {
+          "label": "live state",
+          "value": "mixed"
+        }
+      ],
+      "recentJobs": [
+        {
+          "label": "telegram-mavali-eth-bridge.service",
+          "value": "--:--:-- entries --"
+        },
+        {
+          "label": "mavali-eth-receipt-monitor.timer",
+          "value": "--:--:-- entries --"
+        }
+      ],
+      "watchouts": [
+        {
+          "label": "current issue",
+          "value": "no active unit mismatch detected"
+        },
+        {
+          "label": "operator note",
+          "value": "Runs the shared Telegram bridge with the mavali_eth deterministic wallet engine plus Codex fallback for non-wallet prompts."
+        }
+      ],
+      "docsAndLogs": [
+        {
+          "label": "logs",
+          "value": "journalctl -u telegram-mavali-eth-bridge.service"
+        },
+        {
+          "label": "docs",
+          "value": "docs/runbooks/mavali-eth-operations.md"
+        },
+        {
+          "label": "guard",
+          "value": "bridge-side pending-action guard"
+        }
+      ],
+      "unitNames": [
+        "telegram-mavali-eth-bridge.service",
+        "mavali-eth-receipt-monitor.timer"
+      ]
+    },
+    {
+      "key": "browser",
+      "name": "Browser Brain",
+      "stateClass": "busy",
+      "stateText": "attached",
+      "role": "browser control surface",
+      "operatorNote": "existing-session browser runtime",
+      "summary": "Dedicated local browser-control service for structured automation against a managed Brave profile.",
+      "actions": [
+        "re-attach service",
+        "open logs",
+        "review recovery path"
+      ],
+      "serviceStats": [
+        {
+          "label": "unit set",
+          "value": "server3-browser-brain.service"
+        },
+        {
+          "label": "workspace",
+          "value": "/home/browser_brain/browserbrain"
+        },
+        {
+          "label": "owner",
+          "value": "browser_brain"
+        },
+        {
+          "label": "live state",
+          "value": "active"
+        }
+      ],
+      "recentJobs": [
+        {
+          "label": "server3-browser-brain.service",
+          "value": "--:--:-- entries --"
+        }
+      ],
+      "watchouts": [
+        {
+          "label": "current issue",
+          "value": "no active unit mismatch detected"
+        },
+        {
+          "label": "operator note",
+          "value": "Separate from the TV desktop/browser flow and intended for loopback-only local callers."
+        },
+        {
+          "label": "recovery path",
+          "value": "existing-session path available"
+        }
+      ],
+      "docsAndLogs": [
+        {
+          "label": "logs",
+          "value": "journalctl -u server3-browser-brain.service"
+        },
+        {
+          "label": "summary",
+          "value": "SERVER3_SUMMARY.md"
+        },
+        {
+          "label": "policy",
+          "value": "existing_session is canonical"
+        }
+      ],
+      "unitNames": [
+        "server3-browser-brain.service"
+      ]
+    }
+  ]
+}
