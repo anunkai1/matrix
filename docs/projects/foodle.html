@@ -623,13 +623,14 @@
       }
 
       .tracker-head {
-        flex-direction: column;
+        display: grid;
+        grid-template-rows: auto minmax(7.4em, auto) auto;
         gap: 10px;
         min-height: 0;
       }
 
       .tracker-copy {
-        min-height: 7.4em;
+        min-height: 0;
       }
 
       .badge {
