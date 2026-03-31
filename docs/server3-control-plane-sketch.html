@@ -720,7 +720,7 @@
               <h1>Mission control for live runtimes, not a dashboard theme.</h1>
             </div>
           </div>
-          <div class="chip warn">read-only live snapshot</div>
+          <div class="chip warn" id="heroModeChip">read-only live snapshot</div>
         </div>
         <p>
           Chat is the conversational surface. Systemd and scripts are the execution surface. This page is the operator surface:
@@ -937,7 +937,7 @@
           role: "fallback runtime",
           operatorNote: "sample data",
           summary: "Run `python3 ops/server3_control_plane/export_snapshot.py` to load live state.",
-          actions: ["run exporter", "reload page", "inspect snapshot"],
+          actions: ["restart runtime", "show recent logs", "refresh snapshot"],
           serviceStats: [{ label: "status", value: "fallback only" }],
           recentJobs: [{ label: "next", value: "generate a live snapshot" }],
           watchouts: [{ label: "note", value: "fallback content is only a safe browser-local placeholder" }],
@@ -948,7 +948,13 @@
 
     const snapshot = window.SERVER3_CONTROL_PLANE_DATA || fallbackData;
     const runtimeLookup = Object.fromEntries((snapshot.runtimes || []).map((runtime) => [runtime.key, runtime]));
+    let currentSnapshot = snapshot;
+    let currentRuntimeKey = snapshot.defaultRuntime || (snapshot.runtimes[0] && snapshot.runtimes[0].key) || null;
+    let apiAvailable = false;
+    let runtimeEventsBound = false;
+    let actionEventsBound = false;
 
+    const heroModeChip = document.getElementById("heroModeChip");
     const metricRuntimeValue = document.getElementById("metricRuntimeValue");
     const metricRuntimeCopy = document.getElementById("metricRuntimeCopy");
     const metricApprovalValue = document.getElementById("metricApprovalValue");
@@ -980,6 +986,11 @@
     const recentJobs = document.getElementById("recentJobs");
     const watchouts = document.getElementById("watchouts");
     const docsAndLogs = document.getElementById("docsAndLogs");
+
+    function setHeroMode(text, tone) {
+      heroModeChip.className = `chip ${tone}`;
+      heroModeChip.textContent = text;
+    }
 
     function escapeHtml(value) {
       return String(value)
@@ -1105,6 +1116,7 @@
     function selectRuntime(key) {
       const runtime = runtimeLookup[key];
       if (!runtime) return;
+      currentRuntimeKey = key;
 
       runtimeList.querySelectorAll(".runtime").forEach((node) => {
         node.classList.toggle("active", node.dataset.runtime === key);
@@ -1125,23 +1137,30 @@
     }
 
     function bindRuntimeSelection(defaultKey) {
-      runtimeList.addEventListener("click", (event) => {
-        const runtime = event.target.closest(".runtime");
-        if (runtime) selectRuntime(runtime.dataset.runtime);
-      });
+      if (!runtimeEventsBound) {
+        runtimeList.addEventListener("click", (event) => {
+          const runtime = event.target.closest(".runtime");
+          if (runtime) selectRuntime(runtime.dataset.runtime);
+        });
 
-      runtimeList.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        const runtime = event.target.closest(".runtime");
-        if (!runtime) return;
-        event.preventDefault();
-        selectRuntime(runtime.dataset.runtime);
-      });
+        runtimeList.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          const runtime = event.target.closest(".runtime");
+          if (!runtime) return;
+          event.preventDefault();
+          selectRuntime(runtime.dataset.runtime);
+        });
+        runtimeEventsBound = true;
+      }
 
       selectRuntime(defaultKey);
     }
 
     function renderPage(data) {
+      currentSnapshot = data;
+      const nextLookup = Object.fromEntries((data.runtimes || []).map((runtime) => [runtime.key, runtime]));
+      Object.keys(runtimeLookup).forEach((key) => delete runtimeLookup[key]);
+      Object.assign(runtimeLookup, nextLookup);
       metricRuntimeValue.textContent = data.summary.runtimeValue;
       metricRuntimeCopy.textContent = data.summary.runtimeCopy;
       metricApprovalValue.textContent = data.summary.approvalValue;
@@ -1159,10 +1178,115 @@
       renderApprovals(data.approvals || []);
       renderJobs(data.jobs || []);
       renderFloor(data.floor || []);
-      bindRuntimeSelection(data.defaultRuntime || (data.runtimes[0] && data.runtimes[0].key));
+      bindRuntimeSelection(currentRuntimeKey || data.defaultRuntime || (data.runtimes[0] && data.runtimes[0].key));
     }
 
-    renderPage(snapshot);
+    async function apiJson(path, options = {}) {
+      const response = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error || `request failed: ${response.status}`);
+      }
+      return payload;
+    }
+
+    async function loadFromApi(forceRefresh = false) {
+      const suffix = forceRefresh ? "?refresh=1" : "";
+      const payload = await apiJson(`/api/snapshot${suffix}`);
+      apiAvailable = true;
+      setHeroMode("localhost API live", "ok");
+      renderPage(payload.snapshot);
+    }
+
+    async function refreshSnapshot() {
+      if (!apiAvailable) {
+        location.reload();
+        return;
+      }
+      setHeroMode("refreshing snapshot", "busy");
+      try {
+        const payload = await apiJson("/api/refresh", { method: "POST" });
+        renderPage(payload.snapshot);
+        setHeroMode("localhost API live", "ok");
+      } catch (error) {
+        setHeroMode("refresh failed", "danger");
+        window.alert(String(error));
+      }
+    }
+
+    async function restartRuntime() {
+      if (!apiAvailable || !currentRuntimeKey) {
+        window.alert("Runtime restart requires the local control-plane server.");
+        return;
+      }
+      const runtime = runtimeLookup[currentRuntimeKey];
+      if (!runtime) return;
+      if (!window.confirm(`Restart ${runtime.name}?`)) return;
+      setHeroMode(`restarting ${runtime.name.toLowerCase()}`, "warn");
+      try {
+        await apiJson(`/api/runtime/${currentRuntimeKey}/restart`, { method: "POST" });
+        await refreshSnapshot();
+      } catch (error) {
+        setHeroMode("restart failed", "danger");
+        window.alert(String(error));
+      }
+    }
+
+    async function showLogs() {
+      if (!apiAvailable || !currentRuntimeKey) {
+        window.alert("Live log viewing requires the local control-plane server.");
+        return;
+      }
+      try {
+        const payload = await apiJson(`/api/runtime/${currentRuntimeKey}/logs`);
+        const runtime = runtimeLookup[currentRuntimeKey];
+        const win = window.open("", "_blank", "width=960,height=720");
+        if (!win) {
+          window.alert(payload.logs || "No logs returned.");
+          return;
+        }
+        win.document.write(`<pre style="background:#0d1013;color:#edf1f3;padding:18px;white-space:pre-wrap;font:13px/1.45 'IBM Plex Mono',monospace;">${escapeHtml(runtime.name)}\n\n${escapeHtml(payload.logs || payload.stderr || "No logs returned.")}</pre>`);
+        win.document.close();
+      } catch (error) {
+        window.alert(String(error));
+      }
+    }
+
+    function bindActionButtons() {
+      if (actionEventsBound) return;
+      actionOne.addEventListener("click", () => {
+        restartRuntime();
+      });
+      actionTwo.addEventListener("click", () => {
+        showLogs();
+      });
+      actionThree.addEventListener("click", () => {
+        refreshSnapshot();
+      });
+      actionEventsBound = true;
+    }
+
+    async function boot() {
+      renderPage(currentSnapshot);
+      bindActionButtons();
+      if (location.protocol !== "file:") {
+        try {
+          await loadFromApi(false);
+          window.setInterval(() => {
+            loadFromApi(false).catch(() => {});
+          }, 60000);
+          return;
+        } catch (error) {
+          setHeroMode("file snapshot fallback", "warn");
+        }
+      }
+      setHeroMode("read-only file snapshot", "warn");
+    }
+
+    boot();
   </script>
 </body>
 </html>

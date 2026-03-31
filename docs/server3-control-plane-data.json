@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-31T21:45:14.365328+10:00",
+  "generatedAt": "2026-03-31T21:57:41.610079+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
@@ -9,10 +9,10 @@
     "approvalCopy": "explicit human gates from live Server3 state",
     "jobValue": "5 tracked",
     "jobCopy": "timers, approvals, and continuity work in one surface",
-    "hostValue": "load 5.62 / ram 48%",
+    "hostValue": "load 5.66 / ram 48%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "31 Mar 2026 21:45 AEST",
+      "31 Mar 2026 21:57 AEST",
       "snapshot file server3-control-plane-data.js",
       "1 approval item(s)"
     ],
@@ -82,7 +82,7 @@
   },
   "activity": [
     {
-      "time": "21:45:14",
+      "time": "21:57:41",
       "title": "Optional UI layer is active",
       "channel": "host",
       "statusClass": "danger",
@@ -90,7 +90,7 @@
       "copy": "expected inactive, got active"
     },
     {
-      "time": "21:45:14",
+      "time": "21:57:41",
       "title": "UI layer is active outside its default posture",
       "channel": "approval",
       "statusClass": "danger",
@@ -169,7 +169,7 @@
       "title": "Receipt monitor",
       "tagClass": "busy",
       "tagText": "not scheduled",
-      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 31 Mar 21:21."
+      "body": "mavali-eth-receipt-monitor.timer is active. Last trigger: 31 Mar 21:51."
     }
   ],
   "floor": [
@@ -185,7 +185,7 @@
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 5.62 / ram 48%",
+      "value": "load 5.66 / ram 48%",
       "body": "primary route nordlynx / 10.5.0.2",
       "statusLine": "host: server3"
     },
@@ -216,9 +216,9 @@
       "operatorNote": "owner-facing runtime",
       "summary": "Main Telegram and CLI runtime for Server3 operations.",
       "actions": [
-        "restart service",
-        "open recent logs",
-        "inspect workspace"
+        "restart runtime",
+        "show recent logs",
+        "refresh snapshot"
       ],
       "serviceStats": [
         {
@@ -285,9 +285,9 @@
       "operatorNote": "isolated Telegram runtime",
       "summary": "Sibling Telegram assistant with isolated runtime state.",
       "actions": [
-        "restart tank",
-        "open bridge logs",
-        "check runtime root"
+        "restart runtime",
+        "show recent logs",
+        "refresh snapshot"
       ],
       "serviceStats": [
         {
@@ -354,9 +354,9 @@
       "operatorNote": "capture-focused sibling",
       "summary": "Dedicated Telegram diary assistant for low-friction text, voice, and photo capture.",
       "actions": [
-        "restart diary",
-        "open capture logs",
-        "check sync paths"
+        "restart runtime",
+        "show recent logs",
+        "refresh snapshot"
       ],
       "serviceStats": [
         {
@@ -423,9 +423,9 @@
       "operatorNote": "dual transport + bridge",
       "summary": "WhatsApp transport/API runtime used by the Govorun bridge.",
       "actions": [
-        "restart whatsapp bridge",
-        "inspect reconnects",
-        "check routing drift"
+        "restart runtime",
+        "show recent logs",
+        "refresh snapshot"
       ],
       "serviceStats": [
         {
@@ -497,9 +497,9 @@
       "operatorNote": "transport + bridge",
       "summary": "Signal transport sidecar used by the Oracle bridge.",
       "actions": [
-        "restart oracle",
-        "open signal logs",
-        "check voice worker"
+        "restart runtime",
+        "show recent logs",
+        "refresh snapshot"
       ],
       "serviceStats": [
         {
@@ -571,9 +571,9 @@
       "operatorNote": "owner-bound wallet runtime",
       "summary": "Wallet-first Ethereum mainnet runtime with deterministic wallet actions and Codex fallback for non-wallet prompts.",
       "actions": [
-        "view staged action",
-        "open wallet logs",
-        "inspect policy"
+        "restart runtime",
+        "show recent logs",
+        "refresh snapshot"
       ],
       "serviceStats": [
         {
@@ -590,7 +590,7 @@
         },
         {
           "label": "live state",
-          "value": "mixed"
+          "value": "active"
         }
       ],
       "recentJobs": [
@@ -641,9 +641,9 @@
       "operatorNote": "existing-session browser runtime",
       "summary": "Dedicated local browser-control service for structured automation against a managed Brave profile.",
       "actions": [
-        "re-attach service",
-        "open logs",
-        "review recovery path"
+        "restart runtime",
+        "show recent logs",
+        "refresh snapshot"
       ],
       "serviceStats": [
         {

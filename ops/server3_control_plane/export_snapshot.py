@@ -267,19 +267,8 @@ def classify_state(matches_expected: bool, live_state: str, issues: Iterable[str
 
 
 def action_labels(name: str) -> List[str]:
-    if name == "Architect":
-        return ["restart service", "open recent logs", "inspect workspace"]
-    if name == "Tank":
-        return ["restart tank", "open bridge logs", "check runtime root"]
-    if name == "Diary":
-        return ["restart diary", "open capture logs", "check sync paths"]
-    if name == "Govorun":
-        return ["restart whatsapp bridge", "inspect reconnects", "check routing drift"]
-    if name == "Oracle":
-        return ["restart oracle", "open signal logs", "check voice worker"]
-    if name == "Mavali ETH":
-        return ["view staged action", "open wallet logs", "inspect policy"]
-    return ["re-attach service", "open logs", "review recovery path"]
+    _ = name
+    return ["restart runtime", "show recent logs", "refresh snapshot"]
 
 
 def runtime_docs(name: str) -> List[Tuple[str, str]]:
