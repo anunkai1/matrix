@@ -384,6 +384,15 @@
       position: relative;
     }
 
+    .combined-cell.today {
+      outline: 2px solid rgba(255, 255, 255, 0.75);
+      outline-offset: 1px;
+    }
+
+    body[data-theme="dark"] .combined-cell.today {
+      outline-color: #f2c66d;
+    }
+
     .combined-stack {
       display: grid;
       gap: 2px;
@@ -834,8 +843,11 @@
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const start = new Date(today);
-      start.setDate(today.getDate() - ((weeks - 1) * 7 + today.getDay()));
+      const currentWeekStart = new Date(today);
+      currentWeekStart.setDate(today.getDate() - today.getDay());
+
+      const start = new Date(currentWeekStart);
+      start.setDate(currentWeekStart.getDate() - Math.floor(weeks / 2) * 7);
 
       const monthLabels = Array.from({ length: weeks }, () => "");
       const cells = [];
@@ -856,6 +868,7 @@
           cells.push({
             weekIndex,
             dayIndex,
+            isToday: key === keyForDate(today),
             title: [
               formatDate(date),
               ...trackers.map((tracker) => {
@@ -943,7 +956,7 @@
                 <div class="combined-grid" style="grid-template-columns: repeat(${combinedCalendar.weeks}, var(--cell-size));">
                   ${combinedCalendar.cells.map((cell) => `
                     <span
-                      class="combined-cell"
+                      class="combined-cell${cell.isToday ? " today" : ""}"
                       style="grid-column:${cell.weekIndex + 1}; grid-row:${cell.dayIndex + 1};"
                       title="${cell.title}"
                     >
