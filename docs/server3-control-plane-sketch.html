@@ -311,6 +311,39 @@
       font-size: 1.02rem;
     }
 
+    .runtime-kicker {
+      margin-top: 8px;
+      color: var(--muted-strong);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .runtime-note {
+      margin-top: 8px;
+      color: var(--muted-strong);
+      font-size: 0.8rem;
+      line-height: 1.35;
+    }
+
+    .runtime-strip {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .runtime-pill {
+      border-radius: 999px;
+      border: 1px solid rgba(210, 223, 230, 0.08);
+      background: rgba(10, 13, 16, 0.64);
+      padding: 4px 8px;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+
     .runtime p,
     .subtle,
     .feed-copy,
@@ -516,6 +549,11 @@
       color: var(--warn);
     }
 
+    button.ghost {
+      background: rgba(14, 18, 22, 0.52);
+      color: var(--muted-strong);
+    }
+
     button.danger {
       border-color: rgba(234, 140, 122, 0.42);
       color: var(--danger);
@@ -589,6 +627,30 @@
       margin-top: 4px;
     }
 
+    .browser-lane-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .lane-block {
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(210, 223, 230, 0.08);
+      background: rgba(10, 13, 16, 0.56);
+      padding: 12px;
+    }
+
+    .lane-block.emphasis {
+      background:
+        linear-gradient(135deg, rgba(228, 189, 115, 0.08), rgba(130, 190, 212, 0.05)),
+        rgba(10, 13, 16, 0.72);
+    }
+
+    .lane-block .drawer-subtitle {
+      margin-bottom: 10px;
+    }
+
     .mono {
       font-family: var(--mono);
     }
@@ -657,7 +719,8 @@
       }
 
       .hero-grid,
-      .floor-grid {
+      .floor-grid,
+      .browser-lane-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
@@ -667,7 +730,8 @@
       .body-grid,
       .timeline-footer,
       .overview-grid,
-      .floor-grid {
+      .floor-grid,
+      .browser-lane-grid {
         grid-template-columns: 1fr;
       }
 
@@ -749,8 +813,8 @@
           <div class="hero-top-right">
             <div class="chip warn" id="heroModeChip">read-only live snapshot</div>
             <div class="hero-auth">
-              <button type="button" id="operatorUnlock">unlock operator mode</button>
-              <button type="button" id="operatorLock">clear token</button>
+              <button class="ghost" type="button" id="operatorUnlock">unlock operator mode</button>
+              <button class="ghost" type="button" id="operatorLock">clear token</button>
             </div>
           </div>
         </div>
@@ -901,14 +965,24 @@
 
           <section class="drawer-panel" id="browserLanePanel" hidden>
             <h3>Browser lane</h3>
-            <div class="drawer-subtitle">session + takeover + targets</div>
-            <div class="fact-grid" id="browserLaneState"></div>
-            <div class="drawer-subtitle">live tabs</div>
-            <div class="fact-grid" id="browserLaneTargets"></div>
-            <div class="drawer-subtitle">recent captures</div>
-            <div class="fact-grid" id="browserLaneCaptures"></div>
-            <div class="drawer-subtitle">recent browser activity</div>
-            <div class="fact-grid" id="browserLaneActivity"></div>
+            <div class="browser-lane-grid">
+              <div class="lane-block emphasis">
+                <div class="drawer-subtitle">session + takeover</div>
+                <div class="fact-grid" id="browserLaneState"></div>
+              </div>
+              <div class="lane-block">
+                <div class="drawer-subtitle">live tabs</div>
+                <div class="fact-grid" id="browserLaneTargets"></div>
+              </div>
+              <div class="lane-block">
+                <div class="drawer-subtitle">recent captures</div>
+                <div class="fact-grid" id="browserLaneCaptures"></div>
+              </div>
+              <div class="lane-block">
+                <div class="drawer-subtitle">recent browser activity</div>
+                <div class="fact-grid" id="browserLaneActivity"></div>
+              </div>
+            </div>
           </section>
 
           <section class="drawer-panel">
@@ -1103,7 +1177,13 @@
             <h3>${escapeHtml(runtime.name)}</h3>
             <span class="state ${escapeHtml(runtime.stateClass)}">${escapeHtml(runtime.stateText)}</span>
           </div>
+          <div class="runtime-kicker">${escapeHtml(runtime.role || "runtime")}</div>
           <p>${escapeHtml(runtime.summary)}</p>
+          <div class="runtime-note">${escapeHtml(runtime.operatorNote || "")}</div>
+          <div class="runtime-strip">
+            <span class="runtime-pill">${escapeHtml((runtime.serviceStats && runtime.serviceStats[0] && runtime.serviceStats[0].value) || "runtime-local")}</span>
+            <span class="runtime-pill">${escapeHtml((runtime.watchouts && runtime.watchouts[0] && runtime.watchouts[0].label) || "watch")}</span>
+          </div>
         </article>
       `).join("");
     }
@@ -1215,8 +1295,12 @@
       drawerRole.textContent = runtime.role;
       drawerName.textContent = runtime.name;
       drawerChip.className = `chip ${runtime.stateClass}`;
-      drawerChip.textContent = runtime.operatorNote || runtime.stateText;
-      drawerSummary.textContent = runtime.summary;
+      drawerChip.textContent = runtime.browserLane
+        ? (runtime.browserLane.summary.manual_takeover || runtime.operatorNote || runtime.stateText)
+        : (runtime.operatorNote || runtime.stateText);
+      drawerSummary.textContent = runtime.browserLane
+        ? `${runtime.summary} Current target: ${runtime.browserLane.summary.current_target || "unknown"}.`
+        : runtime.summary;
       [actionOne.textContent, actionTwo.textContent, actionThree.textContent] = runtime.actions || ["action one", "action two", "action three"];
       serviceStats.innerHTML = (runtime.serviceStats || []).map((item) => rowHtml(item.label, item.value)).join("");
       recentJobs.innerHTML = (runtime.recentJobs || []).map((item) => rowHtml(item.label, item.value)).join("");
