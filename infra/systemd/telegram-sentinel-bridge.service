@@ -1,0 +1,23 @@
+[Unit]
+Description=Telegram Sentinel Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sentinel
+Group=sentinel
+WorkingDirectory=/home/sentinel/sentinelbot
+Environment=PYTHONUNBUFFERED=1
+Environment=UNIT_NAME=telegram-sentinel-bridge.service
+Environment=TELEGRAM_RUNTIME_ROOT=/home/sentinel/sentinelbot
+Environment=TELEGRAM_EXECUTOR_CMD=/home/sentinel/sentinelbot/src/telegram_bridge/executor.sh
+EnvironmentFile=-/etc/default/telegram-sentinel-bridge
+ExecStart=/usr/bin/python3 /home/sentinel/sentinelbot/src/telegram_bridge/main.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

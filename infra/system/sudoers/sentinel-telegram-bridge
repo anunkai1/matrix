@@ -1,0 +1,1 @@
+sentinel ALL=(root) NOPASSWD: /home/architect/matrix/ops/telegram-bridge/restart_and_verify.sh --unit telegram-sentinel-bridge.service

@@ -18,6 +18,7 @@ These are the ways work enters the server.
 | Telegram AgentSmith bot | Isolated Telegram assistant/runtime sibling | `telegram-agentsmith-bridge.service` as `agentsmith` |
 | Telegram Tank bot | Separate Telegram runtime/profile for Tank | `telegram-tank-bridge.service` as `tank` |
 | Telegram Trinity bot | Dedicated Telegram runtime with its own code tree | `telegram-trinity-bridge.service` as `trinity` |
+| Telegram Sentinel bot | Dedicated Telegram runtime for autonomous-worker experiments | `telegram-sentinel-bridge.service` as `sentinel` |
 | Telegram Mavali ETH bot | Wallet-first Telegram runtime with deterministic ETH actions plus Codex fallback | `telegram-mavali-eth-bridge.service` as `mavali_eth` |
 | Telegram Macrorayd bot | Dedicated Telegram Codex helper/runtime sibling | `telegram-macrorayd-bridge.service` as `macrorayd` |
 | Signal Oracle | Signal-facing assistant persona with its own transport sidecar | `signal-oracle-bridge.service` + `oracle-signal-bridge.service` as `oracle` |
@@ -305,6 +306,7 @@ Server3 now uses one shared bridge core in `/home/architect/matrix` plus per-run
 - AgentSmith: `/home/agentsmith/agentsmithbot` (overlay root)
 - Tank: `/home/tank/tankbot` (runtime root; `/home/tank/tankbot/src` points at the shared core tree)
 - Trinity: `/home/trinity/trinitybot` (dedicated runtime root and code tree)
+- Sentinel: `/home/sentinel/sentinelbot` (dedicated runtime root and code tree)
 - Oracle bridge: `/home/oracle/oraclebot` (overlay root)
 - Oracle Signal transport: `/home/oracle/signal-oracle/app`
 - Govorun Python bridge: `/home/govorun/govorunbot` (overlay root)

@@ -28,6 +28,7 @@ CORE_SERVICES = (
     "telegram-architect-bridge.service",
     "telegram-tank-bridge.service",
     "telegram-trinity-bridge.service",
+    "telegram-sentinel-bridge.service",
     "whatsapp-govorun-bridge.service",
     "govorun-whatsapp-bridge.service",
 )

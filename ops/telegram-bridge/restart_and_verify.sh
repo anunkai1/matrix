@@ -14,6 +14,7 @@ ALLOWED_UNITS=(
   "telegram-diary-bridge.service"
   "telegram-tank-bridge.service"
   "telegram-trinity-bridge.service"
+  "telegram-sentinel-bridge.service"
   "telegram-mavali-eth-bridge.service"
   "telegram-macrorayd-bridge.service"
   "govorun-whatsapp-bridge.service"

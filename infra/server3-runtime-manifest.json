@@ -128,6 +128,31 @@
       ]
     },
     {
+      "name": "Sentinel",
+      "category": "secondary",
+      "runtime_layout": "dedicated-runtime-root",
+      "workspace_root": "/home/sentinel/sentinelbot",
+      "purpose": "Separate Telegram runtime for the Sentinel autonomous-worker experiment.",
+      "expected_default_state": "active",
+      "dependencies": [
+        "isolated Sentinel code tree",
+        "Sentinel runtime environment",
+        "authenticated Codex executor"
+      ],
+      "owner_user": "sentinel",
+      "notes": [
+        "Uses a dedicated runtime root, code tree, state DB, and persona instructions so Sentinel autonomy changes do not bleed into Architect or AgentSmith.",
+        "Initial rollout is owner-DM-only while the autonomous execution contract is tuned."
+      ],
+      "units": [
+        {
+          "name": "telegram-sentinel-bridge.service",
+          "kind": "service",
+          "expected_state": "active"
+        }
+      ]
+    },
+    {
       "name": "Govorun transport",
       "category": "secondary",
       "runtime_layout": "transport-app",

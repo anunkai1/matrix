@@ -50,7 +50,71 @@ sudo journalctl -u telegram-architect-bridge.service -n 1200 --no-pager | \
   jq -r --argjson chat_id "$CHAT_ID" 'select(.chat_id? == $chat_id)'
 ```
 
-## 4) Understand request rejection reasons
+## 4) Use the latency benchmark harness
+
+For stable replay benchmarking, build a frozen corpus from recent traffic and run the local harness.
+
+Build a corpus from Architect memory:
+
+```bash
+python3 ops/telegram-bridge/build_latency_corpus.py \
+  --db /home/architect/.local/state/telegram-architect-bridge/memory.sqlite3 \
+  --conversation-key shared:architect:main \
+  --output /tmp/architect_latency_corpus.json \
+  --count 24
+```
+
+Replay it through the bridge:
+
+```bash
+python3 ops/telegram-bridge/latency_benchmark.py \
+  --corpus /tmp/architect_latency_corpus.json \
+  --iterations 20
+```
+
+Use this harness when you need:
+- a frozen benchmark before changing code
+- a baseline against a later optimization attempt
+- deterministic bridge-overhead measurements without live Telegram noise
+
+## 5) Inspect live phase timing
+
+The bridge now emits two timing event families:
+
+- `bridge.request_phase_timing`
+  - request phases such as:
+  - `handle_update_pre_worker`
+  - `prepare_prompt_input`
+  - `begin_memory_turn`
+  - `engine_run`
+  - `finalize_prompt_success`
+  - `process_prompt_total`
+- `bridge.executor_phase_timing`
+  - deeper executor split:
+  - `auth_sync`
+  - `wrapper_bootstrap`
+  - `codex_exec`
+
+Request-level phase timing query:
+
+```bash
+sudo journalctl -u telegram-architect-bridge.service -n 1600 --no-pager | \
+  jq -r 'select(.event? == "bridge.request_phase_timing") | {ts, chat_id, message_id, phase, duration_ms}'
+```
+
+Executor subphase query:
+
+```bash
+sudo journalctl -u telegram-architect-bridge.service -n 1600 --no-pager | \
+  jq -r 'select(.event? == "bridge.executor_phase_timing") | {ts, chat_id, phase, duration_ms, mode}'
+```
+
+Interpretation rule:
+- if `codex_exec` dominates, the bridge is not the main bottleneck
+- if `auth_sync` or `wrapper_bootstrap` grows large, investigate local wrapper/bootstrap work
+- if `finalize_prompt_success` grows large, inspect outbound Telegram/send path behavior
+
+## 6) Understand request rejection reasons
 
 Rejected requests emit `bridge.request_rejected` with `reason`:
 - `input_too_long`
@@ -68,7 +132,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 1000 --no-pager | \
 Denied non-allowlisted chats use:
 - `bridge.request_denied` with reason `chat_not_allowlisted`
 
-## 5) Debug executor behavior
+## 7) Debug executor behavior
 
 Executor subprocess events:
 - `bridge.executor_subprocess_start`
@@ -89,7 +153,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 1200 --no-pager | \
   jq -r 'select(.event? | startswith("bridge.executor") or .event? == "bridge.request_retry_scheduled" or .event? == "bridge.request_timeout" or .event? == "bridge.request_failed")'
 ```
 
-## 6) Debug persistent worker lifecycle
+## 8) Debug persistent worker lifecycle
 
 Worker/session diagnostic events:
 - `bridge.worker_evicted_for_capacity`
@@ -104,7 +168,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 1200 --no-pager | \
   jq -r 'select(.event? == "bridge.worker_evicted_for_capacity" or .event? == "bridge.worker_reset_for_policy_change" or .event? == "bridge.worker_capacity_rejected" or .event? == "bridge.worker_idle_expired")'
 ```
 
-## 7) Debug safe restart flow
+## 9) Debug safe restart flow
 
 Restart diagnostic events:
 - `bridge.restart_requested`
@@ -120,7 +184,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 1200 --no-pager | \
   jq -r 'select(.event? | startswith("bridge.restart"))'
 ```
 
-## 8) When `jq` is unavailable
+## 10) When `jq` is unavailable
 
 Use raw logs:
 

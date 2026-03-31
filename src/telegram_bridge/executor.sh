@@ -76,6 +76,12 @@ if [[ "${runtime_root}" != /* ]]; then
 fi
 runtime_root="$(cd "${runtime_root}" && pwd)"
 
+codex_workdir="${TELEGRAM_CODEX_WORKDIR:-${runtime_root}}"
+if [[ "${codex_workdir}" != /* ]]; then
+  codex_workdir="${runtime_root}/${codex_workdir}"
+fi
+codex_workdir="$(cd "${codex_workdir}" && pwd)"
+
 auth_sync_script="${shared_core_root}/ops/codex/sync_shared_auth.sh"
 if [[ -x "${auth_sync_script}" ]]; then
   auth_sync_started_ms="$(now_ms)"
@@ -87,7 +93,7 @@ if [[ -x "${auth_sync_script}" ]]; then
   emit_phase_timing "auth_sync" "$((auth_sync_finished_ms - auth_sync_started_ms))"
 fi
 
-cd "${runtime_root}"
+cd "${codex_workdir}"
 
 style_hint="${TELEGRAM_RESPONSE_STYLE_HINT:-}"
 assembled_prompt=""
