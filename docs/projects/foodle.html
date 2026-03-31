@@ -321,6 +321,7 @@
     .month-tag {
       white-space: nowrap;
       line-height: 1;
+      font-weight: 700;
     }
 
     .calendar-grid {
@@ -435,7 +436,7 @@
       font-size: 0.92rem;
     }
 
-    @media (max-width: 860px) {
+    @media (max-width: 980px) {
       .hero-grid,
       .layout {
         grid-template-columns: 1fr;
@@ -453,8 +454,8 @@
 
     @media (max-width: 640px) {
       :root {
-        --cell-size: 12px;
-        --cell-gap: 3px;
+        --cell-size: 14px;
+        --cell-gap: 4px;
       }
 
       .wrap {
@@ -519,18 +520,22 @@
       }
 
       .heatmap-frame {
-        grid-template-columns: 30px minmax(360px, 1fr);
-        min-width: 400px;
+        grid-template-columns: 34px minmax(0, 1fr);
+        min-width: 0;
       }
 
       .weekday-rail,
       .month-row,
       .legend {
-        font-size: 0.68rem;
+        font-size: 0.76rem;
       }
 
       .legend {
         gap: 8px;
+      }
+
+      .month-tag {
+        font-weight: 800;
       }
     }
   </style>
@@ -593,7 +598,8 @@
   <script>
     const STORAGE_KEY = "foodle-v1";
     const THEME_KEY = "foodle-theme";
-    const CALENDAR_WEEKS = 26;
+    const DESKTOP_CALENDAR_WEEKS = 26;
+    const MOBILE_CALENDAR_WEEKS = 18;
     const trackers = [
       {
         id: "sugar",
@@ -643,6 +649,12 @@
 
     function saveData(data) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function currentCalendarWeeks() {
+      return window.matchMedia("(max-width: 640px)").matches
+        ? MOBILE_CALENDAR_WEEKS
+        : DESKTOP_CALENDAR_WEEKS;
     }
 
     function getPreferredTheme() {
@@ -723,17 +735,18 @@
     }
 
     function calendarFor(data, trackerId) {
+      const weeks = currentCalendarWeeks();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const start = new Date(today);
-      start.setDate(today.getDate() - ((CALENDAR_WEEKS - 1) * 7 + today.getDay()));
+      start.setDate(today.getDate() - ((weeks - 1) * 7 + today.getDay()));
 
-      const monthLabels = Array.from({ length: CALENDAR_WEEKS }, () => "");
+      const monthLabels = Array.from({ length: weeks }, () => "");
       const cells = [];
       let running = 0;
 
-      for (let weekIndex = 0; weekIndex < CALENDAR_WEEKS; weekIndex += 1) {
+      for (let weekIndex = 0; weekIndex < weeks; weekIndex += 1) {
         for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
           const date = new Date(start);
           date.setDate(start.getDate() + weekIndex * 7 + dayIndex);
@@ -768,7 +781,7 @@
           });
         }
       }
-      return { monthLabels, cells };
+      return { monthLabels, cells, weeks };
     }
 
     function shareText(data) {
@@ -849,12 +862,12 @@
                 <span></span>
               </div>
               <div class="calendar-side">
-                <div class="month-row">
+                <div class="month-row" style="grid-template-columns: repeat(${calendar.weeks}, var(--cell-size));">
                   ${calendar.monthLabels.map((label) => `
                     <span class="month-tag">${label}</span>
                   `).join("")}
                 </div>
-                <div class="calendar-grid">
+                <div class="calendar-grid" style="grid-template-columns: repeat(${calendar.weeks}, var(--cell-size));">
                   ${calendar.cells.map((cell) => `
                     <span
                       class="calendar-cell ${cell.tone}"
@@ -864,7 +877,7 @@
                   `).join("")}
                 </div>
                 <div class="legend">
-                  <span>Last ${CALENDAR_WEEKS} weeks</span>
+                  <span>Last ${calendar.weeks} weeks</span>
                   <span class="legend-group">
                     <span class="legend-swatch" style="background: rgba(31, 27, 22, 0.08);"></span> Empty
                   </span>
