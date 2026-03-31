@@ -68,15 +68,15 @@
       color: #eef6ff;
     }
 
-    body[data-theme="dark"] .calendar-cell {
+    body[data-theme="dark"] .combined-cell {
       border-color: rgba(224, 235, 247, 0.1);
     }
 
-    body[data-theme="dark"] .calendar-cell.empty {
-      background: rgba(130, 152, 177, 0.24);
+    body[data-theme="dark"] .combined-bar.empty {
+      background: rgba(130, 152, 177, 0.28);
     }
 
-    body[data-theme="dark"] .calendar-cell.miss {
+    body[data-theme="dark"] .combined-bar.miss {
       background: #d85b5b;
     }
 
@@ -312,6 +312,13 @@
       overflow-x: auto;
     }
 
+    .calendar-intro {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
     .heatmap-frame {
       display: grid;
       grid-template-columns: 42px minmax(480px, 1fr);
@@ -352,27 +359,34 @@
       font-weight: 700;
     }
 
-    .calendar-grid {
+    .combined-grid {
       display: grid;
       grid-template-columns: repeat(26, var(--cell-size));
       grid-template-rows: repeat(7, var(--cell-size));
       gap: var(--cell-gap);
     }
 
-    .calendar-cell {
+    .combined-cell {
       width: var(--cell-size);
-      height: var(--cell-size);
+      height: calc(var(--cell-size) + 8px);
       border-radius: 4px;
       border: 1px solid rgba(31, 27, 22, 0.05);
+      background: rgba(255, 255, 255, 0.18);
+      padding: 2px;
+      display: grid;
+      gap: 2px;
+    }
+
+    .combined-bar {
+      border-radius: 2px;
       background: rgba(31, 27, 22, 0.08);
     }
 
-    .calendar-cell.empty { background: rgba(31, 27, 22, 0.08); }
-    .calendar-cell.miss { background: rgba(198, 69, 69, 0.72); }
-    .calendar-cell.level-1 { background: #1f6d3e; }
-    .calendar-cell.level-2 { background: #238a4a; }
-    .calendar-cell.level-3 { background: #31a354; }
-    .calendar-cell.level-4 { background: #57c96d; }
+    .combined-bar.empty { background: rgba(31, 27, 22, 0.1); }
+    .combined-bar.miss { background: rgba(198, 69, 69, 0.72); }
+    .combined-bar.good.track-sugar { background: var(--sugar); }
+    .combined-bar.good.track-carbs { background: var(--carbs); }
+    .combined-bar.good.track-dairy { background: var(--dairy); }
 
     .legend {
       display: flex;
@@ -393,6 +407,17 @@
       width: 14px;
       height: 14px;
       border-radius: 4px;
+      border: 1px solid rgba(31, 27, 22, 0.05);
+    }
+
+    .legend-stack {
+      width: 16px;
+      height: 18px;
+      border-radius: 4px;
+      padding: 2px;
+      display: grid;
+      gap: 2px;
+      background: rgba(255, 255, 255, 0.18);
       border: 1px solid rgba(31, 27, 22, 0.05);
     }
 
@@ -602,6 +627,10 @@
         <p class="section-copy">
           Choose one result for today for each category. That is enough to keep the streak going.
         </p>
+        <div class="heatmap-shell">
+          <p class="calendar-intro">One shared calendar. Each day cell has three bands: sugar, carbs, dairy.</p>
+          <div id="combinedCalendar"></div>
+        </div>
         <div class="tracker-list" id="trackerList"></div>
       </section>
 
@@ -699,19 +728,6 @@
       toggle.textContent = theme === "dark" ? "Light mode" : "Dark mode";
     }
 
-    function heatLevel(streakLength) {
-      if (streakLength >= 7) {
-        return 4;
-      }
-      if (streakLength >= 4) {
-        return 3;
-      }
-      if (streakLength >= 2) {
-        return 2;
-      }
-      return 1;
-    }
-
     function streakFor(data, trackerId) {
       const cursor = new Date();
       cursor.setHours(0, 0, 0, 0);
@@ -762,7 +778,7 @@
       return best;
     }
 
-    function calendarFor(data, trackerId) {
+    function combinedCalendarFor(data) {
       const weeks = currentCalendarWeeks();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -772,20 +788,12 @@
 
       const monthLabels = Array.from({ length: weeks }, () => "");
       const cells = [];
-      let running = 0;
 
       for (let weekIndex = 0; weekIndex < weeks; weekIndex += 1) {
         for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
           const date = new Date(start);
           date.setDate(start.getDate() + weekIndex * 7 + dayIndex);
           const key = keyForDate(date);
-          const status = data.days[key]?.[trackerId];
-
-          if (status === true) {
-            running += 1;
-          } else {
-            running = 0;
-          }
 
           if (dayIndex === 0) {
             const labelDate = new Date(date);
@@ -797,15 +805,20 @@
           cells.push({
             weekIndex,
             dayIndex,
-            title: `${formatDate(date)}: ${
-              status === true ? "clean day" : status === false ? "had some" : "not logged"
-            }`,
-            tone:
-              status === true
-                ? `level-${heatLevel(running)}`
-                : status === false
-                  ? "miss"
-                  : "empty"
+            title: [
+              formatDate(date),
+              ...trackers.map((tracker) => {
+                const status = data.days[key]?.[tracker.id];
+                return `${tracker.label}: ${status === true ? "clean" : status === false ? "had some" : "not logged"}`;
+              })
+            ].join(" | "),
+            bands: trackers.map((tracker) => {
+              const status = data.days[key]?.[tracker.id];
+              return {
+                id: tracker.id,
+                tone: status === true ? "good" : status === false ? "miss" : "empty"
+              };
+            })
           });
         }
       }
@@ -846,13 +859,66 @@
       document.getElementById("heroCarbs").textContent = bestStreakFor(data, "carbs");
       document.getElementById("heroDairy").textContent = bestStreakFor(data, "dairy");
 
+      const combinedCalendar = combinedCalendarFor(data);
+      document.getElementById("combinedCalendar").innerHTML = `
+        <div class="heatmap-frame">
+          <div class="weekday-rail">
+            <span></span>
+            <span></span>
+            <span>Mon</span>
+            <span></span>
+            <span>Wed</span>
+            <span></span>
+            <span>Fri</span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="calendar-side">
+            <div class="month-row" style="grid-template-columns: repeat(${combinedCalendar.weeks}, var(--cell-size));">
+              ${combinedCalendar.monthLabels.map((label) => `
+                <span class="month-tag">${label}</span>
+              `).join("")}
+            </div>
+            <div class="combined-grid" style="grid-template-columns: repeat(${combinedCalendar.weeks}, var(--cell-size));">
+              ${combinedCalendar.cells.map((cell) => `
+                <span
+                  class="combined-cell"
+                  style="grid-column:${cell.weekIndex + 1}; grid-row:${cell.dayIndex + 1};"
+                  title="${cell.title}"
+                >
+                  ${cell.bands.map((band) => `
+                    <span class="combined-bar ${band.tone} track-${band.id}"></span>
+                  `).join("")}
+                </span>
+              `).join("")}
+            </div>
+            <div class="legend">
+              <span>Last ${combinedCalendar.weeks} weeks</span>
+              <span class="legend-group">
+                <span class="legend-stack">
+                  <span class="combined-bar good track-sugar"></span>
+                  <span class="combined-bar good track-carbs"></span>
+                  <span class="combined-bar good track-dairy"></span>
+                </span> Clean day stack
+              </span>
+              <span class="legend-group">
+                <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some
+              </span>
+              <span class="legend-group">
+                <span class="legend-swatch" style="background: rgba(31, 27, 22, 0.1);"></span> Not logged
+              </span>
+              <span class="legend-group">Top sugar, middle carbs, bottom dairy</span>
+            </div>
+          </div>
+        </div>
+      `;
+
       const list = document.getElementById("trackerList");
       list.innerHTML = "";
 
       for (const tracker of trackers) {
         const status = data.days[todayKey]?.[tracker.id];
         const streak = streakFor(data, tracker.id);
-        const calendar = calendarFor(data, tracker.id);
 
         const card = document.createElement("article");
         card.className = "tracker";
@@ -875,52 +941,6 @@
           <div class="tracker-foot">
             <span>${status === true ? "Today: success" : status === false ? "Today: streak broken" : "Today: not logged yet"}</span>
             <span>Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}</span>
-          </div>
-          <div class="heatmap-shell">
-            <div class="heatmap-frame">
-              <div class="weekday-rail">
-                <span></span>
-                <span></span>
-                <span>Mon</span>
-                <span></span>
-                <span>Wed</span>
-                <span></span>
-                <span>Fri</span>
-                <span></span>
-                <span></span>
-              </div>
-              <div class="calendar-side">
-                <div class="month-row" style="grid-template-columns: repeat(${calendar.weeks}, var(--cell-size));">
-                  ${calendar.monthLabels.map((label) => `
-                    <span class="month-tag">${label}</span>
-                  `).join("")}
-                </div>
-                <div class="calendar-grid" style="grid-template-columns: repeat(${calendar.weeks}, var(--cell-size));">
-                  ${calendar.cells.map((cell) => `
-                    <span
-                      class="calendar-cell ${cell.tone}"
-                      style="grid-column:${cell.weekIndex + 1}; grid-row:${cell.dayIndex + 1};"
-                      title="${cell.title}"
-                    ></span>
-                  `).join("")}
-                </div>
-                <div class="legend">
-                  <span>Last ${calendar.weeks} weeks</span>
-                  <span class="legend-group">
-                    <span class="legend-swatch" style="background: rgba(31, 27, 22, 0.08);"></span> Empty
-                  </span>
-                  <span class="legend-group">
-                    <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Missed
-                  </span>
-                  <span class="legend-group">
-                    <span class="legend-swatch level-1"></span>
-                    <span class="legend-swatch level-2"></span>
-                    <span class="legend-swatch level-3"></span>
-                    <span class="legend-swatch level-4"></span> Longer run
-                  </span>
-                </div>
-              </div>
-            </div>
           </div>
         `;
         list.appendChild(card);
