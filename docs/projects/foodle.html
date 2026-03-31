@@ -707,7 +707,9 @@
   </main>
 
   <script>
-    const STORAGE_KEY = "foodle-v1";
+    const STORAGE_KEY = "foodle-v2";
+    const LEGACY_STORAGE_KEYS = ["foodle-v1"];
+    const LEGACY_MIGRATION_KEY = "foodle-v2-migrated";
     const THEME_KEY = "foodle-theme";
     const DESKTOP_CALENDAR_WEEKS = 26;
     const MOBILE_CALENDAR_WEEKS = 18;
@@ -767,7 +769,24 @@
 
     function loadData() {
       try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { days: {} };
+        const current = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        for (const legacyKey of LEGACY_STORAGE_KEYS) {
+          const raw = localStorage.getItem(legacyKey);
+          if (!raw) {
+            continue;
+          }
+          if (!localStorage.getItem(LEGACY_MIGRATION_KEY)) {
+            const migrated = migrateLegacyData(JSON.parse(raw));
+            saveData(migrated);
+            localStorage.setItem(LEGACY_MIGRATION_KEY, "1");
+            return migrated;
+          }
+          break;
+        }
+        if (current?.days) {
+          return current;
+        }
+        return { days: {} };
       } catch {
         return { days: {} };
       }
@@ -777,14 +796,17 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     }
 
+    function migrateLegacyData(data) {
+      const migrated = { days: {} };
+      for (const [key, value] of Object.entries(data?.days || {})) {
+        migrated.days[key] = { ...(migrated.days[key] || {}), ...value };
+      }
+      return migrated;
+    }
+
     function readStatus(data, date, trackerId) {
       const localKey = keyForDate(date);
-      const localValue = data.days[localKey]?.[trackerId];
-      if (localValue !== undefined) {
-        return localValue;
-      }
-      const legacyKey = legacyKeyForDate(date);
-      return data.days[legacyKey]?.[trackerId];
+      return data.days[localKey]?.[trackerId];
     }
 
     function currentCalendarWeeks() {
