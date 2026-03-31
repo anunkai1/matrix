@@ -1,5 +1,5 @@
 window.SERVER3_CONTROL_PLANE_DATA = {
-  "generatedAt": "2026-03-31T23:48:22.735188+10:00",
+  "generatedAt": "2026-04-01T00:54:17.101556+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
@@ -7,12 +7,12 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     "runtimeCopy": "7 healthy, 0 degraded, 0 waiting, 0 offline",
     "approvalValue": "1 pending",
     "approvalCopy": "explicit human gates from live Server3 state",
-    "jobValue": "5 tracked",
-    "jobCopy": "timers, approvals, and continuity work in one surface",
-    "hostValue": "load 3.59 / ram 51%",
+    "jobValue": "8 tracked",
+    "jobCopy": "timers, approvals, and operator playback in one surface",
+    "hostValue": "load 5.61 / ram 49%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "31 Mar 2026 23:48 AEST",
+      "01 Apr 2026 00:54 AEST",
       "snapshot file server3-control-plane-data.js",
       "1 approval item(s)"
     ],
@@ -33,6 +33,10 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       {
         "tone": "warn",
         "label": "1 approval item(s)"
+      },
+      {
+        "tone": "busy",
+        "label": "3 operator actions"
       },
       {
         "tone": "danger",
@@ -82,7 +86,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
   },
   "activity": [
     {
-      "time": "23:48:23",
+      "time": "00:54:17",
       "title": "Optional UI layer is active",
       "channel": "host",
       "statusClass": "danger",
@@ -90,7 +94,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "copy": "expected inactive, got active"
     },
     {
-      "time": "23:48:23",
+      "time": "00:54:17",
       "title": "UI layer is active outside its default posture",
       "channel": "approval",
       "statusClass": "danger",
@@ -98,12 +102,12 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "copy": "expected inactive, got active"
     },
     {
-      "time": "23:48:20",
+      "time": "00:54:15",
       "title": "Oracle recent service activity",
       "channel": "signal runtime",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "2026-03-31 23:48:20,266 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
+      "copy": "2026-04-01 00:54:15,952 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
     },
     {
       "time": "21:15:04",
@@ -130,6 +134,58 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "copy": "bridge.diary_batch_finished"
     }
   ],
+  "playback": {
+    "items": [
+      {
+        "time": "00:53:58",
+        "title": "captured incident bundle",
+        "channel": "incident",
+        "statusClass": "ok",
+        "statusText": "ok",
+        "copy": "incident bundle via local. /home/architect/.local/state/server3-control-plane/bundles/incident-bundle-20260401T005358.json"
+      },
+      {
+        "time": "00:53:58",
+        "title": "refreshed control-plane snapshot",
+        "channel": "snapshot",
+        "statusClass": "ok",
+        "statusText": "ok",
+        "copy": "snapshot refresh via local. /home/architect/matrix/docs/server3-control-plane-data.json"
+      },
+      {
+        "time": "00:53:56",
+        "title": "viewed browser logs",
+        "channel": "browser",
+        "statusClass": "ok",
+        "statusText": "ok",
+        "copy": "runtime logs via local. server3-browser-brain.service"
+      }
+    ],
+    "meta": [
+      {
+        "label": "recent operator actions",
+        "value": "3"
+      },
+      {
+        "label": "last actor path",
+        "value": "local"
+      },
+      {
+        "label": "last action",
+        "value": "incident bundle"
+      },
+      {
+        "label": "captured bundles",
+        "value": "1"
+      }
+    ],
+    "bundles": [
+      {
+        "label": "incident-bundle-20260401T005358.json",
+        "value": "01 Apr 00:53 / 94 KiB"
+      }
+    ]
+  },
   "approvals": [
     {
       "title": "UI layer is active outside its default posture",
@@ -169,7 +225,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "title": "Receipt monitor",
       "tagClass": "busy",
       "tagText": "not scheduled",
-      "body": "mavali-eth-receipt-monitor.timer is active. Last trigger: 31 Mar 23:21."
+      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 01 Apr 00:35."
     }
   ],
   "floor": [
@@ -185,7 +241,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 3.59 / ram 51%",
+      "value": "load 5.61 / ram 49%",
       "body": "primary route nordlynx / 10.5.0.2",
       "statusLine": "host: server3"
     },
@@ -275,6 +331,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "unitNames": [
         "telegram-architect-bridge.service"
       ],
+      "auditTrail": [],
       "browserLane": null
     },
     {
@@ -345,6 +402,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "unitNames": [
         "telegram-tank-bridge.service"
       ],
+      "auditTrail": [],
       "browserLane": null
     },
     {
@@ -415,6 +473,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "unitNames": [
         "telegram-diary-bridge.service"
       ],
+      "auditTrail": [],
       "browserLane": null
     },
     {
@@ -490,6 +549,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         "whatsapp-govorun-bridge.service",
         "govorun-whatsapp-bridge.service"
       ],
+      "auditTrail": [],
       "browserLane": null
     },
     {
@@ -526,7 +586,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "23:48:20 2026-03-31 23:48:20,266 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
+          "value": "00:54:15 2026-04-01 00:54:15,952 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
         },
         {
           "label": "oracle-signal-bridge.service",
@@ -565,6 +625,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         "signal-oracle-bridge.service",
         "oracle-signal-bridge.service"
       ],
+      "auditTrail": [],
       "browserLane": null
     },
     {
@@ -595,7 +656,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         },
         {
           "label": "live state",
-          "value": "active"
+          "value": "mixed"
         }
       ],
       "recentJobs": [
@@ -636,6 +697,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         "telegram-mavali-eth-bridge.service",
         "mavali-eth-receipt-monitor.timer"
       ],
+      "auditTrail": [],
       "browserLane": null
     },
     {
@@ -713,6 +775,12 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       ],
       "unitNames": [
         "server3-browser-brain.service"
+      ],
+      "auditTrail": [
+        {
+          "label": "01 Apr 00:53 / runtime logs",
+          "value": "ok via local | server3-browser-brain.service"
+        }
       ],
       "browserLane": {
         "state": [

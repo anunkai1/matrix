@@ -25,6 +25,8 @@ DEFAULT_JSON_OUT = ROOT / "docs" / "server3-control-plane-data.json"
 DEFAULT_JS_OUT = ROOT / "docs" / "server3-control-plane-data.js"
 DEFAULT_TZ = "Australia/Brisbane"
 MAX_MESSAGE_CHARS = 140
+DEFAULT_AUDIT_LOG = Path("/home/architect/.local/state/server3-control-plane/audit.jsonl")
+DEFAULT_BUNDLES_DIR = Path("/home/architect/.local/state/server3-control-plane/bundles")
 
 
 @dataclass(frozen=True)
@@ -119,6 +121,16 @@ def local_now() -> datetime:
     return datetime.now(ZoneInfo(DEFAULT_TZ))
 
 
+def audit_log_path() -> Path:
+    override = os.environ.get("SERVER3_CONTROL_PLANE_AUDIT_LOG", "").strip()
+    return Path(override) if override else DEFAULT_AUDIT_LOG
+
+
+def bundles_dir() -> Path:
+    override = os.environ.get("SERVER3_CONTROL_PLANE_BUNDLES_DIR", "").strip()
+    return Path(override) if override else DEFAULT_BUNDLES_DIR
+
+
 def format_local_compact(value: Optional[datetime]) -> str:
     if value is None:
         return "not scheduled"
@@ -129,6 +141,18 @@ def format_clock(value: Optional[datetime]) -> str:
     if value is None:
         return "--:--:--"
     return value.astimezone(ZoneInfo(DEFAULT_TZ)).strftime("%H:%M:%S")
+
+
+def format_audit_clock(value: Optional[str]) -> str:
+    dt = parse_iso_datetime(value or "")
+    return format_clock(dt)
+
+
+def format_audit_compact(value: Optional[str]) -> str:
+    dt = parse_iso_datetime(value or "")
+    if dt is None:
+        return "unknown"
+    return dt.astimezone(ZoneInfo(DEFAULT_TZ)).strftime("%d %b %H:%M")
 
 
 def timer_snapshot(unit: str, label: str) -> Dict[str, str]:
@@ -212,6 +236,84 @@ def summarize_log_message(message: str) -> str:
     if len(text) > MAX_MESSAGE_CHARS:
         return text[:MAX_MESSAGE_CHARS].rstrip() + "..."
     return text
+
+
+def action_label(action: str) -> str:
+    mapping = {
+        "snapshot.refresh": "snapshot refresh",
+        "runtime.logs": "runtime logs",
+        "runtime.restart": "runtime restart",
+        "incident.bundle": "incident bundle",
+    }
+    return mapping.get(action, action.replace(".", " "))
+
+
+def load_audit_entries(limit: int = 80) -> List[Dict[str, Any]]:
+    path = audit_log_path()
+    if not path.exists():
+        return []
+    rows = [row for row in path.read_text(encoding="utf-8").splitlines() if row.strip()]
+    entries: List[Dict[str, Any]] = []
+    for row in rows[-limit:]:
+        try:
+            payload = json.loads(row)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            entries.append(payload)
+    return entries
+
+
+def bundle_rows(limit: int = 4) -> List[Dict[str, str]]:
+    directory = bundles_dir()
+    if not directory.exists():
+        return []
+    files = sorted(directory.glob("incident-bundle-*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    rows: List[Dict[str, str]] = []
+    for path in files[:limit]:
+        stamp = datetime.fromtimestamp(path.stat().st_mtime, tz=ZoneInfo(DEFAULT_TZ))
+        rows.append(
+            {
+                "label": path.name,
+                "value": f"{stamp.strftime('%d %b %H:%M')} / {round(path.stat().st_size / 1024)} KiB",
+            }
+        )
+    return rows
+
+
+def playback_items(audit_entries: List[Dict[str, Any]], *, limit: int = 8) -> List[Dict[str, str]]:
+    items: List[Dict[str, str]] = []
+    for entry in reversed(audit_entries[-limit:]):
+        runtime_key = str(entry.get("runtime_key") or "").strip()
+        scope = str(entry.get("scope") or "board").strip()
+        actor_mode = str(entry.get("actor_mode") or "system").strip()
+        items.append(
+            {
+                "time": format_audit_clock(str(entry.get("ts") or "")),
+                "title": str(entry.get("summary") or action_label(str(entry.get("action") or "operator action"))),
+                "channel": runtime_key or scope,
+                "statusClass": "ok" if str(entry.get("outcome") or "") == "ok" else "danger",
+                "statusText": str(entry.get("outcome") or "unknown"),
+                "copy": f"{action_label(str(entry.get('action') or 'operator action'))} via {actor_mode}. {str(entry.get('detail') or '').strip()}".strip(),
+            }
+        )
+    return items
+
+
+def runtime_audit_trail(runtime_key: str, audit_entries: List[Dict[str, Any]], *, limit: int = 5) -> List[Dict[str, str]]:
+    rows: List[Dict[str, str]] = []
+    for entry in reversed(audit_entries):
+        if str(entry.get("runtime_key") or "") != runtime_key:
+            continue
+        rows.append(
+            {
+                "label": f"{format_audit_compact(str(entry.get('ts') or ''))} / {action_label(str(entry.get('action') or 'operator action'))}",
+                "value": f"{str(entry.get('outcome') or 'unknown')} via {str(entry.get('actor_mode') or 'system')} | {str(entry.get('detail') or entry.get('summary') or '').strip()}",
+            }
+        )
+        if len(rows) >= limit:
+            break
+    return rows
 
 
 def path_disk_summary(path: Path) -> Dict[str, str]:
@@ -545,6 +647,7 @@ def build_selected_runtimes(
     runtime_status_payload: Dict[str, object],
     manifest: Dict[str, Dict[str, object]],
     pending_action: Optional[Dict[str, object]],
+    audit_entries: List[Dict[str, Any]],
 ) -> List[Dict[str, object]]:
     runtimes = {row["name"]: row for row in runtime_status_payload.get("runtimes", [])}
     browser_lane = build_browser_lane()
@@ -642,6 +745,7 @@ def build_selected_runtimes(
                 "watchouts": [{"label": label, "value": value} for label, value in watchouts[:3]],
                 "docsAndLogs": [{"label": label, "value": value} for label, value in runtime_docs("Browser Brain" if key == "browser" else "Govorun" if key == "govorun" else "Oracle" if key == "oracle" else str(live_rows[0]["name"]))],
                 "unitNames": unit_names,
+                "auditTrail": runtime_audit_trail(key, audit_entries),
                 "browserLane": browser_lane if key == "browser" else None,
             }
         )
@@ -707,6 +811,22 @@ def build_jobs(timers: List[Dict[str, str]], approvals: List[Dict[str, str]]) ->
             },
         )
     return items[:5]
+
+
+def build_playback(audit_entries: List[Dict[str, Any]]) -> Dict[str, object]:
+    items = playback_items(audit_entries)
+    bundles = bundle_rows()
+    last_entry = audit_entries[-1] if audit_entries else {}
+    return {
+        "items": items,
+        "meta": [
+            {"label": "recent operator actions", "value": str(len(items))},
+            {"label": "last actor path", "value": str(last_entry.get("actor_mode") or "none yet")},
+            {"label": "last action", "value": action_label(str(last_entry.get("action") or "none yet"))},
+            {"label": "captured bundles", "value": str(len(bundles))},
+        ],
+        "bundles": bundles,
+    }
 
 
 def build_activity(
@@ -860,7 +980,8 @@ def build_snapshot() -> Dict[str, object]:
     runtime_status_payload = parse_runtime_status_payload()
     manifest = load_runtime_manifest()
     pending_action = read_pending_action()
-    selected_runtimes = build_selected_runtimes(runtime_status_payload, manifest, pending_action)
+    audit_entries = load_audit_entries()
+    selected_runtimes = build_selected_runtimes(runtime_status_payload, manifest, pending_action, audit_entries)
     ui_layer = next((row for row in runtime_status_payload.get("runtimes", []) if row.get("name") == "UI layer"), None)
     ui_layer_issue = None
     if ui_layer and not ui_layer.get("matches_expected"):
@@ -884,6 +1005,7 @@ def build_snapshot() -> Dict[str, object]:
         "offline": sum(1 for runtime in selected_runtimes if runtime["stateText"] == "offline"),
     }
     overview_bands, overview_side = build_overview(summary_counts, approvals, ui_layer_issue)
+    playback = build_playback(audit_entries)
     generated_at = parse_iso_datetime(str(runtime_status_payload.get("generated_at", ""))) or local_now()
     host_state = f"{load_avg_summary()} / {memory_summary()}"
     return {
@@ -898,8 +1020,8 @@ def build_snapshot() -> Dict[str, object]:
             ),
             "approvalValue": f"{len(approvals)} pending",
             "approvalCopy": "explicit human gates from live Server3 state",
-            "jobValue": f"{len(timers) + len(approvals)} tracked",
-            "jobCopy": "timers, approvals, and continuity work in one surface",
+            "jobValue": f"{len(timers) + len(approvals) + len(playback['items'])} tracked",
+            "jobCopy": "timers, approvals, and operator playback in one surface",
             "hostValue": host_state,
             "hostCopy": "browser, timers, storage, and network summarized from the host",
             "currentPicture": [
@@ -916,6 +1038,7 @@ def build_snapshot() -> Dict[str, object]:
                 {"tone": "ok", "label": "live status loaded"},
                 {"tone": "busy", "label": timers[0]["label"].lower()},
                 {"tone": "warn", "label": f"{len(approvals)} approval item(s)"},
+                {"tone": "busy", "label": f"{len(playback['items'])} operator actions"},
                 {"tone": "danger", "label": "storage remains continuity sensitive"},
             ],
         },
@@ -924,6 +1047,7 @@ def build_snapshot() -> Dict[str, object]:
             "side": overview_side,
         },
         "activity": build_activity(selected_runtimes, approvals, timers, ui_layer_issue),
+        "playback": playback,
         "approvals": approvals,
         "jobs": build_jobs(timers, approvals),
         "floor": build_floor(timers),

@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-01 (Summary Roll-Forward Trim for Control-Plane Playback And Audit)
+
+Summary:
+- Added a new rolling-summary entry for the control-plane playback/audit rollout, covering durable operator-action logging, incident-bundle capture, regenerated snapshot artifacts, a new operator playback lane in the center surface, and per-runtime operator history in the drawer on the deployed board.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-28: applied the post-orchestrator elegance cleanup by removing the now-unused `parse_capped_int_env` helper from `src/telegram_bridge/runtime_config.py` and splitting `process_prompt` in `src/telegram_bridge/handlers.py` into smaller internal phases for memory-turn setup, affective-turn setup, and request-start logging without changing behavior; focused bridge regression coverage remains green (`python3 -m unittest tests/telegram_bridge/test_bridge_core.py tests/telegram_bridge/test_runtime_config.py tests/telegram_bridge/test_affective_runtime.py tests/telegram_bridge/test_diary_bridge_flow.py`).
+
 ## 2026-03-31 (Summary Roll-Forward Trim for Control-Plane LAN Hardening)
 
 Summary:

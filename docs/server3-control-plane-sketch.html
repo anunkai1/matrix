@@ -275,6 +275,7 @@
 
     .runtime-list,
     .timeline-stack,
+    .playback-stack,
     .approval-list,
     .queue-list,
     .log-stack,
@@ -443,6 +444,19 @@
       padding: 10px 16px 16px;
     }
 
+    .playback-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 10px;
+      padding: 12px 16px 16px;
+    }
+
+    .playback-stack,
+    .playback-meta,
+    .bundle-stack {
+      gap: 8px;
+    }
+
     .feed-row {
       align-items: flex-start;
       padding: 12px 0;
@@ -502,7 +516,8 @@
     .approval-item,
     .queue-item,
     .footer-card,
-    .drawer-panel {
+    .drawer-panel,
+    .playback-card {
       padding: 14px;
       border-radius: var(--radius-md);
       border: 1px solid rgba(210, 223, 230, 0.08);
@@ -720,7 +735,8 @@
 
       .hero-grid,
       .floor-grid,
-      .browser-lane-grid {
+      .browser-lane-grid,
+      .playback-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
@@ -731,7 +747,8 @@
       .timeline-footer,
       .overview-grid,
       .floor-grid,
-      .browser-lane-grid {
+      .browser-lane-grid,
+      .playback-grid {
         grid-template-columns: 1fr;
       }
 
@@ -813,6 +830,7 @@
           <div class="hero-top-right">
             <div class="chip warn" id="heroModeChip">read-only live snapshot</div>
             <div class="hero-auth">
+              <button class="primary" type="button" id="captureBundle">capture incident bundle</button>
               <button class="ghost" type="button" id="operatorUnlock">unlock operator mode</button>
               <button class="ghost" type="button" id="operatorLock">clear token</button>
             </div>
@@ -903,6 +921,26 @@
 
           <section class="subpanel">
             <div class="subpanel-head">
+              <h3>Operator playback</h3>
+              <div class="stamp">durable action ledger</div>
+            </div>
+            <div class="playback-grid">
+              <div class="playback-stack" id="playbackStack"></div>
+              <div class="playback-meta">
+                <section class="playback-card">
+                  <div class="drawer-subtitle">operator posture</div>
+                  <div class="fact-grid" id="playbackMeta"></div>
+                </section>
+                <section class="playback-card">
+                  <div class="drawer-subtitle">incident bundles</div>
+                  <div class="fact-grid" id="bundleStack"></div>
+                </section>
+              </div>
+            </div>
+          </section>
+
+          <section class="subpanel">
+            <div class="subpanel-head">
               <h3>Activity timeline</h3>
               <div class="stamp">runtime + approval + timer events</div>
             </div>
@@ -961,6 +999,11 @@
           <section class="drawer-panel">
             <h3>Recent jobs</h3>
             <div class="fact-grid" id="recentJobs"></div>
+          </section>
+
+          <section class="drawer-panel">
+            <h3>Operator history</h3>
+            <div class="fact-grid" id="runtimeAudit"></div>
           </section>
 
           <section class="drawer-panel" id="browserLanePanel" hidden>
@@ -1079,6 +1122,7 @@
     let actionEventsBound = false;
 
     const heroModeChip = document.getElementById("heroModeChip");
+    const captureBundle = document.getElementById("captureBundle");
     const operatorUnlock = document.getElementById("operatorUnlock");
     const operatorLock = document.getElementById("operatorLock");
     const metricRuntimeValue = document.getElementById("metricRuntimeValue");
@@ -1096,6 +1140,9 @@
     const runtimeList = document.getElementById("runtimeList");
     const overviewBands = document.getElementById("overviewBands");
     const overviewSide = document.getElementById("overviewSide");
+    const playbackStack = document.getElementById("playbackStack");
+    const playbackMeta = document.getElementById("playbackMeta");
+    const bundleStack = document.getElementById("bundleStack");
     const timelineStack = document.getElementById("timelineStack");
     const approvalList = document.getElementById("approvalList");
     const queueList = document.getElementById("queueList");
@@ -1110,6 +1157,7 @@
     const actionThree = document.getElementById("actionThree");
     const serviceStats = document.getElementById("serviceStats");
     const recentJobs = document.getElementById("recentJobs");
+    const runtimeAudit = document.getElementById("runtimeAudit");
     const browserLanePanel = document.getElementById("browserLanePanel");
     const browserLaneState = document.getElementById("browserLaneState");
     const browserLaneTargets = document.getElementById("browserLaneTargets");
@@ -1129,8 +1177,10 @@
 
     function setActionAvailability() {
       localActionsAllowed = isLocalOperatorClient() || operatorAuthorized;
+      captureBundle.disabled = !localActionsAllowed || !apiAvailable;
       actionOne.disabled = !localActionsAllowed;
       actionTwo.disabled = !localActionsAllowed;
+      captureBundle.title = localActionsAllowed ? (apiAvailable ? "" : "Requires the live control-plane server") : (operatorTokenConfigured ? "Unlock operator mode first" : "Local operator action only");
       actionOne.title = localActionsAllowed ? "" : (operatorTokenConfigured ? "Unlock operator mode first" : "Local operator action only");
       actionTwo.title = localActionsAllowed ? "" : (operatorTokenConfigured ? "Unlock operator mode first" : "Local operator action only");
       actionThree.title = apiAvailable ? "" : "Reload the file snapshot locally";
@@ -1227,6 +1277,27 @@
       `).join("") : emptyCard("No activity items are available in the current snapshot.");
     }
 
+    function renderPlayback(playback) {
+      const items = (playback && playback.items) || [];
+      const meta = (playback && playback.meta) || [];
+      const bundles = (playback && playback.bundles) || [];
+      playbackStack.innerHTML = items.length ? items.map((item) => `
+        <article class="feed-row">
+          <div class="feed-time">${escapeHtml(item.time)}</div>
+          <div class="feed-body">
+            <div class="feed-title">
+              ${escapeHtml(item.title)}
+              <span class="feed-channel">${escapeHtml(item.channel)}</span>
+              <span class="state ${escapeHtml(item.statusClass)}">${escapeHtml(item.statusText)}</span>
+            </div>
+            <p class="feed-copy">${escapeHtml(item.copy)}</p>
+          </div>
+        </article>
+      `).join("") : emptyCard("No operator actions have been captured yet.");
+      playbackMeta.innerHTML = meta.length ? meta.map((item) => rowHtml(item.label, item.value)).join("") : rowHtml("operator posture", "no audit state yet");
+      bundleStack.innerHTML = bundles.length ? bundles.map((item) => rowHtml(item.label, item.value)).join("") : rowHtml("incident bundles", "none captured yet");
+    }
+
     function renderApprovals(items) {
       approvalList.innerHTML = items.length ? items.map((item) => `
         <article class="approval-item">
@@ -1304,6 +1375,9 @@
       [actionOne.textContent, actionTwo.textContent, actionThree.textContent] = runtime.actions || ["action one", "action two", "action three"];
       serviceStats.innerHTML = (runtime.serviceStats || []).map((item) => rowHtml(item.label, item.value)).join("");
       recentJobs.innerHTML = (runtime.recentJobs || []).map((item) => rowHtml(item.label, item.value)).join("");
+      runtimeAudit.innerHTML = (runtime.auditTrail || []).length
+        ? (runtime.auditTrail || []).map((item) => rowHtml(item.label, item.value)).join("")
+        : rowHtml("operator history", "no runtime-specific operator actions recorded yet");
       if (runtime.browserLane) {
         browserLanePanel.hidden = false;
         browserLaneState.innerHTML = browserLaneHtml(runtime.browserLane.state || []);
@@ -1359,6 +1433,7 @@
       renderStatusChips(data.summary.chips || []);
       renderRuntimeList(data.runtimes || []);
       renderOverview(data.overview || {});
+      renderPlayback(data.playback || {});
       renderActivity(data.activity || []);
       renderApprovals(data.approvals || []);
       renderJobs(data.jobs || []);
@@ -1461,6 +1536,23 @@
       }
     }
 
+    async function captureIncidentBundle() {
+      if (!apiAvailable) {
+        window.alert("Incident bundle capture requires the live control-plane server.");
+        return;
+      }
+      setHeroMode("capturing incident bundle", "warn");
+      try {
+        const payload = await apiJson("/api/audit/bundle", { method: "POST" });
+        await loadFromApi(true);
+        setHeroMode("incident bundle captured", "ok");
+        window.alert(`Incident bundle written to:\n${payload.bundlePath}`);
+      } catch (error) {
+        setHeroMode("bundle capture failed", "danger");
+        window.alert(String(error));
+      }
+    }
+
     async function restartRuntime() {
       if (!apiAvailable || !currentRuntimeKey) {
         window.alert("Runtime restart requires the local control-plane server.");
@@ -1503,6 +1595,9 @@
       if (actionEventsBound) return;
       operatorUnlock.addEventListener("click", () => {
         unlockOperatorMode();
+      });
+      captureBundle.addEventListener("click", () => {
+        captureIncidentBundle();
       });
       operatorLock.addEventListener("click", () => {
         clearOperatorMode();
