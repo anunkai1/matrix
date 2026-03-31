@@ -52,6 +52,34 @@
         linear-gradient(180deg, #111720 0%, #0b1016 100%);
     }
 
+    body[data-theme="dark"] .heatmap-shell {
+      background: rgba(8, 13, 19, 0.82);
+      border-color: rgba(173, 190, 210, 0.18);
+    }
+
+    body[data-theme="dark"] .weekday-rail,
+    body[data-theme="dark"] .month-row,
+    body[data-theme="dark"] .legend,
+    body[data-theme="dark"] .tracker-foot {
+      color: #d4dee9;
+    }
+
+    body[data-theme="dark"] .month-tag {
+      color: #eef6ff;
+    }
+
+    body[data-theme="dark"] .calendar-cell {
+      border-color: rgba(224, 235, 247, 0.1);
+    }
+
+    body[data-theme="dark"] .calendar-cell.empty {
+      background: rgba(130, 152, 177, 0.24);
+    }
+
+    body[data-theme="dark"] .calendar-cell.miss {
+      background: #d85b5b;
+    }
+
     .wrap {
       width: min(1080px, calc(100% - 32px));
       margin: 0 auto;
