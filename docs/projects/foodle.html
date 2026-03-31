@@ -232,7 +232,7 @@
       justify-content: space-between;
       gap: 16px;
       align-items: flex-start;
-      min-height: 118px;
+      min-height: 0;
       margin-bottom: 14px;
     }
 
@@ -660,7 +660,7 @@
         padding: 14px;
       }
 
-      .tracker-head {
+        .tracker-head {
         flex-direction: column;
         gap: 10px;
         min-height: 0;
@@ -1107,7 +1107,6 @@
           <div class="tracker-head">
             <div>
               <h3 class="tracker-title">${tracker.label}</h3>
-              <p class="tracker-copy">${tracker.copy}</p>
             </div>
             <div class="badge ${tracker.accent}">
               ${primaryValue}${isScheduled ? "" : " days"}
@@ -1123,6 +1122,7 @@
             <span>${status === true ? (isScheduled ? "Yesterday: fasting completed" : "Yesterday: success") : status === false ? (isScheduled ? "Yesterday: fasting skipped" : "Yesterday: streak broken") : "Yesterday: not logged yet"}</span>
             <span>${secondaryText}</span>
           </div>
+          <p class="tracker-copy">${tracker.copy}</p>
         `;
         list.appendChild(card);
       }
