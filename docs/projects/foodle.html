@@ -209,14 +209,19 @@
 
     .tracker-list {
       display: grid;
-      gap: 16px;
+      gap: 12px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .tracker {
-      padding: 18px;
+      padding: 14px;
       border-radius: 22px;
       border: 1px solid var(--line);
       background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(255,255,255,0.18));
+    }
+
+    .tracker.fasting-card {
+      grid-column: 1 / -1;
     }
 
     .tracker-head {
@@ -235,7 +240,8 @@
     .tracker-copy {
       margin: 6px 0 0;
       color: var(--muted);
-      font-size: 0.95rem;
+      font-size: 0.82rem;
+      line-height: 1.35;
     }
 
     .badge {
@@ -285,12 +291,13 @@
     }
 
     .decision {
-      flex: 1 1 180px;
-      min-height: 54px;
-      padding: 14px 16px;
+      flex: 1 1 auto;
+      min-height: 44px;
+      padding: 10px 12px;
       color: #fff;
       font-weight: 700;
       box-shadow: inset 0 -3px 0 rgba(0,0,0,0.08);
+      font-size: 0.88rem;
     }
 
     .decision.good { background: var(--ok); }
@@ -593,8 +600,12 @@
         min-height: 50px;
       }
 
+      .tracker-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
       .tracker {
-        padding: 16px;
+        padding: 12px;
       }
 
       .badge {
@@ -733,7 +744,15 @@
       });
     }
 
+    function pad2(value) {
+      return String(value).padStart(2, "0");
+    }
+
     function keyForDate(date) {
+      return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+    }
+
+    function legacyKeyForDate(date) {
       return date.toISOString().slice(0, 10);
     }
 
@@ -752,6 +771,16 @@
 
     function saveData(data) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function readStatus(data, date, trackerId) {
+      const localKey = keyForDate(date);
+      const localValue = data.days[localKey]?.[trackerId];
+      if (localValue !== undefined) {
+        return localValue;
+      }
+      const legacyKey = legacyKeyForDate(date);
+      return data.days[legacyKey]?.[trackerId];
     }
 
     function currentCalendarWeeks() {
@@ -777,7 +806,7 @@
     function streakFor(data, trackerId) {
       const cursor = new Date();
       cursor.setHours(0, 0, 0, 0);
-      const todayStatus = data.days[keyForDate(cursor)]?.[trackerId];
+      const todayStatus = readStatus(data, cursor, trackerId);
 
       if (todayStatus === undefined) {
         cursor.setDate(cursor.getDate() - 1);
@@ -785,8 +814,7 @@
 
       let streak = 0;
       while (true) {
-        const key = keyForDate(cursor);
-        const status = data.days[key]?.[trackerId];
+        const status = readStatus(data, cursor, trackerId);
         if (status !== true) {
           break;
         }
@@ -811,8 +839,7 @@
       today.setHours(0, 0, 0, 0);
 
       while (cursor <= today) {
-        const key = keyForDate(cursor);
-        const status = data.days[key]?.[trackerId];
+        const status = readStatus(data, cursor, trackerId);
         if (status === true) {
           current += 1;
           best = Math.max(best, current);
@@ -872,19 +899,19 @@
             title: [
               formatDate(date),
               ...trackers.map((tracker) => {
-                const status = data.days[key]?.[tracker.id];
+                const status = readStatus(data, date, tracker.id);
                 return `${tracker.label}: ${status === true ? "clean" : status === false ? "had some" : "not logged"}`;
               })
             ].join(" | "),
             bands: trackers.filter((tracker) => tracker.id !== "fasting").map((tracker) => {
-              const status = data.days[key]?.[tracker.id];
+              const status = readStatus(data, date, tracker.id);
               return {
                 id: tracker.id,
                 tone: status === true ? "good" : status === false ? "miss" : "empty"
               };
             }),
             fasting: (() => {
-              const status = data.days[key]?.fasting;
+              const status = readStatus(data, date, "fasting");
               return status === true ? "good" : status === false ? "miss" : "empty";
             })()
           });
@@ -997,7 +1024,7 @@
       list.innerHTML = "";
 
       for (const tracker of trackers) {
-        const status = data.days[todayKey]?.[tracker.id];
+        const status = readStatus(data, today, tracker.id);
         const isScheduled = tracker.mode === "scheduled";
         const primaryValue = isScheduled ? successCountFor(data, tracker.id) : streakFor(data, tracker.id);
         const primaryLabel = isScheduled ? "fasting days" : "current streak";
@@ -1008,7 +1035,7 @@
           : `Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}`;
 
         const card = document.createElement("article");
-        card.className = "tracker";
+        card.className = `tracker${isScheduled ? " fasting-card" : ""}`;
         card.innerHTML = `
           <div class="tracker-head">
             <div>
