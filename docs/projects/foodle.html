@@ -244,45 +244,96 @@
       font-size: 0.9rem;
     }
 
-    .week-strip {
-      display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 8px;
+    .heatmap-shell {
       margin-top: 18px;
-    }
-
-    .day-cell {
-      border-radius: 16px;
-      padding: 10px 6px;
-      text-align: center;
+      padding: 16px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.48);
       border: 1px solid var(--line);
-      background: rgba(255,255,255,0.4);
+      overflow-x: auto;
     }
 
-    .day-cell .dow {
-      display: block;
-      color: var(--muted);
-      font-size: 0.75rem;
-      margin-bottom: 6px;
-      text-transform: uppercase;
+    .heatmap-frame {
+      display: grid;
+      grid-template-columns: 42px minmax(480px, 1fr);
+      gap: 10px;
+      min-width: 540px;
     }
 
-    .day-cell .mark {
-      display: inline-flex;
-      width: 24px;
-      height: 24px;
+    .weekday-rail {
+      display: grid;
+      grid-template-rows: 22px repeat(7, 16px) 24px;
       align-items: center;
-      justify-content: center;
-      border-radius: 8px;
-      font-weight: 800;
-      color: #fff;
+      color: var(--muted);
+      font-size: 0.74rem;
     }
 
-    .mark.good { background: var(--ok); }
-    .mark.bad { background: var(--bad); }
-    .mark.empty {
-      background: rgba(31, 27, 22, 0.08);
+    .weekday-rail span {
+      line-height: 1;
+    }
+
+    .calendar-side {
+      display: grid;
+      gap: 10px;
+    }
+
+    .month-row {
+      display: grid;
+      grid-auto-flow: column;
+      grid-template-columns: repeat(26, 16px);
+      gap: 4px;
+      min-height: 18px;
       color: var(--muted);
+      font-size: 0.74rem;
+    }
+
+    .month-tag {
+      white-space: nowrap;
+      line-height: 1;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(26, 16px);
+      grid-template-rows: repeat(7, 16px);
+      gap: 4px;
+    }
+
+    .calendar-cell {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      border: 1px solid rgba(31, 27, 22, 0.05);
+      background: rgba(31, 27, 22, 0.08);
+    }
+
+    .calendar-cell.empty { background: rgba(31, 27, 22, 0.08); }
+    .calendar-cell.miss { background: rgba(198, 69, 69, 0.72); }
+    .calendar-cell.level-1 { background: #1f6d3e; }
+    .calendar-cell.level-2 { background: #238a4a; }
+    .calendar-cell.level-3 { background: #31a354; }
+    .calendar-cell.level-4 { background: #57c96d; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .legend-group {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .legend-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      border: 1px solid rgba(31, 27, 22, 0.05);
     }
 
     .today-panel {
@@ -363,6 +414,10 @@
       .tracker-foot {
         flex-direction: column;
       }
+
+      .heatmap-frame {
+        min-width: 520px;
+      }
     }
   </style>
 </head>
@@ -420,6 +475,7 @@
 
   <script>
     const STORAGE_KEY = "foodle-v1";
+    const CALENDAR_WEEKS = 26;
     const trackers = [
       {
         id: "sugar",
@@ -469,6 +525,19 @@
 
     function saveData(data) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function heatLevel(streakLength) {
+      if (streakLength >= 7) {
+        return 4;
+      }
+      if (streakLength >= 4) {
+        return 3;
+      }
+      if (streakLength >= 2) {
+        return 2;
+      }
+      return 1;
     }
 
     function streakFor(data, trackerId) {
@@ -521,21 +590,53 @@
       return best;
     }
 
-    function historyFor(data, trackerId) {
-      const days = [];
-      const cursor = new Date();
-      cursor.setHours(0, 0, 0, 0);
+    function calendarFor(data, trackerId) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-      for (let index = 0; index < 7; index += 1) {
-        const date = new Date(cursor);
-        date.setDate(cursor.getDate() - (6 - index));
-        const key = keyForDate(date);
-        days.push({
-          label: date.toLocaleDateString("en-AU", { weekday: "short" }),
-          status: data.days[key]?.[trackerId]
-        });
+      const start = new Date(today);
+      start.setDate(today.getDate() - ((CALENDAR_WEEKS - 1) * 7 + today.getDay()));
+
+      const monthLabels = Array.from({ length: CALENDAR_WEEKS }, () => "");
+      const cells = [];
+      let running = 0;
+
+      for (let weekIndex = 0; weekIndex < CALENDAR_WEEKS; weekIndex += 1) {
+        for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+          const date = new Date(start);
+          date.setDate(start.getDate() + weekIndex * 7 + dayIndex);
+          const key = keyForDate(date);
+          const status = data.days[key]?.[trackerId];
+
+          if (status === true) {
+            running += 1;
+          } else {
+            running = 0;
+          }
+
+          if (dayIndex === 0) {
+            const labelDate = new Date(date);
+            if (weekIndex === 0 || labelDate.getDate() <= 7) {
+              monthLabels[weekIndex] = labelDate.toLocaleDateString("en-AU", { month: "short" });
+            }
+          }
+
+          cells.push({
+            weekIndex,
+            dayIndex,
+            title: `${formatDate(date)}: ${
+              status === true ? "clean day" : status === false ? "had some" : "not logged"
+            }`,
+            tone:
+              status === true
+                ? `level-${heatLevel(running)}`
+                : status === false
+                  ? "miss"
+                  : "empty"
+          });
+        }
       }
-      return days;
+      return { monthLabels, cells };
     }
 
     function shareText(data) {
@@ -578,7 +679,7 @@
       for (const tracker of trackers) {
         const status = data.days[todayKey]?.[tracker.id];
         const streak = streakFor(data, tracker.id);
-        const history = historyFor(data, tracker.id);
+        const calendar = calendarFor(data, tracker.id);
 
         const card = document.createElement("article");
         card.className = "tracker";
@@ -602,15 +703,51 @@
             <span>${status === true ? "Today: success" : status === false ? "Today: streak broken" : "Today: not logged yet"}</span>
             <span>Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}</span>
           </div>
-          <div class="week-strip">
-            ${history.map((day) => `
-              <div class="day-cell">
-                <span class="dow">${day.label}</span>
-                <span class="mark ${day.status === true ? "good" : day.status === false ? "bad" : "empty"}">
-                  ${day.status === true ? "✓" : day.status === false ? "×" : "·"}
-                </span>
+          <div class="heatmap-shell">
+            <div class="heatmap-frame">
+              <div class="weekday-rail">
+                <span></span>
+                <span></span>
+                <span>Mon</span>
+                <span></span>
+                <span>Wed</span>
+                <span></span>
+                <span>Fri</span>
+                <span></span>
+                <span></span>
               </div>
-            `).join("")}
+              <div class="calendar-side">
+                <div class="month-row">
+                  ${calendar.monthLabels.map((label) => `
+                    <span class="month-tag">${label}</span>
+                  `).join("")}
+                </div>
+                <div class="calendar-grid">
+                  ${calendar.cells.map((cell) => `
+                    <span
+                      class="calendar-cell ${cell.tone}"
+                      style="grid-column:${cell.weekIndex + 1}; grid-row:${cell.dayIndex + 1};"
+                      title="${cell.title}"
+                    ></span>
+                  `).join("")}
+                </div>
+                <div class="legend">
+                  <span>Last ${CALENDAR_WEEKS} weeks</span>
+                  <span class="legend-group">
+                    <span class="legend-swatch" style="background: rgba(31, 27, 22, 0.08);"></span> Empty
+                  </span>
+                  <span class="legend-group">
+                    <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Missed
+                  </span>
+                  <span class="legend-group">
+                    <span class="legend-swatch level-1"></span>
+                    <span class="legend-swatch level-2"></span>
+                    <span class="legend-swatch level-3"></span>
+                    <span class="legend-swatch level-4"></span> Longer run
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         `;
         list.appendChild(card);
