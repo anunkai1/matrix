@@ -12,9 +12,10 @@
       --ink: #1f1b16;
       --muted: #716657;
       --line: rgba(63, 50, 33, 0.13);
-      --sugar: #ea6d5a;
+      --sugar: #3aa76d;
       --carbs: #d19a29;
       --dairy: #4d8dc7;
+      --fasting: #52c7b8;
       --ok: #2f8f5b;
       --bad: #c64545;
       --shadow: 0 20px 60px rgba(70, 44, 11, 0.12);
@@ -61,6 +62,12 @@
     body[data-theme="dark"] .month-row,
     body[data-theme="dark"] .legend,
     body[data-theme="dark"] .tracker-foot {
+      color: #d4dee9;
+    }
+
+    body[data-theme="dark"] .tracker-copy,
+    body[data-theme="dark"] .section-copy,
+    body[data-theme="dark"] .calendar-intro {
       color: #d4dee9;
     }
 
@@ -252,6 +259,7 @@
     .sugar { background: var(--sugar); }
     .carbs { background: var(--carbs); }
     .dairy { background: var(--dairy); }
+    .fasting { background: var(--fasting); color: #10211d; }
 
     .actions {
       display: flex;
@@ -373,6 +381,10 @@
       border: 1px solid rgba(31, 27, 22, 0.05);
       background: rgba(255, 255, 255, 0.18);
       padding: 2px;
+      position: relative;
+    }
+
+    .combined-stack {
       display: grid;
       gap: 2px;
     }
@@ -387,6 +399,20 @@
     .combined-bar.good.track-sugar { background: var(--sugar); }
     .combined-bar.good.track-carbs { background: var(--carbs); }
     .combined-bar.good.track-dairy { background: var(--dairy); }
+
+    .combined-marker {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(8, 13, 19, 0.55);
+      background: transparent;
+    }
+
+    .combined-marker.good.track-fasting { background: var(--fasting); }
+    .combined-marker.miss.track-fasting { background: var(--bad); }
 
     .legend {
       display: flex;
@@ -618,6 +644,10 @@
           <span class="mini-label">Longest dairy streak</span>
           <strong class="mini-value" id="heroDairy">0</strong>
         </article>
+        <article class="mini-stat">
+          <span class="mini-label">Fasting days logged</span>
+          <strong class="mini-value" id="heroFasting">0</strong>
+        </article>
       </div>
     </section>
 
@@ -675,6 +705,13 @@
         label: "Dairy-free",
         accent: "dairy",
         copy: "No milk, cheese, yogurt, cream, or dairy-based foods today."
+      },
+      {
+        id: "fasting",
+        label: "Fasting",
+        accent: "fasting",
+        mode: "scheduled",
+        copy: "For planned monthly or bi-weekly full-day fasts. Log only on fasting days."
       }
     ];
 
@@ -778,6 +815,20 @@
       return best;
     }
 
+    function successCountFor(data, trackerId) {
+      return Object.values(data.days).filter((entry) => entry?.[trackerId] === true).length;
+    }
+
+    function lastSuccessDateFor(data, trackerId) {
+      const keys = Object.keys(data.days).sort().reverse();
+      for (const key of keys) {
+        if (data.days[key]?.[trackerId] === true) {
+          return formatDate(dateFromKey(key));
+        }
+      }
+      return "No fasting day logged yet";
+    }
+
     function combinedCalendarFor(data) {
       const weeks = currentCalendarWeeks();
       const today = new Date();
@@ -812,13 +863,17 @@
                 return `${tracker.label}: ${status === true ? "clean" : status === false ? "had some" : "not logged"}`;
               })
             ].join(" | "),
-            bands: trackers.map((tracker) => {
+            bands: trackers.filter((tracker) => tracker.id !== "fasting").map((tracker) => {
               const status = data.days[key]?.[tracker.id];
               return {
                 id: tracker.id,
                 tone: status === true ? "good" : status === false ? "miss" : "empty"
               };
-            })
+            }),
+            fasting: (() => {
+              const status = data.days[key]?.fasting;
+              return status === true ? "good" : status === false ? "miss" : "empty";
+            })()
           });
         }
       }
@@ -832,6 +887,11 @@
       ];
 
       for (const tracker of trackers) {
+        if (tracker.mode === "scheduled") {
+          const count = successCountFor(data, tracker.id);
+          lines.push(`${tracker.label}: ${count} fasting day${count === 1 ? "" : "s"} logged`);
+          continue;
+        }
         const streak = streakFor(data, tracker.id);
         const best = bestStreakFor(data, tracker.id);
         lines.push(`${tracker.label}: ${streak} day${streak === 1 ? "" : "s"} current, ${best} best`);
@@ -858,6 +918,7 @@
       document.getElementById("heroSugar").textContent = bestStreakFor(data, "sugar");
       document.getElementById("heroCarbs").textContent = bestStreakFor(data, "carbs");
       document.getElementById("heroDairy").textContent = bestStreakFor(data, "dairy");
+      document.getElementById("heroFasting").textContent = successCountFor(data, "fasting");
 
       const combinedCalendar = combinedCalendarFor(data);
       document.getElementById("combinedCalendar").innerHTML = `
@@ -879,19 +940,22 @@
                 <span class="month-tag">${label}</span>
               `).join("")}
             </div>
-            <div class="combined-grid" style="grid-template-columns: repeat(${combinedCalendar.weeks}, var(--cell-size));">
-              ${combinedCalendar.cells.map((cell) => `
-                <span
-                  class="combined-cell"
-                  style="grid-column:${cell.weekIndex + 1}; grid-row:${cell.dayIndex + 1};"
-                  title="${cell.title}"
-                >
-                  ${cell.bands.map((band) => `
-                    <span class="combined-bar ${band.tone} track-${band.id}"></span>
+                <div class="combined-grid" style="grid-template-columns: repeat(${combinedCalendar.weeks}, var(--cell-size));">
+                  ${combinedCalendar.cells.map((cell) => `
+                    <span
+                      class="combined-cell"
+                      style="grid-column:${cell.weekIndex + 1}; grid-row:${cell.dayIndex + 1};"
+                      title="${cell.title}"
+                    >
+                      <span class="combined-stack">
+                        ${cell.bands.map((band) => `
+                          <span class="combined-bar ${band.tone} track-${band.id}"></span>
+                        `).join("")}
+                      </span>
+                      ${cell.fasting === "empty" ? "" : `<span class="combined-marker ${cell.fasting} track-fasting"></span>`}
+                    </span>
                   `).join("")}
-                </span>
-              `).join("")}
-            </div>
+                </div>
             <div class="legend">
               <span>Last ${combinedCalendar.weeks} weeks</span>
               <span class="legend-group">
@@ -900,6 +964,9 @@
                   <span class="combined-bar good track-carbs"></span>
                   <span class="combined-bar good track-dairy"></span>
                 </span> Clean day stack
+              </span>
+              <span class="legend-group">
+                <span class="combined-marker good track-fasting" style="position: static;"></span> Fasting day
               </span>
               <span class="legend-group">
                 <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some
@@ -918,7 +985,14 @@
 
       for (const tracker of trackers) {
         const status = data.days[todayKey]?.[tracker.id];
-        const streak = streakFor(data, tracker.id);
+        const isScheduled = tracker.mode === "scheduled";
+        const primaryValue = isScheduled ? successCountFor(data, tracker.id) : streakFor(data, tracker.id);
+        const primaryLabel = isScheduled ? "fasting days" : "current streak";
+        const actionGoodText = isScheduled ? "Completed fast today" : "Stayed clean today";
+        const actionBadText = isScheduled ? "Did not fast today" : "Had some today";
+        const secondaryText = isScheduled
+          ? `Last fast: ${lastSuccessDateFor(data, tracker.id)}`
+          : `Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}`;
 
         const card = document.createElement("article");
         card.className = "tracker";
@@ -929,18 +1003,18 @@
               <p class="tracker-copy">${tracker.copy}</p>
             </div>
             <div class="badge ${tracker.accent}">
-              ${streak} days
-              <small>current streak</small>
+              ${primaryValue}${isScheduled ? "" : " days"}
+              <small>${primaryLabel}</small>
             </div>
           </div>
           <div class="actions">
-            <button class="decision good" type="button" data-action="true" data-id="${tracker.id}">Stayed clean today</button>
-            <button class="decision bad" type="button" data-action="false" data-id="${tracker.id}">Had some today</button>
+            <button class="decision good" type="button" data-action="true" data-id="${tracker.id}">${actionGoodText}</button>
+            <button class="decision bad" type="button" data-action="false" data-id="${tracker.id}">${actionBadText}</button>
             <button class="decision clear" type="button" data-action="clear" data-id="${tracker.id}">Clear</button>
           </div>
           <div class="tracker-foot">
-            <span>${status === true ? "Today: success" : status === false ? "Today: streak broken" : "Today: not logged yet"}</span>
-            <span>Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}</span>
+            <span>${status === true ? (isScheduled ? "Today: fasting completed" : "Today: success") : status === false ? (isScheduled ? "Today: fasting skipped" : "Today: streak broken") : "Today: not logged yet"}</span>
+            <span>${secondaryText}</span>
           </div>
         `;
         list.appendChild(card);
