@@ -122,6 +122,20 @@
       align-items: flex-start;
     }
 
+    .hero-top-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    .hero-auth {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
     .eyebrow,
     .micro,
     .stamp,
@@ -692,8 +706,15 @@
 
       .feed-row,
       .drawer-title,
-      .runtime-meta {
+      .runtime-meta,
+      .hero-top,
+      .hero-top-right {
         display: block;
+      }
+
+      .hero-auth {
+        justify-content: flex-start;
+        margin-top: 10px;
       }
 
       .feed-time {
@@ -725,7 +746,13 @@
               <h1>Mission control for live runtimes, not a dashboard theme.</h1>
             </div>
           </div>
-          <div class="chip warn" id="heroModeChip">read-only live snapshot</div>
+          <div class="hero-top-right">
+            <div class="chip warn" id="heroModeChip">read-only live snapshot</div>
+            <div class="hero-auth">
+              <button type="button" id="operatorUnlock">unlock operator mode</button>
+              <button type="button" id="operatorLock">clear token</button>
+            </div>
+          </div>
         </div>
         <p>
           Chat is the conversational surface. Systemd and scripts are the execution surface. This page is the operator surface:
@@ -952,15 +979,22 @@
     };
 
     const snapshot = window.SERVER3_CONTROL_PLANE_DATA || fallbackData;
+    const OPERATOR_TOKEN_STORAGE_KEY = "server3-control-plane-operator-token";
     const runtimeLookup = Object.fromEntries((snapshot.runtimes || []).map((runtime) => [runtime.key, runtime]));
     let currentSnapshot = snapshot;
     let currentRuntimeKey = snapshot.defaultRuntime || (snapshot.runtimes[0] && snapshot.runtimes[0].key) || null;
     let apiAvailable = false;
     let localActionsAllowed = false;
+    let operatorAuthorized = false;
+    let operatorTokenConfigured = false;
+    let operatorTokenPath = "";
+    let operatorToken = window.localStorage.getItem(OPERATOR_TOKEN_STORAGE_KEY) || "";
     let runtimeEventsBound = false;
     let actionEventsBound = false;
 
     const heroModeChip = document.getElementById("heroModeChip");
+    const operatorUnlock = document.getElementById("operatorUnlock");
+    const operatorLock = document.getElementById("operatorLock");
     const metricRuntimeValue = document.getElementById("metricRuntimeValue");
     const metricRuntimeCopy = document.getElementById("metricRuntimeCopy");
     const metricApprovalValue = document.getElementById("metricApprovalValue");
@@ -1003,11 +1037,26 @@
     }
 
     function setActionAvailability() {
+      localActionsAllowed = isLocalOperatorClient() || operatorAuthorized;
       actionOne.disabled = !localActionsAllowed;
       actionTwo.disabled = !localActionsAllowed;
-      actionOne.title = localActionsAllowed ? "" : "Local operator action only";
-      actionTwo.title = localActionsAllowed ? "" : "Local operator action only";
+      actionOne.title = localActionsAllowed ? "" : (operatorTokenConfigured ? "Unlock operator mode first" : "Local operator action only");
+      actionTwo.title = localActionsAllowed ? "" : (operatorTokenConfigured ? "Unlock operator mode first" : "Local operator action only");
       actionThree.title = apiAvailable ? "" : "Reload the file snapshot locally";
+      operatorLock.disabled = !operatorToken;
+      if (isLocalOperatorClient()) {
+        operatorUnlock.textContent = "localhost operator mode";
+        operatorUnlock.disabled = true;
+      } else if (operatorAuthorized) {
+        operatorUnlock.textContent = "operator mode unlocked";
+        operatorUnlock.disabled = false;
+      } else if (operatorTokenConfigured) {
+        operatorUnlock.textContent = "unlock operator mode";
+        operatorUnlock.disabled = false;
+      } else {
+        operatorUnlock.textContent = "operator token unavailable";
+        operatorUnlock.disabled = true;
+      }
     }
 
     function escapeHtml(value) {
@@ -1200,8 +1249,12 @@
     }
 
     async function apiJson(path, options = {}) {
+      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+      if (operatorToken) {
+        headers["X-Server3-Operator-Token"] = operatorToken;
+      }
       const response = await fetch(path, {
-        headers: { "Content-Type": "application/json" },
+        headers,
         ...options
       });
       const payload = await response.json();
@@ -1211,13 +1264,66 @@
       return payload;
     }
 
+    async function syncOperatorStatus() {
+      if (location.protocol === "file:") {
+        operatorAuthorized = true;
+        operatorTokenConfigured = false;
+        operatorTokenPath = "";
+        setActionAvailability();
+        return;
+      }
+      const payload = await apiJson("/api/operator/status");
+      operatorAuthorized = Boolean(payload.authorized);
+      operatorTokenConfigured = Boolean(payload.tokenConfigured);
+      operatorTokenPath = String(payload.tokenPath || "");
+      setActionAvailability();
+    }
+
+    async function unlockOperatorMode() {
+      if (isLocalOperatorClient()) return;
+      const entered = window.prompt(
+        operatorTokenConfigured
+          ? `Enter the Server3 operator token.\nToken file: ${operatorTokenPath || "configured on host"}`
+          : "No remote operator token is configured on this host yet.",
+        operatorToken || ""
+      );
+      if (!entered) return;
+      operatorToken = entered.trim();
+      window.localStorage.setItem(OPERATOR_TOKEN_STORAGE_KEY, operatorToken);
+      try {
+        await syncOperatorStatus();
+        if (!operatorAuthorized) {
+          throw new Error("operator token rejected");
+        }
+        setHeroMode("operator token active", "ok");
+      } catch (error) {
+        operatorAuthorized = false;
+        operatorToken = "";
+        window.localStorage.removeItem(OPERATOR_TOKEN_STORAGE_KEY);
+        setActionAvailability();
+        window.alert(String(error));
+      }
+    }
+
+    function clearOperatorMode() {
+      operatorAuthorized = false;
+      operatorToken = "";
+      window.localStorage.removeItem(OPERATOR_TOKEN_STORAGE_KEY);
+      setActionAvailability();
+      if (!isLocalOperatorClient()) {
+        setHeroMode("LAN view mode", "busy");
+      }
+    }
+
     async function loadFromApi(forceRefresh = false) {
       const suffix = forceRefresh ? "?refresh=1" : "";
       const payload = await apiJson(`/api/snapshot${suffix}`);
       apiAvailable = true;
-      localActionsAllowed = isLocalOperatorClient();
-      setHeroMode(localActionsAllowed ? "localhost API live" : "LAN view mode", localActionsAllowed ? "ok" : "busy");
-      setActionAvailability();
+      await syncOperatorStatus();
+      setHeroMode(
+        isLocalOperatorClient() ? "localhost API live" : operatorAuthorized ? "operator token active" : "LAN view mode",
+        isLocalOperatorClient() || operatorAuthorized ? "ok" : "busy"
+      );
       renderPage(payload.snapshot);
     }
 
@@ -1277,6 +1383,12 @@
 
     function bindActionButtons() {
       if (actionEventsBound) return;
+      operatorUnlock.addEventListener("click", () => {
+        unlockOperatorMode();
+      });
+      operatorLock.addEventListener("click", () => {
+        clearOperatorMode();
+      });
       actionOne.addEventListener("click", () => {
         restartRuntime();
       });
@@ -1292,7 +1404,6 @@
     async function boot() {
       renderPage(currentSnapshot);
       bindActionButtons();
-      localActionsAllowed = isLocalOperatorClient();
       setActionAvailability();
       if (location.protocol !== "file:") {
         try {
@@ -1302,7 +1413,7 @@
           }, 60000);
           return;
         } catch (error) {
-          localActionsAllowed = false;
+          operatorAuthorized = false;
           setActionAvailability();
           setHeroMode("file snapshot fallback", "warn");
         }

@@ -5,7 +5,7 @@ This file stores detailed operational history for Server3 tasks.
 ## 2026-03-31 (Summary Roll-Forward Trim for Control-Plane LAN Hardening)
 
 Summary:
-- Added a new rolling-summary entry for the Server3 control-plane hardening pass, covering LAN observe-only behavior, localhost-only operator actions, sanitized recent runtime activity text, refreshed live snapshot artifacts, and local desktop/mobile board screenshots captured from the rendered LAN board.
+- Added a new rolling-summary entry for the Server3 control-plane hardening pass, covering LAN observe-only behavior by default, token-gated remote operator unlock, sanitized recent runtime activity text, refreshed live snapshot artifacts, and local desktop/mobile board screenshots captured from the rendered LAN board.
 - Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
 
 Migrated out of summary during this trim:

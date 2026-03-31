@@ -6,6 +6,8 @@ UNIT_NAME="server3-control-plane.service"
 SRC_UNIT="${REPO_ROOT}/infra/systemd/${UNIT_NAME}"
 DST_UNIT="/etc/systemd/system/${UNIT_NAME}"
 
+bash "${REPO_ROOT}/ops/server3_control_plane/ensure_operator_token.sh" >/dev/null
+
 sudo install -m 0644 "${SRC_UNIT}" "${DST_UNIT}"
 sudo systemctl daemon-reload
 sudo systemctl enable --now "${UNIT_NAME}"

@@ -23,6 +23,8 @@ EXPORTER = ROOT / "ops" / "server3_control_plane" / "export_snapshot.py"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8420
 DEFAULT_SNAPSHOT_JSON = DOCS_DIR / "server3-control-plane-data.json"
+DEFAULT_OPERATOR_TOKEN_FILE = Path("/home/architect/.config/server3-control-plane/operator_token")
+OPERATOR_TOKEN_HEADER = "X-Server3-Operator-Token"
 LOCAL_CLIENTS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
 RUNTIME_UNITS: Dict[str, List[str]] = {
@@ -75,6 +77,18 @@ def load_snapshot() -> Dict[str, object]:
     return json.loads(DEFAULT_SNAPSHOT_JSON.read_text(encoding="utf-8"))
 
 
+def operator_token_file() -> Path:
+    override = os.environ.get("SERVER3_CONTROL_PLANE_OPERATOR_TOKEN_FILE", "").strip()
+    return Path(override) if override else DEFAULT_OPERATOR_TOKEN_FILE
+
+
+def configured_operator_token() -> str:
+    path = operator_token_file()
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8").strip()
+
+
 def is_local_client(handler: BaseHTTPRequestHandler) -> bool:
     client_ip = handler.client_address[0]
     if client_ip in LOCAL_CLIENTS:
@@ -87,13 +101,29 @@ def is_local_client(handler: BaseHTTPRequestHandler) -> bool:
     return "127.0.0.1" in candidates or "::1" in candidates
 
 
+def is_operator_authorized(handler: BaseHTTPRequestHandler) -> bool:
+    if is_local_client(handler):
+        return True
+    expected = configured_operator_token()
+    if not expected:
+        return False
+    presented = handler.headers.get(OPERATOR_TOKEN_HEADER, "").strip()
+    return bool(presented) and presented == expected
+
+
 def local_only_error(handler: BaseHTTPRequestHandler) -> None:
+    token_configured = bool(configured_operator_token())
     json_response(
         handler,
         {
             "ok": False,
-            "error": "local operator action only",
-            "detail": "Use localhost on Server3 for refresh, logs, or restart actions.",
+            "error": "operator authentication required" if token_configured else "local operator action only",
+            "detail": (
+                "Provide the Server3 operator token or use localhost on Server3."
+                if token_configured
+                else "Use localhost on Server3 for refresh, logs, or restart actions."
+            ),
+            "tokenConfigured": token_configured,
         },
         status=403,
     )
@@ -169,7 +199,7 @@ class Handler(BaseHTTPRequestHandler):
             params = urllib.parse.parse_qs(parsed.query)
             try:
                 wants_refresh = params.get("refresh") == ["1"]
-                if wants_refresh and not is_local_client(self):
+                if wants_refresh and not is_operator_authorized(self):
                     local_only_error(self)
                     return
                 payload = refresh_snapshot() if wants_refresh else load_snapshot()
@@ -178,8 +208,20 @@ class Handler(BaseHTTPRequestHandler):
                 return
             json_response(self, {"ok": True, "snapshot": payload})
             return
+        if path == "/api/operator/status":
+            json_response(
+                self,
+                {
+                    "ok": True,
+                    "authorized": is_operator_authorized(self),
+                    "localClient": is_local_client(self),
+                    "tokenConfigured": bool(configured_operator_token()),
+                    "tokenPath": str(operator_token_file()),
+                },
+            )
+            return
         if path.startswith("/api/runtime/") and path.endswith("/logs"):
-            if not is_local_client(self):
+            if not is_operator_authorized(self):
                 local_only_error(self)
                 return
             runtime_key = path.split("/")[3]
@@ -210,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if path == "/api/refresh":
-            if not is_local_client(self):
+            if not is_operator_authorized(self):
                 local_only_error(self)
                 return
             try:
@@ -221,7 +263,7 @@ class Handler(BaseHTTPRequestHandler):
             json_response(self, {"ok": True, "snapshot": payload})
             return
         if path.startswith("/api/runtime/") and path.endswith("/restart"):
-            if not is_local_client(self):
+            if not is_operator_authorized(self):
                 local_only_error(self)
                 return
             runtime_key = path.split("/")[3]
