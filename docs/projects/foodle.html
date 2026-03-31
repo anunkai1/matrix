@@ -402,10 +402,14 @@
 
     .combined-stack {
       display: grid;
+      grid-template-rows: repeat(3, minmax(0, 1fr));
       gap: 2px;
+      height: 100%;
     }
 
     .combined-bar {
+      display: block;
+      min-height: 0;
       border-radius: 2px;
       background: rgba(31, 27, 22, 0.08);
     }
@@ -1071,6 +1075,7 @@
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayKey = keyForDate(today);
+      const legacyTodayKey = legacyKeyForDate(today);
       data.days[todayKey] = data.days[todayKey] || {};
 
       const trackerId = button.dataset.id;
@@ -1080,6 +1085,13 @@
         delete data.days[todayKey][trackerId];
       } else {
         data.days[todayKey][trackerId] = action === "true";
+      }
+
+      if (legacyTodayKey !== todayKey && data.days[legacyTodayKey]?.[trackerId] !== undefined) {
+        delete data.days[legacyTodayKey][trackerId];
+        if (Object.keys(data.days[legacyTodayKey]).length === 0) {
+          delete data.days[legacyTodayKey];
+        }
       }
 
       saveData(data);
