@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Streakdle</title>
+  <title>Foodle</title>
   <style>
     :root {
       --bg: #f4efe4;
@@ -370,7 +370,7 @@
   <main class="wrap">
     <section class="hero">
       <span class="eyebrow">Simple daily streak tracker</span>
-      <h1>Streakdle</h1>
+      <h1>Foodle</h1>
       <p class="lead">
         Tap once at the end of each day. Keep separate streaks for sugar, carbs, and dairy.
         Your data stays in your browser, and the share button turns your streaks into a clean message you can send to friends.
@@ -419,7 +419,7 @@
   </main>
 
   <script>
-    const STORAGE_KEY = "streakdle-v1";
+    const STORAGE_KEY = "foodle-v1";
     const trackers = [
       {
         id: "sugar",
@@ -540,7 +540,7 @@
 
     function shareText(data) {
       const lines = [
-        "My Streakdle update",
+        "My Foodle update",
         ""
       ];
 
@@ -551,7 +551,7 @@
       }
 
       lines.push("");
-      lines.push("Logged today in Streakdle.");
+      lines.push("Logged today in Foodle.");
       return lines.join("\n");
     }
 
@@ -649,7 +649,7 @@
       try {
         if (navigator.share) {
           await navigator.share({
-            title: "My Streakdle update",
+            title: "My Foodle update",
             text
           });
           setStatus("Shared.");
