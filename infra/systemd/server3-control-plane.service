@@ -1,0 +1,16 @@
+[Unit]
+Description=Server3 Control Plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=architect
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/architect/matrix/ops/server3_control_plane/serve.py --host 0.0.0.0 --port 8420
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

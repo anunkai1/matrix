@@ -1,5 +1,5 @@
 window.SERVER3_CONTROL_PLANE_DATA = {
-  "generatedAt": "2026-03-31T21:57:41.610079+10:00",
+  "generatedAt": "2026-03-31T22:02:12.684217+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
@@ -9,10 +9,10 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     "approvalCopy": "explicit human gates from live Server3 state",
     "jobValue": "5 tracked",
     "jobCopy": "timers, approvals, and continuity work in one surface",
-    "hostValue": "load 5.66 / ram 48%",
+    "hostValue": "load 5.85 / ram 48%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "31 Mar 2026 21:57 AEST",
+      "31 Mar 2026 22:02 AEST",
       "snapshot file server3-control-plane-data.js",
       "1 approval item(s)"
     ],
@@ -82,7 +82,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
   },
   "activity": [
     {
-      "time": "21:57:41",
+      "time": "22:02:28",
       "title": "Optional UI layer is active",
       "channel": "host",
       "statusClass": "danger",
@@ -90,7 +90,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "copy": "expected inactive, got active"
     },
     {
-      "time": "21:57:41",
+      "time": "22:02:28",
       "title": "UI layer is active outside its default posture",
       "channel": "approval",
       "statusClass": "danger",
@@ -103,7 +103,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "channel": "telegram primary",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "pam_unix(sudo:session): session closed for user architect"
+      "copy": "{\"chat_id\": -1003894351534, \"event\": \"bridge.request_processing_finished\", \"level\": \"INFO\", \"logger\": \"telegram_bridge\", \"message_id\": 532, \"msg\": \"bridge.request_processing_finished\", \"ts\": \"2026-03-31T11:15:04.982991+00:00\"}"
     },
     {
       "time": "--:--:--",
@@ -111,7 +111,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "channel": "telegram sibling",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "entries --"
+      "copy": "{\"attempt\": 2, \"event\": \"bridge.telegram_api_retry_succeeded\", \"level\": \"INFO\", \"logger\": \"telegram_bridge\", \"max_attempts\": 3, \"method\": \"getUpdates\", \"msg\": \"bridge.telegram_api_retry_succeeded\", \"ts\": \"2026-03-30T13:42:44.085103+00:00\"}"
     },
     {
       "time": "--:--:--",
@@ -119,7 +119,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "channel": "capture runtime",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "entries --"
+      "copy": "{\"chat_id\": 211761499, \"event\": \"bridge.diary_batch_finished\", \"level\": \"INFO\", \"logger\": \"telegram_bridge\", \"message_id\": 224, \"msg\": \"bridge.diary_batch_finished\", \"ts\": \"2026-03-31T10:02:14.781319+00:00\"}"
     },
     {
       "time": "--:--:--",
@@ -127,7 +127,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "channel": "whatsapp runtime",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "entries --"
+      "copy": "Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
     }
   ],
   "approvals": [
@@ -185,7 +185,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 5.66 / ram 48%",
+      "value": "load 5.85 / ram 48%",
       "body": "primary route nordlynx / 10.5.0.2",
       "statusLine": "host: server3"
     },
@@ -241,7 +241,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-architect-bridge.service",
-          "value": "--:--:-- pam_unix(sudo:session): session closed for user architect"
+          "value": "--:--:-- {\"chat_id\": -1003894351534, \"event\": \"bridge.request_processing_finished\", \"level\": \"INFO\", \"logger\": \"telegram_bridge\", \"message_id\": 532, \"msg\": \"bridge.request_processing_finished\", \"ts\": \"2026-03-31T11:15:04.982991+00:00\"}"
         }
       ],
       "watchouts": [
@@ -310,7 +310,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-tank-bridge.service",
-          "value": "--:--:-- entries --"
+          "value": "--:--:-- {\"attempt\": 2, \"event\": \"bridge.telegram_api_retry_succeeded\", \"level\": \"INFO\", \"logger\": \"telegram_bridge\", \"max_attempts\": 3, \"method\": \"getUpdates\", \"msg\": \"bridge.telegram_api_retry_succeeded\", \"ts\": \"2026-03-30T13:42:44.085103+00:00\"}"
         }
       ],
       "watchouts": [
@@ -379,7 +379,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-diary-bridge.service",
-          "value": "--:--:-- entries --"
+          "value": "--:--:-- {\"chat_id\": 211761499, \"event\": \"bridge.diary_batch_finished\", \"level\": \"INFO\", \"logger\": \"telegram_bridge\", \"message_id\": 224, \"msg\": \"bridge.diary_batch_finished\", \"ts\": \"2026-03-31T10:02:14.781319+00:00\"}"
         }
       ],
       "watchouts": [
@@ -448,11 +448,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "whatsapp-govorun-bridge.service",
-          "value": "--:--:-- entries --"
+          "value": "--:--:-- Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
         },
         {
           "label": "govorun-whatsapp-bridge.service",
-          "value": "--:--:-- entries --"
+          "value": "--:--:-- {\"chat_id\": 53072088, \"event\": \"bridge.request_ignored\", \"level\": \"INFO\", \"logger\": \"telegram_bridge\", \"message_id\": 161, \"msg\": \"bridge.request_ignored\", \"reason\": \"prefix_required\", \"ts\": \"2026-03-31T07:51:20.824365+00:00\"}"
         }
       ],
       "watchouts": [
@@ -522,11 +522,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "--:--:-- entries --"
+          "value": "--:--:-- 2026-03-31 22:02:11,745 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
         },
         {
           "label": "oracle-signal-bridge.service",
-          "value": "--:--:-- entries --"
+          "value": "--:--:-- {\"chat_id\": 1311030911, \"event\": \"bridge.request_processing_finished\", \"level\": \"INFO\", \"logger\": \"telegram_bridge\", \"message_id\": 1774609599987, \"msg\": \"bridge.request_processing_finished\", \"ts\": \"2026-03-27T11:07:01.205422+00:00\"}"
         }
       ],
       "watchouts": [
@@ -596,11 +596,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-mavali-eth-bridge.service",
-          "value": "--:--:-- entries --"
+          "value": "--:--:-- {\"chat_id\": 211761499, \"event\": \"bridge.request_processing_finished\", \"level\": \"INFO\", \"logger\": \"telegram_bridge\", \"message_id\": 526, \"msg\": \"bridge.request_processing_finished\", \"ts\": \"2026-03-31T05:16:35.020142+00:00\"}"
         },
         {
           "label": "mavali-eth-receipt-monitor.timer",
-          "value": "--:--:-- entries --"
+          "value": "--:--:-- Started mavali-eth-receipt-monitor.timer - Poll for confirmed inbound ETH for mavali_eth."
         }
       ],
       "watchouts": [
@@ -666,7 +666,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "server3-browser-brain.service",
-          "value": "--:--:-- entries --"
+          "value": "--:--:-- {\"action\": \"snapshot\", \"elements\": 261, \"service\": \"server3-browser-brain\", \"snapshot_id\": \"snap-cbe972f8\", \"tab_id\": \"tab-c1206336\", \"ts\": \"2026-03-31T10:31:04.334310+00:00\"}"
         }
       ],
       "watchouts": [
