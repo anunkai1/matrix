@@ -507,6 +507,11 @@
       color: var(--danger);
     }
 
+    button:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+    }
+
     .drawer-body {
       display: grid;
       gap: 10px;
@@ -951,6 +956,7 @@
     let currentSnapshot = snapshot;
     let currentRuntimeKey = snapshot.defaultRuntime || (snapshot.runtimes[0] && snapshot.runtimes[0].key) || null;
     let apiAvailable = false;
+    let localActionsAllowed = false;
     let runtimeEventsBound = false;
     let actionEventsBound = false;
 
@@ -990,6 +996,18 @@
     function setHeroMode(text, tone) {
       heroModeChip.className = `chip ${tone}`;
       heroModeChip.textContent = text;
+    }
+
+    function isLocalOperatorClient() {
+      return location.protocol === "file:" || location.hostname === "127.0.0.1" || location.hostname === "localhost";
+    }
+
+    function setActionAvailability() {
+      actionOne.disabled = !localActionsAllowed;
+      actionTwo.disabled = !localActionsAllowed;
+      actionOne.title = localActionsAllowed ? "" : "Local operator action only";
+      actionTwo.title = localActionsAllowed ? "" : "Local operator action only";
+      actionThree.title = apiAvailable ? "" : "Reload the file snapshot locally";
     }
 
     function escapeHtml(value) {
@@ -1197,7 +1215,9 @@
       const suffix = forceRefresh ? "?refresh=1" : "";
       const payload = await apiJson(`/api/snapshot${suffix}`);
       apiAvailable = true;
-      setHeroMode("localhost API live", "ok");
+      localActionsAllowed = isLocalOperatorClient();
+      setHeroMode(localActionsAllowed ? "localhost API live" : "LAN view mode", localActionsAllowed ? "ok" : "busy");
+      setActionAvailability();
       renderPage(payload.snapshot);
     }
 
@@ -1208,7 +1228,7 @@
       }
       setHeroMode("refreshing snapshot", "busy");
       try {
-        const payload = await apiJson("/api/refresh", { method: "POST" });
+        const payload = await apiJson("/api/snapshot?refresh=1");
         renderPage(payload.snapshot);
         setHeroMode("localhost API live", "ok");
       } catch (error) {
@@ -1272,6 +1292,8 @@
     async function boot() {
       renderPage(currentSnapshot);
       bindActionButtons();
+      localActionsAllowed = isLocalOperatorClient();
+      setActionAvailability();
       if (location.protocol !== "file:") {
         try {
           await loadFromApi(false);
@@ -1280,6 +1302,8 @@
           }, 60000);
           return;
         } catch (error) {
+          localActionsAllowed = false;
+          setActionAvailability();
           setHeroMode("file snapshot fallback", "warn");
         }
       }

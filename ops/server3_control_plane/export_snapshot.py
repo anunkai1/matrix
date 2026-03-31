@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -21,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_JSON_OUT = ROOT / "docs" / "server3-control-plane-data.json"
 DEFAULT_JS_OUT = ROOT / "docs" / "server3-control-plane-data.js"
 DEFAULT_TZ = "Australia/Brisbane"
+MAX_MESSAGE_CHARS = 140
 
 
 @dataclass(frozen=True)
@@ -40,7 +42,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 def run_capture(command: Sequence[str]) -> CommandResult:
     attempts: List[List[str]] = [list(command)]
     if os.geteuid() != 0 and shutil.which("sudo"):
-        attempts.append(["sudo", "-n", *command])
+        sudo_attempt = ["sudo", "-n", *command]
+        if command and command[0] == "journalctl":
+            attempts = [sudo_attempt, list(command)]
+        else:
+            attempts.append(sudo_attempt)
     last: Optional[subprocess.CompletedProcess[str]] = None
     for attempt in attempts:
         result = subprocess.run(attempt, capture_output=True, text=True, check=False)
@@ -146,21 +152,64 @@ def timer_snapshot(unit: str, label: str) -> Dict[str, str]:
 
 
 def latest_journal_line(unit: str) -> Tuple[Optional[datetime], str]:
-    result = run_capture(["journalctl", "-u", unit, "-n", "1", "--output=short-iso", "--no-pager"])
-    line = next((row.strip() for row in result.stdout.splitlines() if row.strip()), "")
-    if not line:
+    result = run_capture(["journalctl", "-u", unit, "-n", "8", "--output=json", "--no-pager", "-q"])
+    rows = [row.strip() for row in result.stdout.splitlines() if row.strip()]
+    if not rows:
         return None, "no recent log line"
-    parts = line.split(" ", 2)
-    timestamp = None
-    if len(parts) >= 2:
+    ignored_prefixes = (
+        "pam_unix(sudo:session):",
+        "session opened for user",
+        "session closed for user",
+    )
+    for line in reversed(rows):
         try:
-            timestamp = datetime.fromisoformat(f"{parts[0]}T{parts[1]}")
-        except ValueError:
-            timestamp = None
-    message = parts[2] if len(parts) >= 3 else line
-    if ": " in message:
-        message = message.split(": ", 1)[1]
-    return timestamp, message
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        message = str(payload.get("MESSAGE") or "").strip()
+        if not message:
+            continue
+        if str(payload.get("SYSLOG_IDENTIFIER") or "").strip() == "sudo":
+            continue
+        if str(payload.get("_COMM") or "").strip() == "sudo":
+            continue
+        lowered = message.lower()
+        if any(prefix in lowered for prefix in ignored_prefixes):
+            continue
+        timestamp = None
+        raw_us = str(payload.get("__REALTIME_TIMESTAMP") or "").strip()
+        if raw_us.isdigit():
+            timestamp = datetime.fromtimestamp(int(raw_us) / 1_000_000, tz=ZoneInfo("UTC"))
+        return timestamp, summarize_log_message(message)
+    return None, "no recent log line"
+
+
+def summarize_log_message(message: str) -> str:
+    text = " ".join((message or "").split())
+    if not text:
+        return "no recent log line"
+    if text.startswith("{") and text.endswith("}"):
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            parts: List[str] = []
+            event = str(payload.get("event") or payload.get("action") or payload.get("msg") or "").strip()
+            if event:
+                parts.append(event)
+            reason = str(payload.get("reason") or payload.get("status") or "").strip()
+            if reason:
+                parts.append(reason)
+            method = str(payload.get("method") or payload.get("service") or "").strip()
+            if method:
+                parts.append(method)
+            text = " | ".join(parts) or "structured runtime event"
+    text = re.sub(r"\b(chat_id|message_id|snapshot_id|tab_id|uid|thread_id|ts)=[^ ,;]+", "", text)
+    text = re.sub(r"\s+", " ", text).strip(" |")
+    if len(text) > MAX_MESSAGE_CHARS:
+        return text[:MAX_MESSAGE_CHARS].rstrip() + "..."
+    return text
 
 
 def path_disk_summary(path: Path) -> Dict[str, str]:

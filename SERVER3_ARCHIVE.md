@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-03-31 (Summary Roll-Forward Trim for Control-Plane LAN Hardening)
+
+Summary:
+- Added a new rolling-summary entry for the Server3 control-plane hardening pass, covering LAN observe-only behavior, localhost-only operator actions, sanitized recent runtime activity text, refreshed live snapshot artifacts, and local desktop/mobile board screenshots captured from the rendered LAN board.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-28: expanded `Mavali ETH` into a venue-operations runtime by landing the generic venue-bootstrap substrate, persisted bootstrap run/credential state, modular prompt routing, richer owner-bound Aster and Hyperliquid command parsing/execution paths, the bridge-side guard that blocks Codex fallback from advertising `confirm` when no real `mavali_eth` pending action exists, focused regression coverage for the new service/store/bridge paths, and updated operator docs/spec coverage for the live Mavali ETH current-state/bootstrap surface.
+
 ## 2026-03-29 (Summary Roll-Forward Trim for Remaining Doc Polish)
 
 Summary:

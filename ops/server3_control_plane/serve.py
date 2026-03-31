@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import urllib.parse
@@ -22,6 +23,7 @@ EXPORTER = ROOT / "ops" / "server3_control_plane" / "export_snapshot.py"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8420
 DEFAULT_SNAPSHOT_JSON = DOCS_DIR / "server3-control-plane-data.json"
+LOCAL_CLIENTS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
 RUNTIME_UNITS: Dict[str, List[str]] = {
     "architect": ["telegram-architect-bridge.service"],
@@ -44,7 +46,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 def run_capture(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     attempts: List[List[str]] = [list(command)]
     if os.geteuid() != 0 and shutil.which("sudo"):
-        attempts.append(["sudo", "-n", *command])
+        sudo_attempt = ["sudo", "-n", *command]
+        if command and command[0] == "journalctl":
+            attempts = [sudo_attempt, list(command)]
+        else:
+            attempts.append(sudo_attempt)
     last: Optional[subprocess.CompletedProcess[str]] = None
     for attempt in attempts:
         result = subprocess.run(attempt, capture_output=True, text=True, check=False)
@@ -67,6 +73,30 @@ def load_snapshot() -> Dict[str, object]:
     if not DEFAULT_SNAPSHOT_JSON.exists():
         return refresh_snapshot()
     return json.loads(DEFAULT_SNAPSHOT_JSON.read_text(encoding="utf-8"))
+
+
+def is_local_client(handler: BaseHTTPRequestHandler) -> bool:
+    client_ip = handler.client_address[0]
+    if client_ip in LOCAL_CLIENTS:
+        return True
+    try:
+        resolved_name, aliases, addresses = socket.gethostbyaddr(client_ip)
+        candidates = {resolved_name, *aliases, *addresses}
+    except OSError:
+        return False
+    return "127.0.0.1" in candidates or "::1" in candidates
+
+
+def local_only_error(handler: BaseHTTPRequestHandler) -> None:
+    json_response(
+        handler,
+        {
+            "ok": False,
+            "error": "local operator action only",
+            "detail": "Use localhost on Server3 for refresh, logs, or restart actions.",
+        },
+        status=403,
+    )
 
 
 def runtime_units(runtime_key: str) -> List[str]:
@@ -138,13 +168,20 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/snapshot":
             params = urllib.parse.parse_qs(parsed.query)
             try:
-                payload = refresh_snapshot() if params.get("refresh") == ["1"] else load_snapshot()
+                wants_refresh = params.get("refresh") == ["1"]
+                if wants_refresh and not is_local_client(self):
+                    local_only_error(self)
+                    return
+                payload = refresh_snapshot() if wants_refresh else load_snapshot()
             except Exception as exc:
                 json_response(self, {"ok": False, "error": str(exc)}, status=500)
                 return
             json_response(self, {"ok": True, "snapshot": payload})
             return
         if path.startswith("/api/runtime/") and path.endswith("/logs"):
+            if not is_local_client(self):
+                local_only_error(self)
+                return
             runtime_key = path.split("/")[3]
             try:
                 json_response(self, runtime_logs(runtime_key))
@@ -173,6 +210,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         if path == "/api/refresh":
+            if not is_local_client(self):
+                local_only_error(self)
+                return
             try:
                 payload = refresh_snapshot()
             except Exception as exc:
@@ -181,6 +221,9 @@ class Handler(BaseHTTPRequestHandler):
             json_response(self, {"ok": True, "snapshot": payload})
             return
         if path.startswith("/api/runtime/") and path.endswith("/restart"):
+            if not is_local_client(self):
+                local_only_error(self)
+                return
             runtime_key = path.split("/")[3]
             try:
                 payload = restart_runtime(runtime_key)
