@@ -309,7 +309,7 @@ Message handling:
 - Optional persistent worker-session manager (feature-flagged):
   - enable with `TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`
   - default max workers: `TELEGRAM_PERSISTENT_WORKERS_MAX=4`
-  - default idle expiry: `TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS=2700` (45 min)
+  - idle expiry is now disabled; `TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS` is retained only as a legacy compatibility knob and no longer clears saved context on idle
   - worker session state file: `/home/architect/.local/state/telegram-architect-bridge/worker_sessions.json`
   - default policy watch set: runtime `AGENTS.md`, shared `ARCHITECT_INSTRUCTION.md`, and shared `SERVER3_ARCHIVE.md`
   - override watched files with `TELEGRAM_POLICY_WATCH_FILES=/abs/path/a.md,/abs/path/b.md`
@@ -336,7 +336,7 @@ Message handling:
 - With persistent workers enabled:
   - overlapping requests are still rejected while a chat is busy
   - stale sessions are reset on next message when watched policy files change, with user notice
-  - idle sessions are expired and their live per-chat memory is archived into the shared key when configured, without sending a separate idle-expiry reset notice
+  - idle sessions are no longer auto-expired; saved context persists until explicit reset, policy-change reset, capacity eviction, or restart
 
 ## Architect CLI Parity
 

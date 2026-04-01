@@ -2005,7 +2005,8 @@ def build_status_text(
             "Persistent workers: "
             f"enabled={config.persistent_workers_enabled} "
             f"active={worker_count}/{config.persistent_workers_max} "
-            f"idle_timeout={config.persistent_workers_idle_timeout_seconds}s"
+            f"idle_expiry=disabled "
+            f"legacy_idle_timeout={config.persistent_workers_idle_timeout_seconds}s"
         ),
         f"Safe restart queued: {restart_requested}",
         f"Safe restart in progress: {restart_in_progress}",

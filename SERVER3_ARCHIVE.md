@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-01 (Summary Roll-Forward Trim for Idle-Expiry Removal)
+
+Summary:
+- Added a new rolling-summary entry for removing shared-core idle-expiry resets themselves, covering the session-manager no-op change, the status/log wording updates that now report `idle_expiry=disabled`, the focused regression update, doc/debug-checklist alignment, and the second live shared-core restart rollout.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-31: added a standalone static `docs/projects/foodle.html` page for simple browser-local sugar/carbs/dairy streak tracking plus an optional scheduled fasting log, with one-tap daily logging, longest-streak summaries, a shared GitHub-style month grid that combines the three daily categories into one day cell via stacked sugar/carbs/dairy bands plus a fasting marker, a centered current-week window with a visible target-day highlight instead of pinning the active date to the far-right edge, a compact quick-log board for sugar/carbs/dairy with fasting below that stays multi-column on larger screens but drops to a single-column stack on very small phones instead of using brittle forced-height alignment hacks, tracker descriptive copy moved below each card's action/status area so the title/badge zone no longer distorts button alignment, an end-of-day logging model that writes yesterday's local date rather than today's, corrected local-date keying with same-day legacy cleanup, explicit combined-band row sizing so sugar/carbs/dairy colors actually render inside each day cell, a one-time `foodle-v1` to `foodle-v2` migration marker that rebuilds polluted preview-era storage from the raw legacy store without reintroducing adjacent duplicate day markers, phone-optimized layout tuning, a manual light/dark mode toggle with saved preference, brighter dark-mode tracker copy, greener sugar accent styling, darker high-contrast heatmap styling for dark mode readability, and mobile-friendly share-sheet/clipboard sharing for Wordle-style progress updates.
+
 ## 2026-04-01 (Summary Roll-Forward Trim for Silent Idle-Expiry Reset Removal)
 
 Summary:

@@ -2076,7 +2076,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertTrue(client.messages)
         self.assertIn("workers are currently in use", client.messages[-1][1])
 
-    def test_expire_idle_worker_sessions_archives_live_shared_memory_before_clearing(self):
+    def test_expire_idle_worker_sessions_leaves_live_shared_memory_intact(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
             live_key = "shared:architect:main:session:tg:1"
@@ -2119,10 +2119,11 @@ class BridgeCoreTests(unittest.TestCase):
             with mock.patch.object(bridge_session_manager.time, "time", return_value=100.0):
                 bridge.expire_idle_worker_sessions(state, config, client)
 
-            self.assertEqual(memory_engine.get_status(live_key).message_count, 0)
+            self.assertEqual(memory_engine.get_status(live_key).message_count, 2)
             archive_status = memory_engine.get_status(archive_key)
-            self.assertEqual(archive_status.message_count, 2)
-            self.assertGreaterEqual(archive_status.summary_count, 1)
+            self.assertEqual(archive_status.message_count, 0)
+            self.assertEqual(archive_status.summary_count, 0)
+            self.assertIn("tg:1", state.worker_sessions)
             self.assertFalse(client.messages)
 
     def test_policy_fingerprint_cache_reuses_value_within_ttl(self):

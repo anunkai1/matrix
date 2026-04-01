@@ -159,13 +159,12 @@ Worker/session diagnostic events:
 - `bridge.worker_evicted_for_capacity`
 - `bridge.worker_reset_for_policy_change`
 - `bridge.worker_capacity_rejected`
-- `bridge.worker_idle_expired`
 
 Query:
 
 ```bash
 sudo journalctl -u telegram-architect-bridge.service -n 1200 --no-pager | \
-  jq -r 'select(.event? == "bridge.worker_evicted_for_capacity" or .event? == "bridge.worker_reset_for_policy_change" or .event? == "bridge.worker_capacity_rejected" or .event? == "bridge.worker_idle_expired")'
+  jq -r 'select(.event? == "bridge.worker_evicted_for_capacity" or .event? == "bridge.worker_reset_for_policy_change" or .event? == "bridge.worker_capacity_rejected")'
 ```
 
 ## 9) Debug safe restart flow
