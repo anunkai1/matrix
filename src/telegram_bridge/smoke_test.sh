@@ -2,8 +2,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-python3 -m py_compile \
+"${PYTHON_BIN}" -m py_compile \
   "${REPO_ROOT}/src/architect_cli/main.py" \
   "${REPO_ROOT}/src/telegram_bridge/main.py" \
   "${REPO_ROOT}/src/telegram_bridge/executor.py" \
@@ -15,6 +16,6 @@ python3 -m py_compile \
   "${REPO_ROOT}/src/telegram_bridge/voice_transcribe_service.py" \
   "${REPO_ROOT}/src/telegram_bridge/stream_buffer.py" \
   "${REPO_ROOT}/src/telegram_bridge/transport.py"
-python3 "${REPO_ROOT}/src/telegram_bridge/main.py" --self-test
+"${PYTHON_BIN}" "${REPO_ROOT}/src/telegram_bridge/main.py" --self-test
 
 echo "smoke-test: ok"

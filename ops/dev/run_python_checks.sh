@@ -67,5 +67,5 @@ cd "${repo_root}"
 "${python_bin}" -m unittest tests.test_server3_runtime_status tests.test_sync_server3_runtime_overlays
 "${python_bin}" src/telegram_bridge/main.py --self-test
 if [[ "${run_smoke}" == "yes" ]]; then
-  bash src/telegram_bridge/smoke_test.sh
+  PYTHON_BIN="${python_bin}" bash src/telegram_bridge/smoke_test.sh
 fi

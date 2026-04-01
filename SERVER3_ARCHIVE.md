@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-02 (Summary Roll-Forward Trim for Telegram-Bridge CI Smoke Interpreter Fix)
+
+Summary:
+- Added a new rolling-summary entry for fixing the GitHub `telegram-bridge-ci` smoke-step interpreter mismatch by making the smoke script honor an injected `PYTHON_BIN` and threading the shared QA virtualenv interpreter through from `ops/dev/run_python_checks.sh`.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-31: upgraded the Server3 control-plane sketch into a deployed operator surface by adding snapshot generation (`ops/server3_control_plane/export_snapshot.py`, `refresh_snapshot.sh`) plus a LAN-served API/runtime (`ops/server3_control_plane/serve.py`, `run_local.sh`, `deploy_systemd.sh`, tracked unit `infra/systemd/server3-control-plane.service`), generating `docs/server3-control-plane-data.{json,js}` from live Server3 status/timer/host data, rewiring `docs/server3-control-plane-sketch.html` to work both as a `file://` snapshot page and as a served UI with working refresh/restart/live-log actions, and deploying the board live on Server3 at `http://192.168.0.148:8420/`.
+
 ## 2026-04-01 (Summary Roll-Forward Trim for Idle-Expiry Removal)
 
 Summary:
