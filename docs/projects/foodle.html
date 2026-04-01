@@ -810,24 +810,33 @@
 
     function loadData() {
       try {
-        const current = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        const current = normalizeData(JSON.parse(localStorage.getItem(STORAGE_KEY)));
+        let merged = current;
+        let shouldPersist = false;
+
         for (const legacyKey of LEGACY_STORAGE_KEYS) {
           const raw = localStorage.getItem(legacyKey);
           if (!raw) {
             continue;
           }
-          if (!localStorage.getItem(LEGACY_MIGRATION_KEY)) {
-            const migrated = migrateLegacyData(JSON.parse(raw));
-            saveData(migrated);
-            localStorage.setItem(LEGACY_MIGRATION_KEY, "1");
-            return migrated;
+          const migrated = migrateLegacyData(JSON.parse(raw));
+          const mergedWithLegacy = mergeData(migrated, merged);
+          if (JSON.stringify(mergedWithLegacy) !== JSON.stringify(merged)) {
+            merged = mergedWithLegacy;
+            shouldPersist = true;
           }
-          break;
         }
-        if (current?.days) {
-          return current;
+
+        if (!localStorage.getItem(LEGACY_MIGRATION_KEY)) {
+          localStorage.setItem(LEGACY_MIGRATION_KEY, "1");
+          shouldPersist = true;
         }
-        return { days: {} };
+
+        if (shouldPersist) {
+          saveData(merged);
+        }
+
+        return merged;
       } catch {
         return { days: {} };
       }
@@ -837,12 +846,27 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     }
 
+    function normalizeData(data) {
+      return data?.days ? data : { days: {} };
+    }
+
     function migrateLegacyData(data) {
       const migrated = { days: {} };
       for (const [key, value] of Object.entries(data?.days || {})) {
         migrated.days[key] = { ...(migrated.days[key] || {}), ...value };
       }
       return migrated;
+    }
+
+    function mergeData(base, overlay) {
+      const merged = { days: {} };
+      for (const [key, value] of Object.entries(base?.days || {})) {
+        merged.days[key] = { ...value };
+      }
+      for (const [key, value] of Object.entries(overlay?.days || {})) {
+        merged.days[key] = { ...(merged.days[key] || {}), ...value };
+      }
+      return merged;
     }
 
     function readStatus(data, date, trackerId) {
