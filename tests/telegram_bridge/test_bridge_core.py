@@ -2150,6 +2150,26 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(third, "fp-b")
         self.assertEqual(compute.call_count, 2)
 
+    def test_policy_fingerprint_cache_normalizes_order_and_duplicates(self):
+        bridge_session_manager._policy_fingerprint_cache.clear()
+        with mock.patch.object(
+            bridge_session_manager,
+            "compute_policy_fingerprint",
+            return_value="fp-stable",
+        ) as compute:
+            first = bridge_session_manager.get_cached_policy_fingerprint(
+                ["/tmp/policy-b", "/tmp/policy-a", "/tmp/policy-a"],
+                now=100.0,
+            )
+            second = bridge_session_manager.get_cached_policy_fingerprint(
+                ["/tmp/policy-a", "/tmp/policy-b"],
+                now=105.0,
+            )
+
+        self.assertEqual(first, "fp-stable")
+        self.assertEqual(second, "fp-stable")
+        compute.assert_called_once_with(["/tmp/policy-a", "/tmp/policy-b"])
+
     def test_apply_policy_change_thread_reset_clears_stale_threads_and_persists_fingerprint(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             state_dir = Path(tmpdir)

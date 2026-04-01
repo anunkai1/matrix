@@ -353,7 +353,7 @@ def format_json(statuses: List[RuntimeStatus], manifest_path: Path) -> str:
 
 
 def collect_runtime_statuses(runtimes: List[RuntimeSpec]) -> List[RuntimeStatus]:
-    unit_names = [unit.name for runtime in runtimes for unit in runtime.units]
+    unit_names = list(dict.fromkeys(unit.name for runtime in runtimes for unit in runtime.units))
     queried = {name: query_unit_status(name) for name in unit_names}
     return [evaluate_runtime(runtime, queried) for runtime in runtimes]
 

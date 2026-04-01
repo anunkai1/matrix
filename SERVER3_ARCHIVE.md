@@ -2,6 +2,16 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-01 (Summary Roll-Forward Trim for Review-Driven Shared-Core Quality Pass)
+
+Summary:
+- Added a new rolling-summary entry for the review-driven shared-core quality pass that stabilized shared Telegram worker policy-fingerprint caching against reordered or duplicated policy-file lists and deduplicated repeated `systemctl` unit lookups in the shared Server3 runtime-status command.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-29: synced active docs back to the current runtime/code surface by replacing the stale Govorun companion README with WhatsApp-specific runtime guidance, fixing the Browser Brain `existing_session` runbook contradiction, refreshing the top-level README runtime inventory, and removing dead `TELEGRAM_AGENT_ORCHESTRATOR_*` comments from the Architect env example.
+- 2026-03-29: restored WhatsApp Govorun to Russian-only behavior by switching its runtime-local persona back to Russian-only replies, translating Govorun-specific WhatsApp bridge UI strings (`TELEGRAM_RESPONSE_STYLE_HINT`, progress text, busy notice, low-confidence voice retry prompt) back to Russian in the repo mirrors/live env, and keeping the change isolated to the Govorun WhatsApp runtime so other Telegram/sibling bots remain English.
+
 ## 2026-04-01 (Summary Roll-Forward Trim for Control-Plane Playback And Audit)
 
 Summary:

@@ -186,6 +186,10 @@ class WorkerSessionEnsureOutcome:
     session_replaced_for_policy: bool = False
 
 
+def _normalize_policy_fingerprint_paths(paths: List[str]) -> tuple[str, ...]:
+    return tuple(sorted({str(path) for path in paths if str(path).strip()}))
+
+
 def _send_worker_eviction_notice(client, scope_key: str) -> None:
     try:
         target = parse_telegram_scope_key(scope_key)
@@ -273,7 +277,11 @@ def get_cached_policy_fingerprint(paths: List[str], now: Optional[float] = None)
     if not paths:
         return compute_policy_fingerprint(paths)
 
-    key = tuple(paths)
+    normalized_paths = _normalize_policy_fingerprint_paths(paths)
+    if not normalized_paths:
+        return compute_policy_fingerprint([])
+
+    key = normalized_paths
     current = time.time() if now is None else now
     with _policy_fingerprint_cache_lock:
         cached = _policy_fingerprint_cache.get(key)
@@ -282,7 +290,7 @@ def get_cached_policy_fingerprint(paths: List[str], now: Optional[float] = None)
             if current < expires_at:
                 return value
 
-    value = compute_policy_fingerprint(paths)
+    value = compute_policy_fingerprint(list(normalized_paths))
     with _policy_fingerprint_cache_lock:
         _policy_fingerprint_cache[key] = (
             current + POLICY_FINGERPRINT_CACHE_TTL_SECONDS,

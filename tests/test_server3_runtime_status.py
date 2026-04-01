@@ -146,6 +146,62 @@ class Server3RuntimeStatusTests(unittest.TestCase):
         self.assertTrue(evaluated.matches_expected)
         self.assertEqual(evaluated.live_state, "active")
 
+    def test_collect_runtime_statuses_queries_each_unit_once(self) -> None:
+        runtimes = [
+            server3_runtime_status.RuntimeSpec(
+                name="Runtime A",
+                category="primary",
+                purpose="First runtime",
+                expected_default_state="active",
+                dependencies=[],
+                owner_user=None,
+                notes=[],
+                units=[
+                    server3_runtime_status.UnitSpec(
+                        name="shared.service",
+                        kind="service",
+                        expected_state="active",
+                    )
+                ],
+            ),
+            server3_runtime_status.RuntimeSpec(
+                name="Runtime B",
+                category="secondary",
+                purpose="Second runtime",
+                expected_default_state="active",
+                dependencies=[],
+                owner_user=None,
+                notes=[],
+                units=[
+                    server3_runtime_status.UnitSpec(
+                        name="shared.service",
+                        kind="service",
+                        expected_state="active",
+                    )
+                ],
+            ),
+        ]
+        status = server3_runtime_status.UnitStatus(
+            name="shared.service",
+            load_state="loaded",
+            active_state="active",
+            sub_state="running",
+            unit_file_state="enabled",
+            available=True,
+            matches_expected=False,
+            issues=[],
+        )
+
+        with unittest.mock.patch.object(
+            server3_runtime_status,
+            "query_unit_status",
+            return_value=status,
+        ) as query:
+            evaluated = server3_runtime_status.collect_runtime_statuses(runtimes)
+
+        self.assertEqual(len(evaluated), 2)
+        query.assert_called_once_with("shared.service")
+
 
 if __name__ == "__main__":
     unittest.main()
