@@ -311,6 +311,10 @@ Message handling:
   - default max workers: `TELEGRAM_PERSISTENT_WORKERS_MAX=4`
   - default idle expiry: `TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS=2700` (45 min)
   - worker session state file: `/home/architect/.local/state/telegram-architect-bridge/worker_sessions.json`
+  - default policy watch set: runtime `AGENTS.md`, shared `ARCHITECT_INSTRUCTION.md`, and shared `SERVER3_ARCHIVE.md`
+  - override watched files with `TELEGRAM_POLICY_WATCH_FILES=/abs/path/a.md,/abs/path/b.md`
+  - disable policy-watch resets with `TELEGRAM_POLICY_WATCH_MODE=off`
+  - reordered or duplicated policy-watch entries are normalized before fingerprinting, so list order alone does not reset worker sessions
 - Optional canonical session-store mode:
   - enable with `TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`
   - default backend (JSON): `/home/architect/.local/state/telegram-architect-bridge/chat_sessions.json`
@@ -331,7 +335,7 @@ Message handling:
 - It only auto-resets thread context when executor error output clearly indicates an invalid or missing thread.
 - With persistent workers enabled:
   - overlapping requests are still rejected while a chat is busy
-  - stale sessions are reset on next message when policy files change, with user notice
+  - stale sessions are reset on next message when watched policy files change, with user notice
   - idle sessions are expired, their live per-chat memory is archived into the shared key when configured, and the user is notified that context was cleared
 
 ## Architect CLI Parity

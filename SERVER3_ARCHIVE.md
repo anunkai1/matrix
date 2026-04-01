@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-01 (Summary Roll-Forward Trim for Doc Alignment After Shared-Core Review)
+
+Summary:
+- Added a new rolling-summary entry for the follow-up doc/code alignment pass, updating the main README and Architect bridge runbook so they now document the default persistent-worker policy watch files, the `TELEGRAM_POLICY_WATCH_FILES` and `TELEGRAM_POLICY_WATCH_MODE` overrides, the order-insensitive policy-watch normalization behavior, and the shared runtime-status command's repeated-unit deduplication.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-29: polished the remaining small doc nits after the main sync by clarifying the README's shared-core wording around dedicated runtime roots, adding Diary to the runtime-doc inventory README, and replacing the Tank transcript's host-absolute handover link with a repo-local path.
+
 ## 2026-04-01 (Summary Roll-Forward Trim for Review-Driven Shared-Core Quality Pass)
 
 Summary:

@@ -10,6 +10,9 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Input modes: text, photo (image + optional caption), voice snippets (transcribed to text and echoed back), and generic files/documents for analysis
 - Context behavior: shared SQLite memory engine (Telegram + CLI) with per-conversation-key isolation and default `all_context` memory mode
 - Optional persistent worker-session manager via env flag (`TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`)
+  - default policy watch set: runtime `AGENTS.md`, shared `ARCHITECT_INSTRUCTION.md`, and `SERVER3_ARCHIVE.md`
+  - override with `TELEGRAM_POLICY_WATCH_FILES`, or disable with `TELEGRAM_POLICY_WATCH_MODE=off`
+  - reordered or duplicated watch-file entries are normalized, so they do not trigger unnecessary worker/session resets
 - Optional canonical session-store mode via env flag (`TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`), with optional SQLite backend (`TELEGRAM_CANONICAL_SQLITE_ENABLED=true`) and optional rollback mirrors (`TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED=true`, `TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED=true`)
 - Memory commands: `/memory ...`, `/remember`, `/forget`, `/forget-all`, `/reset-session`, `/hard-reset-memory`, `/ask` (stateless one-turn)
 - Retention default: memory rows persist until per-key reset/forget commands are used
@@ -29,6 +32,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 
 - Canonical runtime inventory: `infra/server3-runtime-manifest.json`
 - Shared live inspection command: `python3 ops/server3_runtime_status.py`
+  - repeated units referenced by multiple runtimes are queried from `systemctl` once per status pass
 - Major runtime groups tracked there: Architect, AgentSmith, Diary, Tank, Trinity, Govorun transport/bridge, Oracle transport/bridge, Mavali ETH, Macrorayd, network layer, guardrail timers, optional Browser Brain/UI
 
 ## Repository Structure
