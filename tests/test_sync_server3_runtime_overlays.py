@@ -7,7 +7,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "ops" / "runtime_overlays" / "sync_server3_runtime_overlays.py"
 

@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_PATH = REPO_ROOT / "infra" / "server3-runtime-manifest.json"
 OVERLAY_ENTRYPOINTS = ("main.py", "executor.sh")

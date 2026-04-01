@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 from zoneinfo import ZoneInfo
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST_PATH = ROOT / "infra" / "server3-runtime-manifest.json"
 DEFAULT_TZ = "Australia/Brisbane"

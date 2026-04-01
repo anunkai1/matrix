@@ -11,6 +11,7 @@ Run a LAN-only Prometheus + Grafana + node_exporter stack for Server3 host monit
 - live env file: `/etc/default/server3-monitoring`
 - systemd unit: `server3-monitoring.service`
 - Grafana bind: `http://192.168.0.148:3000`
+  - this is the current host-specific bind IP, not a permanent constant; if Server3's LAN IP changes, update `SERVER3_MONITORING_BIND_IP` and restart `server3-monitoring.service`
 - Prometheus bind: `127.0.0.1:9090`
 - node exporter: internal-only on the compose network
 - external ARR metrics: exported through node_exporter textfile collector from `/var/lib/node_exporter_textfile/server3_external_arr.prom`
@@ -26,6 +27,7 @@ Run a LAN-only Prometheus + Grafana + node_exporter stack for Server3 host monit
 Expected variables in `/etc/default/server3-monitoring`:
 
 - `SERVER3_MONITORING_BIND_IP`
+  - set this to Server3's current LAN IP; it can change over time
 - `GRAFANA_ADMIN_USER`
 - `GRAFANA_ADMIN_PASSWORD`
 
@@ -53,6 +55,7 @@ Expected variables in `/etc/default/server3-monitoring`:
 
 ```bash
 sudo systemctl status server3-monitoring.service --no-pager
+# replace the example IP with the current SERVER3_MONITORING_BIND_IP value if it has changed
 curl -I http://192.168.0.148:3000/login
 curl -s http://127.0.0.1:9090/api/v1/targets
 ```

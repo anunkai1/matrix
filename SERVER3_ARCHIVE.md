@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-01 (Summary Roll-Forward Trim for QA Bootstrap And Monitoring-IP Note)
+
+Summary:
+- Added a new rolling-summary entry for the QA/bootstrap hardening pass, covering tracked dev requirements, shared local/CI Python check scripts, stricter operator-side Ruff enforcement, and explicit monitoring-doc notes that `SERVER3_MONITORING_BIND_IP` is host-specific and can change.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-30: granted the dedicated `sentinel` runtime user full passwordless sudo parity with `architect` via tracked mirror `infra/system/sudoers/sentinel`, while retaining the separate Sentinel bridge-specific sudoers entry for restart ergonomics.
+
 ## 2026-04-01 (Summary Roll-Forward Trim for Doc Alignment After Shared-Core Review)
 
 Summary:

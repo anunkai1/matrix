@@ -27,6 +27,7 @@ Source-of-truth repository for Server3 automation and operations. The current pr
   - `Nextcloud ...` for Nextcloud file/calendar operation mode
 - Google integration in Architect bridge: removed from live runtime
 - CI checks: `.github/workflows/telegram-bridge-ci.yml` (compile + unit tests + self/smoke tests)
+  - repo-local QA entrypoint: `bash ops/dev/run_python_checks.sh`
 
 ## Runtime Inventory
 
@@ -96,9 +97,9 @@ bash ops/telegram-bridge/restart_and_verify.sh
 Local validation:
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 src/telegram_bridge/main.py --self-test
-bash src/telegram_bridge/smoke_test.sh
+bash ops/dev/run_python_checks.sh
+# optional when you want the smoke test deferred:
+# bash ops/dev/run_python_checks.sh --skip-smoke
 ```
 
 ## Operations
