@@ -2123,8 +2123,7 @@ class BridgeCoreTests(unittest.TestCase):
             archive_status = memory_engine.get_status(archive_key)
             self.assertEqual(archive_status.message_count, 2)
             self.assertGreaterEqual(archive_status.summary_count, 1)
-            self.assertTrue(client.messages)
-            self.assertIn("Your session expired after 1 minutes of inactivity.", client.messages[-1][1])
+            self.assertFalse(client.messages)
 
     def test_policy_fingerprint_cache_reuses_value_within_ttl(self):
         bridge_session_manager._policy_fingerprint_cache.clear()

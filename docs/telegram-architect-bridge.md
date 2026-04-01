@@ -336,7 +336,7 @@ Message handling:
 - With persistent workers enabled:
   - overlapping requests are still rejected while a chat is busy
   - stale sessions are reset on next message when watched policy files change, with user notice
-  - idle sessions are expired, their live per-chat memory is archived into the shared key when configured, and the user is notified that context was cleared
+  - idle sessions are expired and their live per-chat memory is archived into the shared key when configured, without sending a separate idle-expiry reset notice
 
 ## Architect CLI Parity
 

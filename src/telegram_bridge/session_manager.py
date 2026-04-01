@@ -601,24 +601,8 @@ def expire_idle_worker_sessions(
                 "canonical_mode": True,
             },
         )
-        timeout_mins = max(1, config.persistent_workers_idle_timeout_seconds // 60)
         for scope_key in expired_scope_keys:
             _archive_expired_chat_memory(state, config, client, scope_key)
-            try:
-                target = parse_telegram_scope_key(_normalize_scope_key(scope_key))
-            except ValueError:
-                continue
-            if target.chat_id not in config.allowed_chat_ids:
-                continue
-            try:
-                client.send_message(
-                    target.chat_id,
-                    f"Your session expired after {timeout_mins} minutes of inactivity. "
-                    "Context was cleared.",
-                    message_thread_id=target.message_thread_id,
-                )
-            except Exception:
-                logging.exception("Failed to send idle-expiry notice for scope=%s", scope_key)
         return
 
     expired_scope_keys: List[str] = []
@@ -656,24 +640,8 @@ def expire_idle_worker_sessions(
             "canonical_mode": False,
         },
     )
-    timeout_mins = max(1, config.persistent_workers_idle_timeout_seconds // 60)
     for scope_key in expired_scope_keys:
         _archive_expired_chat_memory(state, config, client, scope_key)
-        try:
-            target = parse_telegram_scope_key(_normalize_scope_key(scope_key))
-        except ValueError:
-            continue
-        if target.chat_id not in config.allowed_chat_ids:
-            continue
-        try:
-            client.send_message(
-                target.chat_id,
-                f"Your session expired after {timeout_mins} minutes of inactivity. "
-                "Context was cleared.",
-                message_thread_id=target.message_thread_id,
-            )
-        except Exception:
-            logging.exception("Failed to send idle-expiry notice for scope=%s", scope_key)
 
 
 def request_safe_restart(

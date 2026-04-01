@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-01 (Summary Roll-Forward Trim for Silent Idle-Expiry Reset Removal)
+
+Summary:
+- Added a new rolling-summary entry for removing the user-facing idle-expiry reset notice from the shared session manager, covering the regression/test update, Architect bridge runbook alignment, and the live shared-core service restarts that rolled the silent expiry behavior out across the active bridge fleet.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-03-30: hardened `ops/server3_runtime_status.py` so healthy systemd timers that report `active/running` instead of `active/waiting` no longer produce false runtime warnings; live status now clears the spurious `Mavali ETH` receipt-monitor alert and leaves only genuine deviations such as the currently active optional UI layer.
+
 ## 2026-04-01 (Summary Roll-Forward Trim for QA Bootstrap And Monitoring-IP Note)
 
 Summary:
