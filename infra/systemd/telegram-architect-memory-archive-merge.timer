@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Telegram Architect Shared Memory Archive Merge Timer
+
+[Timer]
+OnCalendar=*-*-* 04:10:00
+Persistent=true
+Unit=telegram-architect-memory-archive-merge.service
+
+[Install]
+WantedBy=timers.target

@@ -283,8 +283,8 @@ Message handling:
   - optional bridge-wide Telegram override: `TELEGRAM_SHARED_MEMORY_KEY=<shared_key>`
   - optional CLI override: `CLI_CONVERSATION_KEY=<shared_key>`
   - when `TELEGRAM_SHARED_MEMORY_KEY` is set, each Telegram chat writes to its own live session key under that shared namespace and reads the configured shared key as archive/background context
-  - when a Telegram live session expires, that live key is merged back into the shared archive key and then cleared
-  - CLI can still point directly at the shared archive key, so it sees merged memory after Telegram session expiry
+  - Server3 now also runs a daily shared-archive merge at `04:10` local time via `telegram-architect-memory-archive-merge.timer`, which folds `shared:architect:main:session:*` keys back into the shared archive without clearing the live sessions
+  - CLI can still point directly at the shared archive key, so it sees merged memory after the daily archive merge or any future explicit merge flow
   - current Server3 Architect rollout uses `shared:architect:main`
 - Memory modes:
   - default mode for new keys: `all_context`

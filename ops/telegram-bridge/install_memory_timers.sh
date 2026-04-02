@@ -7,6 +7,8 @@ UNIT_DIR="/etc/systemd/system"
 
 UNITS=(
   "telegram-architect-memory-alert@.service"
+  "telegram-architect-memory-archive-merge.service"
+  "telegram-architect-memory-archive-merge.timer"
   "telegram-architect-memory-maintenance.service"
   "telegram-architect-memory-maintenance.timer"
   "telegram-architect-memory-health.service"
@@ -16,6 +18,7 @@ UNITS=(
 )
 
 TIMERS=(
+  "telegram-architect-memory-archive-merge.timer"
   "telegram-architect-memory-maintenance.timer"
   "telegram-architect-memory-health.timer"
   "telegram-architect-memory-restore-drill.timer"

@@ -2,6 +2,17 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-03 (Summary Roll-Forward Trim for Architect Shared Memory Daily Merge)
+
+Summary:
+- Added a new rolling-summary entry for restoring Architect cross-chat archive merging as a dedicated scheduled flow instead of the old idle-expiry side effect.
+- Added `ops/telegram-bridge/merge_shared_memory_archive.py`, `ops/telegram-bridge/merge_shared_memory_archive.sh`, and the new `telegram-architect-memory-archive-merge.service` / `.timer` so Server3 now merges `shared:architect:main:session:*` keys into `shared:architect:main` daily at `04:10 AEST` without clearing live chat sessions.
+- Installed the new timer live, ran the merge service manually, and verified the shared archive gained the active-session content while the per-chat live session rows remained present.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-04-01: removed the user-facing idle-expiry reset notice (`Your session expired after ... Context was cleared.`) from the shared session manager in `src/telegram_bridge/session_manager.py`, so persistent-worker idle expiry still archives and clears live per-chat state silently across the shared-core bot fleet without sending a separate Telegram reset message; updated the focused bridge regression in `tests/telegram_bridge/test_bridge_core.py`, aligned `docs/telegram-architect-bridge.md`, and rolled the live shared-core services with the drain-aware helper (`telegram-architect-bridge`, `telegram-agentsmith-bridge`, `telegram-diary-bridge`, `telegram-tank-bridge`, `govorun-whatsapp-bridge`, `oracle-signal-bridge`, `telegram-mavali-eth-bridge`, `telegram-macrorayd-bridge`).
+
 ## 2026-04-03 (Summary Roll-Forward Trim for Sentinel Topic-35 Stale Thread Cleanup)
 
 Summary:
