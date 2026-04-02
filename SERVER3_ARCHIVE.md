@@ -2,6 +2,17 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-03 (Summary Roll-Forward Trim for Sentinel Topic-35 Stale Thread Cleanup)
+
+Summary:
+- Added a new rolling-summary entry for the live Sentinel topic-35 stale-thread cleanup after repeated bad resumes on the Server3 forum topic in `Sentinels Group`.
+- Verified the stale Codex thread id `019d4e5e-1a05-7890-b3e4-3937ec8886c4` was being sourced only from `/var/lib/sentinelbot/chat_sessions.sqlite3` and `/var/lib/sentinelbot/memory.sqlite3`, with no JSON mirror files carrying the topic-35 state.
+- Stopped `telegram-sentinel-bridge.service`, deleted the topic-35 session-continuity rows from both SQLite stores, restarted Sentinel cleanly at `2026-04-03 00:17 AEST`, and verified the service came back with no persisted topic-35 thread id loaded.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-04-01: hardened repo-wide Python QA ergonomics by adding tracked dev requirements in `requirements-dev.txt`, a reproducible local bootstrap/check flow in `ops/dev/bootstrap_python_checks.sh` and `ops/dev/run_python_checks.sh`, wiring `.github/workflows/telegram-bridge-ci.yml` to use the same shared runner, documenting in `docs/runbooks/server3-monitoring.md` and `ops/server3_monitoring/.env.example` that `SERVER3_MONITORING_BIND_IP` is host-specific and can change, and incrementally expanding enforced Ruff coverage beyond fatal-only rules for the cleaner operator-side surface (`ops/server3_runtime_status.py`, `ops/runtime_overlays/sync_server3_runtime_overlays.py`, `tests/test_server3_runtime_status.py`, `tests/test_sync_server3_runtime_overlays.py`); verified with `bash ops/dev/run_python_checks.sh --skip-smoke`.
+
 ## 2026-04-02 (Summary Roll-Forward Trim for Memory-Wrapper Instruction Removal)
 
 Summary:
