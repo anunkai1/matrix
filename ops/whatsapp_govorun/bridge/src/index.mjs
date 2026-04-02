@@ -64,6 +64,10 @@ let apiServer = null;
 let storedFilesCleanupTimer = null;
 const OUTBOUND_MEDIA_TYPES = new Set(['photo', 'audio', 'voice', 'document']);
 const INBOUND_PHOTO_BATCH_QUIET_WINDOW_MS = 1500;
+const GOVORUN_MILESTONE_REPLY_INTERVAL = 10;
+const GOVORUN_MILESTONE_SUFFIX =
+  'Я птица Говорун. Птица Говорун отличается умом и сообразительностью';
+const replyCounterPath = path.join(config.stateDir, 'reply_counters.json');
 const MIME_BY_EXTENSION = new Map([
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
@@ -81,6 +85,7 @@ const MIME_BY_EXTENSION = new Map([
   ['.aac', 'audio/aac'],
   ['.wav', 'audio/wav']
 ]);
+const replyCounters = loadReplyCounters();
 
 cleanupFilesDirOnStartup();
 const incomingPhotoBatcher = new IncomingEnvelopeBatcher({
@@ -128,6 +133,57 @@ function nextMessageId() {
   const value = nextInternalMessageId;
   nextInternalMessageId += 1;
   return value;
+}
+
+function loadReplyCounters() {
+  try {
+    if (!fs.existsSync(replyCounterPath)) {
+      return new Map();
+    }
+    const raw = JSON.parse(fs.readFileSync(replyCounterPath, 'utf-8'));
+    const counters = new Map();
+    for (const [chatJid, count] of Object.entries(raw || {})) {
+      const normalized = parseInteger(count, 0, 0);
+      if (!normalized) continue;
+      counters.set(chatJid, normalized);
+    }
+    return counters;
+  } catch (err) {
+    logger.warn({ err: String(err), replyCounterPath }, 'failed to load reply counters');
+    return new Map();
+  }
+}
+
+function saveReplyCounters() {
+  try {
+    const serialized = JSON.stringify(Object.fromEntries(replyCounters), null, 2);
+    const tempPath = `${replyCounterPath}.tmp`;
+    fs.writeFileSync(tempPath, serialized);
+    fs.renameSync(tempPath, replyCounterPath);
+  } catch (err) {
+    logger.warn({ err: String(err), replyCounterPath }, 'failed to save reply counters');
+  }
+}
+
+function nextReplyCountForChat(chatJid) {
+  return (replyCounters.get(chatJid) || 0) + 1;
+}
+
+function commitReplyCount(chatJid, count) {
+  replyCounters.set(chatJid, count);
+  saveReplyCounters();
+}
+
+function maybeAppendGovorunMilestone(text, replyCount) {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return trimmed;
+  if (replyCount % GOVORUN_MILESTONE_REPLY_INTERVAL !== 0) {
+    return trimmed;
+  }
+  if (trimmed.endsWith(GOVORUN_MILESTONE_SUFFIX)) {
+    return trimmed;
+  }
+  return `${trimmed}\n\n${GOVORUN_MILESTONE_SUFFIX}`;
 }
 
 function rememberMessageRef(internalMessageId, chatJid, waMessageId, waMessage = null, fromMe = true) {
@@ -943,10 +999,13 @@ async function handleApiRequest(req, res) {
       sendJson(res, 400, { ok: false, description: 'text is required' });
       return;
     }
+    const replyCount = nextReplyCountForChat(chatJid);
+    const outboundText = maybeAppendGovorunMilestone(text, replyCount);
     const quoted = resolveReplyMessage(chatJid, body.reply_to_message_id);
     const response = quoted
-      ? await activeSock.sendMessage(chatJid, { text }, { quoted })
-      : await activeSock.sendMessage(chatJid, { text });
+      ? await activeSock.sendMessage(chatJid, { text: outboundText }, { quoted })
+      : await activeSock.sendMessage(chatJid, { text: outboundText });
+    commitReplyCount(chatJid, replyCount);
     const internalMessageId = nextMessageId();
     rememberMessageRef(internalMessageId, chatJid, response?.key?.id || null, response, true);
     sendJson(res, 200, {
@@ -1251,8 +1310,11 @@ async function handleIncoming(sock, msg) {
 
     const finalPrompt = `${preface}\n\nUser message:\n${prompt}`;
     const result = await runCodex(config, logger, finalPrompt);
+    const replyCount = nextReplyCountForChat(chatJid);
+    const outboundText = maybeAppendGovorunMilestone(result.reply, replyCount);
 
-    await sock.sendMessage(chatJid, { text: result.reply });
+    await sock.sendMessage(chatJid, { text: outboundText });
+    commitReplyCount(chatJid, replyCount);
     logger.info({ chatJid, code: result.code }, 'sent response');
   });
 }
