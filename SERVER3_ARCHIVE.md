@@ -2,6 +2,18 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-03 (Summary Roll-Forward Trim for Sentinel Telegram Context + Host-Scope Fix)
+
+Summary:
+- Added a new rolling-summary entry for the Sentinel host-operator hardening pass that made reply-targeting turns expose explicit current Telegram metadata and clarified that Sentinel runtime isolation is not a host-access limit.
+- Patched `src/telegram_bridge/handlers.py` so turns that depend on reply targeting inject `Current Telegram Context`, including the current inbound Telegram `message_id` and any replied-to message id, into the model prompt.
+- Added focused bridge coverage in `tests/telegram_bridge/test_bridge_core.py`, deployed the patched handler into `/home/sentinel/sentinelbot/src/telegram_bridge/handlers.py`, updated Sentinel's live `SENTINEL_INSTRUCTION.md`, `SENTINEL_SUMMARY.md`, and `LESSONS.md`, and restarted `telegram-sentinel-bridge.service` successfully at `2026-04-03 14:55 AEST`.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-04-03: added a child-environment GUI concept mockup under `docs/projects/kids-os-shell-mockup.svg` and exported `docs/projects/kids-os-shell-mockup.png` as a concrete visual reference for the bounded Server3 kids web-app direction; the mockup shows a fullscreen touch-first shell with `Make`, `Learn`, `Ask`, `Read & Watch`, and `My Missions` as the primary child-facing surfaces.
+- 2026-04-02: updated `docs/projects/foodle.html` so the Carb-light accent uses purple instead of orange by changing the shared `--carbs` theme token, which also updates the carb badge and combined-calendar carb band consistently.
+
 ## 2026-04-03 (Summary Roll-Forward Trim for Architect Shared Memory Daily Merge)
 
 Summary:

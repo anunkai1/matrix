@@ -1145,6 +1145,9 @@ def build_reply_context_prompt(message: Dict[str, object]) -> str:
         sender_line = f"Original Message Author: {sender_name}\n"
 
     body_parts: List[str] = []
+    reply_message_id = reply_to.get("message_id")
+    if isinstance(reply_message_id, int):
+        body_parts.append(f"Original Telegram Message ID: {reply_message_id}")
     if quoted_text:
         body_parts.append(
             "Message User Replied To:\n"
@@ -1154,6 +1157,55 @@ def build_reply_context_prompt(message: Dict[str, object]) -> str:
         body_parts.append(media_context)
 
     return "Reply Context:\n" + sender_line + "\n\n".join(body_parts)
+
+
+TELEGRAM_CONTEXT_TARGET_HINT_RE = re.compile(
+    r"(?i)\b("
+    r"message[_ ]id|reply[_ ]to[_ ]message[_ ]id|"
+    r"use this message id|this message|reply here|reply to this|"
+    r"to this chat message|reply to this chat"
+    r")\b"
+)
+
+
+def should_include_telegram_context_prompt(
+    prompt_input: Optional[str],
+    reply_context_prompt: str,
+) -> bool:
+    if reply_context_prompt.strip():
+        return True
+    prompt_text = (prompt_input or "").strip()
+    if not prompt_text:
+        return False
+    return TELEGRAM_CONTEXT_TARGET_HINT_RE.search(prompt_text) is not None
+
+
+def build_telegram_context_prompt(
+    chat_id: int,
+    message_thread_id: Optional[int],
+    scope_key: str,
+    message_id: Optional[int],
+    message: Dict[str, object],
+) -> str:
+    lines = ["Current Telegram Context:"]
+    lines.append(f"- Chat ID: {chat_id}")
+    if message_thread_id is not None:
+        lines.append(f"- Topic ID: {message_thread_id}")
+    if isinstance(message_id, int):
+        lines.append(f"- Current Message ID: {message_id}")
+    lines.append(f"- Scope Key: {scope_key}")
+
+    reply_to = message.get("reply_to_message")
+    if isinstance(reply_to, dict):
+        reply_message_id = reply_to.get("message_id")
+        if isinstance(reply_message_id, int):
+            lines.append(f"- Replied-To Message ID: {reply_message_id}")
+
+    lines.append(
+        '- If the user asks to reply "here" or "to this message", '
+        "default to Current Message ID unless they specify another numeric target."
+    )
+    return "\n".join(lines)
 
 
 def select_media_prompt(text: Optional[str], caption: Optional[str], default_prompt: str) -> str:
@@ -4353,6 +4405,15 @@ def handle_update(
     )
 
     reply_context_prompt = build_reply_context_prompt(message)
+    telegram_context_prompt = ""
+    if should_include_telegram_context_prompt(prompt_input, reply_context_prompt):
+        telegram_context_prompt = build_telegram_context_prompt(
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            scope_key=scope_key,
+            message_id=message_id,
+            message=message,
+        )
 
     prefix_result = apply_required_prefix_gate(
         client=client,
@@ -4534,15 +4595,18 @@ def handle_update(
             return
 
     prompt = (prompt_input or "").strip()
+    prompt_context_parts: List[str] = []
+    if telegram_context_prompt:
+        prompt_context_parts.append(telegram_context_prompt)
     if reply_context_prompt:
+        prompt_context_parts.append(reply_context_prompt)
+    if prompt_context_parts:
         if prompt:
-            prompt = (
-                f"{reply_context_prompt}\n\n"
+            prompt_context_parts.append(
                 "Current User Message:\n"
                 f"{prompt}"
             )
-        else:
-            prompt = reply_context_prompt
+        prompt = "\n\n".join(prompt_context_parts)
     if not prompt and not voice_file_id and document is None:
         return
 

@@ -1727,6 +1727,7 @@ class BridgeCoreTests(unittest.TestCase):
             {
                 "text": "Это про что",
                 "reply_to_message": {
+                    "message_id": 77,
                     "text": "Доброе утро, Путиловы! ☀️\n\nДаю справку: ...",
                     "from": {"username": "Govorun TPG 2026"},
                 },
@@ -1734,6 +1735,7 @@ class BridgeCoreTests(unittest.TestCase):
         )
         self.assertIn("Reply Context:", prompt)
         self.assertIn("Original Message Author: Govorun TPG 2026", prompt)
+        self.assertIn("Original Telegram Message ID: 77", prompt)
         self.assertIn("Message User Replied To:", prompt)
         self.assertIn("Доброе утро, Путиловы!", prompt)
 
@@ -1742,13 +1744,30 @@ class BridgeCoreTests(unittest.TestCase):
             {
                 "text": "А это что?",
                 "reply_to_message": {
+                    "message_id": 91,
                     "photo": [{"file_id": "photo-1", "file_size": 100}],
                     "from": {"username": "Telegram User"},
                 },
             }
         )
         self.assertIn("Reply Context:", prompt)
+        self.assertIn("Original Telegram Message ID: 91", prompt)
         self.assertIn("В исходном сообщении было изображение.", prompt)
+
+    def test_build_telegram_context_prompt_includes_current_message_id(self):
+        prompt = bridge_handlers.build_telegram_context_prompt(
+            chat_id=-1003706836145,
+            message_thread_id=498,
+            scope_key="tg:-1003706836145:topic:498",
+            message_id=570,
+            message={},
+        )
+
+        self.assertIn("Current Telegram Context:", prompt)
+        self.assertIn("- Chat ID: -1003706836145", prompt)
+        self.assertIn("- Topic ID: 498", prompt)
+        self.assertIn("- Current Message ID: 570", prompt)
+        self.assertIn("- Scope Key: tg:-1003706836145:topic:498", prompt)
 
     def test_apply_voice_alias_replacements(self):
         transcript, changed = bridge_handlers.apply_voice_alias_replacements(
@@ -2675,6 +2694,7 @@ class BridgeCoreTests(unittest.TestCase):
                 "chat": {"id": 1, "type": "private"},
                 "text": "Это про что",
                 "reply_to_message": {
+                    "message_id": 99,
                     "text": "Доброе утро, Путиловы! ☀️\n\nДаю справку: В Эрмитаже живут коты.",
                     "from": {"username": "Govorun TPG 2026"},
                 },
@@ -2685,10 +2705,48 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
+        self.assertIn("Current Telegram Context:", kwargs["prompt"])
+        self.assertIn("- Current Message ID: 2051", kwargs["prompt"])
         self.assertIn("Reply Context:", kwargs["prompt"])
+        self.assertIn("Original Telegram Message ID: 99", kwargs["prompt"])
         self.assertIn("Original Message Author: Govorun TPG 2026", kwargs["prompt"])
         self.assertIn("Current User Message:\nЭто про что", kwargs["prompt"])
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_includes_current_telegram_context_for_message_id_targeting(
+        self, start_message_worker
+    ):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 1052,
+            "message": {
+                "message_id": 2052,
+                "chat": {"id": 1, "type": "group"},
+                "message_thread_id": 498,
+                "is_topic_message": True,
+                "text": "Send it to this chat message id not another one",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        kwargs = start_message_worker.call_args.kwargs
+        self.assertIn("Current Telegram Context:", kwargs["prompt"])
+        self.assertIn("- Current Message ID: 2052", kwargs["prompt"])
+        self.assertIn("- Topic ID: 498", kwargs["prompt"])
+        self.assertIn("- Chat ID: 1", kwargs["prompt"])
+        self.assertIn(
+            'default to Current Message ID unless they specify another numeric target.',
+            kwargs["prompt"],
+        )
+        self.assertIn(
+            "Current User Message:\nSend it to this chat message id not another one",
+            kwargs["prompt"],
+        )
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_keeps_prefix_required_in_group_when_private_bypass_enabled(
