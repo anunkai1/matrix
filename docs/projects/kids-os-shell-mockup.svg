@@ -1,0 +1,118 @@
+<svg width="1600" height="1000" viewBox="0 0 1600 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="140" y1="80" x2="1460" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFF7DD"/>
+      <stop offset="0.5" stop-color="#DDF5F1"/>
+      <stop offset="1" stop-color="#CCE0FF"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="250" y1="130" x2="1330" y2="860" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFDF8"/>
+      <stop offset="1" stop-color="#F6FAFF"/>
+    </linearGradient>
+    <linearGradient id="mission" x1="1080" y1="190" x2="1320" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFF1C6"/>
+      <stop offset="1" stop-color="#FFE0B2"/>
+    </linearGradient>
+    <filter id="shadow" x="180" y="70" width="1240" height="860" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="26"/>
+      <feGaussianBlur stdDeviation="26"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.340734 0 0 0 0 0.420717 0 0 0 0 0.494667 0 0 0 0.18 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#bg)"/>
+  <circle cx="220" cy="170" r="170" fill="#FFD89A" fill-opacity="0.42"/>
+  <circle cx="1440" cy="140" r="150" fill="#AEE9D9" fill-opacity="0.48"/>
+  <circle cx="1380" cy="860" r="180" fill="#B7D0FF" fill-opacity="0.4"/>
+  <circle cx="170" cy="830" r="120" fill="#FFD2B0" fill-opacity="0.35"/>
+
+  <g filter="url(#shadow)">
+    <rect x="230" y="110" width="1140" height="780" rx="42" fill="url(#panel)"/>
+    <rect x="230.75" y="110.75" width="1138.5" height="778.5" rx="41.25" stroke="#FFFFFF" stroke-opacity="0.85" stroke-width="1.5"/>
+  </g>
+
+  <rect x="276" y="150" width="272" height="82" rx="30" fill="#FFF3D4"/>
+  <text x="312" y="184" fill="#85611F" font-family="Avenir Next, Segoe UI, sans-serif" font-size="20" font-weight="700">TODAY'S WORLD</text>
+  <text x="312" y="214" fill="#624D25" font-family="Avenir Next, Segoe UI, sans-serif" font-size="28" font-weight="800">Build, learn, and explore</text>
+
+  <text x="278" y="305" fill="#243848" font-family="Avenir Next, Segoe UI, sans-serif" font-size="78" font-weight="800">Hello, explorer.</text>
+  <text x="278" y="360" fill="#516475" font-family="Avenir Next, Segoe UI, sans-serif" font-size="28" font-weight="600">Choose one calm path. No feeds. No chaos. Just good things to do.</text>
+
+  <g>
+    <rect x="276" y="420" width="352" height="168" rx="34" fill="#DDF7EC"/>
+    <text x="316" y="476" fill="#1D4C3D" font-family="Avenir Next, Segoe UI, sans-serif" font-size="26" font-weight="700">MAKE</text>
+    <text x="316" y="532" fill="#173D31" font-family="Avenir Next, Segoe UI, sans-serif" font-size="48" font-weight="800">Stories &amp; art</text>
+    <text x="316" y="570" fill="#426558" font-family="Avenir Next, Segoe UI, sans-serif" font-size="24" font-weight="600">Draw a dragon, build a robot, invent a world.</text>
+    <circle cx="572" cy="476" r="26" fill="#8AD3B2"/>
+    <path d="M560 481C567 465 579 461 585 471C588 476 587 484 580 490C574 496 563 494 560 481Z" fill="#FDFCF9"/>
+  </g>
+
+  <g>
+    <rect x="648" y="420" width="352" height="168" rx="34" fill="#E7F0FF"/>
+    <text x="688" y="476" fill="#24486C" font-family="Avenir Next, Segoe UI, sans-serif" font-size="26" font-weight="700">LEARN</text>
+    <text x="688" y="532" fill="#1B3550" font-family="Avenir Next, Segoe UI, sans-serif" font-size="48" font-weight="800">Animals &amp; space</text>
+    <text x="688" y="570" fill="#55708D" font-family="Avenir Next, Segoe UI, sans-serif" font-size="24" font-weight="600">Short lessons, tiny quizzes, clear answers.</text>
+    <circle cx="944" cy="476" r="26" fill="#90B8FF"/>
+    <circle cx="944" cy="476" r="10" fill="#FDFCF9"/>
+    <circle cx="958" cy="462" r="5" fill="#FDFCF9"/>
+  </g>
+
+  <g>
+    <rect x="276" y="610" width="352" height="168" rx="34" fill="#FFF0DC"/>
+    <text x="316" y="666" fill="#855227" font-family="Avenir Next, Segoe UI, sans-serif" font-size="26" font-weight="700">ASK</text>
+    <text x="316" y="722" fill="#6B431E" font-family="Avenir Next, Segoe UI, sans-serif" font-size="48" font-weight="800">Big question button</text>
+    <text x="316" y="760" fill="#8A6240" font-family="Avenir Next, Segoe UI, sans-serif" font-size="24" font-weight="600">Tap the mic and ask anything safe and curious.</text>
+    <circle cx="572" cy="666" r="26" fill="#F1B778"/>
+    <rect x="565" y="654" width="14" height="26" rx="7" fill="#FDFCF9"/>
+    <rect x="561" y="680" width="22" height="6" rx="3" fill="#FDFCF9"/>
+  </g>
+
+  <g>
+    <rect x="648" y="610" width="352" height="168" rx="34" fill="#F0E9FF"/>
+    <text x="688" y="666" fill="#62428B" font-family="Avenir Next, Segoe UI, sans-serif" font-size="26" font-weight="700">READ &amp; WATCH</text>
+    <text x="688" y="722" fill="#4A2F6D" font-family="Avenir Next, Segoe UI, sans-serif" font-size="48" font-weight="800">Only approved things</text>
+    <text x="688" y="760" fill="#776293" font-family="Avenir Next, Segoe UI, sans-serif" font-size="24" font-weight="600">Books and videos, no autoplay and no rabbit holes.</text>
+    <circle cx="944" cy="666" r="26" fill="#B39CFF"/>
+    <path d="M937 654L956 666L937 678V654Z" fill="#FDFCF9"/>
+  </g>
+
+  <g>
+    <rect x="1040" y="190" width="282" height="588" rx="36" fill="url(#mission)"/>
+    <text x="1080" y="246" fill="#8E5912" font-family="Avenir Next, Segoe UI, sans-serif" font-size="24" font-weight="800">MY MISSIONS</text>
+    <text x="1080" y="284" fill="#6B4C27" font-family="Avenir Next, Segoe UI, sans-serif" font-size="22" font-weight="600">Three good things for today</text>
+
+    <rect x="1080" y="324" width="202" height="104" rx="24" fill="#FFF9EE"/>
+    <text x="1110" y="364" fill="#53483E" font-family="Avenir Next, Segoe UI, sans-serif" font-size="20" font-weight="700">1. Make a bird story</text>
+    <text x="1110" y="396" fill="#73675B" font-family="Avenir Next, Segoe UI, sans-serif" font-size="18" font-weight="600">With one funny ending.</text>
+    <circle cx="1250" cy="376" r="20" fill="#FFD36D"/>
+
+    <rect x="1080" y="446" width="202" height="104" rx="24" fill="#FFF9EE"/>
+    <text x="1110" y="486" fill="#53483E" font-family="Avenir Next, Segoe UI, sans-serif" font-size="20" font-weight="700">2. Learn about whales</text>
+    <text x="1110" y="518" fill="#73675B" font-family="Avenir Next, Segoe UI, sans-serif" font-size="18" font-weight="600">Find two big facts.</text>
+    <circle cx="1250" cy="498" r="20" fill="#B1D7FF"/>
+
+    <rect x="1080" y="568" width="202" height="104" rx="24" fill="#FFF9EE"/>
+    <text x="1110" y="608" fill="#53483E" font-family="Avenir Next, Segoe UI, sans-serif" font-size="20" font-weight="700">3. Read for 5 minutes</text>
+    <text x="1110" y="640" fill="#73675B" font-family="Avenir Next, Segoe UI, sans-serif" font-size="18" font-weight="600">Then tell what you saw.</text>
+    <circle cx="1250" cy="620" r="20" fill="#9FDFBF"/>
+
+    <rect x="1080" y="698" width="202" height="56" rx="20" fill="#8FCE8D"/>
+    <text x="1142" y="734" fill="#17351F" font-family="Avenir Next, Segoe UI, sans-serif" font-size="24" font-weight="800">START ONE</text>
+  </g>
+
+  <g opacity="0.9">
+    <rect x="276" y="824" width="724" height="34" rx="17" fill="#E4EDF7"/>
+    <rect x="276" y="824" width="448" height="34" rx="17" fill="#8FD4A9"/>
+    <text x="278" y="896" fill="#516475" font-family="Avenir Next, Segoe UI, sans-serif" font-size="24" font-weight="700">Garden progress</text>
+    <text x="926" y="896" fill="#516475" font-family="Avenir Next, Segoe UI, sans-serif" font-size="24" font-weight="700">2 / 3 missions done</text>
+  </g>
+
+  <g opacity="0.88">
+    <circle cx="1264" cy="848" r="44" fill="#FFFFFF"/>
+    <text x="1236" y="857" fill="#6A7B8A" font-family="Avenir Next, Segoe UI, sans-serif" font-size="46" font-weight="800">?</text>
+  </g>
+</svg>
