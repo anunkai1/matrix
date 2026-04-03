@@ -895,16 +895,26 @@
     }
 
     function streakFor(data, trackerId) {
-      const cursor = new Date();
-      cursor.setHours(0, 0, 0, 0);
-      const todayStatus = readStatus(data, cursor, trackerId);
+      const cursor = logDate();
+      const oldestKey = Object.keys(data.days).sort()[0];
+      const oldestDate = oldestKey ? dateFromKey(oldestKey) : null;
 
-      if (todayStatus === undefined) {
-        cursor.setDate(cursor.getDate() - 1);
+      while (oldestDate && cursor >= oldestDate) {
+        const status = readStatus(data, cursor, trackerId);
+        if (status === undefined) {
+          cursor.setDate(cursor.getDate() - 1);
+          continue;
+        }
+
+        if (status === false) {
+          return 0;
+        }
+
+        break;
       }
 
       let streak = 0;
-      while (true) {
+      while (oldestDate && cursor >= oldestDate) {
         const status = readStatus(data, cursor, trackerId);
         if (status !== true) {
           break;
@@ -1161,7 +1171,6 @@
       const data = loadData();
       const targetDate = logDate();
       const todayKey = keyForDate(targetDate);
-      const legacyTodayKey = legacyKeyForDate(targetDate);
       data.days[todayKey] = data.days[todayKey] || {};
 
       const trackerId = button.dataset.id;
@@ -1173,11 +1182,8 @@
         data.days[todayKey][trackerId] = action === "true";
       }
 
-      if (legacyTodayKey !== todayKey && data.days[legacyTodayKey]?.[trackerId] !== undefined) {
-        delete data.days[legacyTodayKey][trackerId];
-        if (Object.keys(data.days[legacyTodayKey]).length === 0) {
-          delete data.days[legacyTodayKey];
-        }
+      if (Object.keys(data.days[todayKey]).length === 0) {
+        delete data.days[todayKey];
       }
 
       saveData(data);
