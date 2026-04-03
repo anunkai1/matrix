@@ -873,19 +873,19 @@
             <p class="section-label">Follow-Up Buttons</p>
             <h3>No open prompt box needed.</h3>
             <div class="choice-grid">
-              <button class="choice prompt-choice" type="button" data-prompt="Make the dragon blue and add a moon.">
+              <button class="choice prompt-choice" type="button" data-slot="0" data-prompt="Make the dragon blue and add a moon.">
                 <strong>Make it blue</strong>
                 Keep the same idea and change the mood.
               </button>
-              <button class="choice prompt-choice" type="button" data-prompt="Add a funny robot friend for the dragon.">
+              <button class="choice prompt-choice" type="button" data-slot="1" data-prompt="Add a funny robot friend for the dragon.">
                 <strong>Add a robot</strong>
                 Turn one drawing into a tiny world.
               </button>
-              <button class="choice prompt-choice" type="button" data-prompt="Tell a short story about the dragon going home.">
+              <button class="choice prompt-choice" type="button" data-slot="2" data-prompt="Tell a short story about the dragon going home.">
                 <strong>Tell a story</strong>
                 Reuse the same scene for language and reading.
               </button>
-              <button class="choice prompt-choice" type="button" data-prompt="Make it gentler and bedtime calm.">
+              <button class="choice prompt-choice" type="button" data-slot="3" data-prompt="Make it gentler and bedtime calm.">
                 <strong>Bedtime version</strong>
                 This is where age and mood rules would apply.
               </button>
@@ -966,28 +966,55 @@
   <script>
     const state = {
       activeView: "home",
+      serverConnected: false,
       watchMinutes: 0,
       promptIndex: 0,
+      busyCreate: false,
       prompts: [
         {
           text: "Make a rainbow dragon with a tiny castle on its back.",
           title: "Rainbow Dragon Meadow",
-          copy: "The child asked with voice. Server3 later turns that into a safe art prompt and returns a simple result card."
+          copy: "The child asked with voice. Server3 later turns that into a safe art prompt and returns a simple result card.",
+          followUps: [
+            {
+              label: "Make it blue",
+              copy: "Keep the same idea and change the mood.",
+              prompt: "Make the dragon blue and add a moon."
+            },
+            {
+              label: "Add a robot",
+              copy: "Turn one drawing into a tiny world.",
+              prompt: "Add a funny robot friend for the dragon."
+            },
+            {
+              label: "Tell a story",
+              copy: "Reuse the same scene for language and reading.",
+              prompt: "Tell a short story about the dragon going home."
+            },
+            {
+              label: "Bedtime version",
+              copy: "This is where age and mood rules would apply.",
+              prompt: "Make it gentler and bedtime calm."
+            }
+          ]
         },
         {
           text: "Add a funny robot friend for the dragon.",
           title: "Dragon And Robot Parade",
-          copy: "Follow-up buttons let the child refine one idea without falling into a raw conversational loop."
+          copy: "Follow-up buttons let the child refine one idea without falling into a raw conversational loop.",
+          followUps: []
         },
         {
           text: "Tell a short story about the dragon going home.",
           title: "The Dragon Finds Home",
-          copy: "The same scene can branch into reading, narration, or bedtime-safe storytelling."
+          copy: "The same scene can branch into reading, narration, or bedtime-safe storytelling.",
+          followUps: []
         },
         {
           text: "Make it gentler and bedtime calm.",
           title: "Moonlit Dragon Nest",
-          copy: "Mood rules, bedtime limits, and age filters belong on Server3, not in the child’s head."
+          copy: "Mood rules, bedtime limits, and age filters belong on Server3, not in the child’s head.",
+          followUps: []
         }
       ],
       questions: [
@@ -1052,6 +1079,11 @@
     const roundCopy = document.getElementById("roundCopy");
     const missionList = document.getElementById("missionList");
     const watchGrid = document.getElementById("watchGrid");
+    const defaultStatusText = "Prototype state: local only";
+
+    function backendAvailable() {
+      return window.location.protocol === "http:" || window.location.protocol === "https:";
+    }
 
     function setView(view) {
       state.activeView = view;
@@ -1064,7 +1096,13 @@
       });
       screenTitle.textContent = titleMap[view].title;
       screenCopy.textContent = titleMap[view].copy;
-      statusPill.textContent = `Prototype state: ${view}`;
+      if (!state.busyCreate) {
+        if (state.serverConnected) {
+          statusPill.textContent = `Kids World server live: ${view}`;
+        } else {
+          statusPill.textContent = backendAvailable() ? `Server check pending: ${view}` : `Prototype state: ${view}`;
+        }
+      }
     }
 
     function updateRewardUI() {
@@ -1082,6 +1120,7 @@
       transcriptBox.textContent = `"${prompt.text}"`;
       artTitle.textContent = prompt.title;
       artCopy.textContent = prompt.copy;
+      renderFollowUps(prompt.followUps || []);
       if (!state.missions[1].complete) {
         state.missions[1].complete = true;
         state.watchMinutes += state.missions[1].reward;
@@ -1089,6 +1128,77 @@
         renderWatch();
         updateRewardUI();
       }
+    }
+
+    function renderFollowUps(items) {
+      const fallback = state.prompts[0].followUps || [];
+      promptChoices.forEach((button, index) => {
+        const item = items[index] || fallback[index];
+        if (!item) {
+          return;
+        }
+        button.dataset.prompt = item.prompt;
+        button.innerHTML = `<strong>${item.label}</strong>${item.copy}`;
+      });
+    }
+
+    async function callCreateBackend(promptText) {
+      const response = await fetch("/api/create-demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: promptText })
+      });
+      if (!response.ok) {
+        throw new Error(`Create demo failed with ${response.status}`);
+      }
+      const payload = await response.json();
+      return {
+        text: payload.prompt,
+        title: payload.sceneTitle,
+        copy: payload.sceneCopy,
+        followUps: payload.followUps || []
+      };
+    }
+
+    async function runCreatePrompt(promptText) {
+      if (state.busyCreate) {
+        return;
+      }
+      state.busyCreate = true;
+      micButton.classList.add("listening");
+      statusPill.textContent = backendAvailable() ? "Kids World server: creating" : "Prototype: creating";
+      try {
+        let prompt;
+        if (backendAvailable()) {
+          prompt = await callCreateBackend(promptText);
+          state.serverConnected = true;
+        } else {
+          prompt = state.prompts.find((item) => item.text === promptText) || state.prompts[state.promptIndex];
+        }
+        renderPrompt(prompt);
+        statusPill.textContent = state.serverConnected ? "Kids World server live: create" : "Prototype state: create";
+      } catch (error) {
+        console.error(error);
+        transcriptBox.textContent = "The create room could not reach the demo server, so this screen stayed local.";
+        statusPill.textContent = "Create demo error";
+      } finally {
+        state.busyCreate = false;
+        micButton.classList.remove("listening");
+      }
+    }
+
+    async function detectServer() {
+      if (!backendAvailable()) {
+        statusPill.textContent = defaultStatusText;
+        return;
+      }
+      try {
+        const response = await fetch("/health");
+        state.serverConnected = response.ok;
+      } catch (error) {
+        state.serverConnected = false;
+      }
+      statusPill.textContent = state.serverConnected ? "Kids World server live" : "Kids World server unavailable";
     }
 
     function renderQuestions() {
@@ -1196,22 +1306,24 @@
       button.addEventListener("click", () => setView(button.dataset.jump));
     });
 
-    micButton.addEventListener("click", () => {
-      micButton.classList.add("listening");
+    micButton.addEventListener("click", async () => {
       state.promptIndex = (state.promptIndex + 1) % state.prompts.length;
       const prompt = state.prompts[state.promptIndex];
-      window.setTimeout(() => {
-        micButton.classList.remove("listening");
-        renderPrompt(prompt);
-      }, 850);
+      await runCreatePrompt(prompt.text);
     });
 
     promptChoices.forEach((button) => {
-      button.addEventListener("click", () => {
-        const next = state.prompts.find((prompt) => prompt.text === button.dataset.prompt);
-        if (next) {
-          renderPrompt(next);
+      button.addEventListener("click", async () => {
+        const promptText = button.dataset.prompt;
+        if (!promptText) {
+          return;
         }
+        const next = state.prompts.find((prompt) => prompt.text === promptText);
+        if (next && !backendAvailable()) {
+          renderPrompt(next);
+          return;
+        }
+        await runCreatePrompt(promptText);
       });
     });
 
@@ -1221,6 +1333,7 @@
     renderMissions();
     renderWatch();
     setView("home");
+    detectServer();
   </script>
 </body>
 </html>

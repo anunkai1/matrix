@@ -1,0 +1,1 @@
+"""Kids World demo app."""
