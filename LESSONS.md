@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-04-03T14:02:00+10:00 - Verify Telegram Attachment Capability Before Saying It Is Unavailable
+- Mistake pattern: I told the owner I could not directly attach a generated image into Telegram from this session, even though the live Architect bridge already exposes outbound `send_photo`/`send_document` support and the current chat target could be resolved from runtime state.
+- Prevention rule: When a user asks for Telegram image/file delivery, check the bridge transport/runtime state first, resolve the active chat/thread, and attempt the supported Telegram attachment path before claiming the capability is unavailable.
+- Where/when applied: Any Architect request involving Telegram delivery of generated images, files, or other media from the Server3 workspace.
+
 ### 2026-03-03T19:18:12+10:00 - Clarify File Delivery Target Before Sending
 - Mistake pattern: I assumed "send file here" meant Codex chat delivery and did not immediately confirm whether the owner wanted Telegram attachment delivery.
 - Prevention rule: When a request mentions sending/sharing a file and destination is ambiguous, ask one explicit routing question first: "Codex chat link/content or Telegram document attachment?"
