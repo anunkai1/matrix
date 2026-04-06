@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -35,6 +36,7 @@ class SendDailyUpliftTests(unittest.TestCase):
         entry = uplift.build_history_entry(
             entry_id=1,
             sent_at="2026-03-18T09:00:00+10:00",
+            delivery_status="sent",
             message_text="Доброе утро, Путиловы! ☀️\n\nДаю справку: Кладите деревянную ложку поперек кастрюли, чтобы пена не убегала.",
             hack_text="Кладите деревянную ложку поперек кастрюли, чтобы пена не убегала.",
             idea_key="деревянная ложка против убегающей пены",
@@ -72,6 +74,71 @@ class SendDailyUpliftTests(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0].source_post_id, "abc123")
         self.assertEqual(entries[0].source_score, 12345)
+        self.assertEqual(entries[0].delivery_status, "sent")
+
+    def test_history_store_marks_reserved_attempt_as_sent_without_duplicate_row(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "daily_uplift.sqlite3"
+            store = uplift.HistoryStore(db_path)
+            sent_at = uplift.now_in_tz("Australia/Brisbane")
+            message = uplift.SentLifeHack(
+                message_text="Доброе утро, Путиловы! ☀️\n\nДаю справку: Держите салфетку в контейнере с зеленью.",
+                hack_text="Держите салфетку в контейнере с зеленью.",
+                idea_key="салфетка в контейнере с зеленью",
+                idea_summary="Салфетка помогает убрать лишнюю влагу и продлить свежесть зелени.",
+                source_post_id="reserve123",
+            )
+            store.reserve_delivery_attempt(sent_at, message)
+            store.mark_message_sent(message)
+            entries = store.load_entries()
+            with sqlite3.connect(db_path) as conn:
+                row_count = conn.execute("SELECT COUNT(*) FROM sent_life_hacks").fetchone()[0]
+
+        self.assertEqual(row_count, 1)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].delivery_status, "sent")
+
+    def test_pending_attempt_counts_as_used_history(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "daily_uplift.sqlite3"
+            history_store = uplift.HistoryStore(db_path)
+            cache_store = uplift.RedditCacheStore(db_path)
+            recent_ts = uplift.recent_cutoff_utc() + 100
+            cache_store.upsert_posts(
+                [
+                    uplift.RedditPost(
+                        post_id="pending1",
+                        title="LPT: Pending",
+                        selftext="Body",
+                        permalink="/r/LifeProTips/comments/pending1/example/",
+                        score=100,
+                        num_comments=10,
+                        created_utc=recent_ts,
+                        over_18=False,
+                        title_probe=uplift.normalize_probe("LPT: Pending"),
+                        body_probe=uplift.normalize_probe("Body"),
+                        cached_at="2026-03-18T00:00:00Z",
+                    )
+                ],
+                "2026-03-18T00:00:00Z",
+            )
+            history_store.reserve_delivery_attempt(
+                uplift.now_in_tz("Australia/Brisbane"),
+                uplift.SentLifeHack(
+                    message_text="Доброе утро, Путиловы! ☀️\n\nДаю справку: Pending.",
+                    hack_text="Pending.",
+                    idea_key="pending",
+                    idea_summary="pending",
+                    source_post_id="pending1",
+                ),
+            )
+            status = uplift.cache_status_payload(
+                cache_store,
+                uplift.legacy_history_entries("Путиловы") + history_store.load_entries(),
+            )
+
+        self.assertEqual(status["recent_count"], 1)
+        self.assertEqual(status["unused_recent_count"], 0)
 
     def test_reddit_cache_store_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

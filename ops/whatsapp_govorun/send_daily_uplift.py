@@ -190,6 +190,7 @@ class SentLifeHack:
 class HistoryEntry:
     id: int
     sent_at: str
+    delivery_status: str
     message_text: str
     hack_text: str
     idea_key: str
@@ -430,6 +431,7 @@ class HistoryStore:
 
     def _ensure_sent_columns(self, conn: sqlite3.Connection) -> None:
         required_columns = {
+            "delivery_status": "TEXT NOT NULL DEFAULT 'sent'",
             "source_post_id": "TEXT",
             "source_title": "TEXT",
             "source_permalink": "TEXT",
@@ -488,6 +490,7 @@ class HistoryStore:
                 SELECT
                     id,
                     sent_at,
+                    delivery_status,
                     message_text,
                     hack_text,
                     idea_key,
@@ -509,6 +512,7 @@ class HistoryStore:
             build_history_entry(
                 entry_id=int(row["id"]),
                 sent_at=str(row["sent_at"]),
+                delivery_status=str(row["delivery_status"] or "sent"),
                 message_text=str(row["message_text"]),
                 hack_text=str(row["hack_text"]),
                 idea_key=str(row["idea_key"]),
@@ -522,13 +526,20 @@ class HistoryStore:
             for row in rows
         ]
 
-    def insert_sent_message(self, sent_at: datetime, message: SentLifeHack) -> None:
+    def _insert_message(
+        self,
+        sent_at: datetime,
+        message: SentLifeHack,
+        *,
+        delivery_status: str,
+    ) -> None:
         self.ensure_schema()
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO sent_life_hacks (
                     sent_at,
+                    delivery_status,
                     message_text,
                     hack_text,
                     idea_key,
@@ -542,10 +553,11 @@ class HistoryStore:
                     source_permalink,
                     source_score,
                     source_created_utc
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     sent_at.isoformat(),
+                    delivery_status,
                     message.message_text,
                     message.hack_text,
                     message.idea_key,
@@ -562,6 +574,37 @@ class HistoryStore:
                 ),
             )
             conn.commit()
+
+    def reserve_delivery_attempt(self, sent_at: datetime, message: SentLifeHack) -> None:
+        self._insert_message(sent_at, message, delivery_status="pending")
+
+    def mark_message_sent(self, message: SentLifeHack) -> None:
+        self.ensure_schema()
+        with self._connect() as conn:
+            if message.source_post_id:
+                row = conn.execute(
+                    """
+                    UPDATE sent_life_hacks
+                    SET delivery_status = 'sent'
+                    WHERE source_post_id = ?
+                    """,
+                    (message.source_post_id,),
+                )
+            else:
+                row = conn.execute(
+                    """
+                    UPDATE sent_life_hacks
+                    SET delivery_status = 'sent'
+                    WHERE message_probe = ?
+                    """,
+                    (normalize_probe(message.message_text),),
+                )
+            if row.rowcount == 0:
+                raise RuntimeError("reserved daily uplift row was not found to mark sent")
+            conn.commit()
+
+    def insert_sent_message(self, sent_at: datetime, message: SentLifeHack) -> None:
+        self._insert_message(sent_at, message, delivery_status="sent")
 
 
 class RedditCacheStore:
@@ -722,6 +765,7 @@ class RedditCacheStore:
 def build_history_entry(
     entry_id: int,
     sent_at: str,
+    delivery_status: str,
     message_text: str,
     hack_text: str,
     idea_key: str,
@@ -735,6 +779,7 @@ def build_history_entry(
     return HistoryEntry(
         id=entry_id,
         sent_at=sent_at,
+        delivery_status=delivery_status,
         message_text=message_text,
         hack_text=hack_text,
         idea_key=idea_key,
@@ -758,6 +803,7 @@ def legacy_history_entries(group_name: str) -> list[HistoryEntry]:
             build_history_entry(
                 entry_id=-index,
                 sent_at="legacy-rotation",
+                delivery_status="sent",
                 message_text=build_daily_message(group_name, hack_text),
                 hack_text=hack_text,
                 idea_key=idea_key,
@@ -1323,22 +1369,23 @@ def main() -> int:
         return 0
 
     payload = build_payload(args.chat_id or None, args.chat_jid or None, text)
+    sent_message = SentLifeHack(
+        message_text=daily_message,
+        hack_text=life_hack.hack_text,
+        idea_key=life_hack.idea_key,
+        idea_summary=life_hack.idea_summary,
+        source_post_id=source_post.post_id,
+        source_title=source_post.title,
+        source_permalink=f"https://www.reddit.com{source_post.permalink}",
+        source_score=source_post.score,
+        source_created_utc=source_post.created_utc,
+    )
+    if not args.test:
+        history_store.reserve_delivery_attempt(now_dt, sent_message)
+
     response = send_message(api_base, auth_token, payload)
     if not args.test:
-        history_store.insert_sent_message(
-            now_dt,
-            SentLifeHack(
-                message_text=daily_message,
-                hack_text=life_hack.hack_text,
-                idea_key=life_hack.idea_key,
-                idea_summary=life_hack.idea_summary,
-                source_post_id=source_post.post_id,
-                source_title=source_post.title,
-                source_permalink=f"https://www.reddit.com{source_post.permalink}",
-                source_score=source_post.score,
-                source_created_utc=source_post.created_utc,
-            ),
-        )
+        history_store.mark_message_sent(sent_message)
     print(json.dumps({"sent": True, "payload": payload, "response": response}, ensure_ascii=False))
     return 0
 
