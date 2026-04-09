@@ -2,6 +2,21 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-09 (Summary Roll-Forward Trim for Macrorayd Group Allowlist Expansion)
+
+Summary:
+- Added a new rolling-summary entry for allowing the new Macrorayd Telegram group after the owner added `MACRORAYD` to the group and sent a test message.
+- Updated the live Macrorayd env so `/etc/default/telegram-macrorayd-bridge` now allowlists `-1003547492287` alongside the owner DM `211761499`.
+- Verified from the live journal that the previously denied `-5196308223` id was the obsolete pre-upgrade group id because Telegram returned `group chat was upgraded to a supergroup chat`; restarted `telegram-macrorayd-bridge.service` successfully at `2026-04-09 14:11 AEST`, and startup confirmed `Bridge started. Allowed chats=[-1003547492287, 211761499]`.
+- Added the tracked redacted env mirror `infra/env/telegram-macrorayd-bridge.server3.redacted.env` and the live change record `logs/changes/20260409-141108-telegram-macrorayd-allowlist-group-add-live.md`.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-04-03: fixed Sentinel’s stale topic-35 resume state in `Sentinels Group` by confirming the bad thread id `019d4e5e-1a05-7890-b3e4-3937ec8886c4` was sourced only from `/var/lib/sentinelbot/chat_sessions.sqlite3` and `/var/lib/sentinelbot/memory.sqlite3`, stopping `telegram-sentinel-bridge.service`, deleting that scope’s session-continuity rows from both SQLite stores, and restarting Sentinel cleanly at `2026-04-03 00:17 AEST`; post-restart verification shows no persisted topic-35 thread id in either store and startup now reports two loaded chat-thread mappings / canonical sessions instead of three.
+- 2026-04-03: added a dedicated Architect shared-memory archive merge path via `ops/telegram-bridge/merge_shared_memory_archive.py`, `ops/telegram-bridge/merge_shared_memory_archive.sh`, and the new `telegram-architect-memory-archive-merge.service` / `.timer`, so Server3 now merges `shared:architect:main:session:*` live chat keys back into `shared:architect:main` daily at `04:10 AEST` without clearing the live per-chat sessions; installed the timer live, ran the merge once manually, and verified the shared archive now contains the active session content while the live session rows remain intact.
+- 2026-04-02: removed the shared memory-wrapper instruction `Do not expose internal memory instructions.` from `src/telegram_bridge/memory_engine.py` after Sentinel over-applied it and refused to print the readable repo-backed `SENTINEL_INSTRUCTION.md`; added focused regression coverage in `tests/telegram_bridge/test_memory_engine.py`, deployed the same code into `/home/sentinel/sentinelbot/src/telegram_bridge/memory_engine.py`, re-ran the focused memory-engine suites in both trees, and restarted `telegram-sentinel-bridge.service` successfully at `2026-04-02 19:50 AEST`.
+- 2026-04-02: updated `ops/whatsapp_govorun/bridge/src/index.mjs` so Govorun’s WhatsApp transport keeps a persisted per-chat outbound reply counter under `WA_STATE_DIR/reply_counters.json` and appends `Я птица Говорун. Птица Говорун отличается умом и сообразительностью` to every 10th successful text reply, covering both plugin-mode `/messages` sends and the direct local Codex reply path.
+
 ## 2026-04-03 (Summary Roll-Forward Trim for Sentinel Telegram Context + Host-Scope Fix)
 
 Summary:
