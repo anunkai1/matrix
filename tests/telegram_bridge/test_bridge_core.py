@@ -2879,6 +2879,10 @@ class BridgeCoreTests(unittest.TestCase):
                 "transcript_language": "en",
                 "transcript_text": "hello world",
                 "description": "example description",
+                "channel_profile": {
+                    "description": "Example Channel is an explainer outlet.",
+                    "follower_count": 123456,
+                },
                 "chapters": [],
             },
         )
@@ -2886,6 +2890,8 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Include a short `Source credibility:` note by default.", prompt)
         self.assertIn("Do not stop at a bare label like `mixed` or `strong`.", prompt)
         self.assertIn("whether the transcript quality affects confidence", prompt)
+        self.assertIn("Channel profile:", prompt)
+        self.assertIn("Approx channel followers: 123456", prompt)
 
     def test_build_youtube_source_credibility_note_explains_mixed_rating(self):
         note = bridge_handlers.build_youtube_source_credibility_note(
@@ -2894,12 +2900,19 @@ class BridgeCoreTests(unittest.TestCase):
                 "channel": "Asian Boss",
                 "description": "In this deep-dive explainer, ASIAN BOSS breaks down...",
                 "transcript_source": "subtitles",
+                "channel_profile": {
+                    "description": "We are a street-interview-based channel bringing analytical explainers about Asia.",
+                    "follower_count": 4030000,
+                },
             }
         )
 
         self.assertIn("Source credibility: mixed.", note)
         self.assertIn("Asian Boss", note)
         self.assertIn("explainer/commentary video", note)
+        self.assertIn("Author context:", note)
+        self.assertIn("4.0M followers", note)
+        self.assertIn("street-interview-based outlet", note)
         self.assertIn("came from subtitles", note)
 
     def test_with_youtube_source_credibility_result_appends_note_when_missing(self):

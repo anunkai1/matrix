@@ -48,6 +48,34 @@ class AnalyzeYouTubeTests(unittest.TestCase):
         self.assertIn(("auto", "ru"), candidates)
         self.assertIn(("manual", "en"), candidates)
 
+    @mock.patch.object(youtube_analyzer, "run_command")
+    def test_load_channel_profile_extracts_channel_context(self, run_command) -> None:
+        run_command.return_value = subprocess.CompletedProcess(
+            args=["yt-dlp"],
+            returncode=0,
+            stdout=(
+                '{"title":"Asian Boss","channel":"Asian Boss","channel_follower_count":4030000,'
+                '"description":"Street-interview based channel about Asia.",'
+                '"tags":["Asia","interviews"],"channel_url":"https://www.youtube.com/@AsianBoss"}'
+            ),
+            stderr="",
+        )
+
+        profile = youtube_analyzer.load_channel_profile(
+            {"channel_url": "https://www.youtube.com/@AsianBoss"}
+        )
+
+        self.assertEqual(profile["title"], "Asian Boss")
+        self.assertEqual(profile["follower_count"], 4030000)
+        self.assertIn("Street-interview", profile["description"])
+        self.assertEqual(profile["tags"], ["Asia", "interviews"])
+
+    @mock.patch.object(youtube_analyzer, "run_command")
+    def test_load_channel_profile_returns_empty_when_channel_missing(self, run_command) -> None:
+        profile = youtube_analyzer.load_channel_profile({})
+        self.assertEqual(profile, {})
+        run_command.assert_not_called()
+
     @mock.patch.object(youtube_analyzer.os, "replace")
     @mock.patch.object(youtube_analyzer, "find_downloaded_audio")
     @mock.patch.object(youtube_analyzer, "run_command")

@@ -1887,6 +1887,15 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
     transcript_language = str(analysis.get("transcript_language") or "").strip()
     transcript_text = str(analysis.get("transcript_text") or "").strip()
     description = str(analysis.get("description") or "").strip()
+    channel_profile = analysis.get("channel_profile") if isinstance(analysis.get("channel_profile"), dict) else {}
+    channel_profile_description = str(channel_profile.get("description") or "").strip()
+    channel_profile_followers = channel_profile.get("follower_count")
+    channel_profile_lines: List[str] = []
+    if isinstance(channel_profile_followers, int) and channel_profile_followers > 0:
+        channel_profile_lines.append(f"- Approx channel followers: {channel_profile_followers}")
+    if channel_profile_description:
+        channel_profile_lines.append(f"- Channel self-description: {channel_profile_description[:400].strip()}")
+    channel_profile_block = "\n".join(channel_profile_lines)
     chapters = analysis.get("chapters") if isinstance(analysis.get("chapters"), list) else []
     chapter_lines: List[str] = []
     for item in chapters[:20]:
@@ -1919,6 +1928,7 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
         f"Transcript source: {transcript_source}\n"
         f"Transcript language: {transcript_language or 'unknown'}\n\n"
         f"Description:\n{description or '(no description)'}\n\n"
+        f"Channel profile:\n{channel_profile_block or '(no channel profile metadata)'}\n\n"
         f"Chapters:\n{chapter_block or '(no chapters)'}\n\n"
         f"Transcript:\n{transcript_text}\n"
     )
@@ -1943,6 +1953,9 @@ def build_youtube_unavailable_message(analysis: Dict[str, object]) -> str:
 def build_youtube_source_credibility_note(analysis: Dict[str, object]) -> str:
     channel = str(analysis.get("channel") or "the channel").strip()
     transcript_source = str(analysis.get("transcript_source") or "").strip().lower()
+    channel_profile = analysis.get("channel_profile") if isinstance(analysis.get("channel_profile"), dict) else {}
+    channel_description = str(channel_profile.get("description") or "").strip()
+    channel_followers = channel_profile.get("follower_count")
     text_blob = " ".join(
         [
             str(analysis.get("title") or ""),
@@ -1990,6 +2003,33 @@ def build_youtube_source_credibility_note(analysis: Dict[str, object]) -> str:
             "which is useful for synthesis but is not the same thing as primary-source reporting."
         )
 
+    author_reason = ""
+    author_traits: List[str] = []
+    if isinstance(channel_followers, int) and channel_followers > 0:
+        if channel_followers >= 1_000_000:
+            follower_text = f"about {channel_followers / 1_000_000:.1f}M followers"
+        elif channel_followers >= 1_000:
+            follower_text = f"about {channel_followers / 1_000:.0f}K followers"
+        else:
+            follower_text = f"about {channel_followers} followers"
+        author_traits.append(f"an established channel with {follower_text}")
+
+    description_lower = channel_description.lower()
+    if "street-interview" in description_lower:
+        author_traits.append("it describes itself as a street-interview-based outlet")
+    elif "news" in description_lower or "current events" in description_lower:
+        author_traits.append("it presents itself as a news/current-events outlet")
+    elif "analysis" in description_lower or "explainer" in description_lower:
+        author_traits.append("it presents itself as an explainer/analysis channel")
+    elif "education" in description_lower:
+        author_traits.append("it presents itself as an educational channel")
+
+    if author_traits:
+        author_reason = (
+            f"Author context: {channel} looks like {' and '.join(author_traits)}, "
+            "which helps with perspective, but that is still platform/profile context rather than an independent reputation audit."
+        )
+
     transcript_reason = "Transcript quality is unclear, so quote-level confidence is limited."
     if transcript_source == "subtitles":
         transcript_reason = "The transcript came from subtitles, which helps with wording accuracy."
@@ -1998,7 +2038,11 @@ def build_youtube_source_credibility_note(analysis: Dict[str, object]) -> str:
     elif transcript_source == "transcription":
         transcript_reason = "The transcript came from local audio transcription rather than publisher subtitles, so wording-level mistakes are more likely."
 
-    return f"Source credibility: {label}. {format_reason} {transcript_reason}"
+    parts = [f"Source credibility: {label}.", format_reason]
+    if author_reason:
+        parts.append(author_reason)
+    parts.append(transcript_reason)
+    return " ".join(parts)
 
 
 def ensure_youtube_source_credibility_note(output: str, analysis: Dict[str, object]) -> str:

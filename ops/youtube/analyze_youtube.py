@@ -70,6 +70,35 @@ def load_metadata(url: str) -> Dict[str, object]:
     return payload
 
 
+def load_channel_profile(metadata: Dict[str, object]) -> Dict[str, object]:
+    channel_url = str(metadata.get("channel_url") or metadata.get("uploader_url") or "").strip()
+    if not channel_url:
+        return {}
+
+    result = run_command(
+        [YTDLP_BIN, "--dump-single-json", "--no-warnings", "--flat-playlist", "--playlist-items", "0", channel_url],
+        timeout=120,
+    )
+    if result.returncode != 0:
+        return {}
+    payload = json.loads(result.stdout or "{}")
+    if not isinstance(payload, dict):
+        return {}
+
+    follower_count = payload.get("channel_follower_count")
+    if not isinstance(follower_count, (int, float)):
+        follower_count = None
+
+    tags = payload.get("tags") if isinstance(payload.get("tags"), list) else []
+    return {
+        "title": str(payload.get("title") or payload.get("channel") or "").strip(),
+        "description": str(payload.get("description") or "").strip(),
+        "follower_count": int(follower_count) if follower_count is not None else None,
+        "tags": [str(tag).strip() for tag in tags if str(tag).strip()],
+        "channel_url": str(payload.get("channel_url") or channel_url).strip(),
+    }
+
+
 def append_unique(items: List[str], value: str) -> None:
     cleaned = value.strip()
     if cleaned and cleaned not in items:
@@ -269,6 +298,7 @@ def main() -> int:
     url = normalize_youtube_url(args.url)
     request_text = args.request_text.strip()
     metadata = load_metadata(url)
+    channel_profile = load_channel_profile(metadata)
     transcript_text = ""
     transcript_source = ""
     transcript_language = ""
@@ -299,6 +329,8 @@ def main() -> int:
         "url": url,
         "title": str(metadata.get("title") or "").strip(),
         "channel": str(metadata.get("channel") or metadata.get("uploader") or "").strip(),
+        "channel_url": str(metadata.get("channel_url") or metadata.get("uploader_url") or "").strip(),
+        "channel_profile": channel_profile,
         "duration_seconds": metadata.get("duration"),
         "upload_date": str(metadata.get("upload_date") or "").strip(),
         "description": str(metadata.get("description") or "").strip(),
