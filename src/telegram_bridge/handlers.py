@@ -1940,6 +1940,96 @@ def build_youtube_unavailable_message(analysis: Dict[str, object]) -> str:
     return " ".join(parts)
 
 
+def build_youtube_source_credibility_note(analysis: Dict[str, object]) -> str:
+    channel = str(analysis.get("channel") or "the channel").strip()
+    transcript_source = str(analysis.get("transcript_source") or "").strip().lower()
+    text_blob = " ".join(
+        [
+            str(analysis.get("title") or ""),
+            str(analysis.get("description") or ""),
+        ]
+    ).lower()
+    commentary_markers = (
+        "explainer",
+        "explained",
+        "breakdown",
+        "documentary",
+        "commentary",
+        "analysis",
+        "recap",
+        "compilation",
+        "reaction",
+        "essay",
+        "case study",
+    )
+    primary_markers = (
+        "interview",
+        "hearing",
+        "press conference",
+        "lecture",
+        "webinar",
+        "official statement",
+        "full speech",
+    )
+
+    format_reason = (
+        f"This appears to be a produced explainer/commentary video from {channel}, "
+        "which is useful for synthesis but is not the same thing as primary-source reporting."
+    )
+    label = "mixed"
+
+    if any(marker in text_blob for marker in primary_markers):
+        format_reason = (
+            f"This appears to present material from {channel} in a more primary-source format "
+            "(for example interview, hearing, or lecture footage), which improves reliability for what was said."
+        )
+        label = "strong"
+    elif any(marker in text_blob for marker in commentary_markers):
+        format_reason = (
+            f"This appears to be a produced explainer/commentary video from {channel}, "
+            "which is useful for synthesis but is not the same thing as primary-source reporting."
+        )
+
+    transcript_reason = "Transcript quality is unclear, so quote-level confidence is limited."
+    if transcript_source == "subtitles":
+        transcript_reason = "The transcript came from subtitles, which helps with wording accuracy."
+    elif transcript_source == "automatic_captions":
+        transcript_reason = "The transcript came from automatic captions, so the broad meaning is usually usable but exact wording can drift."
+    elif transcript_source == "transcription":
+        transcript_reason = "The transcript came from local audio transcription rather than publisher subtitles, so wording-level mistakes are more likely."
+
+    return f"Source credibility: {label}. {format_reason} {transcript_reason}"
+
+
+def ensure_youtube_source_credibility_note(output: str, analysis: Dict[str, object]) -> str:
+    text = str(output or "").strip()
+    if not text:
+        return build_youtube_source_credibility_note(analysis)
+    if re.search(r"(^|\n)\s*Source credibility\s*:", text, flags=re.IGNORECASE):
+        return text
+    return f"{text}\n\n{build_youtube_source_credibility_note(analysis)}"
+
+
+def with_youtube_source_credibility_result(
+    result: subprocess.CompletedProcess[str],
+    analysis: Dict[str, object],
+) -> subprocess.CompletedProcess[str]:
+    thread_id, output = parse_executor_output(result.stdout or "")
+    ensured_output = ensure_youtube_source_credibility_note(output, analysis)
+    if ensured_output == output:
+        return result
+
+    stdout = ensured_output
+    if thread_id:
+        stdout = f"THREAD_ID={thread_id}\nOUTPUT_BEGIN\n{ensured_output}"
+    return subprocess.CompletedProcess(
+        args=result.args,
+        returncode=result.returncode,
+        stdout=stdout,
+        stderr=result.stderr,
+    )
+
+
 def build_youtube_transcript_output(
     config,
     analysis: Dict[str, object],
@@ -3354,6 +3444,7 @@ def process_youtube_request(
         )
         if result is None:
             return
+        result = with_youtube_source_credibility_result(result, analysis)
         finalize_prompt_success(
             state_repo=state_repo,
             config=config,

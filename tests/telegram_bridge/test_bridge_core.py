@@ -2887,6 +2887,64 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Do not stop at a bare label like `mixed` or `strong`.", prompt)
         self.assertIn("whether the transcript quality affects confidence", prompt)
 
+    def test_build_youtube_source_credibility_note_explains_mixed_rating(self):
+        note = bridge_handlers.build_youtube_source_credibility_note(
+            {
+                "title": "What’s Really Going On in Thailand | AB Explained",
+                "channel": "Asian Boss",
+                "description": "In this deep-dive explainer, ASIAN BOSS breaks down...",
+                "transcript_source": "subtitles",
+            }
+        )
+
+        self.assertIn("Source credibility: mixed.", note)
+        self.assertIn("Asian Boss", note)
+        self.assertIn("explainer/commentary video", note)
+        self.assertIn("came from subtitles", note)
+
+    def test_with_youtube_source_credibility_result_appends_note_when_missing(self):
+        result = bridge_handlers.subprocess.CompletedProcess(
+            args=["codex", "exec"],
+            returncode=0,
+            stdout="Short summary.",
+            stderr="",
+        )
+
+        updated = bridge_handlers.with_youtube_source_credibility_result(
+            result,
+            {
+                "title": "Example Video",
+                "channel": "Example Channel",
+                "description": "A business breakdown and analysis.",
+                "transcript_source": "automatic_captions",
+            },
+        )
+
+        self.assertIn("Short summary.", updated.stdout)
+        self.assertIn("Source credibility: mixed.", updated.stdout)
+        self.assertIn("automatic captions", updated.stdout)
+
+    def test_with_youtube_source_credibility_result_preserves_existing_note(self):
+        original = "Summary.\n\nSource credibility: mixed. Existing rationale."
+        result = bridge_handlers.subprocess.CompletedProcess(
+            args=["codex", "exec"],
+            returncode=0,
+            stdout=original,
+            stderr="",
+        )
+
+        updated = bridge_handlers.with_youtube_source_credibility_result(
+            result,
+            {
+                "title": "Example Video",
+                "channel": "Example Channel",
+                "description": "A business breakdown and analysis.",
+                "transcript_source": "automatic_captions",
+            },
+        )
+
+        self.assertEqual(updated.stdout, original)
+
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_ha_keyword_prompt_stateless(self, start_message_worker):
         state = bridge.State()
