@@ -2868,6 +2868,25 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("could not obtain captions or a usable transcription", sent_output)
         self.assertIn("Example Video", sent_output)
 
+    def test_build_youtube_summary_prompt_requests_informative_source_credibility_note(self):
+        prompt = bridge_handlers.build_youtube_summary_prompt(
+            "https://www.youtube.com/watch?v=yD5DFL3xPmo",
+            {
+                "title": "Example Video",
+                "channel": "Example Channel",
+                "duration_seconds": 120,
+                "transcript_source": "automatic_captions",
+                "transcript_language": "en",
+                "transcript_text": "hello world",
+                "description": "example description",
+                "chapters": [],
+            },
+        )
+
+        self.assertIn("Include a short `Source credibility:` note by default.", prompt)
+        self.assertIn("Do not stop at a bare label like `mixed` or `strong`.", prompt)
+        self.assertIn("whether the transcript quality affects confidence", prompt)
+
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_ha_keyword_prompt_stateless(self, start_message_worker):
         state = bridge.State()
