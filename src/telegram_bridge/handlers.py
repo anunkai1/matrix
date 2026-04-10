@@ -1921,6 +1921,9 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
         "Do not stop at a bare label like `mixed` or `strong`.\n"
         "Briefly explain why: for example the creator's format, expertise, whether the video is primary reporting or commentary, and whether the transcript quality affects confidence.\n"
         "Keep that credibility note compact, but make it informative enough that a reader understands the ranking.\n\n"
+        "Include a separate `Author reputation:` note by default.\n"
+        "Do not treat channel size, self-description, or production quality as proof of reputation.\n"
+        "If you do not have independent evidence for a good or bad reputation, say it is `unclear` and explain that the available metadata only shows channel context, not verified reputation.\n\n"
         f"Original user message:\n{request_text.strip()}\n\n"
         f"Video title: {title}\n"
         f"Channel: {channel}\n"
@@ -2039,19 +2042,59 @@ def build_youtube_source_credibility_note(analysis: Dict[str, object]) -> str:
         transcript_reason = "The transcript came from local audio transcription rather than publisher subtitles, so wording-level mistakes are more likely."
 
     parts = [f"Source credibility: {label}.", format_reason]
-    if author_reason:
-        parts.append(author_reason)
     parts.append(transcript_reason)
     return " ".join(parts)
 
 
+def build_youtube_author_reputation_note(analysis: Dict[str, object]) -> str:
+    channel = str(analysis.get("channel") or "the channel").strip()
+    channel_profile = analysis.get("channel_profile") if isinstance(analysis.get("channel_profile"), dict) else {}
+    channel_description = str(channel_profile.get("description") or "").strip()
+    channel_followers = channel_profile.get("follower_count")
+
+    context_bits: List[str] = []
+    if isinstance(channel_followers, int) and channel_followers > 0:
+        if channel_followers >= 1_000_000:
+            follower_text = f"about {channel_followers / 1_000_000:.1f}M followers"
+        elif channel_followers >= 1_000:
+            follower_text = f"about {channel_followers / 1_000:.0f}K followers"
+        else:
+            follower_text = f"about {channel_followers} followers"
+        context_bits.append(f"{channel} is an established channel with {follower_text}")
+
+    description_lower = channel_description.lower()
+    if "news" in description_lower or "current events" in description_lower:
+        context_bits.append("it presents itself as a news/current-events outlet")
+    elif "analysis" in description_lower or "explainer" in description_lower:
+        context_bits.append("it presents itself as an explainer/analysis channel")
+    elif "education" in description_lower or "science" in description_lower:
+        context_bits.append("it presents itself as an educational/science channel")
+    elif "history" in description_lower or "geopolitics" in description_lower:
+        context_bits.append("it presents itself as a history/geopolitics channel")
+
+    context_text = ""
+    if context_bits:
+        context_text = " Available metadata suggests " + " and ".join(context_bits) + "."
+
+    return (
+        "Author reputation: unclear."
+        + context_text
+        + " That is channel context, not independent evidence of a good or bad reputation."
+    )
+
+
 def ensure_youtube_source_credibility_note(output: str, analysis: Dict[str, object]) -> str:
     text = str(output or "").strip()
+    notes: List[str] = []
+    if not re.search(r"(^|\n)\s*Source credibility\s*:", text, flags=re.IGNORECASE):
+        notes.append(build_youtube_source_credibility_note(analysis))
+    if not re.search(r"(^|\n)\s*Author reputation\s*:", text, flags=re.IGNORECASE):
+        notes.append(build_youtube_author_reputation_note(analysis))
     if not text:
-        return build_youtube_source_credibility_note(analysis)
-    if re.search(r"(^|\n)\s*Source credibility\s*:", text, flags=re.IGNORECASE):
+        return "\n\n".join(notes)
+    if not notes:
         return text
-    return f"{text}\n\n{build_youtube_source_credibility_note(analysis)}"
+    return f"{text}\n\n" + "\n\n".join(notes)
 
 
 def with_youtube_source_credibility_result(

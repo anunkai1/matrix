@@ -2890,6 +2890,8 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Include a short `Source credibility:` note by default.", prompt)
         self.assertIn("Do not stop at a bare label like `mixed` or `strong`.", prompt)
         self.assertIn("whether the transcript quality affects confidence", prompt)
+        self.assertIn("Include a separate `Author reputation:` note by default.", prompt)
+        self.assertIn("Do not treat channel size, self-description, or production quality as proof of reputation.", prompt)
         self.assertIn("Channel profile:", prompt)
         self.assertIn("Approx channel followers: 123456", prompt)
 
@@ -2910,10 +2912,22 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Source credibility: mixed.", note)
         self.assertIn("Asian Boss", note)
         self.assertIn("explainer/commentary video", note)
-        self.assertIn("Author context:", note)
-        self.assertIn("4.0M followers", note)
-        self.assertIn("street-interview-based outlet", note)
         self.assertIn("came from subtitles", note)
+
+    def test_build_youtube_author_reputation_note_marks_reputation_unclear(self):
+        note = bridge_handlers.build_youtube_author_reputation_note(
+            {
+                "channel": "Asian Boss",
+                "channel_profile": {
+                    "description": "We are a street-interview-based channel bringing analytical explainers about Asia.",
+                    "follower_count": 4030000,
+                },
+            }
+        )
+
+        self.assertIn("Author reputation: unclear.", note)
+        self.assertIn("Asian Boss is an established channel with about 4.0M followers", note)
+        self.assertIn("channel context, not independent evidence", note)
 
     def test_with_youtube_source_credibility_result_appends_note_when_missing(self):
         result = bridge_handlers.subprocess.CompletedProcess(
@@ -2935,10 +2949,15 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertIn("Short summary.", updated.stdout)
         self.assertIn("Source credibility: mixed.", updated.stdout)
+        self.assertIn("Author reputation: unclear.", updated.stdout)
         self.assertIn("automatic captions", updated.stdout)
 
     def test_with_youtube_source_credibility_result_preserves_existing_note(self):
-        original = "Summary.\n\nSource credibility: mixed. Existing rationale."
+        original = (
+            "Summary.\n\n"
+            "Source credibility: mixed. Existing rationale.\n\n"
+            "Author reputation: unclear. Existing rationale."
+        )
         result = bridge_handlers.subprocess.CompletedProcess(
             args=["codex", "exec"],
             returncode=0,
