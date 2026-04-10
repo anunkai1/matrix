@@ -2868,7 +2868,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("could not obtain captions or a usable transcription", sent_output)
         self.assertIn("Example Video", sent_output)
 
-    def test_build_youtube_summary_prompt_requests_informative_source_credibility_note(self):
+    def test_build_youtube_summary_prompt_requests_author_reputation_note(self):
         prompt = bridge_handlers.build_youtube_summary_prompt(
             "https://www.youtube.com/watch?v=yD5DFL3xPmo",
             {
@@ -2896,34 +2896,15 @@ class BridgeCoreTests(unittest.TestCase):
             },
         )
 
-        self.assertIn("Include a short `Source credibility:` note by default.", prompt)
+        self.assertIn("Include a short `Author reputation:` note by default.", prompt)
         self.assertIn("Do not stop at a bare label like `mixed` or `strong`.", prompt)
-        self.assertIn("whether the transcript quality affects confidence", prompt)
-        self.assertIn("Include a separate `Author reputation:` note by default.", prompt)
+        self.assertIn("available independent reputation signals", prompt)
         self.assertIn("Do not treat channel size, self-description, or production quality as proof of reputation.", prompt)
         self.assertIn("Channel profile:", prompt)
         self.assertIn("Approx channel followers: 123456", prompt)
         self.assertIn("External reputation lookup:", prompt)
         self.assertIn("en.wikipedia.org: Example Channel - Wikipedia", prompt)
-
-    def test_build_youtube_source_credibility_note_explains_mixed_rating(self):
-        note = bridge_handlers.build_youtube_source_credibility_note(
-            {
-                "title": "What’s Really Going On in Thailand | AB Explained",
-                "channel": "Asian Boss",
-                "description": "In this deep-dive explainer, ASIAN BOSS breaks down...",
-                "transcript_source": "subtitles",
-                "channel_profile": {
-                    "description": "We are a street-interview-based channel bringing analytical explainers about Asia.",
-                    "follower_count": 4030000,
-                },
-            }
-        )
-
-        self.assertIn("Source credibility: mixed.", note)
-        self.assertIn("Asian Boss", note)
-        self.assertIn("explainer/commentary video", note)
-        self.assertIn("came from subtitles", note)
+        self.assertNotIn("Source credibility:", prompt)
 
     def test_build_youtube_author_reputation_note_marks_reputation_unclear(self):
         note = bridge_handlers.build_youtube_author_reputation_note(
@@ -2988,7 +2969,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Author reputation: mixed.", note)
         self.assertIn("news.example, magazine.example", note)
 
-    def test_with_youtube_source_credibility_result_appends_note_when_missing(self):
+    def test_with_youtube_author_reputation_result_appends_note_when_missing(self):
         result = bridge_handlers.subprocess.CompletedProcess(
             args=["codex", "exec"],
             returncode=0,
@@ -2996,7 +2977,7 @@ class BridgeCoreTests(unittest.TestCase):
             stderr="",
         )
 
-        updated = bridge_handlers.with_youtube_source_credibility_result(
+        updated = bridge_handlers.with_youtube_author_reputation_result(
             result,
             {
                 "title": "Example Video",
@@ -3007,14 +2988,12 @@ class BridgeCoreTests(unittest.TestCase):
         )
 
         self.assertIn("Short summary.", updated.stdout)
-        self.assertIn("Source credibility: mixed.", updated.stdout)
         self.assertIn("Author reputation: unclear.", updated.stdout)
-        self.assertIn("automatic captions", updated.stdout)
+        self.assertNotIn("Source credibility:", updated.stdout)
 
-    def test_with_youtube_source_credibility_result_preserves_existing_note(self):
+    def test_with_youtube_author_reputation_result_preserves_existing_note(self):
         original = (
             "Summary.\n\n"
-            "Source credibility: mixed. Existing rationale.\n\n"
             "Author reputation: unclear. Existing rationale."
         )
         result = bridge_handlers.subprocess.CompletedProcess(
@@ -3024,7 +3003,7 @@ class BridgeCoreTests(unittest.TestCase):
             stderr="",
         )
 
-        updated = bridge_handlers.with_youtube_source_credibility_result(
+        updated = bridge_handlers.with_youtube_author_reputation_result(
             result,
             {
                 "title": "Example Video",

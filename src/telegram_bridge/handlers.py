@@ -1932,11 +1932,10 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
         "If the user only pasted the link, default to a concise content summary.\n"
         "If the transcript comes from automatic captions or transcription, mention that briefly only if it materially affects confidence.\n"
         "Do not invent details that are not supported by the transcript.\n\n"
-        "Include a short `Source credibility:` note by default.\n"
+        "Include a short `Author reputation:` note by default.\n"
         "Do not stop at a bare label like `mixed` or `strong`.\n"
-        "Briefly explain why: for example the creator's format, expertise, whether the video is primary reporting or commentary, and whether the transcript quality affects confidence.\n"
-        "Keep that credibility note compact, but make it informative enough that a reader understands the ranking.\n\n"
-        "Include a separate `Author reputation:` note by default.\n"
+        "Briefly explain why based on the creator's expertise, available independent reputation signals, and any limits in the available evidence.\n"
+        "Keep that reputation note compact, but make it informative enough that a reader understands the ranking.\n"
         "Do not treat channel size, self-description, or production quality as proof of reputation.\n"
         "If you do not have independent evidence for a good or bad reputation, say it is `unclear` and explain that the available metadata only shows channel context, not verified reputation.\n\n"
         f"Original user message:\n{request_text.strip()}\n\n"
@@ -1967,101 +1966,6 @@ def build_youtube_unavailable_message(analysis: Dict[str, object]) -> str:
     if reason:
         parts.append(f"Reason: {reason}.")
     return " ".join(parts)
-
-
-def build_youtube_source_credibility_note(analysis: Dict[str, object]) -> str:
-    channel = str(analysis.get("channel") or "the channel").strip()
-    transcript_source = str(analysis.get("transcript_source") or "").strip().lower()
-    channel_profile = analysis.get("channel_profile") if isinstance(analysis.get("channel_profile"), dict) else {}
-    channel_description = str(channel_profile.get("description") or "").strip()
-    channel_followers = channel_profile.get("follower_count")
-    text_blob = " ".join(
-        [
-            str(analysis.get("title") or ""),
-            str(analysis.get("description") or ""),
-        ]
-    ).lower()
-    commentary_markers = (
-        "explainer",
-        "explained",
-        "breakdown",
-        "documentary",
-        "commentary",
-        "analysis",
-        "recap",
-        "compilation",
-        "reaction",
-        "essay",
-        "case study",
-    )
-    primary_markers = (
-        "interview",
-        "hearing",
-        "press conference",
-        "lecture",
-        "webinar",
-        "official statement",
-        "full speech",
-    )
-
-    format_reason = (
-        f"This appears to be a produced explainer/commentary video from {channel}, "
-        "which is useful for synthesis but is not the same thing as primary-source reporting."
-    )
-    label = "mixed"
-
-    if any(marker in text_blob for marker in primary_markers):
-        format_reason = (
-            f"This appears to present material from {channel} in a more primary-source format "
-            "(for example interview, hearing, or lecture footage), which improves reliability for what was said."
-        )
-        label = "strong"
-    elif any(marker in text_blob for marker in commentary_markers):
-        format_reason = (
-            f"This appears to be a produced explainer/commentary video from {channel}, "
-            "which is useful for synthesis but is not the same thing as primary-source reporting."
-        )
-
-    author_reason = ""
-    author_traits: List[str] = []
-    if isinstance(channel_followers, int) and channel_followers > 0:
-        if channel_followers >= 1_000_000:
-            follower_text = f"about {channel_followers / 1_000_000:.1f}M followers"
-        elif channel_followers >= 1_000:
-            follower_text = f"about {channel_followers / 1_000:.0f}K followers"
-        else:
-            follower_text = f"about {channel_followers} followers"
-        author_traits.append(f"an established channel with {follower_text}")
-
-    description_lower = channel_description.lower()
-    if "street-interview" in description_lower:
-        author_traits.append("it describes itself as a street-interview-based outlet")
-    elif "news" in description_lower or "current events" in description_lower:
-        author_traits.append("it presents itself as a news/current-events outlet")
-    elif "analysis" in description_lower or "explainer" in description_lower:
-        author_traits.append("it presents itself as an explainer/analysis channel")
-    elif "education" in description_lower:
-        author_traits.append("it presents itself as an educational channel")
-
-    if author_traits:
-        author_reason = (
-            f"Author context: {channel} looks like {' and '.join(author_traits)}, "
-            "which helps with perspective, but that is still platform/profile context rather than an independent reputation audit."
-        )
-
-    transcript_reason = "Transcript quality is unclear, so quote-level confidence is limited."
-    if transcript_source == "subtitles":
-        transcript_reason = "The transcript came from subtitles, which helps with wording accuracy."
-    elif transcript_source == "automatic_captions":
-        transcript_reason = "The transcript came from automatic captions, so the broad meaning is usually usable but exact wording can drift."
-    elif transcript_source == "transcription":
-        transcript_reason = "The transcript came from local audio transcription rather than publisher subtitles, so wording-level mistakes are more likely."
-
-    parts = [f"Source credibility: {label}.", format_reason]
-    parts.append(transcript_reason)
-    return " ".join(parts)
-
-
 def build_youtube_author_reputation_note(analysis: Dict[str, object]) -> str:
     channel = str(analysis.get("channel") or "the channel").strip()
     channel_profile = analysis.get("channel_profile") if isinstance(analysis.get("channel_profile"), dict) else {}
@@ -2145,13 +2049,9 @@ def build_youtube_author_reputation_note(analysis: Dict[str, object]) -> str:
         + context_text
         + " That is channel context, not independent evidence of a good or bad reputation."
     )
-
-
-def ensure_youtube_source_credibility_note(output: str, analysis: Dict[str, object]) -> str:
+def ensure_youtube_author_reputation_note(output: str, analysis: Dict[str, object]) -> str:
     text = str(output or "").strip()
     notes: List[str] = []
-    if not re.search(r"(^|\n)\s*Source credibility\s*:", text, flags=re.IGNORECASE):
-        notes.append(build_youtube_source_credibility_note(analysis))
     if not re.search(r"(^|\n)\s*Author reputation\s*:", text, flags=re.IGNORECASE):
         notes.append(build_youtube_author_reputation_note(analysis))
     if not text:
@@ -2159,14 +2059,12 @@ def ensure_youtube_source_credibility_note(output: str, analysis: Dict[str, obje
     if not notes:
         return text
     return f"{text}\n\n" + "\n\n".join(notes)
-
-
-def with_youtube_source_credibility_result(
+def with_youtube_author_reputation_result(
     result: subprocess.CompletedProcess[str],
     analysis: Dict[str, object],
 ) -> subprocess.CompletedProcess[str]:
     thread_id, output = parse_executor_output(result.stdout or "")
-    ensured_output = ensure_youtube_source_credibility_note(output, analysis)
+    ensured_output = ensure_youtube_author_reputation_note(output, analysis)
     if ensured_output == output:
         return result
 
@@ -3595,7 +3493,7 @@ def process_youtube_request(
         )
         if result is None:
             return
-        result = with_youtube_source_credibility_result(result, analysis)
+        result = with_youtube_author_reputation_result(result, analysis)
         finalize_prompt_success(
             state_repo=state_repo,
             config=config,
