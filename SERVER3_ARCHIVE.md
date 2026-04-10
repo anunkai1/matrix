@@ -2,6 +2,18 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-10 (Summary Roll-Forward Trim for Capabilities-Doc Removal)
+
+Summary:
+- Removed the repo-root startup instruction in `AGENTS.md` that told sessions to read a separate capabilities file before making channel, bridge, media, or integration assumptions.
+- Replaced that instruction with a direct requirement to verify capability assumptions from the active runtime/project docs and live state.
+- Reworded the remaining active AgentSmith summary history note so current docs no longer reference the removed filename.
+- Updated `SERVER3_SUMMARY.md` with the new doc delta and re-trimmed the rolling recent-change block back to the max-8 bound.
+
+Migrated out of summary during this trim:
+- 2026-04-03: promoted the Kids World prototype beyond a static mock by adding `src/kids_world/server.py` and `tests/kids_world/test_server.py`, so Server3 can now serve the child-shell HTML over HTTP on a local port, answer `GET /health`, and back the `Create` room with a real `POST /api/create-demo` JSON seam that the browser calls when the app is loaded from the server.
+- 2026-04-03: verified that the live Architect Telegram bridge can send outbound photo attachments directly through the shared transport path and used it to deliver the kids-shell GUI mockup into chat `211761499`; recorded the corresponding operator lesson in `LESSONS.md` so future file/image delivery requests check Telegram attachment capability before claiming it is unavailable.
+
 ## 2026-04-09 (Summary Roll-Forward Trim for Macrorayd Group Allowlist Expansion)
 
 Summary:

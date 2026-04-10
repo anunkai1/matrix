@@ -27,7 +27,7 @@ Last updated: 2026-03-22 (AEST, +10:00)
 - Architect and several sibling bots share bridge code in different ways; implementation topology must be checked before drawing rollout conclusions.
 
 ## Recent Changes
-- 2026-03-22: collapsed the separate `CAPABILITIES.md` into `AGENTSMITH_SUMMARY.md` and `AGENTSMITH_INSTRUCTION.md` so AgentSmith keeps fewer runtime docs while preserving the key capability guardrails.
+- 2026-03-22: collapsed the separate capability doc into `AGENTSMITH_SUMMARY.md` and `AGENTSMITH_INSTRUCTION.md` so AgentSmith keeps fewer runtime docs while preserving the key capability guardrails.
 - 2026-03-21: added AgentSmith operating structure with authoritative instructions, summary, lessons log, and local soul guidance.
 - 2026-03-21: implemented `SRO` routing and updated `/help` to advertise it as a real Server3 Runtime Observer mode.
 - 2026-03-21: verified the AgentSmith bridge restart and confirmed the new code loaded from logs.
