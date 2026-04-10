@@ -1890,12 +1890,27 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
     channel_profile = analysis.get("channel_profile") if isinstance(analysis.get("channel_profile"), dict) else {}
     channel_profile_description = str(channel_profile.get("description") or "").strip()
     channel_profile_followers = channel_profile.get("follower_count")
+    external_reputation = analysis.get("external_reputation") if isinstance(analysis.get("external_reputation"), dict) else {}
+    external_results = external_reputation.get("results") if isinstance(external_reputation.get("results"), list) else []
     channel_profile_lines: List[str] = []
     if isinstance(channel_profile_followers, int) and channel_profile_followers > 0:
         channel_profile_lines.append(f"- Approx channel followers: {channel_profile_followers}")
     if channel_profile_description:
         channel_profile_lines.append(f"- Channel self-description: {channel_profile_description[:400].strip()}")
     channel_profile_block = "\n".join(channel_profile_lines)
+    external_reputation_lines: List[str] = []
+    for item in external_results[:5]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        domain = str(item.get("domain") or "").strip()
+        snippet = str(item.get("snippet") or "").strip()
+        if title:
+            line = f"- {domain or 'external'}: {title}"
+            if snippet:
+                line += f" | {snippet[:220].strip()}"
+            external_reputation_lines.append(line)
+    external_reputation_block = "\n".join(external_reputation_lines)
     chapters = analysis.get("chapters") if isinstance(analysis.get("chapters"), list) else []
     chapter_lines: List[str] = []
     for item in chapters[:20]:
@@ -1932,6 +1947,7 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
         f"Transcript language: {transcript_language or 'unknown'}\n\n"
         f"Description:\n{description or '(no description)'}\n\n"
         f"Channel profile:\n{channel_profile_block or '(no channel profile metadata)'}\n\n"
+        f"External reputation lookup:\n{external_reputation_block or '(no independent search results found)'}\n\n"
         f"Chapters:\n{chapter_block or '(no chapters)'}\n\n"
         f"Transcript:\n{transcript_text}\n"
     )
@@ -2051,6 +2067,8 @@ def build_youtube_author_reputation_note(analysis: Dict[str, object]) -> str:
     channel_profile = analysis.get("channel_profile") if isinstance(analysis.get("channel_profile"), dict) else {}
     channel_description = str(channel_profile.get("description") or "").strip()
     channel_followers = channel_profile.get("follower_count")
+    external_reputation = analysis.get("external_reputation") if isinstance(analysis.get("external_reputation"), dict) else {}
+    external_results = external_reputation.get("results") if isinstance(external_reputation.get("results"), list) else []
 
     context_bits: List[str] = []
     if isinstance(channel_followers, int) and channel_followers > 0:
@@ -2075,6 +2093,52 @@ def build_youtube_author_reputation_note(analysis: Dict[str, object]) -> str:
     context_text = ""
     if context_bits:
         context_text = " Available metadata suggests " + " and ".join(context_bits) + "."
+
+    if external_results:
+        negative_keywords = (
+            "scam",
+            "fraud",
+            "controversy",
+            "critic",
+            "criticism",
+            "misinformation",
+            "conspiracy",
+            "lawsuit",
+            "grift",
+            "hoax",
+        )
+        negative_hits = 0
+        negative_domains: List[str] = []
+        seen_domains: set[str] = set()
+        for item in external_results:
+            if not isinstance(item, dict):
+                continue
+            domain = str(item.get("domain") or "").strip()
+            text = " ".join([str(item.get("title") or ""), str(item.get("snippet") or "")]).lower()
+            if any(keyword in text for keyword in negative_keywords):
+                negative_hits += 1
+                if domain and domain not in seen_domains:
+                    negative_domains.append(domain)
+                    seen_domains.add(domain)
+
+        if negative_hits >= 2 and len(negative_domains) >= 2:
+            return (
+                "Author reputation: mixed. A limited external lookup found repeated independent signals of criticism or controversy "
+                f"(for example from {', '.join(negative_domains[:3])}). That is enough to warrant caution, but not enough by itself for a definitive judgment."
+            )
+
+        source_domains = []
+        for item in external_results:
+            if not isinstance(item, dict):
+                continue
+            domain = str(item.get("domain") or "").strip()
+            if domain and domain not in source_domains:
+                source_domains.append(domain)
+        return (
+            "Author reputation: no obvious red flags found in a limited external lookup."
+            + (f" Independent sources mainly returned profile or reference-style coverage ({', '.join(source_domains[:3])})." if source_domains else "")
+            + " This is still not a full background check."
+        )
 
     return (
         "Author reputation: unclear."

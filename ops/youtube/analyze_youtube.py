@@ -11,6 +11,8 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -22,6 +24,9 @@ TRANSCRIBE_CMD_TEMPLATE = os.getenv(
     f"{ROOT}/ops/telegram-voice/transcribe_voice.sh {{file}}",
 ).strip()
 TRANSCRIBE_TIMEOUT_SECONDS = int(os.getenv("TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS", "180"))
+AUTHOR_REPUTATION_LOOKUP_TIMEOUT_SECONDS = int(os.getenv("YOUTUBE_AUTHOR_REPUTATION_LOOKUP_TIMEOUT_SECONDS", "20"))
+AUTHOR_REPUTATION_MAX_RESULTS = int(os.getenv("YOUTUBE_AUTHOR_REPUTATION_MAX_RESULTS", "5"))
+AUTHOR_REPUTATION_SEARCH_URL = "https://html.duckduckgo.com/html/"
 TIMESTAMP_RE = re.compile(
     r"^\s*(?:\d+:)?\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?\s*-->\s*(?:\d+:)?\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?"
 )
@@ -97,6 +102,91 @@ def load_channel_profile(metadata: Dict[str, object]) -> Dict[str, object]:
         "tags": [str(tag).strip() for tag in tags if str(tag).strip()],
         "channel_url": str(payload.get("channel_url") or channel_url).strip(),
     }
+
+
+def fetch_text(url: str, *, timeout: int) -> str:
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read().decode("utf-8", errors="ignore")
+
+
+def strip_html(text: str) -> str:
+    return html.unescape(TAG_RE.sub("", text or "")).strip()
+
+
+def decode_duckduckgo_href(href: str) -> str:
+    value = html.unescape(href or "").strip()
+    if value.startswith("//"):
+        value = "https:" + value
+    parsed = urllib.parse.urlparse(value)
+    if "duckduckgo.com" in parsed.netloc:
+        target = urllib.parse.parse_qs(parsed.query).get("uddg", [])
+        if target:
+            return urllib.parse.unquote(target[0])
+    return value
+
+
+def parse_duckduckgo_results(payload: str) -> List[Dict[str, str]]:
+    results: List[Dict[str, str]] = []
+    pattern = re.compile(
+        r'<a[^>]*class="result__a"[^>]*href="(?P<href>[^"]+)"[^>]*>(?P<title>.*?)</a>.*?'
+        r'<a[^>]*class="result__snippet"[^>]*>(?P<snippet>.*?)</a>',
+        re.DOTALL,
+    )
+    for match in pattern.finditer(payload or ""):
+        url = decode_duckduckgo_href(match.group("href"))
+        parsed_url = urllib.parse.urlparse(url)
+        domain = parsed_url.netloc.lower().removeprefix("www.")
+        title = strip_html(match.group("title"))
+        snippet = strip_html(match.group("snippet"))
+        if not url or not domain or not title:
+            continue
+        results.append(
+            {
+                "title": title,
+                "url": url,
+                "domain": domain,
+                "snippet": snippet,
+            }
+        )
+    return results
+
+
+def lookup_author_reputation(metadata: Dict[str, object], channel_profile: Dict[str, object]) -> Dict[str, object]:
+    channel = str(metadata.get("channel") or metadata.get("uploader") or "").strip()
+    channel_title = str(channel_profile.get("title") or "").strip()
+    query_terms = " ".join(part for part in (channel, channel_title, "reputation controversy wikipedia") if part).strip()
+    if not query_terms:
+        return {"query": "", "results": []}
+
+    query = urllib.parse.urlencode({"q": query_terms})
+    try:
+        payload = fetch_text(f"{AUTHOR_REPUTATION_SEARCH_URL}?{query}", timeout=AUTHOR_REPUTATION_LOOKUP_TIMEOUT_SECONDS)
+    except Exception:
+        return {"query": query_terms, "results": []}
+
+    excluded_domains = {
+        "youtube.com",
+        "youtu.be",
+        "instagram.com",
+        "x.com",
+        "twitter.com",
+        "facebook.com",
+        "tiktok.com",
+        "patreon.com",
+        "linktr.ee",
+    }
+    filtered: List[Dict[str, str]] = []
+    for result in parse_duckduckgo_results(payload):
+        if result["domain"] in excluded_domains:
+            continue
+        if result["url"] in {item["url"] for item in filtered}:
+            continue
+        filtered.append(result)
+        if len(filtered) >= AUTHOR_REPUTATION_MAX_RESULTS:
+            break
+
+    return {"query": query_terms, "results": filtered}
 
 
 def append_unique(items: List[str], value: str) -> None:
@@ -299,6 +389,7 @@ def main() -> int:
     request_text = args.request_text.strip()
     metadata = load_metadata(url)
     channel_profile = load_channel_profile(metadata)
+    external_reputation = lookup_author_reputation(metadata, channel_profile)
     transcript_text = ""
     transcript_source = ""
     transcript_language = ""
@@ -331,6 +422,7 @@ def main() -> int:
         "channel": str(metadata.get("channel") or metadata.get("uploader") or "").strip(),
         "channel_url": str(metadata.get("channel_url") or metadata.get("uploader_url") or "").strip(),
         "channel_profile": channel_profile,
+        "external_reputation": external_reputation,
         "duration_seconds": metadata.get("duration"),
         "upload_date": str(metadata.get("upload_date") or "").strip(),
         "description": str(metadata.get("description") or "").strip(),

@@ -2883,6 +2883,15 @@ class BridgeCoreTests(unittest.TestCase):
                     "description": "Example Channel is an explainer outlet.",
                     "follower_count": 123456,
                 },
+                "external_reputation": {
+                    "results": [
+                        {
+                            "domain": "en.wikipedia.org",
+                            "title": "Example Channel - Wikipedia",
+                            "snippet": "Independent profile entry.",
+                        }
+                    ]
+                },
                 "chapters": [],
             },
         )
@@ -2894,6 +2903,8 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Do not treat channel size, self-description, or production quality as proof of reputation.", prompt)
         self.assertIn("Channel profile:", prompt)
         self.assertIn("Approx channel followers: 123456", prompt)
+        self.assertIn("External reputation lookup:", prompt)
+        self.assertIn("en.wikipedia.org: Example Channel - Wikipedia", prompt)
 
     def test_build_youtube_source_credibility_note_explains_mixed_rating(self):
         note = bridge_handlers.build_youtube_source_credibility_note(
@@ -2928,6 +2939,54 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Author reputation: unclear.", note)
         self.assertIn("Asian Boss is an established channel with about 4.0M followers", note)
         self.assertIn("channel context, not independent evidence", note)
+
+    def test_build_youtube_author_reputation_note_uses_external_lookup(self):
+        note = bridge_handlers.build_youtube_author_reputation_note(
+            {
+                "channel": "Veritasium",
+                "external_reputation": {
+                    "results": [
+                        {
+                            "domain": "en.wikipedia.org",
+                            "title": "Derek Muller - Wikipedia",
+                            "snippet": "Science communicator behind Veritasium.",
+                        },
+                        {
+                            "domain": "encyclopedia.example",
+                            "title": "Veritasium profile",
+                            "snippet": "Educational science channel profile.",
+                        },
+                    ]
+                },
+            }
+        )
+
+        self.assertIn("Author reputation: no obvious red flags found in a limited external lookup.", note)
+        self.assertIn("en.wikipedia.org", note)
+
+    def test_build_youtube_author_reputation_note_flags_mixed_when_external_results_repeat_controversy(self):
+        note = bridge_handlers.build_youtube_author_reputation_note(
+            {
+                "channel": "Example Channel",
+                "external_reputation": {
+                    "results": [
+                        {
+                            "domain": "news.example",
+                            "title": "Example Channel controversy",
+                            "snippet": "Criticism over misinformation claims.",
+                        },
+                        {
+                            "domain": "magazine.example",
+                            "title": "Another controversy article",
+                            "snippet": "Scam allegations and criticism discussed.",
+                        },
+                    ]
+                },
+            }
+        )
+
+        self.assertIn("Author reputation: mixed.", note)
+        self.assertIn("news.example, magazine.example", note)
 
     def test_with_youtube_source_credibility_result_appends_note_when_missing(self):
         result = bridge_handlers.subprocess.CompletedProcess(

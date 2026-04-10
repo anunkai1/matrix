@@ -76,6 +76,39 @@ class AnalyzeYouTubeTests(unittest.TestCase):
         self.assertEqual(profile, {})
         run_command.assert_not_called()
 
+    def test_parse_duckduckgo_results_extracts_titles_domains_and_snippets(self) -> None:
+        payload = """
+        <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FDerek_Muller">Derek Muller - Wikipedia</a>
+        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FDerek_Muller">Science communicator behind Veritasium.</a>
+        <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fcontroversy">Example Controversy</a>
+        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fcontroversy">Criticism and controversy article.</a>
+        """
+
+        results = youtube_analyzer.parse_duckduckgo_results(payload)
+
+        self.assertEqual(results[0]["domain"], "en.wikipedia.org")
+        self.assertEqual(results[0]["title"], "Derek Muller - Wikipedia")
+        self.assertIn("Science communicator", results[0]["snippet"])
+        self.assertEqual(results[1]["domain"], "example.com")
+
+    @mock.patch.object(youtube_analyzer, "fetch_text")
+    def test_lookup_author_reputation_filters_platform_results(self, fetch_text) -> None:
+        fetch_text.return_value = """
+        <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.youtube.com%2F%40Example">Example - YouTube</a>
+        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.youtube.com%2F%40Example">Official channel.</a>
+        <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FExample">Example - Wikipedia</a>
+        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FExample">Independent profile.</a>
+        """
+
+        payload = youtube_analyzer.lookup_author_reputation(
+            {"channel": "Example"},
+            {"title": "Example"},
+        )
+
+        self.assertEqual(payload["query"], "Example Example reputation controversy wikipedia")
+        self.assertEqual(len(payload["results"]), 1)
+        self.assertEqual(payload["results"][0]["domain"], "en.wikipedia.org")
+
     @mock.patch.object(youtube_analyzer.os, "replace")
     @mock.patch.object(youtube_analyzer, "find_downloaded_audio")
     @mock.patch.object(youtube_analyzer, "run_command")
