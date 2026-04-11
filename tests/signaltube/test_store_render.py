@@ -21,6 +21,7 @@ class SignalTubeStoreRenderTests(unittest.TestCase):
                 title="Latest space telescope discovery",
                 channel="Space Channel",
                 published_at="2026-04-10T22:15:00+00:00",
+                duration_text="12:34",
                 source_topic="latest space videos",
             )
             ranked = rank_candidates([candidate], topic="latest space videos")
@@ -33,10 +34,12 @@ class SignalTubeStoreRenderTests(unittest.TestCase):
             self.assertEqual(len(loaded), 1)
             self.assertEqual(loaded[0].candidate.video_id, "abcDEF_1234")
             self.assertEqual(loaded[0].candidate.published_at, "2026-04-10T22:15:00+00:00")
+            self.assertEqual(loaded[0].candidate.duration_text, "12:34")
             body = html_path.read_text(encoding="utf-8")
             self.assertIn("SignalTube Lab", body)
             self.assertIn("Latest space telescope discovery", body)
             self.assertIn("Space Channel", body)
+            self.assertIn("12:34", body)
             self.assertIn("Published: 2026-04-11 08:15 AEST", body)
             self.assertIn("No downloads, no account automation", body)
             self.assertIn("Copied feedback command", body)

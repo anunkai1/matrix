@@ -30,7 +30,8 @@ def _enrich_candidate(candidate: VideoCandidate, *, yt_dlp_bin: str, timeout_sec
     title = _clean_text(str(metadata.get("title") or "")) or candidate.title
     channel = _clean_text(str(metadata.get("channel") or metadata.get("uploader") or "")) or candidate.channel
     published_at = _published_at_from_metadata(metadata) or candidate.published_at
-    return replace(candidate, title=title, channel=channel, published_at=published_at)
+    duration_text = _duration_text_from_metadata(metadata) or candidate.duration_text
+    return replace(candidate, title=title, channel=channel, published_at=published_at, duration_text=duration_text)
 
 
 def _fetch_youtube_metadata(url: str, *, yt_dlp_bin: str, timeout_seconds: int) -> dict[str, Any]:
@@ -65,6 +66,26 @@ def _published_at_from_metadata(metadata: dict[str, Any]) -> str:
     if len(upload_date) == 8 and upload_date.isdigit():
         return f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:]}"
     return ""
+
+
+def _duration_text_from_metadata(metadata: dict[str, Any]) -> str:
+    duration_string = _clean_text(str(metadata.get("duration_string") or ""))
+    if duration_string:
+        return duration_string
+    duration = metadata.get("duration")
+    if isinstance(duration, (int, float)):
+        return _format_duration_seconds(int(duration))
+    return ""
+
+
+def _format_duration_seconds(total_seconds: int) -> str:
+    if total_seconds <= 0:
+        return ""
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
 
 
 def _clean_text(value: str) -> str:

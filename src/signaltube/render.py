@@ -115,7 +115,7 @@ def _render_card(item: RankedVideo, *, db_path: Path, command_path: Path) -> str
   <a href="{html.escape(candidate.url)}"><img class="thumb" src="{html.escape(candidate.thumbnail_url)}" alt=""></a>
   <div class="body">
     <a class="title" href="{html.escape(candidate.url)}">{html.escape(candidate.title)}</a>
-    <div class="meta">{html.escape(candidate.channel or "YouTube")} · {html.escape(candidate.video_id)}</div>
+    <div class="meta">{html.escape(candidate.channel or "YouTube")} · {html.escape(_format_duration(candidate.duration_text))} · {html.escape(candidate.video_id)}</div>
     <div class="published">Published: {html.escape(published)}</div>
     <div class="score">Score {item.score:.0f} · {html.escape(reasons)}</div>
     <div class="actions">
@@ -161,3 +161,10 @@ def _format_published_at(value: str) -> str:
     if parsed.tzinfo is None:
         return parsed.strftime("%Y-%m-%d %H:%M")
     return f"{parsed.astimezone(BRISBANE_TZ).strftime('%Y-%m-%d %H:%M')} AEST"
+
+
+def _format_duration(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        return "duration unavailable"
+    return cleaned

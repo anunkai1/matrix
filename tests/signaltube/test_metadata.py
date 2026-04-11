@@ -21,6 +21,7 @@ class SignalTubeMetadataTests(unittest.TestCase):
             "channel": "Space Channel",
             "timestamp": 1775843156,
             "release_timestamp": 1775843292,
+            "duration_string": "1:02:03",
         }
         result = subprocess.CompletedProcess(
             args=["yt-dlp"],
@@ -36,6 +37,7 @@ class SignalTubeMetadataTests(unittest.TestCase):
         self.assertEqual(enriched[0].title, "Actual video title")
         self.assertEqual(enriched[0].channel, "Space Channel")
         self.assertEqual(enriched[0].published_at, "2026-04-10T17:48:12+00:00")
+        self.assertEqual(enriched[0].duration_text, "1:02:03")
 
     def test_enrich_candidates_falls_back_when_yt_dlp_is_missing(self) -> None:
         candidate = VideoCandidate(

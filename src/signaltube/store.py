@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS videos (
   title TEXT NOT NULL,
   channel TEXT NOT NULL DEFAULT '',
   published_at TEXT NOT NULL DEFAULT '',
+  duration_text TEXT NOT NULL DEFAULT '',
   thumbnail_url TEXT NOT NULL,
   first_seen TEXT NOT NULL,
   last_seen TEXT NOT NULL
@@ -93,13 +94,14 @@ class SignalTubeStore:
                 candidate = item.candidate
                 db.execute(
                     """
-                    INSERT INTO videos (video_id, url, title, channel, published_at, thumbnail_url, first_seen, last_seen)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO videos (video_id, url, title, channel, published_at, duration_text, thumbnail_url, first_seen, last_seen)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(video_id) DO UPDATE SET
                       url=excluded.url,
                       title=excluded.title,
                       channel=excluded.channel,
                       published_at=excluded.published_at,
+                      duration_text=excluded.duration_text,
                       thumbnail_url=excluded.thumbnail_url,
                       last_seen=excluded.last_seen
                     """,
@@ -109,6 +111,7 @@ class SignalTubeStore:
                         candidate.title,
                         candidate.channel,
                         candidate.published_at,
+                        candidate.duration_text,
                         candidate.thumbnail_url,
                         now,
                         now,
@@ -154,7 +157,7 @@ class SignalTubeStore:
             _ensure_schema(db)
             rows = db.execute(
                 f"""
-                SELECT r.topic, r.score, r.reasons, v.video_id, v.url, v.title, v.channel, v.published_at
+                SELECT r.topic, r.score, r.reasons, v.video_id, v.url, v.title, v.channel, v.published_at, v.duration_text
                 FROM rankings r
                 JOIN videos v ON v.video_id = r.video_id
                 {where}
@@ -171,6 +174,7 @@ class SignalTubeStore:
                 title=row["title"],
                 channel=row["channel"],
                 published_at=row["published_at"],
+                duration_text=row["duration_text"],
                 source_topic=row["topic"],
             )
             reasons = tuple(part.strip() for part in str(row["reasons"] or "").split(",") if part.strip())
@@ -341,6 +345,8 @@ def _ensure_schema(db: sqlite3.Connection) -> None:
     video_columns = {str(row["name"]) for row in db.execute("PRAGMA table_info(videos)").fetchall()}
     if "published_at" not in video_columns:
         db.execute("ALTER TABLE videos ADD COLUMN published_at TEXT NOT NULL DEFAULT ''")
+    if "duration_text" not in video_columns:
+        db.execute("ALTER TABLE videos ADD COLUMN duration_text TEXT NOT NULL DEFAULT ''")
     topic_columns = {str(row["name"]) for row in db.execute("PRAGMA table_info(topic_configs)").fetchall()}
     if topic_columns and "last_collected_at" not in topic_columns:
         db.execute("ALTER TABLE topic_configs ADD COLUMN last_collected_at TEXT NOT NULL DEFAULT ''")
