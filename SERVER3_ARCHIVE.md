@@ -2,6 +2,17 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-11 (Summary Roll-Forward Trim for Sentinel Worker Cap Increase)
+
+Summary:
+- Added a new rolling-summary entry for increasing Sentinel's persistent worker cap from `4` to `10`.
+- Updated the live `/etc/default/telegram-sentinel-bridge`, restarted `telegram-sentinel-bridge.service`, and verified from startup logs at `22:05:23 AEST` that the runtime now reports `Persistent workers enabled=True count=4 max=10`.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-04-11: added `ops/signaltube_lab_browser.sh` for a disposable managed SignalTube Browser Brain instance on `127.0.0.1:47832` using private state under `private/signaltube/browser-brain`, changed SignalTube Lab defaults to that port, added a pre-snapshot logged-out settle wait, and verified a live bounded collection for `latest space videos` stored 12 ranked candidates and rendered `private/signaltube/feed.html`; the helper start/status/stop path was also verified.
+- 2026-04-11: added initial SignalTube Lab Mode scaffolding under `src/signaltube` with a logged-out Browser Brain discovery provider, SQLite storage, heuristic ranking, static HTML feed rendering, CLI entrypoint `ops/signaltube_lab.py`, focused unit coverage, and docs in `docs/projects/signaltube/lab-mode.md`; the collector refuses Browser Brain `existing_session` mode and logged-in YouTube snapshots so the current TV/manual-login browser is not used for discovery.
+
 ## 2026-04-11 (Summary Roll-Forward Trim for Browser Brain Hardening)
 
 Summary:
