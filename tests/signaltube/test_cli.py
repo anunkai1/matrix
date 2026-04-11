@@ -96,6 +96,26 @@ class SignalTubeCliTests(unittest.TestCase):
             blocked = store.load_blocked_channels()
             self.assertEqual(blocked, {"space channel"})
 
+    def test_videos_seen_command_stores_seen_video(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "signaltube.sqlite"
+
+            exit_code = signaltube_lab_cli.main(
+                [
+                    "--db",
+                    str(db_path),
+                    "videos",
+                    "seen",
+                    "--video-id",
+                    "abcDEF_1234",
+                ]
+            )
+
+            self.assertEqual(exit_code, 0)
+            store = signaltube_lab_cli.SignalTubeStore(db_path)
+            seen = store.load_seen_video_ids()
+            self.assertEqual(seen, {"abcDEF_1234"})
+
 
 if __name__ == "__main__":
     unittest.main()

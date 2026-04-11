@@ -88,6 +88,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     channel_subparsers.add_parser("list")
 
+    videos = subparsers.add_parser("videos")
+    video_subparsers = videos.add_subparsers(dest="videos_command", required=True)
+
+    videos_seen = video_subparsers.add_parser("seen")
+    videos_seen.add_argument("--video-id", required=True)
+    videos_seen.add_argument("--note", default="")
+
+    videos_unsee = video_subparsers.add_parser("unsee")
+    videos_unsee.add_argument("--video-id", required=True)
+
+    video_subparsers.add_parser("list")
+
     return parser
 
 
@@ -113,8 +125,11 @@ def collect_for_topics(
         if not skip_youtube_metadata:
             candidates = enrich_candidates_with_youtube_metadata(candidates)
         blocked_channels = store.load_blocked_channels()
+        seen_video_ids = store.load_seen_video_ids()
         candidates = [
-            candidate for candidate in candidates if candidate.channel.strip().lower() not in blocked_channels
+            candidate
+            for candidate in candidates
+            if candidate.channel.strip().lower() not in blocked_channels and candidate.video_id not in seen_video_ids
         ]
         feedback_profile = store.load_feedback_profile(topic=topic)
         ranked = rank_candidates(candidates, topic=topic, feedback_profile=feedback_profile)
@@ -292,6 +307,28 @@ def main(argv: list[str] | None = None) -> int:
             for row in channels:
                 note = str(row["note"] or "").strip() or "-"
                 print(f"{row['channel']}\tnote={note}\tcreated_at={row['created_at']}")
+            return 0
+
+    if args.command == "videos":
+        if args.videos_command == "seen":
+            store.mark_video_seen(args.video_id, note=args.note)
+            print(f"marked video seen '{args.video_id.strip()}'")
+            return 0
+        if args.videos_command == "unsee":
+            removed = store.unsee_video(args.video_id)
+            if not removed:
+                print(f"video not marked seen: {args.video_id}", file=sys.stderr)
+                return 1
+            print(f"unmarked video seen '{args.video_id.strip()}'")
+            return 0
+        if args.videos_command == "list":
+            videos = store.list_seen_videos()
+            if not videos:
+                print("no seen videos")
+                return 0
+            for row in videos:
+                note = str(row["note"] or "").strip() or "-"
+                print(f"{row['video_id']}\tnote={note}\tcreated_at={row['created_at']}")
             return 0
 
     raise AssertionError(f"Unhandled command: {args.command}")

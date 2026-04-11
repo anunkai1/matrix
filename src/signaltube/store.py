@@ -65,6 +65,12 @@ CREATE TABLE IF NOT EXISTS blocked_channels (
   note TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS seen_videos (
+  video_id TEXT PRIMARY KEY,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
 """
 
 
@@ -187,6 +193,8 @@ class SignalTubeStore:
             ranked.append(RankedVideo(candidate=candidate, score=float(row["score"]), reasons=reasons))
         blocked_channels = self.load_blocked_channels()
         ranked = [item for item in ranked if item.candidate.channel.strip().lower() not in blocked_channels]
+        seen_video_ids = self.load_seen_video_ids()
+        ranked = [item for item in ranked if item.candidate.video_id not in seen_video_ids]
         if diversify:
             return diversify_ranked(
                 ranked,
@@ -385,6 +393,47 @@ class SignalTubeStore:
                 SELECT channel, note, created_at
                 FROM blocked_channels
                 ORDER BY lower(channel)
+                """
+            ).fetchall()
+
+    def mark_video_seen(self, video_id: str, *, note: str = "") -> None:
+        normalized = video_id.strip()
+        if not normalized:
+            raise ValueError("video_id must not be empty")
+        now = datetime.now(timezone.utc).isoformat()
+        with self.connect() as db:
+            _ensure_schema(db)
+            db.execute(
+                """
+                INSERT INTO seen_videos (video_id, note, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(video_id) DO UPDATE SET
+                  note=excluded.note
+                """,
+                (normalized, note.strip(), now),
+            )
+
+    def unsee_video(self, video_id: str) -> bool:
+        normalized = video_id.strip()
+        with self.connect() as db:
+            _ensure_schema(db)
+            result = db.execute("DELETE FROM seen_videos WHERE video_id = ?", (normalized,))
+            return result.rowcount > 0
+
+    def load_seen_video_ids(self) -> set[str]:
+        with self.connect() as db:
+            _ensure_schema(db)
+            rows = db.execute("SELECT video_id FROM seen_videos ORDER BY created_at DESC").fetchall()
+        return {str(row["video_id"]).strip() for row in rows if str(row["video_id"]).strip()}
+
+    def list_seen_videos(self) -> list[sqlite3.Row]:
+        with self.connect() as db:
+            _ensure_schema(db)
+            return db.execute(
+                """
+                SELECT video_id, note, created_at
+                FROM seen_videos
+                ORDER BY created_at DESC, video_id
                 """
             ).fetchall()
 

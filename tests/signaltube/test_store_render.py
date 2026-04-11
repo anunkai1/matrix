@@ -47,6 +47,8 @@ class SignalTubeStoreRenderTests(unittest.TestCase):
             self.assertIn("--video-id &#x27;abcDEF_1234&#x27; --signal save", body)
             self.assertIn("Don&#x27;t recommend this channel", body)
             self.assertIn("channels block --channel &#x27;Space Channel&#x27;", body)
+            self.assertIn(">Seen<", body)
+            self.assertIn("videos seen --video-id &#x27;abcDEF_1234&#x27;", body)
 
     def test_store_round_trips_topics_and_feedback_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -147,6 +149,34 @@ class SignalTubeStoreRenderTests(unittest.TestCase):
             loaded = store.load_ranked(topic="latest space videos", limit=5)
 
             self.assertEqual([item.candidate.channel for item in loaded], ["Other Channel"])
+
+    def test_seen_video_is_filtered_from_loaded_feed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "signaltube.sqlite"
+            store = SignalTubeStore(db_path)
+            candidates = [
+                VideoCandidate(
+                    video_id="abcDEF_1234",
+                    url="https://www.youtube.com/watch?v=abcDEF_1234",
+                    title="Latest space telescope discovery",
+                    channel="Space Channel",
+                    source_topic="latest space videos",
+                ),
+                VideoCandidate(
+                    video_id="zzzDEF_1234",
+                    url="https://www.youtube.com/watch?v=zzzDEF_1234",
+                    title="Another astronomy briefing",
+                    channel="Other Channel",
+                    source_topic="latest space videos",
+                ),
+            ]
+            ranked = rank_candidates(candidates, topic="latest space videos")
+            store.save_ranked("latest space videos", ranked)
+            store.mark_video_seen("abcDEF_1234")
+
+            loaded = store.load_ranked(topic="latest space videos", limit=5)
+
+            self.assertEqual([item.candidate.video_id for item in loaded], ["zzzDEF_1234"])
 
 
 if __name__ == "__main__":

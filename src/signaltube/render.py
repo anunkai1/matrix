@@ -116,6 +116,11 @@ def _render_card(item: RankedVideo, *, db_path: Path, command_path: Path) -> str
         db_path=db_path,
         command_path=command_path,
     )
+    seen_action = _render_seen_button(
+        video_id=candidate.video_id,
+        db_path=db_path,
+        command_path=command_path,
+    )
     return f"""<article class="card">
   <a href="{html.escape(candidate.url)}"><img class="thumb" src="{html.escape(candidate.thumbnail_url)}" alt=""></a>
   <div class="body">
@@ -126,6 +131,7 @@ def _render_card(item: RankedVideo, *, db_path: Path, command_path: Path) -> str
     <div class="actions">
       {actions}
       {channel_action}
+      {seen_action}
     </div>
     <div class="status"></div>
   </div>
@@ -156,6 +162,14 @@ def _render_channel_block_button(*, channel: str, db_path: Path, command_path: P
         f"channels block --channel {quote_arg(channel)}"
     )
     return f'<button data-feedback-command="{html.escape(command)}">Don&#x27;t recommend this channel</button>'
+
+
+def _render_seen_button(*, video_id: str, db_path: Path, command_path: Path) -> str:
+    command = (
+        f"python3 {command_path} --db {db_path} "
+        f"videos seen --video-id {quote_arg(video_id)}"
+    )
+    return f'<button data-feedback-command="{html.escape(command)}">Seen</button>'
 
 
 def quote_arg(value: str) -> str:
