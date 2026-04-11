@@ -1090,6 +1090,33 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(len(client.documents), 1)
         self.assertEqual(client.chat_actions, [(1, "upload_photo"), (1, "upload_document")])
 
+    def test_send_executor_output_preserves_message_thread_id_for_documents(self):
+        client = mock.Mock()
+        client.channel_name = "telegram"
+
+        rendered = bridge_handlers.send_executor_output(
+            client=client,
+            chat_id=-1003706836145,
+            message_id=1374,
+            output="[[media:/tmp/feed.html]] feed",
+            message_thread_id=511,
+        )
+
+        self.assertEqual(rendered, "feed")
+        client.send_chat_action.assert_called_once_with(
+            -1003706836145,
+            action="upload_document",
+            message_thread_id=511,
+        )
+        client.send_document.assert_called_once_with(
+            chat_id=-1003706836145,
+            document="/tmp/feed.html",
+            caption="feed",
+            reply_to_message_id=1374,
+            message_thread_id=511,
+        )
+        client.send_message.assert_not_called()
+
     def test_transport_send_media_remote_uses_request_payload(self):
         config = make_config()
         client = bridge.TelegramClient(config)
@@ -1768,6 +1795,24 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("- Topic ID: 498", prompt)
         self.assertIn("- Current Message ID: 570", prompt)
         self.assertIn("- Scope Key: tg:-1003706836145:topic:498", prompt)
+        self.assertIn("treat this current chat/topic as authoritative", prompt)
+        self.assertIn("Never fall back to a different chat ID", prompt)
+
+    def test_telegram_text_prompt_includes_delivery_target_guardrail(self):
+        self.assertTrue(
+            bridge_handlers.should_include_telegram_context_prompt(
+                "2",
+                "",
+                "telegram",
+            )
+        )
+        self.assertFalse(
+            bridge_handlers.should_include_telegram_context_prompt(
+                "2",
+                "",
+                "whatsapp",
+            )
+        )
 
     def test_apply_voice_alias_replacements(self):
         transcript, changed = bridge_handlers.apply_voice_alias_replacements(
@@ -2580,7 +2625,8 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
-        self.assertEqual(kwargs["prompt"], "photo caption")
+        self.assertIn("Current Telegram Context:", kwargs["prompt"])
+        self.assertIn("Current User Message:\nphoto caption", kwargs["prompt"])
         self.assertEqual(kwargs["photo_file_id"], "photo-1")
         self.assertIsNone(kwargs["voice_file_id"])
 
@@ -2652,7 +2698,8 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
-        self.assertEqual(kwargs["prompt"], "transcribe this")
+        self.assertIn("Current Telegram Context:", kwargs["prompt"])
+        self.assertIn("Current User Message:\ntranscribe this", kwargs["prompt"])
         self.assertEqual(kwargs["voice_file_id"], "voice-2")
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
 
@@ -2679,7 +2726,8 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
-        self.assertEqual(kwargs["prompt"], "hello there")
+        self.assertIn("Current Telegram Context:", kwargs["prompt"])
+        self.assertIn("Current User Message:\nhello there", kwargs["prompt"])
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")

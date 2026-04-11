@@ -407,6 +407,7 @@ def send_executor_output(
     chat_id: int,
     message_id: Optional[int],
     output: str,
+    message_thread_id: Optional[int] = None,
 ) -> str:
     payload_format = "plain_text"
     structured_payload, parse_error = parse_structured_outbound_payload(output)
@@ -421,7 +422,12 @@ def send_executor_output(
             },
         )
         fallback_text = apply_outbound_reply_prefix(client, output or "")
-        client.send_message(chat_id, fallback_text, reply_to_message_id=message_id)
+        client.send_message(
+            chat_id,
+            fallback_text,
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
         return fallback_text
 
     if structured_payload is not None:
@@ -444,7 +450,12 @@ def send_executor_output(
 
     if directive is None:
         rendered_text = apply_outbound_reply_prefix(client, rendered_text)
-        client.send_message(chat_id, rendered_text, reply_to_message_id=message_id)
+        client.send_message(
+            chat_id,
+            rendered_text,
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
         return rendered_text
 
     caption = apply_outbound_reply_prefix(client, rendered_text) if rendered_text else None
@@ -465,12 +476,13 @@ def send_executor_output(
             },
         )
         if media_kind == "photo":
-            send_chat_action_safe(client, chat_id, "upload_photo")
+            send_chat_action_safe(client, chat_id, "upload_photo", message_thread_id)
             client.send_photo(
                 chat_id=chat_id,
                 photo=directive.media_ref,
                 caption=caption,
                 reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
             )
             emit_event(
                 "bridge.outbound_delivery_succeeded",
@@ -484,14 +496,15 @@ def send_executor_output(
             )
         elif media_kind == "audio":
             if directive.as_voice and is_voice_compatible_media(directive.media_ref):
-                send_chat_action_safe(client, chat_id, "record_voice")
-                send_chat_action_safe(client, chat_id, "upload_voice")
+                send_chat_action_safe(client, chat_id, "record_voice", message_thread_id)
+                send_chat_action_safe(client, chat_id, "upload_voice", message_thread_id)
                 try:
                     client.send_voice(
                         chat_id=chat_id,
                         voice=directive.media_ref,
                         caption=caption,
                         reply_to_message_id=message_id,
+                        message_thread_id=message_thread_id,
                     )
                     emit_event(
                         "bridge.outbound_delivery_succeeded",
@@ -522,12 +535,13 @@ def send_executor_output(
                             "reason": "VOICE_MESSAGES_FORBIDDEN",
                         },
                     )
-                    send_chat_action_safe(client, chat_id, "upload_audio")
+                    send_chat_action_safe(client, chat_id, "upload_audio", message_thread_id)
                     client.send_audio(
                         chat_id=chat_id,
                         audio=directive.media_ref,
                         caption=caption,
                         reply_to_message_id=message_id,
+                        message_thread_id=message_thread_id,
                     )
                     emit_event(
                         "bridge.outbound_delivery_succeeded",
@@ -540,12 +554,13 @@ def send_executor_output(
                         },
                     )
             else:
-                send_chat_action_safe(client, chat_id, "upload_audio")
+                send_chat_action_safe(client, chat_id, "upload_audio", message_thread_id)
                 client.send_audio(
                     chat_id=chat_id,
                     audio=directive.media_ref,
                     caption=caption,
                     reply_to_message_id=message_id,
+                    message_thread_id=message_thread_id,
                 )
                 emit_event(
                     "bridge.outbound_delivery_succeeded",
@@ -558,12 +573,13 @@ def send_executor_output(
                     },
                 )
         else:
-            send_chat_action_safe(client, chat_id, "upload_document")
+            send_chat_action_safe(client, chat_id, "upload_document", message_thread_id)
             client.send_document(
                 chat_id=chat_id,
                 document=directive.media_ref,
                 caption=caption,
                 reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
             )
             emit_event(
                 "bridge.outbound_delivery_succeeded",
@@ -592,11 +608,21 @@ def send_executor_output(
             },
         )
         fallback_text = apply_outbound_reply_prefix(client, rendered_text or output)
-        client.send_message(chat_id, fallback_text, reply_to_message_id=message_id)
+        client.send_message(
+            chat_id,
+            fallback_text,
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
         return fallback_text
 
     if follow_up_text:
-        client.send_message(chat_id, follow_up_text, reply_to_message_id=message_id)
+        client.send_message(
+            chat_id,
+            follow_up_text,
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
         return follow_up_text
     if caption:
         return caption
@@ -1171,12 +1197,15 @@ TELEGRAM_CONTEXT_TARGET_HINT_RE = re.compile(
 def should_include_telegram_context_prompt(
     prompt_input: Optional[str],
     reply_context_prompt: str,
+    channel_name: str = "telegram",
 ) -> bool:
     if reply_context_prompt.strip():
         return True
     prompt_text = (prompt_input or "").strip()
     if not prompt_text:
         return False
+    if (channel_name or "telegram").strip().lower() == "telegram":
+        return True
     return TELEGRAM_CONTEXT_TARGET_HINT_RE.search(prompt_text) is not None
 
 
@@ -1204,6 +1233,15 @@ def build_telegram_context_prompt(
     lines.append(
         '- If the user asks to reply "here" or "to this message", '
         "default to Current Message ID unless they specify another numeric target."
+    )
+    lines.append(
+        "- For Telegram replies, files, photos, documents, or attachments, treat this "
+        "current chat/topic as authoritative. Do not infer a different chat from logs, "
+        "session databases, allowlists, or recent activity."
+    )
+    lines.append(
+        "- If the current Telegram target is missing or ambiguous, ask the user for the "
+        "destination before sending. Never fall back to a different chat ID."
     )
     return "\n".join(lines)
 
@@ -2928,6 +2966,7 @@ def finalize_prompt_success(
         chat_id=chat_id,
         message_id=message_id,
         output=output,
+        message_thread_id=message_thread_id,
     )
     emit_event(
         "bridge.request_succeeded",
@@ -3441,6 +3480,7 @@ def process_youtube_request(
                 chat_id=chat_id,
                 message_id=message_id,
                 output=output,
+                message_thread_id=message_thread_id,
             )
             emit_event(
                 "bridge.request_succeeded",
@@ -3461,6 +3501,7 @@ def process_youtube_request(
                 chat_id=chat_id,
                 message_id=message_id,
                 output=output,
+                message_thread_id=message_thread_id,
             )
             emit_event(
                 "bridge.request_succeeded",
@@ -4550,7 +4591,11 @@ def handle_update(
 
     reply_context_prompt = build_reply_context_prompt(message)
     telegram_context_prompt = ""
-    if should_include_telegram_context_prompt(prompt_input, reply_context_prompt):
+    if should_include_telegram_context_prompt(
+        prompt_input,
+        reply_context_prompt,
+        getattr(client, "channel_name", "telegram"),
+    ):
         telegram_context_prompt = build_telegram_context_prompt(
             chat_id=chat_id,
             message_thread_id=message_thread_id,
@@ -4739,6 +4784,7 @@ def handle_update(
             return
 
     prompt = (prompt_input or "").strip()
+    raw_prompt = prompt
     prompt_context_parts: List[str] = []
     if telegram_context_prompt:
         prompt_context_parts.append(telegram_context_prompt)
@@ -4753,6 +4799,34 @@ def handle_update(
         prompt = "\n\n".join(prompt_context_parts)
     if not prompt and not voice_file_id and document is None:
         return
+
+    if prompt and len(prompt) > config.max_input_chars:
+        if prompt_context_parts and raw_prompt and len(raw_prompt) <= config.max_input_chars:
+            emit_event(
+                "bridge.telegram_context_omitted",
+                level=logging.WARNING,
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "reason": "max_input_chars",
+                },
+            )
+            prompt = raw_prompt
+        else:
+            actual_length = len(raw_prompt) if raw_prompt and len(raw_prompt) > config.max_input_chars else len(prompt)
+            emit_event(
+                "bridge.request_rejected",
+                level=logging.WARNING,
+                fields={"chat_id": chat_id, "message_id": message_id, "reason": "input_too_long"},
+            )
+            send_input_too_long(
+                client=client,
+                chat_id=chat_id,
+                message_id=message_id,
+                actual_length=actual_length,
+                max_input_chars=config.max_input_chars,
+            )
+            return
 
     if prompt and len(prompt) > config.max_input_chars:
         emit_event(
@@ -4836,7 +4910,7 @@ def handle_update(
             chat_id=chat_id,
             message_thread_id=message_thread_id,
             message_id=message_id,
-            request_text=prompt,
+            request_text=raw_prompt,
             youtube_url=youtube_route_url,
             actor_user_id=actor_user_id,
             cancel_event=cancel_event,
