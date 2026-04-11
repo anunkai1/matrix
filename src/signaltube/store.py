@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import FeedbackProfile, RankedVideo, TopicConfig, VideoCandidate
+from .ranking import diversify_ranked
 
 
 SCHEMA = """
@@ -133,13 +134,22 @@ class SignalTubeStore:
                     (topic, candidate.video_id, item.score, ", ".join(item.reasons), now),
                 )
 
-    def load_ranked(self, *, topic: str | None = None, limit: int = 80) -> list[RankedVideo]:
+    def load_ranked(
+        self,
+        *,
+        topic: str | None = None,
+        limit: int = 80,
+        diversify: bool = True,
+        max_per_story_cluster: int = 2,
+        max_per_channel: int = 2,
+    ) -> list[RankedVideo]:
         where = ""
         params: list[object] = []
         if topic:
             where = "WHERE r.topic = ?"
             params.append(topic)
-        params.append(limit)
+        query_limit = max(limit * 4, limit) if diversify else limit
+        params.append(query_limit)
         with self.connect() as db:
             _ensure_schema(db)
             rows = db.execute(
@@ -165,7 +175,14 @@ class SignalTubeStore:
             )
             reasons = tuple(part.strip() for part in str(row["reasons"] or "").split(",") if part.strip())
             ranked.append(RankedVideo(candidate=candidate, score=float(row["score"]), reasons=reasons))
-        return ranked
+        if diversify:
+            return diversify_ranked(
+                ranked,
+                limit=limit,
+                max_per_story_cluster=max_per_story_cluster,
+                max_per_channel=max_per_channel,
+            )
+        return ranked[:limit]
 
     def upsert_topic(
         self,

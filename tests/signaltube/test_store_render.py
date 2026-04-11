@@ -74,6 +74,47 @@ class SignalTubeStoreRenderTests(unittest.TestCase):
             self.assertAlmostEqual(feedback.video_scores["abcDEF_1234"], 2.025)
             self.assertAlmostEqual(feedback.channel_scores["Space Channel"], 2.025)
 
+    def test_load_ranked_diversifies_same_story_wave(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "signaltube.sqlite"
+            store = SignalTubeStore(db_path)
+            candidates = [
+                VideoCandidate(
+                    video_id="artemis_a01",
+                    url="https://www.youtube.com/watch?v=artemis_a01",
+                    title="Artemis II astronauts return to Earth after moon mission",
+                    channel="Channel A",
+                    source_topic="latest space videos",
+                ),
+                VideoCandidate(
+                    video_id="artemis_b01",
+                    url="https://www.youtube.com/watch?v=artemis_b01",
+                    title="Artemis II re-entry and splashdown live coverage",
+                    channel="Channel B",
+                    source_topic="latest space videos",
+                ),
+                VideoCandidate(
+                    video_id="artemis_c01",
+                    url="https://www.youtube.com/watch?v=artemis_c01",
+                    title="Watch live: Artemis II crew returns after moon flyby",
+                    channel="Channel C",
+                    source_topic="latest space videos",
+                ),
+                VideoCandidate(
+                    video_id="jwst_a00123",
+                    url="https://www.youtube.com/watch?v=jwst_a00123",
+                    title="JWST finds a strange exoplanet atmosphere",
+                    channel="Channel D",
+                    source_topic="latest space videos",
+                ),
+            ]
+            ranked = rank_candidates(candidates, topic="latest space videos")
+            store.save_ranked("latest space videos", ranked)
+
+            loaded = store.load_ranked(topic="latest space videos", limit=3)
+
+            self.assertEqual([item.candidate.video_id for item in loaded], ["artemis_a01", "artemis_b01", "jwst_a00123"])
+
 
 if __name__ == "__main__":
     unittest.main()
