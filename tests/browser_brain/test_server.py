@@ -43,7 +43,25 @@ class FakeController:
     def wait(self, payload):
         return {"ok": True, "payload": payload}
 
+    def console_messages(self, payload):
+        return {"messages": [], "payload": payload}
+
+    def network_events(self, payload):
+        return {"events": [], "payload": payload}
+
+    def dialogs_list(self, payload):
+        return {"dialog": None, "payload": payload}
+
+    def dialog_handle(self, payload):
+        return {"handled": True, "payload": payload}
+
     def act_click(self, payload):
+        return {"ok": True, "payload": payload}
+
+    def act_hover(self, payload):
+        return {"ok": True, "payload": payload}
+
+    def act_select(self, payload):
         return {"ok": True, "payload": payload}
 
     def act_type(self, payload):
@@ -92,6 +110,14 @@ class BrowserBrainHTTPServerTests(unittest.TestCase):
             self.assertEqual(body["error"], "bad_key")
 
             status_code, body = _request(server, "POST", "/v1/act/upload", {"path": "/tmp/example.mp4"})
+            self.assertEqual(status_code, 200)
+            self.assertTrue(body["ok"])
+
+            status_code, body = _request(server, "POST", "/v1/console", {"limit": 3})
+            self.assertEqual(status_code, 200)
+            self.assertEqual(body["messages"], [])
+
+            status_code, body = _request(server, "POST", "/v1/act/select", {"value": "one"})
             self.assertEqual(status_code, 200)
             self.assertTrue(body["ok"])
         finally:

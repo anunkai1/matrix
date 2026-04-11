@@ -48,6 +48,62 @@ class BrowserBrainCLITests(unittest.TestCase):
         request.assert_called_once_with(browser_brain_ctl.DEFAULT_BASE_URL, "GET", "/v1/status")
         printer.assert_called_once_with({"running": False})
 
+    @mock.patch.object(browser_brain_ctl, "_print")
+    @mock.patch.object(browser_brain_ctl, "_request")
+    @mock.patch.object(browser_brain_ctl, "_ensure_service")
+    def test_safe_action_commands_call_expected_routes(self, ensure_service, request, printer) -> None:
+        request.return_value = {"ok": True}
+
+        exit_code = browser_brain_ctl.main(["hover", "--tab-id", "tab-1", "--snapshot-id", "snap-1", "--ref", "el-1"])
+        self.assertEqual(exit_code, 0)
+        request.assert_called_with(
+            browser_brain_ctl.DEFAULT_BASE_URL,
+            "POST",
+            "/v1/act/hover",
+            {"tab_id": "tab-1", "snapshot_id": "snap-1", "ref": "el-1"},
+        )
+
+        exit_code = browser_brain_ctl.main(
+            ["select", "--tab-id", "tab-1", "--snapshot-id", "snap-1", "--ref", "el-2", "--value", "one"]
+        )
+        self.assertEqual(exit_code, 0)
+        request.assert_called_with(
+            browser_brain_ctl.DEFAULT_BASE_URL,
+            "POST",
+            "/v1/act/select",
+            {"tab_id": "tab-1", "snapshot_id": "snap-1", "ref": "el-2", "values": ["one"]},
+        )
+
+        self.assertEqual(ensure_service.call_count, 2)
+        self.assertEqual(printer.call_count, 2)
+
+    @mock.patch.object(browser_brain_ctl, "_print")
+    @mock.patch.object(browser_brain_ctl, "_request")
+    @mock.patch.object(browser_brain_ctl, "_ensure_service")
+    def test_read_only_browser_diagnostics_call_expected_routes(self, ensure_service, request, printer) -> None:
+        request.return_value = {"messages": []}
+
+        exit_code = browser_brain_ctl.main(["console", "--tab-id", "tab-1", "--limit", "5"])
+        self.assertEqual(exit_code, 0)
+        request.assert_called_with(
+            browser_brain_ctl.DEFAULT_BASE_URL,
+            "POST",
+            "/v1/console",
+            {"tab_id": "tab-1", "limit": 5},
+        )
+
+        exit_code = browser_brain_ctl.main(["network", "--tab-id", "tab-1", "--limit", "5"])
+        self.assertEqual(exit_code, 0)
+        request.assert_called_with(
+            browser_brain_ctl.DEFAULT_BASE_URL,
+            "POST",
+            "/v1/network",
+            {"tab_id": "tab-1", "limit": 5},
+        )
+
+        self.assertEqual(ensure_service.call_count, 2)
+        self.assertEqual(printer.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

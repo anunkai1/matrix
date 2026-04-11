@@ -17,6 +17,13 @@ def _parse_int(value: str | None, default: int) -> int:
     return int(value)
 
 
+def _parse_list(value: str | None) -> tuple[str, ...]:
+    if value is None or value.strip() == "":
+        return ()
+    normalized = value.replace(";", ",")
+    return tuple(item.strip() for item in normalized.split(",") if item.strip())
+
+
 def _parse_connection_mode(value: str | None, default: str) -> str:
     if value is None or value.strip() == "":
         return default
@@ -42,6 +49,9 @@ class BrowserBrainConfig:
     screenshot_ttl_hours: int = 24
     headless: bool = True
     log_actions: bool = True
+    navigation_allowed_origins: tuple[str, ...] = ()
+    navigation_blocked_origins: tuple[str, ...] = ()
+    allow_file_urls: bool = False
 
     @property
     def cdp_endpoint_url(self) -> str:
@@ -70,4 +80,7 @@ class BrowserBrainConfig:
             screenshot_ttl_hours=_parse_int(values.get("BROWSER_BRAIN_SCREENSHOT_TTL_HOURS"), 24),
             headless=_parse_bool(values.get("BROWSER_BRAIN_HEADLESS"), True),
             log_actions=_parse_bool(values.get("BROWSER_BRAIN_LOG_ACTIONS"), True),
+            navigation_allowed_origins=_parse_list(values.get("BROWSER_BRAIN_ALLOWED_ORIGINS")),
+            navigation_blocked_origins=_parse_list(values.get("BROWSER_BRAIN_BLOCKED_ORIGINS")),
+            allow_file_urls=_parse_bool(values.get("BROWSER_BRAIN_ALLOW_FILE_URLS"), False),
         )

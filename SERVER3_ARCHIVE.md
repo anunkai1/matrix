@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-11 (Summary Roll-Forward Trim for Browser Brain Hardening)
+
+Summary:
+- Added a new rolling-summary entry for the Browser Brain hardening pass inspired by the Microsoft `playwright-mcp` comparison.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-04-06: hardened Govorun’s daily WhatsApp uplift sender in `ops/whatsapp_govorun/send_daily_uplift.py` so a chosen Reddit LPT is reserved in the local history DB before delivery and only flipped from `pending` to `sent` after the bridge call returns, preventing the next morning from reusing the same tip when the prior day timed out after likely delivery; added focused coverage in `tests/whatsapp_govorun/test_send_daily_uplift.py` and migrated the live Govorun uplift DB schema to include the new `delivery_status` field.
+
 ## 2026-04-10 (Summary Roll-Forward Trim for Capabilities-Doc Removal)
 
 Summary:

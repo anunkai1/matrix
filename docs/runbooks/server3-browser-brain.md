@@ -118,7 +118,13 @@ Routes:
 - `POST /v1/snapshot`
 - `POST /v1/screenshot`
 - `POST /v1/wait`
+- `POST /v1/console`
+- `POST /v1/network`
+- `POST /v1/dialogs`
+- `POST /v1/dialogs/handle`
 - `POST /v1/act/click`
+- `POST /v1/act/hover`
+- `POST /v1/act/select`
 - `POST /v1/act/type`
 - `POST /v1/act/press`
 - `POST /v1/act/upload`
@@ -155,6 +161,12 @@ Wrapper examples:
 bash ops/browser_brain/browser_brain_ctl.sh open --url https://example.com
 bash ops/browser_brain/browser_brain_ctl.sh snapshot --tab-id tab-1234abcd
 bash ops/browser_brain/browser_brain_ctl.sh click --tab-id tab-1234abcd --snapshot-id snap-1234abcd --ref el-0001
+bash ops/browser_brain/browser_brain_ctl.sh hover --tab-id tab-1234abcd --snapshot-id snap-1234abcd --ref el-0001
+bash ops/browser_brain/browser_brain_ctl.sh select --tab-id tab-1234abcd --snapshot-id snap-1234abcd --ref el-0003 --value option-value
+bash ops/browser_brain/browser_brain_ctl.sh console --tab-id tab-1234abcd --limit 20
+bash ops/browser_brain/browser_brain_ctl.sh network --tab-id tab-1234abcd --limit 20
+bash ops/browser_brain/browser_brain_ctl.sh dialogs --tab-id tab-1234abcd
+bash ops/browser_brain/browser_brain_ctl.sh dialog-handle --tab-id tab-1234abcd --accept  # arms the next dialog
 bash ops/browser_brain/browser_brain_ctl.sh upload --tab-id tab-1234abcd --snapshot-id snap-1234abcd --ref el-0002 --path /tmp/example.mp4
 ```
 
@@ -162,11 +174,46 @@ bash ops/browser_brain/browser_brain_ctl.sh upload --tab-id tab-1234abcd --snaps
 
 - The service keeps one isolated persistent browser profile under `/var/lib/server3-browser-brain/profile`.
 - Snapshot refs are short-lived and scoped to the most recent snapshot for a tab.
+- Snapshot responses include an ARIA snapshot plus locator hints, and actions prefer Playwright locator resolution before falling back to the legacy DOM fingerprint matcher.
 - On stale-target failures the service performs one bounded re-snapshot/rebind attempt, then returns a structured error.
 - Screenshots are stored under `/var/lib/server3-browser-brain/captures` and old files are cleaned up on service start based on the configured TTL.
 - Typed text is not logged verbatim; only action metadata is logged.
 - Architect now has a keyword-routed first-caller path through `Server3 Browser ...` or `Browser Brain ...`.
 - In `existing_session` mode, Browser Brain attaches to a user-run local Chromium browser via CDP instead of launching its own browser process.
+- Safe extra action support covers hover, select option, next-dialog handling, dialog history, read-only console messages, and read-only network response events.
+- Dialog handling is armed before the action that is expected to trigger a dialog. Unarmed dialogs are dismissed and recorded so a browser action cannot deadlock while waiting for a second API call.
+
+## Navigation Policy
+
+Optional env controls:
+
+```bash
+BROWSER_BRAIN_ALLOWED_ORIGINS=
+BROWSER_BRAIN_BLOCKED_ORIGINS=
+BROWSER_BRAIN_ALLOW_FILE_URLS=false
+```
+
+Policy values accept comma- or semicolon-separated entries. Entries may be exact origins such as `https://example.com`, hostnames such as `example.com`, wildcard hosts such as `*.example.com`, or `*`.
+
+Rules:
+
+- `about:blank` is always allowed.
+- `http` and `https` are allowed by default unless blocked.
+- If `BROWSER_BRAIN_ALLOWED_ORIGINS` is set, navigation must match it.
+- `BROWSER_BRAIN_BLOCKED_ORIGINS` wins over the allowlist.
+- `file://` navigation is blocked unless `BROWSER_BRAIN_ALLOW_FILE_URLS=true`.
+- Redirects are checked after navigation and reported as `navigation_blocked_after_redirect` if the final URL violates policy.
+
+## Live Smoke Test
+
+Run a direct managed-browser smoke test without Telegram:
+
+```bash
+cd /home/architect/matrix
+/var/lib/server3-browser-brain/venv/bin/python ops/browser_brain/smoke_test.py
+```
+
+The smoke test starts a local HTTP fixture, launches Browser Brain with a temporary managed profile, verifies open/snapshot/click/type/select/hover/dialog/console/network/screenshot behavior, then closes the browser. It prefers Playwright's bundled Chromium for deterministic headless verification; set `BROWSER_BRAIN_SMOKE_BROWSER=/path/to/browser` to override the executable.
 
 ## Out Of Scope For This MVP
 

@@ -22,6 +22,9 @@ class BrowserBrainConfigTests(unittest.TestCase):
                 "BROWSER_BRAIN_SCREENSHOT_TTL_HOURS": "3",
                 "BROWSER_BRAIN_HEADLESS": "false",
                 "BROWSER_BRAIN_LOG_ACTIONS": "0",
+                "BROWSER_BRAIN_ALLOWED_ORIGINS": "https://example.com, *.trusted.test",
+                "BROWSER_BRAIN_BLOCKED_ORIGINS": "https://blocked.example",
+                "BROWSER_BRAIN_ALLOW_FILE_URLS": "true",
             }
         )
 
@@ -40,6 +43,9 @@ class BrowserBrainConfigTests(unittest.TestCase):
         self.assertEqual(config.screenshot_ttl_hours, 3)
         self.assertFalse(config.headless)
         self.assertFalse(config.log_actions)
+        self.assertEqual(config.navigation_allowed_origins, ("https://example.com", "*.trusted.test"))
+        self.assertEqual(config.navigation_blocked_origins, ("https://blocked.example",))
+        self.assertTrue(config.allow_file_urls)
 
 
 if __name__ == "__main__":

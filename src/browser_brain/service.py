@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from .config import BrowserBrainConfig
 
@@ -233,6 +236,9 @@ class SnapshotElement:
     href: str
     aria_label: str
     content_editable: bool
+    locator_kind: str = ""
+    locator_value: str = ""
+    locator_selector: str = ""
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -251,6 +257,9 @@ class SnapshotElement:
             "href": self.href,
             "aria_label": self.aria_label,
             "content_editable": self.content_editable,
+            "locator_kind": self.locator_kind,
+            "locator_value": self.locator_value,
+            "locator_selector": self.locator_selector,
         }
 
 
@@ -259,6 +268,7 @@ class SnapshotRecord:
     snapshot_id: str
     tab_id: str
     created_at: str
+    aria_snapshot: str = ""
     elements: dict[str, SnapshotElement] = field(default_factory=dict)
 
 
@@ -272,6 +282,11 @@ class BrowserBrainService:
         self._started_at: datetime | None = None
         self._tab_ids: dict[int, str] = {}
         self._snapshots_by_tab: dict[str, SnapshotRecord] = {}
+        self._observed_pages: set[int] = set()
+        self._console_messages_by_tab: dict[str, list[dict[str, Any]]] = {}
+        self._network_events_by_tab: dict[str, list[dict[str, Any]]] = {}
+        self._dialogs_by_tab: dict[str, Any] = {}
+        self._next_dialog_policy_by_tab: dict[str, dict[str, Any]] = {}
 
     def status(self, _payload: dict[str, Any] | None = None) -> dict[str, Any]:
         with self._lock:
@@ -285,6 +300,11 @@ class BrowserBrainService:
                 "user_data_dir": str(self.config.browser_user_data_dir),
                 "capture_dir": str(self.config.capture_dir),
                 "cdp_endpoint_url": self.config.cdp_endpoint_url if self.config.connection_mode == "existing_session" else None,
+                "navigation_policy": {
+                    "allowed_origins": list(self.config.navigation_allowed_origins),
+                    "blocked_origins": list(self.config.navigation_blocked_origins),
+                    "allow_file_urls": self.config.allow_file_urls,
+                },
                 "started_at": self._started_at.isoformat() if self._started_at else None,
                 "tabs": tabs,
             }
@@ -316,10 +336,12 @@ class BrowserBrainService:
 
     def tabs_open(self, payload: dict[str, Any]) -> dict[str, Any]:
         url = str(payload.get("url") or "about:blank")
+        self._validate_navigation_url(url)
         with self._lock:
             self._ensure_started()
             page = self._create_page(url)
             tab = self._tab_payload(page)
+            self._validate_navigation_url(tab["url"], after_redirect=True)
             self._log_action("tabs.open", {"tab_id": tab["tab_id"], "url": url})
             return {"tab": tab}
 
@@ -344,10 +366,12 @@ class BrowserBrainService:
         url = str(payload.get("url") or "")
         if not url:
             raise BrowserBrainError("missing_url", "navigate requires a url")
+        self._validate_navigation_url(url)
         with self._lock:
             page = self._page_for_payload(payload)
             page.goto(url, wait_until="domcontentloaded", timeout=self.config.action_timeout_ms)
             tab = self._tab_payload(page)
+            self._validate_navigation_url(tab["url"], after_redirect=True)
             self._log_action("navigate", {"tab_id": tab["tab_id"], "url": url})
             return {"tab": tab}
 
@@ -363,6 +387,7 @@ class BrowserBrainService:
                 "tab": tab,
                 "snapshot_id": snapshot.snapshot_id,
                 "created_at": snapshot.created_at,
+                "aria_snapshot": snapshot.aria_snapshot,
                 "elements": [element.public_dict() for element in snapshot.elements.values()],
             }
 
@@ -390,13 +415,13 @@ class BrowserBrainService:
             elif condition == "url_contains":
                 if not value:
                     raise BrowserBrainError("missing_value", "wait url_contains requires value")
-                page.wait_for_function("(expected) => window.location.href.includes(expected)", value, timeout=timeout_ms)
+                page.wait_for_function("(expected) => window.location.href.includes(expected)", arg=value, timeout=timeout_ms)
             elif condition == "text":
                 if not value:
                     raise BrowserBrainError("missing_value", "wait text requires value")
                 page.wait_for_function(
                     "(expected) => document.body && document.body.innerText && document.body.innerText.includes(expected)",
-                    value,
+                    arg=value,
                     timeout=timeout_ms,
                 )
             else:
@@ -407,6 +432,45 @@ class BrowserBrainService:
             self._log_action("wait", {"tab_id": self._tab_id(page), "condition": condition, "value": value})
             return {"tab": self._tab_payload(page), "condition": condition, "value": value, "ok": True}
 
+    def console_messages(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            page = self._page_for_payload(payload)
+            tab_id = self._tab_id(page)
+            messages = list(self._console_messages_by_tab.get(tab_id, []))
+            limit = int(payload.get("limit") or 50)
+            return {"tab": self._tab_payload(page), "messages": messages[-limit:]}
+
+    def network_events(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            page = self._page_for_payload(payload)
+            tab_id = self._tab_id(page)
+            events = list(self._network_events_by_tab.get(tab_id, []))
+            limit = int(payload.get("limit") or 50)
+            return {"tab": self._tab_payload(page), "events": events[-limit:]}
+
+    def dialogs_list(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            page = self._page_for_payload(payload)
+            tab_id = self._tab_id(page)
+            dialog = self._dialogs_by_tab.get(tab_id)
+            tab = {"tab_id": tab_id, "url": page.url, "title": ""} if dialog else self._tab_payload(page)
+            return {"tab": tab, "dialog": self._dialog_payload(dialog) if dialog else None}
+
+    def dialog_handle(self, payload: dict[str, Any]) -> dict[str, Any]:
+        accept = bool(payload.get("accept", True))
+        prompt_text = payload.get("prompt_text")
+        with self._lock:
+            page = self._page_for_payload(payload)
+            tab_id = self._tab_id(page)
+            self._next_dialog_policy_by_tab[tab_id] = {"accept": accept, "prompt_text": prompt_text}
+            self._log_action("dialog.handle.arm", {"tab_id": tab_id, "accept": accept})
+            return {
+                "tab": self._tab_payload(page),
+                "armed": True,
+                "accept": accept,
+                "last_dialog": self._dialogs_by_tab.get(tab_id),
+            }
+
     def act_click(self, payload: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             page = self._page_for_payload(payload)
@@ -414,6 +478,34 @@ class BrowserBrainService:
             element.click(timeout=self.config.action_timeout_ms)
             self._log_action("act.click", {"tab_id": self._tab_id(page), "ref": payload.get("ref")})
             return {"tab": self._tab_payload(page), "ref": payload.get("ref"), "ok": True}
+
+    def act_hover(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            page = self._page_for_payload(payload)
+            element = self._resolve_element(page, payload)
+            element.hover(timeout=self.config.action_timeout_ms)
+            self._log_action("act.hover", {"tab_id": self._tab_id(page), "ref": payload.get("ref")})
+            return {"tab": self._tab_payload(page), "ref": payload.get("ref"), "ok": True}
+
+    def act_select(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raw_values = payload.get("values")
+        if raw_values is None:
+            raw_value = str(payload.get("value") or "").strip()
+            if not raw_value:
+                raise BrowserBrainError("missing_value", "act.select requires value or values")
+            values: str | list[str] = raw_value
+        elif isinstance(raw_values, list):
+            values = [str(value) for value in raw_values if str(value) != ""]
+            if not values:
+                raise BrowserBrainError("missing_value", "act.select values must include at least one value")
+        else:
+            raise BrowserBrainError("invalid_values", "act.select values must be a JSON array")
+        with self._lock:
+            page = self._page_for_payload(payload)
+            element = self._resolve_element(page, payload)
+            selected = element.select_option(values, timeout=self.config.action_timeout_ms)
+            self._log_action("act.select", {"tab_id": self._tab_id(page), "ref": payload.get("ref"), "selected_count": len(selected)})
+            return {"tab": self._tab_payload(page), "ref": payload.get("ref"), "selected": selected, "ok": True}
 
     def act_type(self, payload: dict[str, Any]) -> dict[str, Any]:
         text = str(payload.get("text") or "")
@@ -528,6 +620,8 @@ class BrowserBrainService:
         self.config.capture_dir.mkdir(parents=True, exist_ok=True)
         if self.config.connection_mode == "managed":
             self.config.browser_user_data_dir.mkdir(parents=True, exist_ok=True)
+            (self.config.state_dir / "config").mkdir(parents=True, exist_ok=True)
+            (self.config.state_dir / "cache").mkdir(parents=True, exist_ok=True)
 
     def _launch_browser(self) -> None:
         try:
@@ -562,12 +656,19 @@ class BrowserBrainService:
             "--disable-background-networking",
             "--disable-sync",
             "--disable-component-update",
+            "--disable-crash-reporter",
+            "--disable-crashpad",
         ]
         self._browser = self._playwright.chromium.launch_persistent_context(
             str(self.config.browser_user_data_dir),
             executable_path=self.config.browser_executable,
             headless=self.config.headless,
             args=args,
+            env={
+                **os.environ,
+                "XDG_CONFIG_HOME": str(self.config.state_dir / "config"),
+                "XDG_CACHE_HOME": str(self.config.state_dir / "cache"),
+            },
         )
 
     def _attach_existing_session_browser(self) -> None:
@@ -607,6 +708,11 @@ class BrowserBrainService:
         self._browser_connection = None
         self._playwright = None
         self._started_at = None
+        self._observed_pages.clear()
+        self._console_messages_by_tab.clear()
+        self._network_events_by_tab.clear()
+        self._dialogs_by_tab.clear()
+        self._next_dialog_policy_by_tab.clear()
         if browser is not None and self.config.connection_mode == "managed":
             try:
                 browser.close()
@@ -630,13 +736,19 @@ class BrowserBrainService:
 
     def _live_pages(self):
         context = self._default_context()
-        return [page for page in context.pages if not page.is_closed()]
+        pages = [page for page in context.pages if not page.is_closed()]
+        for page in pages:
+            self._register_page_observers(page)
+        return pages
 
     def _create_page(self, url: str):
+        self._validate_navigation_url(url)
         context = self._default_context()
         page = context.new_page()
+        self._register_page_observers(page)
         if url and url != "about:blank":
             page.goto(url, wait_until="domcontentloaded", timeout=self.config.action_timeout_ms)
+            self._validate_navigation_url(page.url, after_redirect=True)
         return page
 
     def _tab_id(self, page) -> str:
@@ -661,6 +773,17 @@ class BrowserBrainService:
         payloads = [self._tab_payload(page) for page in self._live_pages()]
         live_ids = {id(page) for page in self._live_pages()}
         self._tab_ids = {key: value for key, value in self._tab_ids.items() if key in live_ids}
+        live_tab_ids = set(self._tab_ids.values())
+        self._console_messages_by_tab = {
+            key: value for key, value in self._console_messages_by_tab.items() if key in live_tab_ids
+        }
+        self._network_events_by_tab = {
+            key: value for key, value in self._network_events_by_tab.items() if key in live_tab_ids
+        }
+        self._dialogs_by_tab = {key: value for key, value in self._dialogs_by_tab.items() if key in live_tab_ids}
+        self._next_dialog_policy_by_tab = {
+            key: value for key, value in self._next_dialog_policy_by_tab.items() if key in live_tab_ids
+        }
         return payloads
 
     def _page_for_payload(self, payload: dict[str, Any]):
@@ -680,6 +803,11 @@ class BrowserBrainService:
         snapshot_id = f"snap-{uuid.uuid4().hex[:8]}"
         created_at = datetime.now(timezone.utc).isoformat()
         elements: dict[str, SnapshotElement] = {}
+        aria_snapshot = ""
+        try:
+            aria_snapshot = str(page.locator("body").aria_snapshot(timeout=self.config.action_timeout_ms) or "")
+        except Exception:
+            aria_snapshot = ""
         index = 0
         for frame in page.frames:
             frame_id = frame.url or "about:blank"
@@ -708,8 +836,16 @@ class BrowserBrainService:
                     aria_label=str(candidate.get("aria_label") or ""),
                     content_editable=bool(candidate.get("content_editable")),
                 )
+                element.locator_kind, element.locator_value = self._locator_hint(element)
+                element.locator_selector = self._selector_hint(element)
                 elements[ref] = element
-        return SnapshotRecord(snapshot_id=snapshot_id, tab_id=self._tab_id(page), created_at=created_at, elements=elements)
+        return SnapshotRecord(
+            snapshot_id=snapshot_id,
+            tab_id=self._tab_id(page),
+            created_at=created_at,
+            aria_snapshot=aria_snapshot,
+            elements=elements,
+        )
 
     def _resolve_element(self, page, payload: dict[str, Any]):
         snapshot = self._snapshot_for_payload(payload)
@@ -754,6 +890,15 @@ class BrowserBrainService:
         for frame in page.frames:
             if (frame.url or "about:blank") != element.frame_id:
                 continue
+            locator = self._locator_for_element(frame, element)
+            if locator is not None:
+                try:
+                    if locator.count() == 1:
+                        handle = locator.element_handle(timeout=self.config.action_timeout_ms)
+                        if handle is not None:
+                            return handle
+                except Exception:
+                    pass
             try:
                 handle = frame.evaluate_handle(FIND_ELEMENT_JS, element.public_dict())
             except Exception:
@@ -762,6 +907,196 @@ class BrowserBrainService:
             if resolved is not None:
                 return resolved
         return None
+
+    def _locator_hint(self, element: SnapshotElement) -> tuple[str, str]:
+        if element.role and element.name:
+            return "role", f"{element.role}:{element.name}"
+        if element.aria_label:
+            return "label", element.aria_label
+        if element.placeholder:
+            return "placeholder", element.placeholder
+        if element.title:
+            return "title", element.title
+        if element.text:
+            return "text", element.text
+        return "", ""
+
+    def _selector_hint(self, element: SnapshotElement) -> str:
+        if element.role and element.name:
+            escaped_name = element.name.replace("\\", "\\\\").replace('"', '\\"')
+            return f'role={element.role}[name="{escaped_name}"]'
+        if element.aria_label:
+            escaped = element.aria_label.replace("\\", "\\\\").replace('"', '\\"')
+            return f'[aria-label="{escaped}"]'
+        return element.tag
+
+    def _locator_for_element(self, frame, element: SnapshotElement):
+        if element.role and element.name:
+            try:
+                return frame.get_by_role(element.role, name=element.name, exact=True)
+            except Exception:
+                pass
+        if element.aria_label:
+            try:
+                return frame.get_by_label(element.aria_label, exact=True)
+            except Exception:
+                pass
+        if element.placeholder:
+            try:
+                return frame.get_by_placeholder(element.placeholder, exact=True)
+            except Exception:
+                pass
+        if element.title:
+            try:
+                return frame.get_by_title(element.title, exact=True)
+            except Exception:
+                pass
+        if element.text and element.tag in {"button", "a", "summary"}:
+            try:
+                return frame.get_by_text(element.text, exact=True)
+            except Exception:
+                pass
+        return None
+
+    def _register_page_observers(self, page) -> None:
+        page_key = id(page)
+        if page_key in self._observed_pages:
+            return
+        self._observed_pages.add(page_key)
+
+        def on_console(message) -> None:
+            with self._lock:
+                tab_id = self._tab_id(page)
+                entry = {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "type": getattr(message, "type", ""),
+                    "text": getattr(message, "text", ""),
+                    "location": getattr(message, "location", None),
+                }
+                self._append_limited(self._console_messages_by_tab.setdefault(tab_id, []), entry)
+
+        def on_response(response) -> None:
+            with self._lock:
+                request = getattr(response, "request", None)
+                tab_id = self._tab_id(page)
+                entry = {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "method": getattr(request, "method", "") if request is not None else "",
+                    "url": getattr(response, "url", ""),
+                    "status": getattr(response, "status", None),
+                    "resource_type": getattr(request, "resource_type", "") if request is not None else "",
+                }
+                self._append_limited(self._network_events_by_tab.setdefault(tab_id, []), entry)
+
+        def on_dialog(dialog) -> None:
+            with self._lock:
+                tab_id = self._tab_id(page)
+                payload = self._dialog_payload(dialog)
+                policy = self._next_dialog_policy_by_tab.pop(tab_id, {"accept": False, "prompt_text": None})
+                accept = bool(policy.get("accept"))
+                try:
+                    if accept:
+                        prompt_text = policy.get("prompt_text")
+                        dialog.accept(str(prompt_text)) if prompt_text is not None else dialog.accept()
+                    else:
+                        dialog.dismiss()
+                    payload.update({"handled": True, "accepted": accept})
+                except Exception as exc:
+                    payload.update({"handled": False, "accepted": accept, "error": str(exc)})
+                self._dialogs_by_tab[tab_id] = payload
+
+        try:
+            page.on("console", on_console)
+            page.on("response", on_response)
+            page.on("dialog", on_dialog)
+        except Exception:
+            self._observed_pages.discard(page_key)
+
+    def _append_limited(self, items: list[dict[str, Any]], entry: dict[str, Any], limit: int = 200) -> None:
+        items.append(entry)
+        if len(items) > limit:
+            del items[: len(items) - limit]
+
+    def _dialog_payload(self, dialog) -> dict[str, Any]:
+        if dialog is None:
+            return {}
+        if isinstance(dialog, dict):
+            return dict(dialog)
+        return {
+            "type": getattr(dialog, "type", ""),
+            "message": getattr(dialog, "message", ""),
+            "default_value": getattr(dialog, "default_value", ""),
+        }
+
+    def _validate_navigation_url(self, url: str, *, after_redirect: bool = False) -> None:
+        if not url or url == "about:blank":
+            return
+        parsed = urlparse(url)
+        if parsed.scheme == "about":
+            return
+        if parsed.scheme == "file" and not self.config.allow_file_urls:
+            raise BrowserBrainError(
+                "navigation_blocked",
+                "Navigation to file URLs is disabled",
+                status=403,
+                details={"url": url},
+            )
+        if parsed.scheme and parsed.scheme not in {"http", "https", "file"}:
+            raise BrowserBrainError(
+                "navigation_blocked",
+                f"Navigation scheme is not allowed: {parsed.scheme}",
+                status=403,
+                details={"url": url},
+            )
+        origin = self._origin_for_url(url)
+        blocked = self._match_origin_policy(origin, self.config.navigation_blocked_origins)
+        allowed = not self.config.navigation_allowed_origins or self._match_origin_policy(
+            origin,
+            self.config.navigation_allowed_origins,
+        )
+        if blocked or not allowed:
+            raise BrowserBrainError(
+                "navigation_blocked_after_redirect" if after_redirect else "navigation_blocked",
+                "Navigation target is outside Browser Brain policy",
+                status=403,
+                details={
+                    "url": url,
+                    "origin": origin,
+                    "allowed_origins": list(self.config.navigation_allowed_origins),
+                    "blocked_origins": list(self.config.navigation_blocked_origins),
+                },
+            )
+
+    def _origin_for_url(self, url: str) -> str:
+        parsed = urlparse(url)
+        if parsed.scheme == "file":
+            return "file://"
+        if not parsed.scheme:
+            return ""
+        return f"{parsed.scheme}://{parsed.netloc}".lower()
+
+    def _match_origin_policy(self, origin: str, patterns: tuple[str, ...]) -> bool:
+        if not patterns:
+            return False
+        parsed = urlparse(origin)
+        host = (parsed.hostname or "").lower()
+        for raw_pattern in patterns:
+            pattern = raw_pattern.strip().lower()
+            if not pattern:
+                continue
+            if pattern == "*":
+                return True
+            if pattern == "file://" and origin == "file://":
+                return True
+            if "://" in pattern:
+                if fnmatch(origin, pattern):
+                    return True
+                continue
+            if pattern.startswith("*.") and host.endswith(pattern[1:]):
+                return True
+            if host == pattern or fnmatch(host, pattern):
+                return True
+        return False
 
     def _cleanup_old_captures(self) -> None:
         if not self.config.capture_dir.exists():

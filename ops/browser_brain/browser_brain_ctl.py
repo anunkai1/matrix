@@ -93,10 +93,37 @@ def build_parser() -> argparse.ArgumentParser:
     wait_parser.add_argument("--value", default="")
     wait_parser.add_argument("--timeout-ms", type=int)
 
+    console_parser = subparsers.add_parser("console")
+    console_parser.add_argument("--tab-id")
+    console_parser.add_argument("--limit", type=int)
+
+    network_parser = subparsers.add_parser("network")
+    network_parser.add_argument("--tab-id")
+    network_parser.add_argument("--limit", type=int)
+
+    dialogs_parser = subparsers.add_parser("dialogs")
+    dialogs_parser.add_argument("--tab-id")
+
+    dialog_handle_parser = subparsers.add_parser("dialog-handle")
+    dialog_handle_parser.add_argument("--tab-id")
+    dialog_handle_parser.add_argument("--accept", action=argparse.BooleanOptionalAction, default=True)
+    dialog_handle_parser.add_argument("--prompt-text")
+
     click_parser = subparsers.add_parser("click")
     click_parser.add_argument("--tab-id", required=True)
     click_parser.add_argument("--snapshot-id", required=True)
     click_parser.add_argument("--ref", required=True)
+
+    hover_parser = subparsers.add_parser("hover")
+    hover_parser.add_argument("--tab-id", required=True)
+    hover_parser.add_argument("--snapshot-id", required=True)
+    hover_parser.add_argument("--ref", required=True)
+
+    select_parser = subparsers.add_parser("select")
+    select_parser.add_argument("--tab-id", required=True)
+    select_parser.add_argument("--snapshot-id", required=True)
+    select_parser.add_argument("--ref", required=True)
+    select_parser.add_argument("--value", dest="values", action="append", required=True)
 
     type_parser = subparsers.add_parser("type")
     type_parser.add_argument("--tab-id", required=True)
@@ -158,12 +185,52 @@ def main(argv: list[str] | None = None) -> int:
         if args.timeout_ms is not None:
             request_payload["timeout_ms"] = args.timeout_ms
         payload = _request(args.base_url, "POST", "/v1/wait", request_payload)
+    elif command == "console":
+        request_payload = {}
+        if args.tab_id:
+            request_payload["tab_id"] = args.tab_id
+        if args.limit is not None:
+            request_payload["limit"] = args.limit
+        payload = _request(args.base_url, "POST", "/v1/console", request_payload)
+    elif command == "network":
+        request_payload = {}
+        if args.tab_id:
+            request_payload["tab_id"] = args.tab_id
+        if args.limit is not None:
+            request_payload["limit"] = args.limit
+        payload = _request(args.base_url, "POST", "/v1/network", request_payload)
+    elif command == "dialogs":
+        request_payload = {}
+        if args.tab_id:
+            request_payload["tab_id"] = args.tab_id
+        payload = _request(args.base_url, "POST", "/v1/dialogs", request_payload)
+    elif command == "dialog-handle":
+        request_payload = {"accept": args.accept}
+        if args.tab_id:
+            request_payload["tab_id"] = args.tab_id
+        if args.prompt_text is not None:
+            request_payload["prompt_text"] = args.prompt_text
+        payload = _request(args.base_url, "POST", "/v1/dialogs/handle", request_payload)
     elif command == "click":
         payload = _request(
             args.base_url,
             "POST",
             "/v1/act/click",
             {"tab_id": args.tab_id, "snapshot_id": args.snapshot_id, "ref": args.ref},
+        )
+    elif command == "hover":
+        payload = _request(
+            args.base_url,
+            "POST",
+            "/v1/act/hover",
+            {"tab_id": args.tab_id, "snapshot_id": args.snapshot_id, "ref": args.ref},
+        )
+    elif command == "select":
+        payload = _request(
+            args.base_url,
+            "POST",
+            "/v1/act/select",
+            {"tab_id": args.tab_id, "snapshot_id": args.snapshot_id, "ref": args.ref, "values": args.values},
         )
     elif command == "type":
         payload = _request(

@@ -22,6 +22,9 @@ class FakePage:
     def title(self) -> str:
         return self._title
 
+    def on(self, _event, _callback) -> None:
+        return None
+
 
 class FakeContext:
     def __init__(self, pages: list[FakePage]) -> None:
@@ -118,6 +121,123 @@ class BrowserBrainServiceTests(unittest.TestCase):
             service.act_upload({"tab_id": "tab-1", "snapshot_id": "snap-1", "ref": "el-0007", "path": "/tmp/does-not-exist.mp4"})
 
         self.assertEqual(ctx.exception.code, "file_not_found")
+
+    def test_snapshot_includes_aria_snapshot_and_locator_hints(self) -> None:
+        service = BrowserBrainService(BrowserBrainConfig())
+        frame = mock.Mock()
+        frame.url = "https://example.com"
+        frame.name = ""
+        frame.evaluate.return_value = [
+            {
+                "tag": "button",
+                "role": "button",
+                "name": "Submit",
+                "text": "Submit",
+                "visible": True,
+                "enabled": True,
+                "input_type": "",
+                "placeholder": "",
+                "title": "",
+                "href": "",
+                "aria_label": "",
+                "content_editable": False,
+            }
+        ]
+        page = mock.Mock()
+        page.frames = [frame]
+        page.locator.return_value.aria_snapshot.return_value = "- button \"Submit\""
+
+        snapshot = service._build_snapshot(page)
+
+        element = snapshot.elements["el-0001"]
+        self.assertEqual(snapshot.aria_snapshot, "- button \"Submit\"")
+        self.assertEqual(element.locator_kind, "role")
+        self.assertEqual(element.locator_value, "button:Submit")
+        self.assertIn("role=button", element.locator_selector)
+
+    def test_find_element_prefers_unique_playwright_locator(self) -> None:
+        service = BrowserBrainService(BrowserBrainConfig(action_timeout_ms=123))
+        element = SimpleNamespace(role="button", name="Submit", frame_id="https://example.com", aria_label="", placeholder="", title="", text="", tag="button")
+        locator = mock.Mock()
+        handle = object()
+        locator.count.return_value = 1
+        locator.element_handle.return_value = handle
+        frame = mock.Mock()
+        frame.url = "https://example.com"
+        frame.get_by_role.return_value = locator
+        page = mock.Mock()
+        page.frames = [frame]
+
+        self.assertIs(service._find_element(page, element), handle)
+        frame.get_by_role.assert_called_once_with("button", name="Submit", exact=True)
+        locator.element_handle.assert_called_once_with(timeout=123)
+
+    def test_navigation_policy_blocks_untrusted_origin(self) -> None:
+        service = BrowserBrainService(
+            BrowserBrainConfig(navigation_allowed_origins=("https://example.com",), navigation_blocked_origins=())
+        )
+
+        service._validate_navigation_url("https://example.com/path")
+        with self.assertRaises(BrowserBrainError) as ctx:
+            service._validate_navigation_url("https://evil.example/path")
+
+        self.assertEqual(ctx.exception.code, "navigation_blocked")
+        self.assertEqual(ctx.exception.status, 403)
+
+    def test_safe_actions_call_playwright_element_methods(self) -> None:
+        service = BrowserBrainService(BrowserBrainConfig(action_timeout_ms=456))
+        page = object()
+        element = mock.Mock()
+        element.select_option.return_value = ["one"]
+
+        with (
+            mock.patch.object(service, "_page_for_payload", return_value=page),
+            mock.patch.object(service, "_resolve_element", return_value=element),
+            mock.patch.object(service, "_tab_payload", return_value={"tab_id": "tab-1"}),
+            mock.patch.object(service, "_tab_id", return_value="tab-1"),
+            mock.patch.object(service, "_log_action"),
+        ):
+            hover_result = service.act_hover({"tab_id": "tab-1", "snapshot_id": "snap-1", "ref": "el-0001"})
+            select_result = service.act_select(
+                {"tab_id": "tab-1", "snapshot_id": "snap-1", "ref": "el-0002", "values": ["one"]}
+            )
+
+        element.hover.assert_called_once_with(timeout=456)
+        element.select_option.assert_called_once_with(["one"], timeout=456)
+        self.assertTrue(hover_result["ok"])
+        self.assertTrue(select_result["ok"])
+
+    def test_wait_uses_playwright_arg_keyword(self) -> None:
+        service = BrowserBrainService(BrowserBrainConfig(action_timeout_ms=789))
+        page = mock.Mock()
+
+        with (
+            mock.patch.object(service, "_page_for_payload", return_value=page),
+            mock.patch.object(service, "_tab_payload", return_value={"tab_id": "tab-1"}),
+            mock.patch.object(service, "_tab_id", return_value="tab-1"),
+            mock.patch.object(service, "_log_action"),
+        ):
+            result = service.wait({"tab_id": "tab-1", "condition": "text", "value": "Ready"})
+
+        page.wait_for_function.assert_called_once_with(
+            "(expected) => document.body && document.body.innerText && document.body.innerText.includes(expected)",
+            arg="Ready",
+            timeout=789,
+        )
+        self.assertTrue(result["ok"])
+
+    def test_dialog_handle_arms_next_dialog_policy(self) -> None:
+        service = BrowserBrainService(BrowserBrainConfig())
+        page = FakePage("https://example.com", "Example")
+
+        with (
+            mock.patch.object(service, "_page_for_payload", return_value=page),
+            mock.patch.object(service, "_log_action"),
+        ):
+            result = service.dialog_handle({"tab_id": "tab-1", "accept": False})
+
+        self.assertTrue(result["armed"])
+        self.assertFalse(service._next_dialog_policy_by_tab[result["tab"]["tab_id"]]["accept"])
 
 
 if __name__ == "__main__":

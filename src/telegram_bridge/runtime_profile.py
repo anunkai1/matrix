@@ -225,7 +225,8 @@ def build_browser_brain_keyword_prompt(user_request: str) -> str:
         "- Prefer browser_brain_ctl.sh over raw curl or ad-hoc shell commands.\n"
         "- Start with `browser_brain_ctl.sh start` when browser state may be idle.\n"
         "- For page interaction, use `open` or `navigate`, then `snapshot`, then act using refs from that snapshot.\n"
-        "- Do not guess element targets; use exact snapshot refs for click/type/press actions.\n"
+        "- Use exact snapshot refs for click/type/press/hover/select/upload actions; do not guess element targets.\n"
+        "- Use console/network/dialogs for browser diagnostics instead of arbitrary JavaScript when possible.\n"
         "- After execution, report exact commands used plus resulting tab_id, snapshot_id, refs, and final URL/title."
     )
 
