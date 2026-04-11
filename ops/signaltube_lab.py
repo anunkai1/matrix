@@ -23,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="SignalTube logged-out Browser Brain lab collector")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--html", type=Path, default=DEFAULT_HTML)
-    parser.add_argument("--browser-brain-url", default="http://127.0.0.1:47831")
+    parser.add_argument("--browser-brain-url", default="http://127.0.0.1:47832")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     collect = subparsers.add_parser("collect")

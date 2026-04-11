@@ -14,6 +14,7 @@ The initial provider uses Browser Brain against a logged-out disposable browser 
 Run a small collection:
 
 ```bash
+ops/signaltube_lab_browser.sh start
 python3 ops/signaltube_lab.py collect --topic "latest space videos" --topic "LLM research"
 ```
 
@@ -33,7 +34,10 @@ Default local outputs:
 
 - SQLite DB: `private/signaltube/signaltube.sqlite`
 - HTML feed: `private/signaltube/feed.html`
+- Disposable Browser Brain state: `private/signaltube/browser-brain`
 
 The collector refuses to run if a Browser Brain snapshot looks logged into YouTube. It also requires a visible logged-out marker by default, because this lab mode should not operate through the owner's personal YouTube session.
 
 It also refuses Browser Brain `existing_session` mode. Run this against a managed disposable Browser Brain profile, not the visible TV/login browser.
+
+The helper `ops/signaltube_lab_browser.sh` starts that disposable managed Browser Brain server on `127.0.0.1:47832`.

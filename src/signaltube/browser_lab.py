@@ -6,11 +6,12 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
+from urllib.error import HTTPError, URLError
 
 from .models import VideoCandidate
 
 
-DEFAULT_BROWSER_BRAIN_URL = "http://127.0.0.1:47831"
+DEFAULT_BROWSER_BRAIN_URL = "http://127.0.0.1:47832"
 YOUTUBE_SEARCH_URL = "https://www.youtube.com/results"
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 SHORTS_PATH = "/shorts/"
@@ -37,8 +38,14 @@ class BrowserBrainClient:
             headers=headers,
             method=method,
         )
-        with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-            raw = response.read().decode("utf-8")
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                raw = response.read().decode("utf-8")
+        except HTTPError as exc:
+            raw = exc.read().decode("utf-8", errors="ignore") if exc.fp is not None else ""
+            raise SignalTubeBrowserLabError(f"Browser Brain API error at {self.base_url}: HTTP {exc.code} {raw}") from exc
+        except URLError as exc:
+            raise SignalTubeBrowserLabError(f"Browser Brain API unavailable at {self.base_url}: {exc.reason}") from exc
         parsed = json.loads(raw or "{}")
         if not isinstance(parsed, dict):
             raise SignalTubeBrowserLabError("Browser Brain returned a non-object payload")
@@ -58,6 +65,10 @@ class BrowserBrainClient:
             raise SignalTubeBrowserLabError("Browser Brain did not return a usable tab")
         tab_id = str(tab["tab_id"])
         self.request("POST", "/v1/wait", {"tab_id": tab_id, "condition": "load_state", "value": "domcontentloaded"})
+        try:
+            self.request("POST", "/v1/wait", {"tab_id": tab_id, "condition": "text", "value": "Sign in", "timeout_ms": 10000})
+        except SignalTubeBrowserLabError:
+            pass
         return self.request("POST", "/v1/snapshot", {"tab_id": tab_id})
 
 
