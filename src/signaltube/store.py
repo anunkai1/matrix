@@ -59,6 +59,12 @@ CREATE TABLE IF NOT EXISTS feedback_events (
   note TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS blocked_channels (
+  channel TEXT PRIMARY KEY,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
 """
 
 
@@ -179,6 +185,8 @@ class SignalTubeStore:
             )
             reasons = tuple(part.strip() for part in str(row["reasons"] or "").split(",") if part.strip())
             ranked.append(RankedVideo(candidate=candidate, score=float(row["score"]), reasons=reasons))
+        blocked_channels = self.load_blocked_channels()
+        ranked = [item for item in ranked if item.candidate.channel.strip().lower() not in blocked_channels]
         if diversify:
             return diversify_ranked(
                 ranked,
@@ -337,6 +345,47 @@ class SignalTubeStore:
                 ORDER BY created_at DESC, id DESC
                 """,
                 params,
+            ).fetchall()
+
+    def block_channel(self, channel: str, *, note: str = "") -> None:
+        normalized = channel.strip()
+        if not normalized:
+            raise ValueError("channel must not be empty")
+        now = datetime.now(timezone.utc).isoformat()
+        with self.connect() as db:
+            _ensure_schema(db)
+            db.execute(
+                """
+                INSERT INTO blocked_channels (channel, note, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(channel) DO UPDATE SET
+                  note=excluded.note
+                """,
+                (normalized, note.strip(), now),
+            )
+
+    def unblock_channel(self, channel: str) -> bool:
+        normalized = channel.strip()
+        with self.connect() as db:
+            _ensure_schema(db)
+            result = db.execute("DELETE FROM blocked_channels WHERE lower(channel) = lower(?)", (normalized,))
+            return result.rowcount > 0
+
+    def load_blocked_channels(self) -> set[str]:
+        with self.connect() as db:
+            _ensure_schema(db)
+            rows = db.execute("SELECT channel FROM blocked_channels ORDER BY lower(channel)").fetchall()
+        return {str(row["channel"]).strip().lower() for row in rows if str(row["channel"]).strip()}
+
+    def list_blocked_channels(self) -> list[sqlite3.Row]:
+        with self.connect() as db:
+            _ensure_schema(db)
+            return db.execute(
+                """
+                SELECT channel, note, created_at
+                FROM blocked_channels
+                ORDER BY lower(channel)
+                """
             ).fetchall()
 
 

@@ -76,6 +76,18 @@ def build_parser() -> argparse.ArgumentParser:
     topics_remove = topic_subparsers.add_parser("remove")
     topics_remove.add_argument("--topic", required=True)
 
+    channels = subparsers.add_parser("channels")
+    channel_subparsers = channels.add_subparsers(dest="channels_command", required=True)
+
+    channels_block = channel_subparsers.add_parser("block")
+    channels_block.add_argument("--channel", required=True)
+    channels_block.add_argument("--note", default="")
+
+    channels_unblock = channel_subparsers.add_parser("unblock")
+    channels_unblock.add_argument("--channel", required=True)
+
+    channel_subparsers.add_parser("list")
+
     return parser
 
 
@@ -100,6 +112,10 @@ def collect_for_topics(
         )
         if not skip_youtube_metadata:
             candidates = enrich_candidates_with_youtube_metadata(candidates)
+        blocked_channels = store.load_blocked_channels()
+        candidates = [
+            candidate for candidate in candidates if candidate.channel.strip().lower() not in blocked_channels
+        ]
         feedback_profile = store.load_feedback_profile(topic=topic)
         ranked = rank_candidates(candidates, topic=topic, feedback_profile=feedback_profile)
         store.save_ranked(topic, ranked)
@@ -255,6 +271,28 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "topics":
         return handle_topics_command(store, args)
+
+    if args.command == "channels":
+        if args.channels_command == "block":
+            store.block_channel(args.channel, note=args.note)
+            print(f"blocked channel '{args.channel.strip()}'")
+            return 0
+        if args.channels_command == "unblock":
+            removed = store.unblock_channel(args.channel)
+            if not removed:
+                print(f"channel not blocked: {args.channel}", file=sys.stderr)
+                return 1
+            print(f"unblocked channel '{args.channel.strip()}'")
+            return 0
+        if args.channels_command == "list":
+            channels = store.list_blocked_channels()
+            if not channels:
+                print("no blocked channels")
+                return 0
+            for row in channels:
+                note = str(row["note"] or "").strip() or "-"
+                print(f"{row['channel']}\tnote={note}\tcreated_at={row['created_at']}")
+            return 0
 
     raise AssertionError(f"Unhandled command: {args.command}")
 

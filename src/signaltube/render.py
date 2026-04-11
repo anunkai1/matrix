@@ -111,6 +111,11 @@ def _render_card(item: RankedVideo, *, db_path: Path, command_path: Path) -> str
             ("Save", "save"),
         )
     )
+    channel_action = _render_channel_block_button(
+        channel=candidate.channel or "YouTube",
+        db_path=db_path,
+        command_path=command_path,
+    )
     return f"""<article class="card">
   <a href="{html.escape(candidate.url)}"><img class="thumb" src="{html.escape(candidate.thumbnail_url)}" alt=""></a>
   <div class="body">
@@ -120,6 +125,7 @@ def _render_card(item: RankedVideo, *, db_path: Path, command_path: Path) -> str
     <div class="score">Score {item.score:.0f} · {html.escape(reasons)}</div>
     <div class="actions">
       {actions}
+      {channel_action}
     </div>
     <div class="status"></div>
   </div>
@@ -142,6 +148,14 @@ def _render_feedback_button(
     return (
         f'<button data-feedback-command="{html.escape(command)}">{html.escape(label)}</button>'
     )
+
+
+def _render_channel_block_button(*, channel: str, db_path: Path, command_path: Path) -> str:
+    command = (
+        f"python3 {command_path} --db {db_path} "
+        f"channels block --channel {quote_arg(channel)}"
+    )
+    return f'<button data-feedback-command="{html.escape(command)}">Don&#x27;t recommend this channel</button>'
 
 
 def quote_arg(value: str) -> str:
