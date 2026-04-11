@@ -177,4 +177,7 @@ def _looks_like_video_title(title: str) -> bool:
         return False
     lowered = title.lower()
     blocked = {"youtube", "home", "shorts", "subscriptions", "history", "sign in"}
-    return lowered not in blocked
+    if lowered in blocked:
+        return False
+    without_durations = re.sub(r"\b\d{1,2}(?::\d{2}){1,2}\b", "", lowered).strip()
+    return without_durations not in {"now playing", ""}

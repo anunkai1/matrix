@@ -60,6 +60,20 @@ class SignalTubeBrowserLabTests(unittest.TestCase):
         self.assertEqual([candidate.video_id for candidate in candidates], ["abcDEF_1234"])
         self.assertEqual(candidates[0].title, "A good space explainer")
 
+    def test_extract_video_candidates_skips_thumbnail_now_playing_labels(self) -> None:
+        snapshot = {
+            "elements": [
+                {"name": "Sign in", "href": "https://accounts.google.com/"},
+                {"name": "10:53:39 Now playing", "href": "https://www.youtube.com/watch?v=abcDEF_1234"},
+                {"name": "A good space explainer", "href": "https://www.youtube.com/watch?v=abcDEF_1234"},
+            ]
+        }
+
+        candidates = extract_video_candidates(snapshot, topic="space")
+
+        self.assertEqual([candidate.video_id for candidate in candidates], ["abcDEF_1234"])
+        self.assertEqual(candidates[0].title, "A good space explainer")
+
     def test_client_refuses_existing_session_mode(self) -> None:
         client = BrowserBrainClient()
         with mock.patch.object(BrowserBrainClient, "request", return_value={"connection_mode": "existing_session"}):

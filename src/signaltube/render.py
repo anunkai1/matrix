@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import html
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .models import RankedVideo
+
+
+BRISBANE_TZ = ZoneInfo("Australia/Brisbane")
 
 
 def render_feed(path: Path, ranked: list[RankedVideo], *, title: str = "SignalTube Lab") -> None:
@@ -33,6 +38,7 @@ def render_feed(path: Path, ranked: list[RankedVideo], *, title: str = "SignalTu
     .body {{ padding: 10px 12px 12px; }}
     .title {{ font-weight: 700; line-height: 1.25; color: #fff; text-decoration: none; }}
     .meta {{ color: #aab1bf; font-size: 13px; margin-top: 8px; }}
+    .published {{ color: #d7dde8; font-size: 13px; margin-top: 6px; }}
     .score {{ color: #d4e157; font-size: 12px; margin-top: 8px; }}
     .actions {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }}
     button {{ border: 1px solid #4a5260; border-radius: 6px; background: #20242d; color: #f5f5f5; padding: 6px 8px; }}
@@ -64,14 +70,30 @@ def _render_section(topic: str, items: list[RankedVideo]) -> str:
 def _render_card(item: RankedVideo) -> str:
     candidate = item.candidate
     reasons = ", ".join(item.reasons)
+    published = _format_published_at(candidate.published_at)
     return f"""<article class="card">
   <a href="{html.escape(candidate.url)}"><img class="thumb" src="{html.escape(candidate.thumbnail_url)}" alt=""></a>
   <div class="body">
     <a class="title" href="{html.escape(candidate.url)}">{html.escape(candidate.title)}</a>
     <div class="meta">{html.escape(candidate.channel or "YouTube")} · {html.escape(candidate.video_id)}</div>
+    <div class="published">Published: {html.escape(published)}</div>
     <div class="score">Score {item.score:.0f} · {html.escape(reasons)}</div>
     <div class="actions">
       <button>More like this</button><button>Less like this</button><button>Too clickbait</button><button>Save</button>
     </div>
   </div>
 </article>"""
+
+
+def _format_published_at(value: str) -> str:
+    if not value:
+        return "unavailable"
+    if len(value) == 10:
+        return f"{value} (date only)"
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    if parsed.tzinfo is None:
+        return parsed.strftime("%Y-%m-%d %H:%M")
+    return f"{parsed.astimezone(BRISBANE_TZ).strftime('%Y-%m-%d %H:%M')} AEST"

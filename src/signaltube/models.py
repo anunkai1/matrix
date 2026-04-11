@@ -10,6 +10,7 @@ class VideoCandidate:
     title: str
     channel: str = ""
     metadata_text: str = ""
+    published_at: str = ""
     source_topic: str = ""
     source: str = "browser_lab"
 

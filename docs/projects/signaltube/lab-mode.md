@@ -8,7 +8,7 @@ The initial provider uses Browser Brain against a logged-out disposable browser 
 - no downloads
 - no transcript harvesting at scale
 - no infinite crawler
-- minimal cached data: video id, title, source topic, and derived playback/thumbnail URLs
+- minimal cached data: video id, title, channel, publish timestamp when available, source topic, and derived playback/thumbnail URLs
 - Browser Brain discovery is expected to be fragile if YouTube changes the page
 
 Run a small collection:
@@ -17,6 +17,8 @@ Run a small collection:
 ops/signaltube_lab_browser.sh start
 python3 ops/signaltube_lab.py collect --topic "latest space videos" --topic "LLM research"
 ```
+
+Collection enriches each candidate with `yt-dlp` metadata by default so the rendered feed can show the publishing date/time for each video without downloading media. Use `--skip-youtube-metadata` for a faster Browser Brain-only discovery pass when publish times are not needed.
 
 Render an existing feed:
 
