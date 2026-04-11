@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -28,3 +28,18 @@ class RankedVideo:
     candidate: VideoCandidate
     score: float
     reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TopicConfig:
+    topic: str
+    enabled: bool = True
+    max_candidates: int = 40
+    sort_order: int = 100
+    last_collected_at: str = ""
+
+
+@dataclass(frozen=True)
+class FeedbackProfile:
+    video_scores: dict[str, float] = field(default_factory=dict)
+    channel_scores: dict[str, float] = field(default_factory=dict)

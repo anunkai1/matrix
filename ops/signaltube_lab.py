@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -11,7 +12,7 @@ if str(ROOT) not in sys.path:
 
 from src.signaltube.browser_lab import BrowserBrainClient, SignalTubeBrowserLabError, extract_video_candidates
 from src.signaltube.metadata import enrich_candidates_with_youtube_metadata
-from src.signaltube.ranking import rank_candidates
+from src.signaltube.ranking import feedback_weight_for_signal, rank_candidates
 from src.signaltube.render import render_feed
 from src.signaltube.store import SignalTubeStore
 
@@ -33,11 +34,154 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--allow-unverified-logged-out", action="store_true")
     collect.add_argument("--skip-youtube-metadata", action="store_true")
 
+    scheduled = subparsers.add_parser("scheduled-collect")
+    scheduled.add_argument("--topic", action="append", default=[])
+    scheduled.add_argument("--max-candidates-per-topic", type=int)
+    scheduled.add_argument("--render-limit", type=int, default=200)
+    scheduled.add_argument("--allow-unverified-logged-out", action="store_true")
+    scheduled.add_argument("--skip-youtube-metadata", action="store_true")
+
     render = subparsers.add_parser("render")
     render.add_argument("--topic")
     render.add_argument("--limit", type=int, default=80)
 
+    feedback = subparsers.add_parser("feedback")
+    feedback.add_argument("--topic", required=True)
+    feedback.add_argument("--video-id", required=True)
+    feedback.add_argument(
+        "--signal",
+        required=True,
+        choices=["more_like_this", "less_like_this", "too_clickbait", "save"],
+    )
+    feedback.add_argument("--note", default="")
+
+    topics = subparsers.add_parser("topics")
+    topic_subparsers = topics.add_subparsers(dest="topics_command", required=True)
+
+    topics_add = topic_subparsers.add_parser("add")
+    topics_add.add_argument("--topic", required=True)
+    topics_add.add_argument("--max-candidates", type=int, default=40)
+    topics_add.add_argument("--sort-order", type=int, default=100)
+    topics_add.add_argument("--disabled", action="store_true")
+
+    topics_list = topic_subparsers.add_parser("list")
+    topics_list.add_argument("--enabled-only", action="store_true")
+
+    topics_enable = topic_subparsers.add_parser("enable")
+    topics_enable.add_argument("--topic", required=True)
+
+    topics_disable = topic_subparsers.add_parser("disable")
+    topics_disable.add_argument("--topic", required=True)
+
+    topics_remove = topic_subparsers.add_parser("remove")
+    topics_remove.add_argument("--topic", required=True)
+
     return parser
+
+
+def collect_for_topics(
+    store: SignalTubeStore,
+    client: BrowserBrainClient,
+    *,
+    topics: list[tuple[str, int]],
+    html_path: Path,
+    render_limit: int,
+    allow_unverified_logged_out: bool,
+    skip_youtube_metadata: bool,
+) -> int:
+    collected_total = 0
+    for topic, max_candidates in topics:
+        snapshot = client.open_search_snapshot(topic)
+        candidates = extract_video_candidates(
+            snapshot,
+            topic=topic,
+            max_candidates=max_candidates,
+            require_logged_out_marker=not allow_unverified_logged_out,
+        )
+        if not skip_youtube_metadata:
+            candidates = enrich_candidates_with_youtube_metadata(candidates)
+        feedback_profile = store.load_feedback_profile(topic=topic)
+        ranked = rank_candidates(candidates, topic=topic, feedback_profile=feedback_profile)
+        store.save_ranked(topic, ranked)
+        collected_total += len(ranked)
+        print(f"{topic}: stored {len(ranked)} ranked candidates")
+    render_feed(
+        html_path,
+        store.load_ranked(limit=render_limit),
+        db_path=store.path,
+        command_path=ROOT / "ops" / "signaltube_lab.py",
+    )
+    print(f"wrote {html_path} with {collected_total} newly collected candidates")
+    return collected_total
+
+
+def resolve_scheduled_topics(
+    store: SignalTubeStore,
+    *,
+    cli_topics: list[str],
+    max_candidates_override: int | None,
+) -> list[tuple[str, int]]:
+    configured = store.list_topics(enabled_only=True)
+    resolved: dict[str, int] = {}
+    for item in configured:
+        resolved[item.topic] = max_candidates_override or item.max_candidates
+    env_topics = [
+        topic.strip()
+        for topic in os.environ.get("SIGNALTUBE_LAB_TOPICS", "").split("||")
+        if topic.strip()
+    ]
+    for topic in env_topics:
+        resolved[topic] = max_candidates_override or resolved.get(topic, 40)
+    for raw_topic in cli_topics:
+        topic = raw_topic.strip()
+        if topic:
+            resolved[topic] = max_candidates_override or resolved.get(topic, 40)
+    return list(resolved.items())
+
+
+def handle_topics_command(store: SignalTubeStore, args: argparse.Namespace) -> int:
+    if args.topics_command == "add":
+        store.upsert_topic(
+            args.topic,
+            enabled=not args.disabled,
+            max_candidates=args.max_candidates,
+            sort_order=args.sort_order,
+        )
+        print(
+            f"saved topic '{args.topic.strip()}' "
+            f"(enabled={str(not args.disabled).lower()} max_candidates={max(1, args.max_candidates)})"
+        )
+        return 0
+
+    if args.topics_command == "list":
+        topics = store.list_topics(enabled_only=args.enabled_only)
+        if not topics:
+            print("no topics configured")
+            return 0
+        for item in topics:
+            print(
+                f"{item.topic}\tenabled={str(item.enabled).lower()}\tmax_candidates={item.max_candidates}\t"
+                f"sort_order={item.sort_order}\tlast_collected_at={item.last_collected_at or '-'}"
+            )
+        return 0
+
+    if args.topics_command in {"enable", "disable"}:
+        changed = store.set_topic_enabled(args.topic, enabled=args.topics_command == "enable")
+        if not changed:
+            print(f"topic not found: {args.topic}", file=sys.stderr)
+            return 1
+        print(f"{args.topics_command}d topic '{args.topic.strip()}'")
+        return 0
+
+    if args.topics_command == "remove":
+        deleted = store.delete_topic(args.topic)
+        if not deleted:
+            print(f"topic not found: {args.topic}", file=sys.stderr)
+            return 1
+        print(f"removed topic '{args.topic.strip()}'")
+        return 0
+
+    raise AssertionError(f"Unhandled topics command: {args.topics_command}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,30 +191,70 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "collect":
         client = BrowserBrainClient(args.browser_brain_url)
-        collected_total = 0
-        for topic in args.topic:
-            snapshot = client.open_search_snapshot(topic)
-            candidates = extract_video_candidates(
-                snapshot,
-                topic=topic,
-                max_candidates=args.max_candidates_per_topic,
-                require_logged_out_marker=not args.allow_unverified_logged_out,
+        collect_for_topics(
+            store,
+            client,
+            topics=[(topic, args.max_candidates_per_topic) for topic in args.topic],
+            html_path=args.html,
+            render_limit=200,
+            allow_unverified_logged_out=args.allow_unverified_logged_out,
+            skip_youtube_metadata=args.skip_youtube_metadata,
+        )
+        return 0
+
+    if args.command == "scheduled-collect":
+        topics = resolve_scheduled_topics(
+            store,
+            cli_topics=args.topic,
+            max_candidates_override=args.max_candidates_per_topic,
+        )
+        if not topics:
+            print(
+                "SignalTube lab error: no scheduled topics configured. "
+                "Use 'topics add --topic ...' or pass --topic.",
+                file=sys.stderr,
             )
-            if not args.skip_youtube_metadata:
-                candidates = enrich_candidates_with_youtube_metadata(candidates)
-            ranked = rank_candidates(candidates, topic=topic)
-            store.save_ranked(topic, ranked)
-            collected_total += len(ranked)
-            print(f"{topic}: stored {len(ranked)} ranked candidates")
-        render_feed(args.html, store.load_ranked(limit=200))
-        print(f"wrote {args.html} with {collected_total} newly collected candidates")
+            return 2
+        client = BrowserBrainClient(args.browser_brain_url)
+        collect_for_topics(
+            store,
+            client,
+            topics=topics,
+            html_path=args.html,
+            render_limit=args.render_limit,
+            allow_unverified_logged_out=args.allow_unverified_logged_out,
+            skip_youtube_metadata=args.skip_youtube_metadata,
+        )
         return 0
 
     if args.command == "render":
         ranked = store.load_ranked(topic=args.topic, limit=args.limit)
-        render_feed(args.html, ranked)
+        render_feed(
+            args.html,
+            ranked,
+            db_path=store.path,
+            command_path=ROOT / "ops" / "signaltube_lab.py",
+        )
         print(f"wrote {args.html} with {len(ranked)} candidates")
         return 0
+
+    if args.command == "feedback":
+        weight = feedback_weight_for_signal(args.signal)
+        store.add_feedback(
+            topic=args.topic,
+            video_id=args.video_id,
+            signal=args.signal,
+            weight=weight,
+            note=args.note,
+        )
+        print(
+            f"stored feedback topic={args.topic.strip()} video_id={args.video_id.strip()} "
+            f"signal={args.signal} weight={weight:+.1f}"
+        )
+        return 0
+
+    if args.command == "topics":
+        return handle_topics_command(store, args)
 
     raise AssertionError(f"Unhandled command: {args.command}")
 

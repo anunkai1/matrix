@@ -12,12 +12,21 @@ from .models import RankedVideo
 BRISBANE_TZ = ZoneInfo("Australia/Brisbane")
 
 
-def render_feed(path: Path, ranked: list[RankedVideo], *, title: str = "SignalTube Lab") -> None:
+def render_feed(
+    path: Path,
+    ranked: list[RankedVideo],
+    *,
+    title: str = "SignalTube Lab",
+    db_path: Path | None = None,
+    command_path: Path | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    db_path = (db_path or Path("private/signaltube/signaltube.sqlite")).resolve()
+    command_path = (command_path or Path("ops/signaltube_lab.py")).resolve()
     by_topic: dict[str, list[RankedVideo]] = defaultdict(list)
     for item in ranked:
         by_topic[item.candidate.source_topic or "Discovered"].append(item)
-    sections = "\n".join(_render_section(topic, items) for topic, items in by_topic.items())
+    sections = "\n".join(_render_section(topic, items, db_path, command_path) for topic, items in by_topic.items())
     path.write_text(
         f"""<!doctype html>
 <html lang="en">
@@ -41,7 +50,8 @@ def render_feed(path: Path, ranked: list[RankedVideo], *, title: str = "SignalTu
     .published {{ color: #d7dde8; font-size: 13px; margin-top: 6px; }}
     .score {{ color: #d4e157; font-size: 12px; margin-top: 8px; }}
     .actions {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }}
-    button {{ border: 1px solid #4a5260; border-radius: 6px; background: #20242d; color: #f5f5f5; padding: 6px 8px; }}
+    button {{ border: 1px solid #4a5260; border-radius: 6px; background: #20242d; color: #f5f5f5; padding: 6px 8px; cursor: pointer; }}
+    .status {{ color: #9fb4cc; font-size: 12px; margin-top: 10px; min-height: 1em; }}
   </style>
 </head>
 <body>
@@ -52,6 +62,20 @@ def render_feed(path: Path, ranked: list[RankedVideo], *, title: str = "SignalTu
   <main>
     {sections}
   </main>
+  <script>
+    document.querySelectorAll('[data-feedback-command]').forEach((button) => {{
+      button.addEventListener('click', async () => {{
+        const command = button.getAttribute('data-feedback-command') || '';
+        const status = button.closest('.body')?.querySelector('.status');
+        try {{
+          await navigator.clipboard.writeText(command);
+          if (status) status.textContent = 'Copied feedback command';
+        }} catch (error) {{
+          if (status) status.textContent = command;
+        }}
+      }});
+    }});
+  </script>
 </body>
 </html>
 """,
@@ -59,18 +83,34 @@ def render_feed(path: Path, ranked: list[RankedVideo], *, title: str = "SignalTu
     )
 
 
-def _render_section(topic: str, items: list[RankedVideo]) -> str:
-    cards = "\n".join(_render_card(item) for item in items)
+def _render_section(topic: str, items: list[RankedVideo], db_path: Path, command_path: Path) -> str:
+    cards = "\n".join(_render_card(item, db_path=db_path, command_path=command_path) for item in items)
     return f"""<section>
   <h2>{html.escape(topic)}</h2>
   <div class="grid">{cards}</div>
 </section>"""
 
 
-def _render_card(item: RankedVideo) -> str:
+def _render_card(item: RankedVideo, *, db_path: Path, command_path: Path) -> str:
     candidate = item.candidate
     reasons = ", ".join(item.reasons)
     published = _format_published_at(candidate.published_at)
+    actions = "\n".join(
+        _render_feedback_button(
+            label=label,
+            signal=signal,
+            topic=candidate.source_topic or "Discovered",
+            video_id=candidate.video_id,
+            db_path=db_path,
+            command_path=command_path,
+        )
+        for label, signal in (
+            ("More like this", "more_like_this"),
+            ("Less like this", "less_like_this"),
+            ("Too clickbait", "too_clickbait"),
+            ("Save", "save"),
+        )
+    )
     return f"""<article class="card">
   <a href="{html.escape(candidate.url)}"><img class="thumb" src="{html.escape(candidate.thumbnail_url)}" alt=""></a>
   <div class="body">
@@ -79,10 +119,34 @@ def _render_card(item: RankedVideo) -> str:
     <div class="published">Published: {html.escape(published)}</div>
     <div class="score">Score {item.score:.0f} · {html.escape(reasons)}</div>
     <div class="actions">
-      <button>More like this</button><button>Less like this</button><button>Too clickbait</button><button>Save</button>
+      {actions}
     </div>
+    <div class="status"></div>
   </div>
 </article>"""
+
+
+def _render_feedback_button(
+    *,
+    label: str,
+    signal: str,
+    topic: str,
+    video_id: str,
+    db_path: Path,
+    command_path: Path,
+) -> str:
+    command = (
+        f"python3 {command_path} --db {db_path} "
+        f"feedback --topic {quote_arg(topic)} --video-id {quote_arg(video_id)} --signal {signal}"
+    )
+    return (
+        f'<button data-feedback-command="{html.escape(command)}">{html.escape(label)}</button>'
+    )
+
+
+def quote_arg(value: str) -> str:
+    escaped = value.replace("'", "'\"'\"'")
+    return f"'{escaped}'"
 
 
 def _format_published_at(value: str) -> str:

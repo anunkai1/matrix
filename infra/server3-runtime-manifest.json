@@ -13,7 +13,7 @@
         "local repo workspace",
         "authenticated Codex executor"
       ],
-      "owner_user": "architect",
+      "owner_user": "sentinel",
       "notes": [
         "Primary operator entry point on Server3."
       ],
@@ -388,6 +388,33 @@
           "name": "server3-browser-brain.service",
           "kind": "service",
           "expected_state": "active"
+        }
+      ]
+    },
+    {
+      "name": "SignalTube Lab",
+      "category": "optional",
+      "runtime_layout": "timer-set",
+      "workspace_root": "/home/architect/matrix",
+      "shared_core_root": "/home/architect/matrix",
+      "purpose": "Logged-out YouTube discovery experiment with overnight topic collection and static feed rendering.",
+      "expected_default_state": "active (waiting)",
+      "dependencies": [
+        "managed Browser Brain helper",
+        "signaltube SQLite/feed paths",
+        "systemd timer scheduler"
+      ],
+      "owner_user": "architect",
+      "notes": [
+        "The overnight timer starts the disposable SignalTube Browser Brain helper before collection.",
+        "Configured topics can live in the SQLite topic table or /etc/default/signaltube-lab."
+      ],
+      "units": [
+        {
+          "name": "signaltube-lab-overnight.timer",
+          "kind": "timer",
+          "expected_state": "active",
+          "expected_substate": "waiting"
         }
       ]
     },

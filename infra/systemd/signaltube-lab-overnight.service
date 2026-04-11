@@ -1,0 +1,18 @@
+[Unit]
+Description=SignalTube Lab Overnight Collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=sentinel
+Group=sentinel
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+Environment=SIGNALTUBE_LAB_DB_PATH=/home/architect/matrix/private/signaltube/signaltube.sqlite
+Environment=SIGNALTUBE_LAB_HTML_PATH=/home/architect/matrix/private/signaltube/feed.html
+Environment=SIGNALTUBE_LAB_BROWSER_BRAIN_URL=http://127.0.0.1:47832
+Environment=SIGNALTUBE_LAB_RENDER_LIMIT=200
+EnvironmentFile=-/etc/default/signaltube-lab
+ExecStartPre=/home/architect/matrix/ops/signaltube_lab_browser.sh start
+ExecStart=/usr/bin/python3 /home/architect/matrix/ops/signaltube_lab.py --db ${SIGNALTUBE_LAB_DB_PATH} --html ${SIGNALTUBE_LAB_HTML_PATH} --browser-brain-url ${SIGNALTUBE_LAB_BROWSER_BRAIN_URL} scheduled-collect --render-limit ${SIGNALTUBE_LAB_RENDER_LIMIT}

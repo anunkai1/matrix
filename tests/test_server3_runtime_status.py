@@ -35,6 +35,7 @@ class Server3RuntimeStatusTests(unittest.TestCase):
                 "server3-runtime-observer.timer",
                 "server3-chat-routing-contract-check.timer",
                 "server3-monthly-apt-upgrade.timer",
+                "signaltube-lab-overnight.timer",
                 "lightdm.service",
             }.issubset(units)
         )

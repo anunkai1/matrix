@@ -20,6 +20,29 @@ python3 ops/signaltube_lab.py collect --topic "latest space videos" --topic "LLM
 
 Collection enriches each candidate with `yt-dlp` metadata by default so the rendered feed can show the publishing date/time for each video without downloading media. Use `--skip-youtube-metadata` for a faster Browser Brain-only discovery pass when publish times are not needed.
 
+Persist topics for unattended overnight runs:
+
+```bash
+python3 ops/signaltube_lab.py topics add --topic "latest space videos" --max-candidates 24
+python3 ops/signaltube_lab.py topics add --topic "LLM research" --max-candidates 24
+python3 ops/signaltube_lab.py topics list
+```
+
+Run the configured overnight collector immediately:
+
+```bash
+python3 ops/signaltube_lab.py scheduled-collect
+```
+
+Store ranking feedback signals:
+
+```bash
+python3 ops/signaltube_lab.py feedback --topic "latest space videos" --video-id abcDEF_1234 --signal save
+python3 ops/signaltube_lab.py feedback --topic "latest space videos" --video-id abcDEF_1234 --signal too_clickbait
+```
+
+The rendered feed now copies the matching feedback CLI command to the clipboard when you click a feedback button, so the overnight ranker can learn from those stored signals on later runs.
+
 Render an existing feed:
 
 ```bash
@@ -43,3 +66,12 @@ The collector refuses to run if a Browser Brain snapshot looks logged into YouTu
 It also refuses Browser Brain `existing_session` mode. Run this against a managed disposable Browser Brain profile, not the visible TV/login browser.
 
 The helper `ops/signaltube_lab_browser.sh` starts that disposable managed Browser Brain server on `127.0.0.1:47832`.
+
+Install the overnight timer on Server3:
+
+```bash
+bash ops/signaltube/install_overnight_collector.sh apply
+sudo systemctl --no-pager --full status signaltube-lab-overnight.timer signaltube-lab-overnight.service
+```
+
+Timer configuration lives in `/etc/default/signaltube-lab`, with the repo example at `infra/env/signaltube-lab.env.example`.

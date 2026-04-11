@@ -1,0 +1,12 @@
+[Unit]
+Description=SignalTube Lab Overnight Collector Timer
+
+[Timer]
+OnCalendar=*-*-* 02:10:00
+RandomizedDelaySec=20m
+Persistent=true
+Unit=signaltube-lab-overnight.service
+
+[Install]
+WantedBy=timers.target
+
