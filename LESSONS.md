@@ -20,6 +20,11 @@ Use one section per lesson:
 - Prevention rule: When a user asks for Telegram image/file delivery, check the bridge transport/runtime state first, resolve the active chat/thread, and attempt the supported Telegram attachment path before claiming the capability is unavailable.
 - Where/when applied: Any Architect request involving Telegram delivery of generated images, files, or other media from the Server3 workspace.
 
+### 2026-04-13T13:20:00+10:00 - Do Not Inject Credibility Notes Into Default YouTube Summaries
+- Mistake pattern: I added a default `Source credibility` note to a plain YouTube summary because of local guidance, even though the owner wanted just the summary and the shared bridge prompt path already omitted reputation framing.
+- Prevention rule: For pasted YouTube links and similar summary requests, provide the content summary directly unless the owner explicitly asks for credibility, bias, reputation, or fact-checking analysis.
+- Where/when applied: Any default link-summary workflow in Architect, especially bare-link YouTube requests and Telegram summary replies.
+
 ### 2026-03-03T19:18:12+10:00 - Clarify File Delivery Target Before Sending
 - Mistake pattern: I assumed "send file here" meant Codex chat delivery and did not immediately confirm whether the owner wanted Telegram attachment delivery.
 - Prevention rule: When a request mentions sending/sharing a file and destination is ambiguous, ask one explicit routing question first: "Codex chat link/content or Telegram document attachment?"
