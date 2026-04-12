@@ -1925,30 +1925,6 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
     transcript_language = str(analysis.get("transcript_language") or "").strip()
     transcript_text = str(analysis.get("transcript_text") or "").strip()
     description = str(analysis.get("description") or "").strip()
-    channel_profile = analysis.get("channel_profile") if isinstance(analysis.get("channel_profile"), dict) else {}
-    channel_profile_description = str(channel_profile.get("description") or "").strip()
-    channel_profile_followers = channel_profile.get("follower_count")
-    external_reputation = analysis.get("external_reputation") if isinstance(analysis.get("external_reputation"), dict) else {}
-    external_results = external_reputation.get("results") if isinstance(external_reputation.get("results"), list) else []
-    channel_profile_lines: List[str] = []
-    if isinstance(channel_profile_followers, int) and channel_profile_followers > 0:
-        channel_profile_lines.append(f"- Approx channel followers: {channel_profile_followers}")
-    if channel_profile_description:
-        channel_profile_lines.append(f"- Channel self-description: {channel_profile_description[:400].strip()}")
-    channel_profile_block = "\n".join(channel_profile_lines)
-    external_reputation_lines: List[str] = []
-    for item in external_results[:5]:
-        if not isinstance(item, dict):
-            continue
-        title = str(item.get("title") or "").strip()
-        domain = str(item.get("domain") or "").strip()
-        snippet = str(item.get("snippet") or "").strip()
-        if title:
-            line = f"- {domain or 'external'}: {title}"
-            if snippet:
-                line += f" | {snippet[:220].strip()}"
-            external_reputation_lines.append(line)
-    external_reputation_block = "\n".join(external_reputation_lines)
     chapters = analysis.get("chapters") if isinstance(analysis.get("chapters"), list) else []
     chapter_lines: List[str] = []
     for item in chapters[:20]:
@@ -1970,12 +1946,6 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
         "If the user only pasted the link, default to a concise content summary.\n"
         "If the transcript comes from automatic captions or transcription, mention that briefly only if it materially affects confidence.\n"
         "Do not invent details that are not supported by the transcript.\n\n"
-        "Include a short `Author reputation:` note by default.\n"
-        "Do not stop at a bare label like `mixed` or `strong`.\n"
-        "Briefly explain why based on the creator's expertise, available independent reputation signals, and any limits in the available evidence.\n"
-        "Keep that reputation note compact, but make it informative enough that a reader understands the ranking.\n"
-        "Do not treat channel size, self-description, or production quality as proof of reputation.\n"
-        "If you do not have independent evidence for a good or bad reputation, say it is `unclear` and explain that the available metadata only shows channel context, not verified reputation.\n\n"
         f"Original user message:\n{request_text.strip()}\n\n"
         f"Video title: {title}\n"
         f"Channel: {channel}\n"
@@ -1983,8 +1953,6 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
         f"Transcript source: {transcript_source}\n"
         f"Transcript language: {transcript_language or 'unknown'}\n\n"
         f"Description:\n{description or '(no description)'}\n\n"
-        f"Channel profile:\n{channel_profile_block or '(no channel profile metadata)'}\n\n"
-        f"External reputation lookup:\n{external_reputation_block or '(no independent search results found)'}\n\n"
         f"Chapters:\n{chapter_block or '(no chapters)'}\n\n"
         f"Transcript:\n{transcript_text}\n"
     )
@@ -2004,117 +1972,6 @@ def build_youtube_unavailable_message(analysis: Dict[str, object]) -> str:
     if reason:
         parts.append(f"Reason: {reason}.")
     return " ".join(parts)
-def build_youtube_author_reputation_note(analysis: Dict[str, object]) -> str:
-    channel = str(analysis.get("channel") or "the channel").strip()
-    channel_profile = analysis.get("channel_profile") if isinstance(analysis.get("channel_profile"), dict) else {}
-    channel_description = str(channel_profile.get("description") or "").strip()
-    channel_followers = channel_profile.get("follower_count")
-    external_reputation = analysis.get("external_reputation") if isinstance(analysis.get("external_reputation"), dict) else {}
-    external_results = external_reputation.get("results") if isinstance(external_reputation.get("results"), list) else []
-
-    context_bits: List[str] = []
-    if isinstance(channel_followers, int) and channel_followers > 0:
-        if channel_followers >= 1_000_000:
-            follower_text = f"about {channel_followers / 1_000_000:.1f}M followers"
-        elif channel_followers >= 1_000:
-            follower_text = f"about {channel_followers / 1_000:.0f}K followers"
-        else:
-            follower_text = f"about {channel_followers} followers"
-        context_bits.append(f"{channel} is an established channel with {follower_text}")
-
-    description_lower = channel_description.lower()
-    if "news" in description_lower or "current events" in description_lower:
-        context_bits.append("it presents itself as a news/current-events outlet")
-    elif "analysis" in description_lower or "explainer" in description_lower:
-        context_bits.append("it presents itself as an explainer/analysis channel")
-    elif "education" in description_lower or "science" in description_lower:
-        context_bits.append("it presents itself as an educational/science channel")
-    elif "history" in description_lower or "geopolitics" in description_lower:
-        context_bits.append("it presents itself as a history/geopolitics channel")
-
-    context_text = ""
-    if context_bits:
-        context_text = " Available metadata suggests " + " and ".join(context_bits) + "."
-
-    if external_results:
-        negative_keywords = (
-            "scam",
-            "fraud",
-            "controversy",
-            "critic",
-            "criticism",
-            "misinformation",
-            "conspiracy",
-            "lawsuit",
-            "grift",
-            "hoax",
-        )
-        negative_hits = 0
-        negative_domains: List[str] = []
-        seen_domains: set[str] = set()
-        for item in external_results:
-            if not isinstance(item, dict):
-                continue
-            domain = str(item.get("domain") or "").strip()
-            text = " ".join([str(item.get("title") or ""), str(item.get("snippet") or "")]).lower()
-            if any(keyword in text for keyword in negative_keywords):
-                negative_hits += 1
-                if domain and domain not in seen_domains:
-                    negative_domains.append(domain)
-                    seen_domains.add(domain)
-
-        if negative_hits >= 2 and len(negative_domains) >= 2:
-            return (
-                "Author reputation: mixed. A limited external lookup found repeated independent signals of criticism or controversy "
-                f"(for example from {', '.join(negative_domains[:3])}). That is enough to warrant caution, but not enough by itself for a definitive judgment."
-            )
-
-        source_domains = []
-        for item in external_results:
-            if not isinstance(item, dict):
-                continue
-            domain = str(item.get("domain") or "").strip()
-            if domain and domain not in source_domains:
-                source_domains.append(domain)
-        return (
-            "Author reputation: no obvious red flags found in a limited external lookup."
-            + (f" Independent sources mainly returned profile or reference-style coverage ({', '.join(source_domains[:3])})." if source_domains else "")
-            + " This is still not a full background check."
-        )
-
-    return (
-        "Author reputation: unclear."
-        + context_text
-        + " That is channel context, not independent evidence of a good or bad reputation."
-    )
-def ensure_youtube_author_reputation_note(output: str, analysis: Dict[str, object]) -> str:
-    text = str(output or "").strip()
-    notes: List[str] = []
-    if not re.search(r"(^|\n)\s*Author reputation\s*:", text, flags=re.IGNORECASE):
-        notes.append(build_youtube_author_reputation_note(analysis))
-    if not text:
-        return "\n\n".join(notes)
-    if not notes:
-        return text
-    return f"{text}\n\n" + "\n\n".join(notes)
-def with_youtube_author_reputation_result(
-    result: subprocess.CompletedProcess[str],
-    analysis: Dict[str, object],
-) -> subprocess.CompletedProcess[str]:
-    thread_id, output = parse_executor_output(result.stdout or "")
-    ensured_output = ensure_youtube_author_reputation_note(output, analysis)
-    if ensured_output == output:
-        return result
-
-    stdout = ensured_output
-    if thread_id:
-        stdout = f"THREAD_ID={thread_id}\nOUTPUT_BEGIN\n{ensured_output}"
-    return subprocess.CompletedProcess(
-        args=result.args,
-        returncode=result.returncode,
-        stdout=stdout,
-        stderr=result.stderr,
-    )
 
 
 def build_youtube_transcript_output(
@@ -3534,7 +3391,6 @@ def process_youtube_request(
         )
         if result is None:
             return
-        result = with_youtube_author_reputation_result(result, analysis)
         finalize_prompt_success(
             state_repo=state_repo,
             config=config,
