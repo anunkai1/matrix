@@ -2916,7 +2916,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("could not obtain captions or a usable transcription", sent_output)
         self.assertIn("Example Video", sent_output)
 
-    def test_build_youtube_summary_prompt_omits_author_reputation_guidance(self):
+    def test_build_youtube_summary_prompt_includes_basic_video_fields(self):
         prompt = bridge_handlers.build_youtube_summary_prompt(
             "https://www.youtube.com/watch?v=yD5DFL3xPmo",
             {
@@ -2927,29 +2927,13 @@ class BridgeCoreTests(unittest.TestCase):
                 "transcript_language": "en",
                 "transcript_text": "hello world",
                 "description": "example description",
-                "channel_profile": {
-                    "description": "Example Channel is an explainer outlet.",
-                    "follower_count": 123456,
-                },
-                "external_reputation": {
-                    "results": [
-                        {
-                            "domain": "en.wikipedia.org",
-                            "title": "Example Channel - Wikipedia",
-                            "snippet": "Independent profile entry.",
-                        }
-                    ]
-                },
                 "chapters": [],
             },
         )
 
-        self.assertNotIn("Author reputation:", prompt)
-        self.assertNotIn("Source credibility:", prompt)
-        self.assertNotIn("available independent reputation signals", prompt)
-        self.assertNotIn("Channel profile:", prompt)
-        self.assertNotIn("External reputation lookup:", prompt)
+        self.assertIn("Video title: Example Video", prompt)
         self.assertIn("Channel: Example Channel", prompt)
+        self.assertIn("Description:\nexample description", prompt)
         self.assertIn("Transcript source: automatic_captions", prompt)
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
