@@ -2916,7 +2916,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("could not obtain captions or a usable transcription", sent_output)
         self.assertIn("Example Video", sent_output)
 
-    def test_build_youtube_summary_prompt_requests_author_reputation_note(self):
+    def test_build_youtube_summary_prompt_omits_author_reputation_guidance(self):
         prompt = bridge_handlers.build_youtube_summary_prompt(
             "https://www.youtube.com/watch?v=yD5DFL3xPmo",
             {
@@ -2944,124 +2944,13 @@ class BridgeCoreTests(unittest.TestCase):
             },
         )
 
-        self.assertIn("Include a short `Author reputation:` note by default.", prompt)
-        self.assertIn("Do not stop at a bare label like `mixed` or `strong`.", prompt)
-        self.assertIn("available independent reputation signals", prompt)
-        self.assertIn("Do not treat channel size, self-description, or production quality as proof of reputation.", prompt)
-        self.assertIn("Channel profile:", prompt)
-        self.assertIn("Approx channel followers: 123456", prompt)
-        self.assertIn("External reputation lookup:", prompt)
-        self.assertIn("en.wikipedia.org: Example Channel - Wikipedia", prompt)
+        self.assertNotIn("Author reputation:", prompt)
         self.assertNotIn("Source credibility:", prompt)
-
-    def test_build_youtube_author_reputation_note_marks_reputation_unclear(self):
-        note = bridge_handlers.build_youtube_author_reputation_note(
-            {
-                "channel": "Asian Boss",
-                "channel_profile": {
-                    "description": "We are a street-interview-based channel bringing analytical explainers about Asia.",
-                    "follower_count": 4030000,
-                },
-            }
-        )
-
-        self.assertIn("Author reputation: unclear.", note)
-        self.assertIn("Asian Boss is an established channel with about 4.0M followers", note)
-        self.assertIn("channel context, not independent evidence", note)
-
-    def test_build_youtube_author_reputation_note_uses_external_lookup(self):
-        note = bridge_handlers.build_youtube_author_reputation_note(
-            {
-                "channel": "Veritasium",
-                "external_reputation": {
-                    "results": [
-                        {
-                            "domain": "en.wikipedia.org",
-                            "title": "Derek Muller - Wikipedia",
-                            "snippet": "Science communicator behind Veritasium.",
-                        },
-                        {
-                            "domain": "encyclopedia.example",
-                            "title": "Veritasium profile",
-                            "snippet": "Educational science channel profile.",
-                        },
-                    ]
-                },
-            }
-        )
-
-        self.assertIn("Author reputation: no obvious red flags found in a limited external lookup.", note)
-        self.assertIn("en.wikipedia.org", note)
-
-    def test_build_youtube_author_reputation_note_flags_mixed_when_external_results_repeat_controversy(self):
-        note = bridge_handlers.build_youtube_author_reputation_note(
-            {
-                "channel": "Example Channel",
-                "external_reputation": {
-                    "results": [
-                        {
-                            "domain": "news.example",
-                            "title": "Example Channel controversy",
-                            "snippet": "Criticism over misinformation claims.",
-                        },
-                        {
-                            "domain": "magazine.example",
-                            "title": "Another controversy article",
-                            "snippet": "Scam allegations and criticism discussed.",
-                        },
-                    ]
-                },
-            }
-        )
-
-        self.assertIn("Author reputation: mixed.", note)
-        self.assertIn("news.example, magazine.example", note)
-
-    def test_with_youtube_author_reputation_result_appends_note_when_missing(self):
-        result = bridge_handlers.subprocess.CompletedProcess(
-            args=["codex", "exec"],
-            returncode=0,
-            stdout="Short summary.",
-            stderr="",
-        )
-
-        updated = bridge_handlers.with_youtube_author_reputation_result(
-            result,
-            {
-                "title": "Example Video",
-                "channel": "Example Channel",
-                "description": "A business breakdown and analysis.",
-                "transcript_source": "automatic_captions",
-            },
-        )
-
-        self.assertIn("Short summary.", updated.stdout)
-        self.assertIn("Author reputation: unclear.", updated.stdout)
-        self.assertNotIn("Source credibility:", updated.stdout)
-
-    def test_with_youtube_author_reputation_result_preserves_existing_note(self):
-        original = (
-            "Summary.\n\n"
-            "Author reputation: unclear. Existing rationale."
-        )
-        result = bridge_handlers.subprocess.CompletedProcess(
-            args=["codex", "exec"],
-            returncode=0,
-            stdout=original,
-            stderr="",
-        )
-
-        updated = bridge_handlers.with_youtube_author_reputation_result(
-            result,
-            {
-                "title": "Example Video",
-                "channel": "Example Channel",
-                "description": "A business breakdown and analysis.",
-                "transcript_source": "automatic_captions",
-            },
-        )
-
-        self.assertEqual(updated.stdout, original)
+        self.assertNotIn("available independent reputation signals", prompt)
+        self.assertNotIn("Channel profile:", prompt)
+        self.assertNotIn("External reputation lookup:", prompt)
+        self.assertIn("Channel: Example Channel", prompt)
+        self.assertIn("Transcript source: automatic_captions", prompt)
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_ha_keyword_prompt_stateless(self, start_message_worker):
