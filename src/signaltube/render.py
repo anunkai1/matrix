@@ -4,6 +4,7 @@ import html
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+import re
 from zoneinfo import ZoneInfo
 
 from .models import RankedVideo
@@ -26,7 +27,11 @@ def render_feed(
     by_topic: dict[str, list[RankedVideo]] = defaultdict(list)
     for item in ranked:
         by_topic[item.candidate.source_topic or "Discovered"].append(item)
-    sections = "\n".join(_render_section(topic, items, db_path, command_path) for topic, items in by_topic.items())
+    topic_entries = list(by_topic.items())
+    topic_nav = _render_topic_nav([topic for topic, _ in topic_entries])
+    sections = "\n".join(
+        _render_section(topic, items, db_path, command_path) for topic, items in topic_entries
+    )
     path.write_text(
         f"""<!doctype html>
 <html lang="en">
@@ -35,10 +40,13 @@ def render_feed(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(title)}</title>
   <style>
+    html {{ scroll-behavior: smooth; }}
     body {{ margin: 0; font-family: Arial, sans-serif; background: #0f1014; color: #f5f5f5; }}
     header {{ padding: 20px 28px 12px; border-bottom: 1px solid #2f3440; }}
     h1 {{ margin: 0 0 8px; font-size: 28px; }}
     .note {{ color: #b8beca; }}
+    .topic-nav {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }}
+    .topic-link {{ display: inline-flex; align-items: center; padding: 6px 10px; border: 1px solid #4a5260; border-radius: 6px; color: #f5f5f5; text-decoration: none; background: #20242d; }}
     main {{ padding: 18px 28px 40px; }}
     h2 {{ margin: 26px 0 14px; font-size: 20px; }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 18px; }}
@@ -58,6 +66,7 @@ def render_feed(
   <header>
     <h1>{html.escape(title)}</h1>
     <div class="note">Lab feed from logged-out browser discovery. No downloads, no account automation.</div>
+    {topic_nav}
   </header>
   <main>
     {sections}
@@ -85,10 +94,21 @@ def render_feed(
 
 def _render_section(topic: str, items: list[RankedVideo], db_path: Path, command_path: Path) -> str:
     cards = "\n".join(_render_card(item, db_path=db_path, command_path=command_path) for item in items)
-    return f"""<section>
+    topic_id = _topic_anchor_id(topic)
+    return f"""<section id="{html.escape(topic_id)}">
   <h2>{html.escape(topic)}</h2>
   <div class="grid">{cards}</div>
 </section>"""
+
+
+def _render_topic_nav(topics: list[str]) -> str:
+    if not topics:
+        return ""
+    links = "\n".join(
+        f'<a class="topic-link" href="#{html.escape(_topic_anchor_id(topic))}">{html.escape(topic)}</a>'
+        for topic in topics
+    )
+    return f'<nav class="topic-nav">{links}</nav>'
 
 
 def _render_card(item: RankedVideo, *, db_path: Path, command_path: Path) -> str:
@@ -196,3 +216,8 @@ def _format_duration(value: str) -> str:
     if not cleaned:
         return "duration unavailable"
     return cleaned
+
+
+def _topic_anchor_id(topic: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", topic.strip().lower()).strip("-")
+    return f"topic-{slug or 'discovered'}"
