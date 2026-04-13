@@ -116,6 +116,71 @@ class SignalTubeCliTests(unittest.TestCase):
             seen = store.load_seen_video_ids()
             self.assertEqual(seen, {"abcDEF_1234"})
 
+    def test_publish_command_invokes_filegator_publish(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            html_path = Path(tmp) / "feed.html"
+            html_path.write_text("<html></html>", encoding="utf-8")
+
+            with mock.patch.object(
+                signaltube_lab_cli, "publish_html", return_value="https://mavali.top/projects/SignalTube/index.html"
+            ) as publish_html:
+                exit_code = signaltube_lab_cli.main(
+                    [
+                        "--html",
+                        str(html_path),
+                        "publish",
+                        "--username",
+                        "user1",
+                        "--password",
+                        "secret",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            publish_html.assert_called_once()
+
+    def test_render_publishes_when_publish_env_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "signaltube.sqlite"
+            html_path = Path(tmp) / "feed.html"
+            store = signaltube_lab_cli.SignalTubeStore(db_path)
+            store.init()
+            store.upsert_topic("latest space videos", max_candidates=12)
+
+            snapshot = {
+                "elements": [
+                    {"name": "Sign in", "href": "https://accounts.google.com/"},
+                    {
+                        "name": "Latest space telescope discovery",
+                        "href": "https://www.youtube.com/watch?v=abcDEF_1234",
+                    },
+                ]
+            }
+            env = {
+                "SIGNALTUBE_PUBLISH_USERNAME": "user1",
+                "SIGNALTUBE_PUBLISH_PASSWORD": "secret",
+            }
+            with mock.patch.dict(signaltube_lab_cli.os.environ, env, clear=False):
+                with mock.patch.object(
+                    signaltube_lab_cli.BrowserBrainClient, "open_search_snapshot", return_value=snapshot
+                ):
+                    with mock.patch.object(
+                        signaltube_lab_cli, "publish_html", return_value="https://mavali.top/projects/SignalTube/index.html"
+                    ) as publish_html:
+                        exit_code = signaltube_lab_cli.main(
+                            [
+                                "--db",
+                                str(db_path),
+                                "--html",
+                                str(html_path),
+                                "scheduled-collect",
+                                "--skip-youtube-metadata",
+                            ]
+                        )
+
+            self.assertEqual(exit_code, 0)
+            publish_html.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

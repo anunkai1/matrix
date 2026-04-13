@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 
 from src.signaltube.browser_lab import BrowserBrainClient, SignalTubeBrowserLabError, extract_video_candidates
 from src.signaltube.metadata import enrich_candidates_with_youtube_metadata
+from src.signaltube.publish import SignalTubePublishError, build_publish_config, publish_html
 from src.signaltube.ranking import feedback_weight_for_signal, rank_candidates
 from src.signaltube.render import render_feed
 from src.signaltube.store import SignalTubeStore
@@ -44,6 +45,15 @@ def build_parser() -> argparse.ArgumentParser:
     render = subparsers.add_parser("render")
     render.add_argument("--topic")
     render.add_argument("--limit", type=int, default=80)
+
+    publish = subparsers.add_parser("publish")
+    publish.add_argument("--base-url")
+    publish.add_argument("--public-base-url")
+    publish.add_argument("--username")
+    publish.add_argument("--password")
+    publish.add_argument("--remote-dir", default="SignalTube")
+    publish.add_argument("--remote-name", default="index.html")
+    publish.add_argument("--playwright-python", type=Path)
 
     feedback = subparsers.add_parser("feedback")
     feedback.add_argument("--topic", required=True)
@@ -143,7 +153,17 @@ def collect_for_topics(
         command_path=ROOT / "ops" / "signaltube_lab.py",
     )
     print(f"wrote {html_path} with {collected_total} newly collected candidates")
+    maybe_publish_rendered_html(html_path)
     return collected_total
+
+
+def maybe_publish_rendered_html(html_path: Path) -> str | None:
+    config = build_publish_config()
+    if config is None:
+        return None
+    public_url = publish_html(html_path, config)
+    print(f"published {html_path} to {public_url}")
+    return public_url
 
 
 def resolve_scheduled_topics(
@@ -267,6 +287,28 @@ def main(argv: list[str] | None = None) -> int:
             command_path=ROOT / "ops" / "signaltube_lab.py",
         )
         print(f"wrote {args.html} with {len(ranked)} candidates")
+        maybe_publish_rendered_html(args.html)
+        return 0
+
+    if args.command == "publish":
+        config = build_publish_config(
+            username=args.username,
+            password=args.password,
+            base_url=args.base_url,
+            public_base_url=args.public_base_url,
+            remote_dir=args.remote_dir,
+            remote_name=args.remote_name,
+            playwright_python=args.playwright_python,
+        )
+        if config is None:
+            print(
+                "SignalTube publish error: missing credentials. "
+                "Pass --username/--password or set SIGNALTUBE_PUBLISH_USERNAME/SIGNALTUBE_PUBLISH_PASSWORD.",
+                file=sys.stderr,
+            )
+            return 2
+        public_url = publish_html(args.html, config)
+        print(f"published {args.html} to {public_url}")
         return 0
 
     if args.command == "feedback":
@@ -339,4 +381,7 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except SignalTubeBrowserLabError as exc:
         print(f"SignalTube lab error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
+    except SignalTubePublishError as exc:
+        print(f"SignalTube publish error: {exc}", file=sys.stderr)
         raise SystemExit(2) from None

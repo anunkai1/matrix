@@ -34,6 +34,12 @@ Run the configured overnight collector immediately:
 python3 ops/signaltube_lab.py scheduled-collect
 ```
 
+Publish the rendered feed to the shared FileGator host:
+
+```bash
+python3 ops/signaltube_lab.py publish --username "$SIGNALTUBE_PUBLISH_USERNAME" --password "$SIGNALTUBE_PUBLISH_PASSWORD"
+```
+
 Store ranking feedback signals:
 
 ```bash
@@ -75,3 +81,11 @@ sudo systemctl --no-pager --full status signaltube-lab-overnight.timer signaltub
 ```
 
 Timer configuration lives in `/etc/default/signaltube-lab`, with the repo example at `infra/env/signaltube-lab.env.example`.
+
+If `SIGNALTUBE_PUBLISH_USERNAME` and `SIGNALTUBE_PUBLISH_PASSWORD` are present in that env file, both `scheduled-collect` and `render` now auto-publish the rendered feed to `https://mavali.top/projects/SignalTube/index.html` by default. Override the destination with:
+
+- `SIGNALTUBE_PUBLISH_BASE_URL`
+- `SIGNALTUBE_PUBLISH_PUBLIC_BASE_URL`
+- `SIGNALTUBE_PUBLISH_REMOTE_DIR`
+- `SIGNALTUBE_PUBLISH_REMOTE_NAME`
+- `SIGNALTUBE_PUBLISH_PLAYWRIGHT_PYTHON`
