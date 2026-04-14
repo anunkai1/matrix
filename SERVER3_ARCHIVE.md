@@ -2,6 +2,17 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-15 (Summary Roll-Forward Trim for Control-Plane LAN Firewall Allow)
+
+Summary:
+- Added a new rolling-summary entry for opening the Server3 control plane port `8420/tcp` to the LAN subnet `192.168.0.0/24`.
+- Verified the live host firewall now lists the LAN-only allow rule in both `ufw status` and the `ufw-user-input` iptables chain while the control-plane service remained healthy and continued returning `200` on the local LAN address.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-04-11: added persistent `Seen` suppression to SignalTube Lab so cards now include a `Seen` action that copies a CLI command, a new `seen_videos` table stores suppressed `video_id`s, rendered feeds hide seen items, and future collections skip them before ranking/storage. Also removed `politics` from the active SignalTube topic set and pruned its current feed rows so the configured/scheduled topics are now `History`, `latest space videos`, `LLM AI news`, and `Ukraine Russia war`.
+- 2026-04-11: added persistent channel suppression controls to SignalTube Lab so cards now include a `Don't recommend this channel` action that copies a CLI block command, blocked channels are stored in a new `blocked_channels` table, rendered feeds filter them out, and future collections skip them after metadata enrichment. Added focused CLI/store/render coverage and refreshed the live HTML so the current feed exposes the new channel-block button on every card.
+
 ## 2026-04-11 (Summary Roll-Forward Trim for Sentinel Worker Cap Increase)
 
 Summary:
