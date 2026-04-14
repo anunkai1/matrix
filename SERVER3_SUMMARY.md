@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-04-13 (AEST, +10:00)
+Last updated: 2026-04-14 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -53,6 +53,7 @@ Last updated: 2026-04-13 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-04-14: upgraded the host-global `@openai/codex` npm package from `0.112.0` to `0.120.0` via `sudo npm install -g @openai/codex@0.120.0`; verified the active `/usr/bin/codex` now resolves to `/usr/lib/node_modules/@openai/codex/bin/codex.js` and reports `codex-cli 0.120.0`.
 - 2026-04-13: added FileGator publishing support for SignalTube Lab so `ops/signaltube_lab.py publish` can push the current rendered HTML into `https://mavali.top/projects/SignalTube/index.html`, and both `render` and `scheduled-collect` now auto-publish to that same destination whenever `SIGNALTUBE_PUBLISH_*` env vars are present. Added the Playwright-backed helper `ops/signaltube_publish_filegator.py`, publish config helpers in `src/signaltube/publish.py`, focused CLI coverage, repo env examples, and docs. Also verified the live FileGator host by creating `/projects/SignalTube/` and uploading the current `index.html`.
 - 2026-04-13: updated SignalTube Lab feed rendering with a top-of-page topic jump bar so each topic is clickable and scrolls directly to its section. Topic sections now render stable anchor ids derived from topic names, the live `private/signaltube/feed.html` was rerendered with jump links for the current active topics, and focused render/store tests now cover the nav markup.
 - 2026-04-13: removed Sentinel's last dedicated-runtime YouTube author-lookup path from `/home/sentinel/sentinelbot/ops/youtube/analyze_youtube.py`; the live analyzer no longer performs the extra DuckDuckGo fetch and direct verification against a sample video still returned `automatic_captions` successfully.
@@ -61,7 +62,6 @@ Last updated: 2026-04-13 (AEST, +10:00)
 - 2026-04-11: increased Sentinel's persistent worker cap from `4` to `10` by updating the live `/etc/default/telegram-sentinel-bridge` and tracked `infra/env/telegram-sentinel-bridge.env.example`, then restarted `telegram-sentinel-bridge.service`; startup at `22:05:23 AEST` verified the live runtime now reports `Persistent workers enabled=True count=4 max=10`.
 - 2026-04-11: added persistent `Seen` suppression to SignalTube Lab so cards now include a `Seen` action that copies a CLI command, a new `seen_videos` table stores suppressed `video_id`s, rendered feeds hide seen items, and future collections skip them before ranking/storage. Also removed `politics` from the active SignalTube topic set and pruned its current feed rows so the configured/scheduled topics are now `History`, `latest space videos`, `LLM AI news`, and `Ukraine Russia war`.
 - 2026-04-11: added persistent channel suppression controls to SignalTube Lab so cards now include a `Don't recommend this channel` action that copies a CLI block command, blocked channels are stored in a new `blocked_channels` table, rendered feeds filter them out, and future collections skip them after metadata enrichment. Added focused CLI/store/render coverage and refreshed the live HTML so the current feed exposes the new channel-block button on every card.
-- 2026-04-11: added diversity-aware SignalTube Lab feed selection so the rendered HTML no longer just mirrors raw score order: ranking now derives lightweight story-cluster keys from video titles, `SignalTubeStore.load_ranked()` applies per-topic diversity caps of `max 2` videos per story cluster and `max 2` per channel, and focused tests now cover story clustering plus diversified store output. Verified on the live `latest space videos` dataset by rerendering the current feed from 14 near-identical Artemis II splashdown items down to 3 distinct story-angle entries.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
