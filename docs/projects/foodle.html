@@ -75,6 +75,10 @@
       color: #eef6ff;
     }
 
+    body[data-theme="dark"] .month-tag.active {
+      background: rgba(224, 235, 247, 0.12);
+    }
+
     body[data-theme="dark"] .combined-cell {
       border-color: rgba(224, 235, 247, 0.1);
     }
@@ -85,6 +89,18 @@
 
     body[data-theme="dark"] .combined-bar.miss {
       background: #d85b5b;
+    }
+
+    body[data-theme="dark"] .calendar-focus {
+      background: linear-gradient(135deg, rgba(58, 167, 109, 0.18), rgba(77, 141, 199, 0.18));
+      border-color: rgba(173, 190, 210, 0.18);
+    }
+
+    body[data-theme="dark"] .focus-weekday,
+    body[data-theme="dark"] .focus-date {
+      background: rgba(8, 13, 19, 0.46);
+      border-color: rgba(173, 190, 210, 0.16);
+      color: #eef6ff;
     }
 
     .wrap {
@@ -344,6 +360,59 @@
       line-height: 1.5;
     }
 
+    .calendar-focus {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(58, 167, 109, 0.12), rgba(77, 141, 199, 0.12));
+      border: 1px solid rgba(58, 167, 109, 0.16);
+    }
+
+    .focus-kicker {
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .focus-main {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .focus-weekday,
+    .focus-date {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(31, 27, 22, 0.08);
+      background: rgba(255, 255, 255, 0.72);
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .focus-weekday {
+      font-size: 1rem;
+    }
+
+    .focus-date {
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    .focus-note {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.4;
+    }
+
     .heatmap-frame {
       display: grid;
       grid-template-columns: 42px minmax(480px, 1fr);
@@ -353,14 +422,31 @@
 
     .weekday-rail {
       display: grid;
-      grid-template-rows: 22px repeat(7, 16px) 24px;
+      grid-template-rows: 30px repeat(7, var(--cell-size)) auto;
       align-items: center;
+      justify-items: end;
+      gap: var(--cell-gap);
       color: var(--muted);
-      font-size: 0.74rem;
+      font-size: 0.76rem;
+      font-weight: 700;
     }
 
     .weekday-rail span {
       line-height: 1;
+      padding-right: 2px;
+    }
+
+    .weekday-rail .weekday-spacer {
+      visibility: hidden;
+    }
+
+    .weekday-rail .weekday-tag {
+      opacity: 0.72;
+    }
+
+    .weekday-rail .weekday-tag.active {
+      color: var(--ink);
+      opacity: 1;
     }
 
     .calendar-side {
@@ -379,9 +465,21 @@
     }
 
     .month-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 24px;
+      padding: 0 6px;
+      border-radius: 999px;
       white-space: nowrap;
       line-height: 1;
       font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .month-tag.active {
+      color: var(--ink);
+      background: rgba(31, 27, 22, 0.08);
     }
 
     .combined-grid {
@@ -404,6 +502,7 @@
     .combined-cell.today {
       outline: 2px solid rgba(255, 255, 255, 0.75);
       outline-offset: 1px;
+      box-shadow: 0 0 0 2px rgba(240, 187, 93, 0.26);
     }
 
     body[data-theme="dark"] .combined-cell.today {
@@ -632,6 +731,20 @@
         min-width: 0;
       }
 
+      .calendar-focus {
+        padding: 12px 12px 13px;
+      }
+
+      .focus-main {
+        gap: 8px;
+      }
+
+      .focus-weekday,
+      .focus-date {
+        min-height: 34px;
+        padding: 7px 12px;
+      }
+
       .weekday-rail,
       .month-row,
       .legend {
@@ -780,6 +893,18 @@
         weekday: "long",
         day: "numeric",
         month: "long",
+        year: "numeric"
+      });
+    }
+
+    function formatWeekday(date) {
+      return date.toLocaleDateString("en-AU", { weekday: "long" });
+    }
+
+    function formatShortDate(date) {
+      return date.toLocaleDateString("en-AU", {
+        day: "numeric",
+        month: "short",
         year: "numeric"
       });
     }
@@ -972,6 +1097,7 @@
       today.setHours(0, 0, 0, 0);
       const activeDate = logDate();
       const activeKey = keyForDate(activeDate);
+      const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
       const currentWeekStart = new Date(today);
       currentWeekStart.setDate(today.getDate() - today.getDay());
@@ -981,6 +1107,7 @@
 
       const monthLabels = Array.from({ length: weeks }, () => "");
       const cells = [];
+      let activeWeekIndex = 0;
 
       for (let weekIndex = 0; weekIndex < weeks; weekIndex += 1) {
         for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
@@ -1018,9 +1145,21 @@
               return status === true ? "good" : status === false ? "miss" : "empty";
             })()
           });
+
+          if (key === activeKey) {
+            activeWeekIndex = weekIndex;
+          }
         }
       }
-      return { monthLabels, cells, weeks };
+      return {
+        activeWeekIndex,
+        activeDate,
+        activeMonthLabel: activeDate.toLocaleDateString("en-AU", { month: "short" }),
+        cells,
+        monthLabels,
+        weekdayLabels,
+        weeks
+      };
     }
 
     function shareText(data) {
@@ -1063,22 +1202,26 @@
 
       const combinedCalendar = combinedCalendarFor(data);
       document.getElementById("combinedCalendar").innerHTML = `
+        <div class="calendar-focus">
+          <span class="focus-kicker">Logging day</span>
+          <div class="focus-main">
+            <span class="focus-weekday">${formatWeekday(combinedCalendar.activeDate)}</span>
+            <span class="focus-date">${formatShortDate(combinedCalendar.activeDate)}</span>
+          </div>
+          <span class="focus-note">The highlighted cell below is the date you are marking right now.</span>
+        </div>
         <div class="heatmap-frame">
           <div class="weekday-rail">
-            <span></span>
-            <span></span>
-            <span>Mon</span>
-            <span></span>
-            <span>Wed</span>
-            <span></span>
-            <span>Fri</span>
-            <span></span>
-            <span></span>
+            <span class="weekday-spacer">.</span>
+            ${combinedCalendar.weekdayLabels.map((label, index) => `
+              <span class="weekday-tag${index === combinedCalendar.activeDate.getDay() ? " active" : ""}">${label}</span>
+            `).join("")}
+            <span class="weekday-spacer">.</span>
           </div>
           <div class="calendar-side">
             <div class="month-row" style="grid-template-columns: repeat(${combinedCalendar.weeks}, var(--cell-size));">
-              ${combinedCalendar.monthLabels.map((label) => `
-                <span class="month-tag">${label}</span>
+              ${combinedCalendar.monthLabels.map((label, index) => `
+                <span class="month-tag${index === combinedCalendar.activeWeekIndex ? " active" : ""}">${label || (index === combinedCalendar.activeWeekIndex ? combinedCalendar.activeMonthLabel : "")}</span>
               `).join("")}
             </div>
                 <div class="combined-grid" style="grid-template-columns: repeat(${combinedCalendar.weeks}, var(--cell-size));">
