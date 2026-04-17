@@ -82,10 +82,17 @@ sudo systemctl --no-pager --full status signaltube-lab-overnight.timer signaltub
 
 Timer configuration lives in `/etc/default/signaltube-lab`, with the repo example at `infra/env/signaltube-lab.env.example`.
 
-If `SIGNALTUBE_PUBLISH_USERNAME` and `SIGNALTUBE_PUBLISH_PASSWORD` are present in that env file, both `scheduled-collect` and `render` now auto-publish the rendered feed to `https://mavali.top/projects/SignalTube/index.html` by default. Override the destination with:
+The overnight collector now syncs SignalTube state against Server2:
 
-- `SIGNALTUBE_PUBLISH_BASE_URL`
-- `SIGNALTUBE_PUBLISH_PUBLIC_BASE_URL`
-- `SIGNALTUBE_PUBLISH_REMOTE_DIR`
-- `SIGNALTUBE_PUBLISH_REMOTE_NAME`
-- `SIGNALTUBE_PUBLISH_PLAYWRIGHT_PYTHON`
+- pull the current DB from `server2` before collecting
+- collect and rerank locally on Server3 with Browser Brain
+- push the updated DB back to Server2 and rerender `/var/www/mavali.top/projects/SignalTube/index.html`
+
+Override the sync target with:
+
+- `SIGNALTUBE_SERVER2_HOST`
+- `SIGNALTUBE_SERVER2_DB_PATH`
+- `SIGNALTUBE_SERVER2_HTML_PATH`
+- `SIGNALTUBE_SERVER2_APP_DIR`
+- `SIGNALTUBE_SERVER2_TITLE`
+- `SIGNALTUBE_SERVER2_API_BASE_PATH`
