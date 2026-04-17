@@ -16,6 +16,7 @@
       --carbs: #8b5cf6;
       --dairy: #4d8dc7;
       --fasting: #52c7b8;
+      --coffee: #8b5a2b;
       --ok: #2f8f5b;
       --bad: #c64545;
       --shadow: 0 20px 60px rgba(70, 44, 11, 0.12);
@@ -286,6 +287,7 @@
     .carbs { background: var(--carbs); }
     .dairy { background: var(--dairy); }
     .fasting { background: var(--fasting); color: #10211d; }
+    .coffee { background: var(--coffee); color: #fff8f0; }
 
     .actions {
       display: flex;
@@ -542,6 +544,12 @@
 
     .combined-marker.good.track-fasting { background: var(--fasting); }
     .combined-marker.miss.track-fasting { background: var(--bad); }
+    .combined-marker.good.track-coffee { background: var(--coffee); }
+    .combined-marker.miss.track-coffee { background: var(--bad); }
+    .combined-marker.track-coffee {
+      left: -2px;
+      right: auto;
+    }
 
     .legend {
       display: flex;
@@ -819,6 +827,10 @@
           <span class="mini-label">Fasting days logged</span>
           <strong class="mini-value" id="heroFasting">0</strong>
         </article>
+        <article class="mini-stat">
+          <span class="mini-label">Coffee days logged</span>
+          <strong class="mini-value" id="heroCoffee">0</strong>
+        </article>
       </div>
     </section>
 
@@ -829,7 +841,7 @@
           Choose one result for today for each category. That is enough to keep the streak going.
         </p>
         <div class="heatmap-shell">
-          <p class="calendar-intro">One shared calendar. Each day cell has three bands: sugar, carbs, dairy.</p>
+          <p class="calendar-intro">One shared calendar. Each day cell has three bands for sugar, carbs, dairy, plus dots for fasting and coffee.</p>
           <div id="combinedCalendar"></div>
         </div>
         <div class="tracker-list" id="trackerList"></div>
@@ -884,7 +896,30 @@
         label: "Fasting",
         accent: "fasting",
         mode: "scheduled",
-        copy: "For planned monthly or bi-weekly full-day fasts. Log only on fasting days."
+        copy: "For planned monthly or bi-weekly full-day fasts. Log only on fasting days.",
+        countLabel: "fasting days",
+        countNoun: "fasting day",
+        actionGoodText: "Completed fast yesterday",
+        actionBadText: "Did not fast yesterday",
+        statusGoodText: "Yesterday: fasting completed",
+        statusBadText: "Yesterday: fasting skipped",
+        statusEmptyText: "Yesterday: not logged yet",
+        lastSuccessEmptyText: "No fasting day logged yet"
+      },
+      {
+        id: "coffee",
+        label: "Coffee",
+        accent: "coffee",
+        mode: "count",
+        copy: "Optional brown dot for days when you had coffee.",
+        countLabel: "coffee days",
+        countNoun: "coffee day",
+        actionGoodText: "Had coffee yesterday",
+        actionBadText: "No coffee yesterday",
+        statusGoodText: "Yesterday: coffee logged",
+        statusBadText: "Yesterday: no coffee",
+        statusEmptyText: "Yesterday: not logged yet",
+        lastSuccessEmptyText: "No coffee day logged yet"
       }
     ];
 
@@ -1081,14 +1116,43 @@
       return Object.values(data.days).filter((entry) => entry?.[trackerId] === true).length;
     }
 
-    function lastSuccessDateFor(data, trackerId) {
+    function lastSuccessDateFor(data, trackerId, emptyText = "No day logged yet") {
       const keys = Object.keys(data.days).sort().reverse();
       for (const key of keys) {
         if (data.days[key]?.[trackerId] === true) {
           return formatDate(dateFromKey(key));
         }
       }
-      return "No fasting day logged yet";
+      return emptyText;
+    }
+
+    function trackerStatusText(tracker, status) {
+      if (status === true) {
+        return tracker.statusGoodText || "Yesterday: success";
+      }
+      if (status === false) {
+        return tracker.statusBadText || "Yesterday: streak broken";
+      }
+      return tracker.statusEmptyText || "Yesterday: not logged yet";
+    }
+
+    function trackerCountLabel(tracker) {
+      return tracker.countLabel || "days logged";
+    }
+
+    function trackerCountLine(tracker, count) {
+      const noun = tracker.countNoun || "day";
+      return `${tracker.label}: ${count} ${noun}${count === 1 ? "" : "s"} logged`;
+    }
+
+    function trackerSummaryStatus(tracker, status) {
+      if (status === true) {
+        return "logged";
+      }
+      if (status === false) {
+        return "not logged";
+      }
+      return "not logged";
     }
 
     function combinedCalendarFor(data) {
@@ -1130,10 +1194,13 @@
               formatDate(date),
               ...trackers.map((tracker) => {
                 const status = readStatus(data, date, tracker.id);
+                if (tracker.mode === "scheduled" || tracker.mode === "count") {
+                  return `${tracker.label}: ${trackerSummaryStatus(tracker, status)}`;
+                }
                 return `${tracker.label}: ${status === true ? "clean" : status === false ? "had some" : "not logged"}`;
               })
             ].join(" | "),
-            bands: trackers.filter((tracker) => tracker.id !== "fasting").map((tracker) => {
+            bands: trackers.filter((tracker) => tracker.id !== "fasting" && tracker.id !== "coffee").map((tracker) => {
               const status = readStatus(data, date, tracker.id);
               return {
                 id: tracker.id,
@@ -1142,6 +1209,10 @@
             }),
             fasting: (() => {
               const status = readStatus(data, date, "fasting");
+              return status === true ? "good" : status === false ? "miss" : "empty";
+            })(),
+            coffee: (() => {
+              const status = readStatus(data, date, "coffee");
               return status === true ? "good" : status === false ? "miss" : "empty";
             })()
           });
@@ -1169,9 +1240,9 @@
       ];
 
       for (const tracker of trackers) {
-        if (tracker.mode === "scheduled") {
+        if (tracker.mode === "scheduled" || tracker.mode === "count") {
           const count = successCountFor(data, tracker.id);
-          lines.push(`${tracker.label}: ${count} fasting day${count === 1 ? "" : "s"} logged`);
+          lines.push(trackerCountLine(tracker, count));
           continue;
         }
         const streak = streakFor(data, tracker.id);
@@ -1199,6 +1270,7 @@
       document.getElementById("heroCarbs").textContent = bestStreakFor(data, "carbs");
       document.getElementById("heroDairy").textContent = bestStreakFor(data, "dairy");
       document.getElementById("heroFasting").textContent = successCountFor(data, "fasting");
+      document.getElementById("heroCoffee").textContent = successCountFor(data, "coffee");
 
       const combinedCalendar = combinedCalendarFor(data);
       document.getElementById("combinedCalendar").innerHTML = `
@@ -1237,6 +1309,7 @@
                         `).join("")}
                       </span>
                       ${cell.fasting === "empty" ? "" : `<span class="combined-marker ${cell.fasting} track-fasting"></span>`}
+                      ${cell.coffee === "empty" ? "" : `<span class="combined-marker ${cell.coffee} track-coffee"></span>`}
                     </span>
                   `).join("")}
                 </div>
@@ -1253,10 +1326,10 @@
                 <span class="combined-marker good track-fasting" style="position: static;"></span> Fasting day
               </span>
               <span class="legend-group">
-                <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some
+                <span class="combined-marker good track-coffee" style="position: static;"></span> Coffee day
               </span>
               <span class="legend-group">
-                <span class="legend-swatch" style="background: rgba(31, 27, 22, 0.1);"></span> Not logged
+                <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some
               </span>
               <span class="legend-group">Top sugar, middle carbs, bottom dairy</span>
             </div>
@@ -1269,24 +1342,24 @@
 
       for (const tracker of trackers) {
         const status = readStatus(data, targetDate, tracker.id);
-        const isScheduled = tracker.mode === "scheduled";
-        const primaryValue = isScheduled ? successCountFor(data, tracker.id) : streakFor(data, tracker.id);
-        const primaryLabel = isScheduled ? "fasting days" : "current streak";
-        const actionGoodText = isScheduled ? "Completed fast yesterday" : "Stayed clean yesterday";
-        const actionBadText = isScheduled ? "Did not fast yesterday" : "Had some yesterday";
-        const secondaryText = isScheduled
-          ? `Last fast: ${lastSuccessDateFor(data, tracker.id)}`
+        const isCounter = tracker.mode === "scheduled" || tracker.mode === "count";
+        const primaryValue = isCounter ? successCountFor(data, tracker.id) : streakFor(data, tracker.id);
+        const primaryLabel = isCounter ? trackerCountLabel(tracker) : "current streak";
+        const actionGoodText = tracker.actionGoodText || "Stayed clean yesterday";
+        const actionBadText = tracker.actionBadText || "Had some yesterday";
+        const secondaryText = isCounter
+          ? `Last ${tracker.label.toLowerCase()}: ${lastSuccessDateFor(data, tracker.id, tracker.lastSuccessEmptyText)}`
           : `Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}`;
 
         const card = document.createElement("article");
-        card.className = `tracker${isScheduled ? " fasting-card" : ""}`;
+        card.className = `tracker${tracker.mode === "scheduled" ? " fasting-card" : ""}`;
         card.innerHTML = `
           <div class="tracker-head">
             <div>
               <h3 class="tracker-title">${tracker.label}</h3>
             </div>
             <div class="badge ${tracker.accent}">
-              ${primaryValue}${isScheduled ? "" : " days"}
+              ${primaryValue}${isCounter ? "" : " days"}
               <small>${primaryLabel}</small>
             </div>
           </div>
@@ -1296,7 +1369,7 @@
             <button class="decision clear" type="button" data-action="clear" data-id="${tracker.id}">Clear</button>
           </div>
           <div class="tracker-foot">
-            <span>${status === true ? (isScheduled ? "Yesterday: fasting completed" : "Yesterday: success") : status === false ? (isScheduled ? "Yesterday: fasting skipped" : "Yesterday: streak broken") : "Yesterday: not logged yet"}</span>
+            <span>${trackerStatusText(tracker, status)}</span>
             <span>${secondaryText}</span>
           </div>
           <p class="tracker-copy">${tracker.copy}</p>
