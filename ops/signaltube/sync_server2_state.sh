@@ -56,6 +56,8 @@ render_feed(
     html_path,
     store.load_ranked(limit=200),
     title=os.environ['REMOTE_TITLE'],
+    db_path=db_path,
+    command_path=app_dir / 'server.py',
     api_base_path=os.environ['REMOTE_API_BASE_PATH'],
 )
 PY"
