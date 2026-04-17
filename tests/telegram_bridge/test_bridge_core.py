@@ -2394,6 +2394,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("server3-tv-start", client.messages[-1][1])
         self.assertIn("server3-tv-stop", client.messages[-1][1])
         self.assertIn("Use `Server3 TV ...`", client.messages[-1][1])
+        self.assertIn("Mention `server2` or `staker2`", client.messages[-1][1])
         self.assertIn("Use `Nextcloud ...`", client.messages[-1][1])
         self.assertIn("Use `SRO ...`", client.messages[-1][1])
         self.assertIn("/cancel", client.messages[-1][1])
