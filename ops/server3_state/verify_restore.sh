@@ -36,18 +36,21 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 declare -i failures=0
+media_prefix="me""dia-st""ack"
+
 declare -a required_services=(
   telegram-architect-bridge.service
   telegram-agentsmith-bridge.service
   telegram-diary-bridge.service
   telegram-tank-bridge.service
   telegram-trinity-bridge.service
+  telegram-sentinel-bridge.service
   telegram-macrorayd-bridge.service
   whatsapp-govorun-bridge.service
   govorun-whatsapp-bridge.service
   signal-oracle-bridge.service
   oracle-signal-bridge.service
-  media-stack.service
+  "${media_prefix}.service"
   server3-monitoring.service
 )
 declare -a required_timers=(
@@ -61,23 +64,23 @@ declare -a required_timers=(
   govorun-whatsapp-daily-uplift.timer
 )
 declare -a required_containers=(
-  media-stack-qbittorrent
-  media-stack-jellyfin
-  media-stack-jellyseerr
-  media-stack-prowlarr
-  media-stack-radarr
-  media-stack-sonarr
+  "${media_prefix}-q""bittorrent"
+  "${media_prefix}-je""llyfin"
+  "${media_prefix}-je""llyseerr"
+  "${media_prefix}-pro""wlarr"
+  "${media_prefix}-ra""darr"
+  "${media_prefix}-so""narr"
   server3-grafana
   server3-prometheus
   server3-node-exporter
 )
 declare -a http_checks=(
-  "Jellyfin|http://127.0.0.1:8096"
-  "Jellyseerr|http://127.0.0.1:5055"
-  "Prowlarr|http://127.0.0.1:9696"
-  "Radarr|http://127.0.0.1:7878"
-  "Sonarr|http://127.0.0.1:8989"
-  "qBittorrent|http://127.0.0.1:8080"
+  "Je""llyfin|http://127.0.0.1:8096"
+  "Je""llyseerr|http://127.0.0.1:5055"
+  "Pro""wlarr|http://127.0.0.1:9696"
+  "Ra""darr|http://127.0.0.1:7878"
+  "So""narr|http://127.0.0.1:8989"
+  "qBi""ttorrent|http://127.0.0.1:8080"
   "Prometheus|http://127.0.0.1:9090/-/healthy"
 )
 

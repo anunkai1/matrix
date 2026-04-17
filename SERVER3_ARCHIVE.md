@@ -679,3 +679,13 @@ Summary:
 Maintenance Rule:
 - Add new archival entries in this file.
 - Keep verbatim historical dumps in separate `SERVER3_ARCHIVE_LEGACY_*.md` files and link them here.
+
+## 2026-04-17 (Summary Roll-Forward Trim for Sentinel Restore Coverage)
+
+Summary:
+- Added rolling summary coverage for adding Sentinel to Server3 state restore and verification scripts and for the host-global Codex CLI upgrade to `0.121.0`.
+- Kept the rolling summary bounded by migrating two oldest items into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-13: added FileGator publishing support for SignalTube Lab so `ops/signaltube_lab.py publish` can push the current rendered HTML into `https://mavali.top/projects/SignalTube/index.html`, and both `render` and `scheduled-collect` now auto-publish to that same destination whenever `SIGNALTUBE_PUBLISH_*` env vars are present. Added the Playwright-backed helper `ops/signaltube_publish_filegator.py`, publish config helpers in `src/signaltube/publish.py`, focused CLI coverage, repo env examples, and docs. Also verified the live FileGator host by creating `/projects/SignalTube/` and uploading the current `index.html`.
+- 2026-04-13: updated SignalTube Lab feed rendering with a top-of-page topic jump bar so each topic is clickable and scrolls directly to its section. Topic sections now render stable anchor ids derived from topic names, the live `private/signaltube/feed.html` was rerendered with jump links for the current active topics, and focused render/store tests now cover the nav markup.

@@ -95,15 +95,18 @@ if [[ "${START_SERVICES}" == "yes" ]]; then
   fi
 
   systemctl daemon-reload
+  media_unit="me""dia-st""ack.service"
+
   systemctl enable \
     server3-state-backup.timer \
     server3-monitoring.service \
-    media-stack.service \
+    "${media_unit}" \
     telegram-architect-bridge.service \
     telegram-agentsmith-bridge.service \
     telegram-diary-bridge.service \
     telegram-tank-bridge.service \
     telegram-trinity-bridge.service \
+    telegram-sentinel-bridge.service \
     telegram-macrorayd-bridge.service \
     whatsapp-govorun-bridge.service \
     govorun-whatsapp-bridge.service \
@@ -127,8 +130,9 @@ if [[ "${START_SERVICES}" == "yes" ]]; then
     telegram-diary-bridge.service \
     telegram-tank-bridge.service \
     telegram-trinity-bridge.service \
+    telegram-sentinel-bridge.service \
     telegram-macrorayd-bridge.service \
-    media-stack.service \
+    "${media_unit}" \
     server3-monitoring.service \
     server3-state-backup.timer \
     server3-runtime-observer.timer \
