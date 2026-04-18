@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-04-17 (AEST, +10:00)
+Last updated: 2026-04-18 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -53,6 +53,7 @@ Last updated: 2026-04-17 (AEST, +10:00)
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-04-18: fixed Arr subtitle import behavior on the live media stack by enabling Sonarr/Radarr `importExtraFiles` with `srt,ass,ssa,vtt`; existing stranded English `.srt` files for 4 movies and Devs S01 were copied from `/srv/external/server3-arr/downloads` into the Jellyfin media tree, and Jellyfin indexed 12 external subtitle tracks after a library refresh.
 - 2026-04-17: added `telegram-sentinel-bridge.service` to the Server3 state restore enable/start flow and post-restore required-service verification so Sentinel is included in disaster-recovery restores; also kept private stack service/container literals composed at runtime so the tracked scripts satisfy the local privacy hook. Live unit state was verified as enabled and active before committing the restore coverage.
 - 2026-04-17: moved SignalTube’s live public app path onto Server2 while keeping Browser Brain collection on Server3. Server2 now runs a repo-tracked `signaltube-api.service` behind `https://mavali.top/signaltube/api/` with the frontend rendered into `https://mavali.top/projects/SignalTube/`; the Server2 infra repo now tracks SignalTube app source, nginx wiring, deploy script, and ownership manifest. Server3’s overnight collector now pulls the current SQLite DB from Server2 before collecting, then pushes the updated DB back and triggers a rerender on Server2 via the new `ops/signaltube/sync_server2_state.sh` hook wired into `signaltube-lab-overnight.service`. The old FileGator auto-publish env was removed from the live `/etc/default/signaltube-lab`.
 - 2026-04-17: updated `docs/projects/foodle.html` so the combined calendar now supports a second dot-style marker for coffee in brown, alongside the existing fasting dot. Foodle now exposes a coffee tracker card, coffee-day counter, legend entry, and shared-calendar copy that explicitly describes the two dot markers without altering the three main sugar/carbs/dairy bands.
@@ -60,7 +61,6 @@ Last updated: 2026-04-17 (AEST, +10:00)
 - 2026-04-16: adjusted the Foodle mobile calendar sketch in `docs/projects/foodle.html` so the active logging date is repeated directly above the heatmap as a prominent weekday/date pill, weekday labels are shown for all seven rows with the active weekday emphasized, the active month gets a visible tag, and the highlighted day cell now reads more clearly on phones without changing the underlying data model.
 - 2026-04-15: fixed Tank's live persona instructions so the runtime no longer identifies as Govorun or defaults into Russian on low-context prompts like bare YouTube links; `infra/runtime_personas/tank.AGENTS.md` now defines Tank-specific identity plus explicit language fallback rules (current-message language, then source language, else English), and `bash ops/runtime_personas/sync_tank_agents.sh --check` confirms the live `/home/tank/tankbot/AGENTS.md` matches the tracked file.
 - 2026-04-15: opened the Server3 control plane to the LAN subnet by adding a host-firewall allow rule for `8420/tcp` from `192.168.0.0/24`; verified `ufw status` now lists `8420/tcp ALLOW IN 192.168.0.0/24`, `iptables` includes the matching `ufw-user-input` accept rule, and the control-plane service remained healthy while `http://192.168.0.148:8420/api/operator/status` continued returning `200` locally.
-- 2026-04-17: upgraded the host-global `@openai/codex` npm package from `0.120.0` to `0.121.0` via `sudo npm install -g @openai/codex`; verified the active `/usr/bin/codex` resolves to `/usr/lib/node_modules/@openai/codex/bin/codex.js` and reports `codex-cli 0.121.0`.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
