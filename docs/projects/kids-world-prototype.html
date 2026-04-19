@@ -355,6 +355,45 @@
       background: var(--panel-strong);
     }
 
+    .below-watch {
+      display: grid;
+      gap: 12px;
+      margin-top: 4px;
+    }
+
+    .section-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #75899a;
+      font-size: 0.78rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .section-divider::after {
+      content: "";
+      height: 1px;
+      flex: 1;
+      background: var(--line);
+    }
+
+    .watch-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 0.7fr);
+      gap: 16px;
+      align-items: stretch;
+      margin-top: 14px;
+    }
+
+    .timer-panel {
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      padding: 16px;
+    }
+
     .watch-art {
       min-height: 150px;
       margin: 16px 0;
@@ -411,7 +450,8 @@
       }
 
       .app,
-      .grid {
+      .grid,
+      .watch-layout {
         grid-template-columns: 1fr;
       }
 
@@ -458,7 +498,7 @@
           </button>
           <button class="nav-button" data-view="watch" type="button">
             <span class="nav-title">Watch</span>
-            <span class="small">YouTube for 20 minutes.</span>
+            <span class="small">Opens below the exercises.</span>
           </button>
         </div>
       </section>
@@ -489,7 +529,7 @@
         <div class="hero">
           <p class="label">Reward Exercises</p>
           <h3 class="hero-title">Do the cards. Unlock Watch.</h3>
-          <p class="subtle">This version keeps the child experience simple. There are only exercises and watch time.</p>
+          <p class="subtle">This version keeps the child experience simple. Do the exercise cards at the top, then YouTube access opens below.</p>
         </div>
 
         <div class="grid">
@@ -513,34 +553,38 @@
             </div>
           </section>
         </div>
-      </section>
 
-      <section class="screen" id="screen-watch">
-        <div class="grid">
+        <section class="below-watch" id="watchSection">
+          <div class="section-divider">
+            <span>Section 2</span>
+          </div>
           <section class="watch-box" id="watchPanel">
             <p class="label">Watch</p>
             <h3 id="watchHeadline">YouTube is locked.</h3>
-            <p class="small" id="watchCopy">Finish the reward exercises first. Then this section opens for a 20-minute YouTube session.</p>
-            <div class="watch-art" aria-hidden="true"></div>
-            <div class="choice-grid">
-              <button class="choice youtube-button" id="youtubeButton" type="button" disabled>
-                <strong>Open YouTube</strong>
-                Complete the required exercises first.
-              </button>
-              <button class="choice reset-button" id="resetButton" type="button">
-                <strong>Reset Demo</strong>
-                Lock Watch and start the exercises again.
-              </button>
+            <p class="small" id="watchCopy">Finish the reward exercises above. Then YouTube access opens here for a 20-minute session.</p>
+            <div class="watch-layout">
+              <div>
+                <div class="watch-art" aria-hidden="true"></div>
+                <div class="choice-grid">
+                  <button class="choice youtube-button" id="youtubeButton" type="button" disabled>
+                    <strong>Open YouTube</strong>
+                    Complete the required exercises first.
+                  </button>
+                  <button class="choice reset-button" id="resetButton" type="button">
+                    <strong>Reset Demo</strong>
+                    Lock Watch and start the exercises again.
+                  </button>
+                </div>
+              </div>
+              <div class="timer-panel">
+                <p class="label">Timer</p>
+                <div class="timer" id="timerHeadline">20:00</div>
+                <p class="small" id="timerCopy">The countdown starts when YouTube is opened.</p>
+                <p class="small subtle">Prototype note: this opens regular YouTube in the browser. Proper enforcement later belongs in Android kiosk controls or a Server3-controlled browser wrapper.</p>
+              </div>
             </div>
           </section>
-
-          <section class="panel">
-            <p class="label">Timer</p>
-            <div class="timer" id="timerHeadline">20:00</div>
-            <p class="small" id="timerCopy">The countdown starts when YouTube is opened.</p>
-            <p class="small subtle">Prototype note: this opens regular YouTube in the browser. Proper enforcement later belongs in Android kiosk controls or a Server3-controlled browser wrapper.</p>
-          </section>
-        </div>
+        </section>
       </section>
     </main>
   </div>
@@ -577,6 +621,7 @@
 
     const navCards = [...document.querySelectorAll(".nav-button")];
     const screens = [...document.querySelectorAll(".screen")];
+    const watchSection = document.getElementById("watchSection");
     const rewardMinutes = document.getElementById("rewardMinutes");
     const rewardFill = document.getElementById("rewardFill");
     const rewardHint = document.getElementById("rewardHint");
@@ -617,11 +662,16 @@
         card.classList.toggle("active", card.dataset.view === view);
       });
       screens.forEach((screen) => {
-        screen.classList.toggle("active", screen.id === `screen-${view}`);
+        screen.classList.add("active");
       });
       screenTitle.textContent = titleMap[view].title;
       screenCopy.textContent = titleMap[view].copy;
       statusPill.textContent = state.watchUnlocked ? "Watch unlocked" : "Exercises required";
+      if (view === "watch") {
+        watchSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     }
 
     function solvedCount() {
@@ -640,12 +690,19 @@
 
     function maybeUnlockWatch() {
       if (solvedCount() === state.questions.length) {
+        const wasLocked = !state.watchUnlocked;
         state.watchUnlocked = true;
         roundHeadline.textContent = "Watch unlocked.";
-        roundCopy.textContent = "YouTube is now available for 20 minutes.";
+        roundCopy.textContent = "YouTube is now available below for 20 minutes.";
+        if (wasLocked) {
+          statusPill.textContent = "Watch opened below";
+          window.setTimeout(() => {
+            watchSection.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 120);
+        }
       } else {
         roundHeadline.textContent = "Watch is locked.";
-        roundCopy.textContent = "Complete the required exercises to unlock YouTube for 20 minutes.";
+        roundCopy.textContent = "Complete the required exercises to unlock YouTube below for 20 minutes.";
       }
     }
 
@@ -691,7 +748,7 @@
       youtubeButton.disabled = !state.watchUnlocked || state.remainingSeconds <= 0;
       if (!state.watchUnlocked) {
         watchHeadline.textContent = "YouTube is locked.";
-        watchCopy.textContent = "Finish the reward exercises first. Then this section opens for a 20-minute YouTube session.";
+        watchCopy.textContent = "Finish the reward exercises above. Then YouTube access opens here for a 20-minute session.";
         youtubeButton.innerHTML = "<strong>Open YouTube</strong>Complete the required exercises first.";
       } else if (state.remainingSeconds <= 0) {
         watchHeadline.textContent = "Watch time is finished.";
