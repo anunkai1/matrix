@@ -121,10 +121,12 @@ def collect_for_topics(
     topics: list[tuple[str, int]],
     html_path: Path,
     render_limit: int,
+    replace_existing_results: bool = False,
     allow_unverified_logged_out: bool,
     skip_youtube_metadata: bool,
 ) -> int:
     collected_total = 0
+    collected_rankings: list[tuple[str, list]] = []
     for topic, max_candidates in topics:
         snapshot = client.open_search_snapshot(topic)
         candidates = extract_video_candidates(
@@ -144,9 +146,17 @@ def collect_for_topics(
         ]
         feedback_profile = store.load_feedback_profile(topic=topic)
         ranked = rank_candidates(candidates, topic=topic, feedback_profile=feedback_profile)
-        store.save_ranked(topic, ranked)
+        if replace_existing_results:
+            collected_rankings.append((topic, ranked))
+        else:
+            store.save_ranked(topic, ranked)
         collected_total += len(ranked)
         print(f"{topic}: stored {len(ranked)} ranked candidates")
+    if replace_existing_results:
+        store.clear_ranked_results()
+        for topic, ranked in collected_rankings:
+            store.save_ranked(topic, ranked)
+        print("replaced existing SignalTube ranked results")
     render_feed(
         html_path,
         store.load_ranked(limit=render_limit),
@@ -249,6 +259,7 @@ def main(argv: list[str] | None = None) -> int:
             topics=[(topic, args.max_candidates_per_topic) for topic in args.topic],
             html_path=args.html,
             render_limit=200,
+            replace_existing_results=False,
             allow_unverified_logged_out=args.allow_unverified_logged_out,
             skip_youtube_metadata=args.skip_youtube_metadata,
         )
@@ -267,9 +278,6 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        if args.clear_existing_results:
-            store.clear_ranked_results()
-            print("cleared existing SignalTube ranked results")
         client = BrowserBrainClient(args.browser_brain_url)
         collect_for_topics(
             store,
@@ -277,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
             topics=topics,
             html_path=args.html,
             render_limit=args.render_limit,
+            replace_existing_results=args.clear_existing_results,
             allow_unverified_logged_out=args.allow_unverified_logged_out,
             skip_youtube_metadata=args.skip_youtube_metadata,
         )
