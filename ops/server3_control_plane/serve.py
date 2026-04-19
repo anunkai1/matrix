@@ -30,6 +30,7 @@ DEFAULT_OPERATOR_TOKEN_FILE = Path("/home/architect/.config/server3-control-plan
 DEFAULT_STATE_DIR = Path("/home/architect/.local/state/server3-control-plane")
 DEFAULT_AUDIT_LOG = DEFAULT_STATE_DIR / "audit.jsonl"
 DEFAULT_BUNDLES_DIR = DEFAULT_STATE_DIR / "bundles"
+DEFAULT_SIGNALTUBE_ASK_REQUEST = DEFAULT_STATE_DIR / "signaltube-ask-request.json"
 OPERATOR_TOKEN_HEADER = "X-Server3-Operator-Token"
 LOCAL_CLIENTS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 DEFAULT_TZ = ZoneInfo("Australia/Brisbane")
@@ -45,6 +46,7 @@ RUNTIME_UNITS: Dict[str, List[str]] = {
     "browser": ["server3-browser-brain.service"],
 }
 SIGNALTUBE_RESCAN_UNIT = "signaltube-lab-rescan.service"
+SIGNALTUBE_ASK_UNIT = "signaltube-lab-ask.service"
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -281,6 +283,46 @@ def trigger_signaltube_rescan() -> Dict[str, object]:
         "unit": SIGNALTUBE_RESCAN_UNIT,
         "message": "SignalTube rescan started",
         "status": signaltube_rescan_status(),
+    }
+
+
+def read_json_body(handler: BaseHTTPRequestHandler) -> Dict[str, object]:
+    length = int(handler.headers.get("Content-Length", "0") or "0")
+    raw = handler.rfile.read(length) if length else b"{}"
+    try:
+        parsed = json.loads(raw.decode("utf-8") or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError("invalid JSON body") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("JSON body must be an object")
+    return parsed
+
+
+def trigger_signaltube_ask(prompt: str) -> Dict[str, object]:
+    normalized = " ".join(prompt.strip().split())
+    if not normalized:
+        raise ValueError("prompt is required")
+    DEFAULT_SIGNALTUBE_ASK_REQUEST.parent.mkdir(parents=True, exist_ok=True)
+    DEFAULT_SIGNALTUBE_ASK_REQUEST.write_text(
+        json.dumps({"prompt": normalized}, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    status = run_capture(["systemctl", "show", SIGNALTUBE_ASK_UNIT, "--no-pager", "-p", "ActiveState", "-p", "SubState"])
+    if "ActiveState=activating" in status.stdout or "ActiveState=active" in status.stdout:
+        return {
+            "ok": True,
+            "started": False,
+            "unit": SIGNALTUBE_ASK_UNIT,
+            "message": "Ask SignalTube is already running",
+        }
+    result = run_capture(["systemctl", "start", "--no-block", SIGNALTUBE_ASK_UNIT])
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "systemctl start failed")
+    return {
+        "ok": True,
+        "started": True,
+        "unit": SIGNALTUBE_ASK_UNIT,
+        "message": "Ask SignalTube scan started",
     }
 
 
@@ -618,6 +660,41 @@ class Handler(BaseHTTPRequestHandler):
                 extra={"started": bool(payload.get("started"))},
             )
             json_response(self, payload)
+            return
+        if path == "/api/signaltube/ask":
+            if not is_operator_authorized(self):
+                local_only_error(self)
+                return
+            try:
+                payload = read_json_body(self)
+                prompt = str(payload.get("prompt") or "")
+                result = trigger_signaltube_ask(prompt)
+            except Exception as exc:
+                actor = actor_context(self)
+                append_audit_entry(
+                    action="signaltube.ask",
+                    outcome="error",
+                    summary="failed to start Ask SignalTube scan",
+                    detail=str(exc),
+                    scope="signaltube",
+                    actor_mode=actor["mode"],
+                    client_ip=actor["client_ip"],
+                )
+                status = 400 if isinstance(exc, ValueError) else 500
+                json_response(self, {"ok": False, "error": str(exc)}, status=status)
+                return
+            actor = actor_context(self)
+            append_audit_entry(
+                action="signaltube.ask",
+                outcome="ok",
+                summary=str(result.get("message") or "Ask SignalTube requested"),
+                detail=str(payload.get("prompt") or ""),
+                scope="signaltube",
+                actor_mode=actor["mode"],
+                client_ip=actor["client_ip"],
+                extra={"started": bool(result.get("started"))},
+            )
+            json_response(self, result)
             return
         json_response(self, {"ok": False, "error": "not found"}, status=404)
 

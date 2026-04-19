@@ -1,0 +1,22 @@
+[Unit]
+Description=SignalTube Lab Ask Scan
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=sentinel
+Group=sentinel
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+Environment=SIGNALTUBE_LAB_DB_PATH=/home/architect/matrix/private/signaltube/signaltube.sqlite
+Environment=SIGNALTUBE_LAB_HTML_PATH=/home/architect/matrix/private/signaltube/feed.html
+Environment=SIGNALTUBE_LAB_BROWSER_BRAIN_URL=http://127.0.0.1:47832
+Environment=SIGNALTUBE_LAB_RENDER_LIMIT=200
+Environment=SIGNALTUBE_ASK_REQUEST_FILE=/home/architect/.local/state/server3-control-plane/signaltube-ask-request.json
+Environment=SIGNALTUBE_ASK_STATE_FILE=/home/architect/matrix/private/signaltube/ask_state.json
+EnvironmentFile=-/etc/default/signaltube-lab
+ExecStartPre=/home/architect/matrix/ops/signaltube_lab_browser.sh start
+ExecStartPre=/home/architect/matrix/ops/signaltube/sync_server2_state.sh pull
+ExecStart=/usr/bin/python3 /home/architect/matrix/ops/signaltube_ask.py --db ${SIGNALTUBE_LAB_DB_PATH} --html ${SIGNALTUBE_LAB_HTML_PATH} --browser-brain-url ${SIGNALTUBE_LAB_BROWSER_BRAIN_URL} --request-file ${SIGNALTUBE_ASK_REQUEST_FILE} --state-file ${SIGNALTUBE_ASK_STATE_FILE} --render-limit ${SIGNALTUBE_LAB_RENDER_LIMIT}
+ExecStartPost=/home/architect/matrix/ops/signaltube/sync_server2_state.sh push
