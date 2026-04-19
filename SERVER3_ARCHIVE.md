@@ -698,3 +698,12 @@ Summary:
 Migrated out of summary during this trim:
 - 2026-04-13: added FileGator publishing support for SignalTube Lab so `ops/signaltube_lab.py publish` can push the current rendered HTML into `https://mavali.top/projects/SignalTube/index.html`, and both `render` and `scheduled-collect` now auto-publish to that same destination whenever `SIGNALTUBE_PUBLISH_*` env vars are present. Added the Playwright-backed helper `ops/signaltube_publish_filegator.py`, publish config helpers in `src/signaltube/publish.py`, focused CLI coverage, repo env examples, and docs. Also verified the live FileGator host by creating `/projects/SignalTube/` and uploading the current `index.html`.
 - 2026-04-13: updated SignalTube Lab feed rendering with a top-of-page topic jump bar so each topic is clickable and scrolls directly to its section. Topic sections now render stable anchor ids derived from topic names, the live `private/signaltube/feed.html` was rerendered with jump links for the current active topics, and focused render/store tests now cover the nav markup.
+
+## 2026-04-20 (Summary Roll-Forward Trim for Server2 Maintenance)
+
+Summary:
+- Added rolling summary coverage for the Server2 maintenance run that upgraded host packages, refreshed Docker stacks, and moved Nextcloud to `32.0.8`.
+- Kept the rolling summary bounded by migrating the oldest item into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-17: updated `docs/projects/foodle.html` so the combined calendar now supports a second dot-style marker for coffee in brown, alongside the existing fasting dot. Foodle now exposes a coffee tracker card, coffee-day counter, legend entry, and shared-calendar copy that explicitly describes the two dot markers without altering the three main sugar/carbs/dairy bands.
