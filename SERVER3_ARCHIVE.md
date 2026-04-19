@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-20 (Summary Roll-Forward Trim for Foodle Monday-First Calendar)
+
+Summary:
+- Added a rolling-summary entry for updating Foodle's combined calendar to display Monday at the top of the weekday rail instead of Sunday.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-04-17: updated the Telegram `/help` and `/h` output so Architect now explicitly tells operators to mention `server2` or `staker2` when they want a request targeted at the LAN-connected Server2 host over SSH; added focused bridge test coverage for the new help line and restarted the live Architect bridge so the wording is active.
+
 ## 2026-04-15 (Summary Roll-Forward Trim for Control-Plane LAN Firewall Allow)
 
 Summary:

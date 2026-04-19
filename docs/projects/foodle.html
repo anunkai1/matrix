@@ -1161,10 +1161,11 @@
       today.setHours(0, 0, 0, 0);
       const activeDate = logDate();
       const activeKey = keyForDate(activeDate);
-      const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
       const currentWeekStart = new Date(today);
-      currentWeekStart.setDate(today.getDate() - today.getDay());
+      const mondayFirstDayIndex = (today.getDay() + 6) % 7;
+      currentWeekStart.setDate(today.getDate() - mondayFirstDayIndex);
 
       const start = new Date(currentWeekStart);
       start.setDate(currentWeekStart.getDate() - Math.floor(weeks / 2) * 7);
@@ -1286,7 +1287,7 @@
           <div class="weekday-rail">
             <span class="weekday-spacer">.</span>
             ${combinedCalendar.weekdayLabels.map((label, index) => `
-              <span class="weekday-tag${index === combinedCalendar.activeDate.getDay() ? " active" : ""}">${label}</span>
+              <span class="weekday-tag${index === (combinedCalendar.activeDate.getDay() + 6) % 7 ? " active" : ""}">${label}</span>
             `).join("")}
             <span class="weekday-spacer">.</span>
           </div>
