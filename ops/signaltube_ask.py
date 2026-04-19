@@ -21,7 +21,8 @@ from src.signaltube.render import render_feed
 from src.signaltube.store import SignalTubeStore
 
 
-ASK_TOPIC = "Ask SignalTube"
+ASK_TOPIC_PREFIX = "Ask:"
+LEGACY_ASK_TOPIC = "Ask SignalTube"
 DEFAULT_STATE = Path("private/signaltube/ask_state.json")
 DEFAULT_DB = Path("private/signaltube/signaltube.sqlite")
 DEFAULT_HTML = Path("private/signaltube/feed.html")
@@ -88,16 +89,19 @@ def build_scan_plan(prompt: str, previous: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("prompt must not be empty")
     lower = normalized.lower()
     previous_focus = str(previous.get("focus") or "").strip()
-    focus = extract_focus(normalized)
-    if is_followup(lower) and previous_focus:
+    extracted_focus = extract_focus(normalized)
+    if extracted_focus:
+        focus = extracted_focus
+    elif is_followup(lower) and previous_focus:
         focus = previous_focus
-    elif not focus and previous_focus:
+    elif previous_focus:
         focus = previous_focus
-    elif not focus:
+    else:
         focus = normalized
 
     remove_mainstream = bool(previous.get("remove_mainstream")) or (
-        "mainstream" in lower and any(word in lower for word in ("remove", "less", "too much", "avoid", "no "))
+        ("mainstream" in lower or "msm" in lower)
+        and any(word in lower for word in ("remove", "less", "too much", "avoid", "no ", "not from"))
     )
     viewpoints = sorted({*previous.get("viewpoints", []), *extract_viewpoints(lower)})
     if "other side" in lower and not viewpoints:
@@ -107,13 +111,18 @@ def build_scan_plan(prompt: str, previous: dict[str, Any]) -> dict[str, Any]:
 
     queries = build_queries(focus, remove_mainstream=remove_mainstream, viewpoints=viewpoints)
     return {
-        "topic": ASK_TOPIC,
+        "topic": ask_topic_for_focus(focus),
         "focus": focus,
         "prompt": normalized,
         "remove_mainstream": remove_mainstream,
         "viewpoints": viewpoints,
         "queries": queries,
     }
+
+
+def ask_topic_for_focus(focus: str) -> str:
+    compact = re.sub(r"\s+", " ", focus.strip())[:70].strip()
+    return f"{ASK_TOPIC_PREFIX} {compact or 'latest request'}"
 
 
 def extract_focus(prompt: str) -> str:
@@ -130,9 +139,12 @@ def extract_focus(prompt: str) -> str:
             cleaned = match.group(1)
             break
     cleaned = re.sub(r"(?i)\b(that'?s|that is)\b.*$", "", cleaned).strip()
-    cleaned = re.sub(r"(?i)\b(remove|avoid|less|too much|mainstream|news|sources?)\b.*$", "", cleaned).strip()
+    cleaned = re.sub(r"(?i),?\s+\bbut\s+(?:not from|no|without|avoid|remove).*$", "", cleaned).strip()
+    cleaned = re.sub(r"(?i)\b(remove|avoid|less|too much|mainstream|sources?)\b.*$", "", cleaned).strip()
     cleaned = cleaned.strip(" .?!,;:")
     cleaned = re.sub(r"(?i)^(the|a|an)\s+", "", cleaned)
+    if cleaned.lower() in {"give me", "show me", "ok", "okay", "but", "now"}:
+        return ""
     return cleaned
 
 
@@ -220,7 +232,7 @@ def collect_ask_candidates(
         for candidate in candidates:
             if plan.get("remove_mainstream") and is_mainstream_channel(candidate.channel):
                 continue
-            collected.setdefault(candidate.video_id, replace(candidate, source_topic=ASK_TOPIC))
+            collected.setdefault(candidate.video_id, replace(candidate, source_topic=str(plan["topic"])))
     return list(collected.values())
 
 
@@ -247,9 +259,11 @@ def main(argv: list[str] | None = None) -> int:
         for candidate in candidates
         if candidate.channel.strip().lower() not in blocked_channels and candidate.video_id not in seen_video_ids
     ]
-    ranked = rank_candidates(candidates, topic=ASK_TOPIC, feedback_profile=store.load_feedback_profile(topic=ASK_TOPIC))
-    store.clear_ranked_results()
-    store.save_ranked(ASK_TOPIC, ranked)
+    topic = str(plan["topic"])
+    ranked = rank_candidates(candidates, topic=topic, feedback_profile=store.load_feedback_profile(topic=topic))
+    store.clear_ranked_results(topic=LEGACY_ASK_TOPIC)
+    store.clear_ranked_results(topic_prefix=ASK_TOPIC_PREFIX)
+    store.save_ranked(topic, ranked)
     render_feed(
         args.html,
         store.load_ranked(limit=args.render_limit),

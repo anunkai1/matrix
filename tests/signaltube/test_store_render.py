@@ -114,6 +114,25 @@ class SignalTubeStoreRenderTests(unittest.TestCase):
             self.assertIn("abcDEF_1234", store.load_seen_video_ids())
             self.assertIn("space channel", store.load_blocked_channels())
 
+    def test_clear_ranked_results_can_target_one_topic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "signaltube.sqlite"
+            store = SignalTubeStore(db_path)
+            for topic, video_id in (("Ask: AI news", "ask_ai_0001"), ("Iran war", "iran_war001")):
+                candidate = VideoCandidate(
+                    video_id=video_id,
+                    url=f"https://www.youtube.com/watch?v={video_id}",
+                    title=f"{topic} update",
+                    channel="Channel",
+                    source_topic=topic,
+                )
+                store.save_ranked(topic, rank_candidates([candidate], topic=topic))
+
+            store.clear_ranked_results(topic_prefix="Ask:")
+
+            self.assertEqual(store.load_ranked(topic="Ask: AI news"), [])
+            self.assertEqual(len(store.load_ranked(topic="Iran war")), 1)
+
     def test_load_ranked_diversifies_same_story_wave(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "signaltube.sqlite"

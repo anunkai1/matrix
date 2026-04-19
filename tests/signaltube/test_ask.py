@@ -20,6 +20,7 @@ class SignalTubeAskTests(unittest.TestCase):
         plan = signaltube_ask.build_scan_plan("I want to see some videos about the Iran war", {})
 
         self.assertEqual(plan["focus"], "Iran war")
+        self.assertEqual(plan["topic"], "Ask: Iran war")
         self.assertFalse(plan["remove_mainstream"])
         self.assertIn("Iran war latest analysis", plan["queries"])
 
@@ -41,6 +42,16 @@ class SignalTubeAskTests(unittest.TestCase):
         self.assertEqual(plan["viewpoints"], ["china", "iran"])
         self.assertIn("Iran war chinese perspective", plan["queries"])
         self.assertIn("Iran war iranian perspective", plan["queries"])
+
+    def test_build_scan_plan_new_focus_with_refinement_language(self) -> None:
+        previous = signaltube_ask.build_scan_plan("I want to see some videos about the Iran war", {})
+
+        plan = signaltube_ask.build_scan_plan("I want to see videos about AI news, but not from MSM", previous)
+
+        self.assertEqual(plan["focus"], "AI news")
+        self.assertEqual(plan["topic"], "Ask: AI news")
+        self.assertTrue(plan["remove_mainstream"])
+        self.assertIn("AI news independent analysis", plan["queries"])
 
 
 if __name__ == "__main__":

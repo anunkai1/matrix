@@ -149,11 +149,18 @@ class SignalTubeStore:
                     (topic, candidate.video_id, item.score, ", ".join(item.reasons), now),
                 )
 
-    def clear_ranked_results(self) -> None:
+    def clear_ranked_results(self, *, topic: str | None = None, topic_prefix: str | None = None) -> None:
         with self.connect() as db:
             _ensure_schema(db)
-            db.execute("DELETE FROM rankings")
-            db.execute("DELETE FROM discoveries")
+            if topic is not None:
+                db.execute("DELETE FROM rankings WHERE topic = ?", (topic,))
+                db.execute("DELETE FROM discoveries WHERE topic = ?", (topic,))
+            elif topic_prefix is not None:
+                db.execute("DELETE FROM rankings WHERE topic LIKE ?", (f"{topic_prefix}%",))
+                db.execute("DELETE FROM discoveries WHERE topic LIKE ?", (f"{topic_prefix}%",))
+            else:
+                db.execute("DELETE FROM rankings")
+                db.execute("DELETE FROM discoveries")
 
     def load_ranked(
         self,

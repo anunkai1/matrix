@@ -21,6 +21,7 @@ from src.signaltube.store import SignalTubeStore
 DEFAULT_DB = Path("private/signaltube/signaltube.sqlite")
 DEFAULT_HTML = Path("private/signaltube/feed.html")
 TRANSIENT_TOPIC_NAMES = {"Ask SignalTube"}
+TRANSIENT_TOPIC_PREFIXES = ("Ask:",)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -187,7 +188,7 @@ def resolve_scheduled_topics(
     configured = store.list_topics(enabled_only=True)
     resolved: dict[str, int] = {}
     for item in configured:
-        if item.topic in TRANSIENT_TOPIC_NAMES:
+        if item.topic in TRANSIENT_TOPIC_NAMES or item.topic.startswith(TRANSIENT_TOPIC_PREFIXES):
             continue
         resolved[item.topic] = max_candidates_override or item.max_candidates
     env_topics = [
