@@ -149,6 +149,12 @@ class SignalTubeStore:
                     (topic, candidate.video_id, item.score, ", ".join(item.reasons), now),
                 )
 
+    def clear_ranked_results(self) -> None:
+        with self.connect() as db:
+            _ensure_schema(db)
+            db.execute("DELETE FROM rankings")
+            db.execute("DELETE FROM discoveries")
+
     def load_ranked(
         self,
         *,

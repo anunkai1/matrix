@@ -39,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     scheduled.add_argument("--topic", action="append", default=[])
     scheduled.add_argument("--max-candidates-per-topic", type=int)
     scheduled.add_argument("--render-limit", type=int, default=200)
+    scheduled.add_argument("--clear-existing-results", action="store_true")
     scheduled.add_argument("--allow-unverified-logged-out", action="store_true")
     scheduled.add_argument("--skip-youtube-metadata", action="store_true")
 
@@ -266,6 +267,9 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+        if args.clear_existing_results:
+            store.clear_ranked_results()
+            print("cleared existing SignalTube ranked results")
         client = BrowserBrainClient(args.browser_brain_url)
         collect_for_topics(
             store,

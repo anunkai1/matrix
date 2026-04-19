@@ -84,6 +84,36 @@ class SignalTubeStoreRenderTests(unittest.TestCase):
             self.assertAlmostEqual(feedback.video_scores["abcDEF_1234"], 2.025)
             self.assertAlmostEqual(feedback.channel_scores["Space Channel"], 2.025)
 
+    def test_clear_ranked_results_keeps_preferences(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "signaltube.sqlite"
+            candidate = VideoCandidate(
+                video_id="abcDEF_1234",
+                url="https://www.youtube.com/watch?v=abcDEF_1234",
+                title="Latest space telescope discovery",
+                channel="Space Channel",
+                source_topic="latest space videos",
+            )
+            ranked = rank_candidates([candidate], topic="latest space videos")
+            store = SignalTubeStore(db_path)
+            store.save_ranked("latest space videos", ranked)
+            store.add_feedback(
+                topic="latest space videos",
+                video_id="abcDEF_1234",
+                signal="save",
+                weight=1.5,
+                note="good source",
+            )
+            store.mark_video_seen("abcDEF_1234")
+            store.block_channel("Space Channel")
+
+            store.clear_ranked_results()
+
+            self.assertEqual(store.load_ranked(topic="latest space videos"), [])
+            self.assertEqual(len(store.load_feedback_events(topic="latest space videos")), 1)
+            self.assertIn("abcDEF_1234", store.load_seen_video_ids())
+            self.assertIn("space channel", store.load_blocked_channels())
+
     def test_load_ranked_diversifies_same_story_wave(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "signaltube.sqlite"

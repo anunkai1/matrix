@@ -44,6 +44,7 @@ RUNTIME_UNITS: Dict[str, List[str]] = {
     "mavali": ["telegram-mavali-eth-bridge.service"],
     "browser": ["server3-browser-brain.service"],
 }
+SIGNALTUBE_RESCAN_UNIT = "signaltube-lab-rescan.service"
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -230,6 +231,56 @@ def restart_runtime(runtime_key: str) -> Dict[str, object]:
         "runtime": runtime_key,
         "units": units,
         "message": f"restarted {', '.join(units)}",
+    }
+
+
+def signaltube_rescan_status() -> Dict[str, str]:
+    result = run_capture(
+        [
+            "systemctl",
+            "show",
+            SIGNALTUBE_RESCAN_UNIT,
+            "--no-pager",
+            "-p",
+            "ActiveState",
+            "-p",
+            "SubState",
+            "-p",
+            "Result",
+            "-p",
+            "ExecMainStartTimestamp",
+            "-p",
+            "ExecMainExitTimestamp",
+        ]
+    )
+    fields: Dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        key, _, value = line.partition("=")
+        if key:
+            fields[key] = value
+    return fields
+
+
+def trigger_signaltube_rescan() -> Dict[str, object]:
+    status = signaltube_rescan_status()
+    active_state = status.get("ActiveState", "")
+    if active_state in {"activating", "active"}:
+        return {
+            "ok": True,
+            "started": False,
+            "unit": SIGNALTUBE_RESCAN_UNIT,
+            "message": "SignalTube rescan is already running",
+            "status": status,
+        }
+    result = run_capture(["systemctl", "start", "--no-block", SIGNALTUBE_RESCAN_UNIT])
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "systemctl start failed")
+    return {
+        "ok": True,
+        "started": True,
+        "unit": SIGNALTUBE_RESCAN_UNIT,
+        "message": "SignalTube rescan started",
+        "status": signaltube_rescan_status(),
     }
 
 
@@ -533,6 +584,38 @@ class Handler(BaseHTTPRequestHandler):
                 runtime_key=runtime_key,
                 actor_mode=actor["mode"],
                 client_ip=actor["client_ip"],
+            )
+            json_response(self, payload)
+            return
+        if path == "/api/signaltube/rescan":
+            if not is_operator_authorized(self):
+                local_only_error(self)
+                return
+            try:
+                payload = trigger_signaltube_rescan()
+            except Exception as exc:
+                actor = actor_context(self)
+                append_audit_entry(
+                    action="signaltube.rescan",
+                    outcome="error",
+                    summary="failed to start SignalTube rescan",
+                    detail=str(exc),
+                    scope="signaltube",
+                    actor_mode=actor["mode"],
+                    client_ip=actor["client_ip"],
+                )
+                json_response(self, {"ok": False, "error": str(exc)}, status=500)
+                return
+            actor = actor_context(self)
+            append_audit_entry(
+                action="signaltube.rescan",
+                outcome="ok",
+                summary=str(payload.get("message") or "SignalTube rescan requested"),
+                detail=SIGNALTUBE_RESCAN_UNIT,
+                scope="signaltube",
+                actor_mode=actor["mode"],
+                client_ip=actor["client_ip"],
+                extra={"started": bool(payload.get("started"))},
             )
             json_response(self, payload)
             return
