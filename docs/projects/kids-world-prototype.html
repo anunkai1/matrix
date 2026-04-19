@@ -6,27 +6,19 @@
   <title>Kids World Prototype</title>
   <style>
     :root {
-      --sky-top: #fdf3c5;
-      --sky-mid: #dff6f0;
-      --sky-bottom: #d7e7ff;
-      --panel: rgba(255, 252, 246, 0.92);
-      --panel-strong: rgba(255, 250, 240, 0.98);
-      --ink: #1d3144;
-      --muted: #5f7385;
-      --line: rgba(41, 68, 96, 0.12);
-      --make: #d8f3e6;
-      --learn: #e3efff;
-      --ask: #ffe8d4;
-      --watch: #efe5ff;
-      --missions: #fff1c9;
-      --reward: #7bc98d;
-      --reward-soft: #dff5e4;
-      --locked: #d9e3ef;
-      --shadow: 0 26px 70px rgba(49, 75, 103, 0.18);
-      --radius-xl: 34px;
-      --radius-lg: 28px;
-      --radius-md: 22px;
-      --radius-sm: 18px;
+      --bg-top: #f9eebf;
+      --bg-mid: #dff4ec;
+      --bg-bottom: #d8e8ff;
+      --panel: rgba(255, 255, 255, 0.84);
+      --panel-strong: rgba(255, 255, 255, 0.94);
+      --ink: #1e3140;
+      --muted: #617586;
+      --line: rgba(35, 61, 82, 0.14);
+      --good: #4baf71;
+      --good-soft: #dff5e6;
+      --locked: #dbe4ee;
+      --watch: #8d79e6;
+      --shadow: 0 22px 54px rgba(46, 76, 101, 0.16);
     }
 
     * {
@@ -40,18 +32,17 @@
       font-family: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at 15% 12%, rgba(255, 209, 117, 0.45), transparent 20%),
-        radial-gradient(circle at 85% 10%, rgba(141, 227, 207, 0.4), transparent 18%),
-        radial-gradient(circle at 82% 84%, rgba(132, 174, 255, 0.34), transparent 24%),
-        linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 46%, var(--sky-bottom) 100%);
+        radial-gradient(circle at 16% 14%, rgba(255, 209, 117, 0.42), transparent 20%),
+        radial-gradient(circle at 84% 12%, rgba(141, 227, 207, 0.34), transparent 19%),
+        linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 48%, var(--bg-bottom) 100%);
     }
 
     body {
-      padding: 18px;
+      padding: 16px;
     }
 
     button,
-    input {
+    a {
       font: inherit;
     }
 
@@ -60,235 +51,194 @@
       cursor: pointer;
     }
 
-    .app-shell {
-      width: min(1380px, 100%);
-      min-height: calc(100vh - 36px);
+    .app {
+      width: min(1180px, 100%);
+      min-height: calc(100vh - 32px);
       margin: 0 auto;
       display: grid;
-      grid-template-columns: 290px minmax(0, 1fr);
-      gap: 18px;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 16px;
     }
 
-    .sidebar,
-    .main-shell {
-      border: 1px solid rgba(255, 255, 255, 0.6);
+    .side,
+    .main {
+      border: 1px solid rgba(255, 255, 255, 0.72);
       box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
+      backdrop-filter: blur(16px);
     }
 
-    .sidebar {
-      padding: 22px;
-      border-radius: 36px;
-      background: rgba(255, 250, 243, 0.78);
+    .side {
+      border-radius: 8px;
+      padding: 18px;
+      background: rgba(255, 250, 242, 0.8);
       display: flex;
       flex-direction: column;
-      gap: 18px;
+      gap: 14px;
     }
 
-    .brand {
-      padding: 18px;
-      border-radius: 28px;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 247, 230, 0.92));
-      border: 1px solid rgba(53, 79, 106, 0.08);
-    }
-
-    .brand-mark {
-      width: 56px;
-      height: 56px;
-      display: inline-grid;
-      place-items: center;
-      border-radius: 18px;
-      background: linear-gradient(135deg, #8ed7bc, #7fb1ff);
-      color: white;
-      font-size: 1.5rem;
-      font-weight: 800;
-      box-shadow: 0 16px 30px rgba(85, 133, 170, 0.22);
-    }
-
-    .brand h1 {
-      margin: 14px 0 6px;
-      font-size: 2rem;
-      line-height: 0.95;
-      letter-spacing: -0.04em;
-    }
-
-    .brand p,
-    .subtle,
-    .meta-text,
-    .tiny {
-      margin: 0;
-      color: var(--muted);
-    }
-
-    .subtle {
-      line-height: 1.45;
-    }
-
-    .section-label {
-      font-size: 0.82rem;
-      font-weight: 800;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: #7a8ea3;
-      margin: 0 0 8px;
-    }
-
-    .nav-grid,
-    .mission-list,
-    .watch-list,
-    .choice-grid,
-    .question-grid,
-    .admin-grid,
-    .summary-grid {
+    .main {
+      border-radius: 8px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.46);
       display: grid;
-      gap: 12px;
+      gap: 16px;
+      align-content: start;
     }
 
-    .nav-card,
-    .mission-card,
-    .watch-card,
+    .brand,
+    .panel,
+    .nav-button,
+    .exercise-card,
     .choice,
-    .question-card,
-    .admin-card,
-    .summary-card,
-    .story-card,
-    .hint-card,
-    .speaker-card,
-    .reward-card,
-    .hero,
-    .room,
-    .mic-panel,
-    .progress-panel {
-      border-radius: var(--radius-lg);
+    .watch-box {
+      border-radius: 8px;
       border: 1px solid var(--line);
       background: var(--panel);
     }
 
-    .nav-card {
-      width: 100%;
-      text-align: left;
+    .brand,
+    .panel {
       padding: 16px;
+    }
+
+    .brand-mark {
+      width: 52px;
+      height: 52px;
       display: grid;
-      gap: 4px;
-      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+      place-items: center;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #58bd8b, #698ff0);
+      color: white;
+      font-weight: 900;
+      font-size: 1.35rem;
     }
 
-    .nav-card:hover,
-    .nav-card:focus-visible,
-    .choice:hover,
-    .choice:focus-visible,
-    .question-card:hover,
-    .question-card:focus-visible,
-    .mission-card:hover,
-    .mission-card:focus-visible,
-    .watch-card:hover,
-    .watch-card:focus-visible {
-      transform: translateY(-2px);
-      box-shadow: 0 14px 28px rgba(61, 92, 122, 0.12);
-      border-color: rgba(58, 92, 126, 0.24);
-      outline: none;
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
     }
 
-    .nav-card.active {
-      box-shadow: 0 14px 28px rgba(61, 92, 122, 0.16);
-      border-color: rgba(58, 92, 126, 0.24);
+    h1 {
+      margin-top: 12px;
+      font-size: 2rem;
+      line-height: 0.95;
     }
 
-    .nav-card[data-view="home"] { background: linear-gradient(135deg, #fff7d8, #fffdf7); }
-    .nav-card[data-view="create"] { background: linear-gradient(135deg, #d8f3e6, #f7fffb); }
-    .nav-card[data-view="learn"] { background: linear-gradient(135deg, #e4efff, #f7fbff); }
-    .nav-card[data-view="missions"] { background: linear-gradient(135deg, #fff1c9, #fffaf0); }
-    .nav-card[data-view="watch"] { background: linear-gradient(135deg, #efe4ff, #fcf8ff); }
-
-    .nav-title {
-      font-size: 1.15rem;
-      font-weight: 800;
-      color: var(--ink);
+    h2 {
+      font-size: clamp(2.15rem, 5vw, 4.3rem);
+      line-height: 0.94;
     }
 
-    .nav-copy {
+    h3 {
+      font-size: 1.35rem;
+      margin-bottom: 8px;
+    }
+
+    .subtle,
+    .small {
       color: var(--muted);
-      line-height: 1.35;
+      line-height: 1.45;
     }
 
-    .reward-card,
-    .speaker-card {
-      padding: 18px;
-    }
-
-    .reward-minutes {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
+    .subtle {
       margin-top: 8px;
     }
 
-    .reward-minutes strong {
-      font-size: 2.8rem;
-      line-height: 0.9;
-      letter-spacing: -0.05em;
+    .small {
+      font-size: 0.9rem;
     }
 
-    .reward-bar {
-      margin-top: 12px;
+    .label {
+      margin-bottom: 8px;
+      font-size: 0.78rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #75899a;
+    }
+
+    .nav {
+      display: grid;
+      gap: 10px;
+    }
+
+    .nav-button {
+      width: 100%;
+      padding: 15px;
+      text-align: left;
+      display: grid;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.78);
+      transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+    }
+
+    .nav-button.active,
+    .nav-button:hover,
+    .nav-button:focus-visible,
+    .choice:hover,
+    .choice:focus-visible {
+      transform: translateY(-1px);
+      border-color: rgba(35, 61, 82, 0.26);
+      box-shadow: 0 12px 24px rgba(46, 76, 101, 0.12);
+      outline: none;
+    }
+
+    .nav-title {
+      font-weight: 900;
+      font-size: 1.08rem;
+    }
+
+    .meter-number {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .meter-number strong {
+      font-size: 2.8rem;
+      line-height: 0.9;
+    }
+
+    .bar {
       height: 18px;
+      margin-top: 12px;
       border-radius: 999px;
-      background: #e4ecf5;
+      background: #e2eaf3;
       overflow: hidden;
     }
 
-    .reward-fill {
+    .fill {
       height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, #7bc98d, #8fded1);
       width: 0;
-      transition: width 200ms ease;
-    }
-
-    .main-shell {
-      padding: 22px;
-      border-radius: 40px;
-      background: rgba(255, 255, 255, 0.44);
-      display: grid;
-      gap: 16px;
-      grid-template-rows: auto minmax(0, 1fr);
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--good), #6ad0bd);
+      transition: width 180ms ease;
     }
 
     .topbar {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      gap: 14px;
-      padding: 10px 6px 4px;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 2px 2px 8px;
     }
 
-    .topbar h2 {
-      margin: 0;
-      font-size: clamp(2.2rem, 5vw, 3.6rem);
-      line-height: 0.94;
-      letter-spacing: -0.05em;
-    }
-
-    .topbar-copy {
-      margin: 6px 0 0;
-      color: var(--muted);
-      font-size: 1.02rem;
-    }
-
-    .status-pill {
-      padding: 12px 16px;
+    .status {
+      padding: 10px 14px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.78);
       border: 1px solid var(--line);
-      color: #577188;
-      font-weight: 700;
+      background: rgba(255, 255, 255, 0.78);
+      color: #526a7d;
+      font-weight: 800;
       white-space: nowrap;
     }
 
     .screen {
       display: none;
       gap: 16px;
-      align-content: start;
     }
 
     .screen.active {
@@ -296,389 +246,181 @@
     }
 
     .hero {
-      overflow: hidden;
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(248, 252, 255, 0.72));
+      min-height: 190px;
       padding: 24px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(239, 249, 255, 0.8)),
+        linear-gradient(180deg, #fff, #f6fbff);
+      overflow: hidden;
       position: relative;
-      min-height: 230px;
     }
 
     .hero::after {
       content: "";
       position: absolute;
+      right: -54px;
+      top: -64px;
       width: 220px;
       height: 220px;
-      right: -56px;
-      top: -60px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255, 214, 126, 0.55), transparent 68%);
-      pointer-events: none;
-    }
-
-    .hero-grid,
-    .room-grid,
-    .double-grid,
-    .watch-grid {
-      display: grid;
-      gap: 16px;
-    }
-
-    .hero-grid {
-      grid-template-columns: 1.3fr 0.9fr;
-      align-items: stretch;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(255, 213, 122, 0.55), transparent 68%);
     }
 
     .hero-title {
-      margin: 0;
-      font-size: clamp(2.4rem, 5vw, 4.5rem);
-      line-height: 0.94;
-      letter-spacing: -0.06em;
-      max-width: 11ch;
+      max-width: 12ch;
+      font-size: clamp(2.3rem, 5vw, 4.8rem);
+      line-height: 0.92;
     }
 
-    .hero-copy {
-      max-width: 60ch;
-      margin: 12px 0 0;
-      color: var(--muted);
-      font-size: 1.04rem;
-      line-height: 1.55;
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+      gap: 16px;
     }
 
-    .summary-grid {
+    .exercise-grid,
+    .choice-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .exercise-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      align-content: start;
+      margin-top: 14px;
     }
 
-    .summary-card {
+    .exercise-card {
       padding: 16px;
-      background: rgba(255, 255, 255, 0.75);
-    }
-
-    .summary-kicker {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #7d93a7;
-      font-weight: 800;
-    }
-
-    .summary-value {
-      margin-top: 10px;
-      font-size: 2rem;
-      font-weight: 800;
-      line-height: 0.95;
-      letter-spacing: -0.05em;
-    }
-
-    .summary-note {
-      margin-top: 8px;
-      color: var(--muted);
-      line-height: 1.35;
-    }
-
-    .room-grid,
-    .double-grid,
-    .watch-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .room,
-    .progress-panel,
-    .mic-panel {
-      padding: 20px;
       background: var(--panel-strong);
     }
 
-    .room h3,
-    .progress-panel h3,
-    .mic-panel h3 {
-      margin: 0 0 8px;
-      font-size: 1.45rem;
+    .exercise-card.correct {
+      background: linear-gradient(180deg, var(--good-soft), rgba(248, 255, 250, 0.96));
+      border-color: rgba(54, 139, 82, 0.24);
+    }
+
+    .exercise-card strong {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 1.05rem;
     }
 
     .choice-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin-top: 14px;
     }
 
-    .choice,
-    .question-card {
-      padding: 16px;
+    .choice {
+      min-height: 82px;
+      padding: 14px;
       text-align: left;
-      background: rgba(255, 255, 255, 0.78);
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      min-height: 104px;
-    }
-
-    .choice strong,
-    .question-card strong {
-      display: block;
-      font-size: 1.02rem;
-      margin-bottom: 8px;
       color: var(--ink);
-    }
-
-    .mic-stage {
+      background: rgba(255, 255, 255, 0.86);
       display: grid;
-      place-items: center;
-      gap: 14px;
-      padding: 18px 10px 4px;
+      align-content: center;
+      gap: 6px;
     }
 
-    .mic-button {
-      width: min(52vw, 212px);
-      aspect-ratio: 1;
-      border-radius: 50%;
-      background: radial-gradient(circle at 30% 30%, #ffdca2, #f39d68 72%);
-      color: white;
-      font-size: 1.2rem;
-      font-weight: 800;
-      box-shadow: 0 28px 44px rgba(244, 152, 96, 0.32);
-      transition: transform 180ms ease, box-shadow 180ms ease;
+    .choice:disabled {
+      cursor: default;
+      opacity: 0.7;
+      transform: none;
+      box-shadow: none;
     }
 
-    .mic-button:hover,
-    .mic-button:focus-visible {
-      transform: translateY(-3px) scale(1.01);
-      box-shadow: 0 34px 48px rgba(244, 152, 96, 0.38);
-      outline: none;
-    }
-
-    .mic-button.listening {
-      background: radial-gradient(circle at 30% 30%, #ffefb4, #ff8c6e 74%);
-      animation: pulse 1.4s ease infinite;
-    }
-
-    @keyframes pulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.045); }
-      100% { transform: scale(1); }
-    }
-
-    .transcript {
-      width: 100%;
-      padding: 16px 18px;
-      border-radius: 22px;
-      background: #fffefb;
-      border: 1px dashed rgba(66, 96, 122, 0.24);
-      color: #456172;
-      line-height: 1.5;
-      min-height: 92px;
-    }
-
-    .story-card,
-    .hint-card {
-      padding: 16px;
-      background: rgba(255, 255, 255, 0.82);
-    }
-
-    .story-preview {
-      margin-top: 10px;
-      min-height: 220px;
-      border-radius: 24px;
-      background:
-        radial-gradient(circle at 24% 22%, rgba(255, 214, 126, 0.75), transparent 18%),
-        radial-gradient(circle at 78% 18%, rgba(140, 208, 174, 0.8), transparent 20%),
-        linear-gradient(180deg, #b0d9ff 0%, #d1f3ff 44%, #fef4cf 100%);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .story-preview::before {
-      content: "";
-      position: absolute;
-      left: 12%;
-      right: 14%;
-      bottom: 14%;
-      height: 22%;
-      border-radius: 999px;
-      background: linear-gradient(180deg, #93d77f, #5ca76d);
-    }
-
-    .story-preview::after {
-      content: "";
-      position: absolute;
-      left: 30%;
-      bottom: 24%;
-      width: 38%;
-      height: 26%;
-      border-radius: 42% 48% 42% 36%;
-      background: linear-gradient(145deg, #9a70ff, #5f85ff);
-      box-shadow:
-        52px -10px 0 -18px rgba(255, 224, 143, 0.95),
-        -42px 28px 0 -18px rgba(255, 136, 108, 0.92);
-    }
-
-    .mission-list {
-      margin-top: 14px;
-    }
-
-    .mission-card {
-      padding: 18px;
-      text-align: left;
-      background: rgba(255, 255, 255, 0.82);
-    }
-
-    .mission-card.complete {
-      background: linear-gradient(180deg, rgba(222, 245, 227, 0.94), rgba(248, 255, 250, 0.9));
-      border-color: rgba(70, 145, 88, 0.2);
-    }
-
-    .mission-top,
-    .watch-top {
+    .progress-row {
       display: flex;
-      justify-content: space-between;
-      gap: 12px;
       align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-weight: 800;
     }
 
-    .mission-reward,
-    .watch-badge,
     .tag {
       padding: 7px 10px;
       border-radius: 999px;
-      font-size: 0.78rem;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-
-    .mission-reward {
-      background: var(--reward-soft);
-      color: #2b7751;
-    }
-
-    .tag {
       background: #eef4fb;
       color: #5b748c;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
 
-    .watch-card {
-      padding: 18px;
-      text-align: left;
-      background: rgba(255, 255, 255, 0.82);
+    .watch-box {
+      min-height: 230px;
+      padding: 20px;
+      background: var(--panel-strong);
     }
 
-    .watch-card.locked {
-      background: rgba(235, 241, 248, 0.84);
-      color: #6f8294;
-    }
-
-    .watch-card.locked .watch-badge {
-      background: #d5deea;
-      color: #607385;
-    }
-
-    .watch-card.available .watch-badge {
-      background: #dff5e4;
-      color: #2b7751;
-    }
-
-    .watch-thumb {
-      margin-top: 14px;
-      min-height: 126px;
-      border-radius: 22px;
+    .watch-art {
+      min-height: 150px;
+      margin: 16px 0;
+      border-radius: 8px;
       background:
-        linear-gradient(150deg, rgba(91, 132, 255, 0.84), rgba(154, 222, 190, 0.9)),
+        linear-gradient(150deg, rgba(93, 126, 235, 0.9), rgba(101, 205, 167, 0.9)),
         linear-gradient(180deg, #8faeff, #cae4ff);
       position: relative;
       overflow: hidden;
     }
 
-    .watch-thumb::before {
+    .watch-art::after {
       content: "";
       position: absolute;
-      inset: auto 12% 14% 12%;
-      height: 24%;
-      border-radius: 999px;
-      background: rgba(252, 246, 215, 0.92);
-    }
-
-    .watch-thumb::after {
-      content: "";
-      position: absolute;
-      left: 38%;
-      top: 28%;
+      left: 42%;
+      top: 34%;
       width: 0;
       height: 0;
-      border-top: 22px solid transparent;
-      border-bottom: 22px solid transparent;
-      border-left: 34px solid rgba(255, 255, 255, 0.95);
+      border-top: 28px solid transparent;
+      border-bottom: 28px solid transparent;
+      border-left: 42px solid rgba(255, 255, 255, 0.95);
     }
 
-    .question-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin-top: 12px;
+    .watch-locked {
+      background: var(--locked);
+      color: #607384;
     }
 
-    .question-card.correct {
-      background: linear-gradient(180deg, rgba(222, 245, 227, 0.94), rgba(248, 255, 250, 0.9));
-      border-color: rgba(70, 145, 88, 0.2);
+    .youtube-button {
+      background: linear-gradient(135deg, #ff5f5f, #ff8d55);
+      color: white;
+      font-weight: 900;
     }
 
-    .question-card.incorrect {
-      background: linear-gradient(180deg, rgba(255, 240, 235, 0.96), rgba(255, 250, 247, 0.92));
-      border-color: rgba(194, 104, 88, 0.2);
+    .youtube-button:disabled {
+      background: #d6dfeb;
+      color: #607384;
     }
 
-    .progress-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-      margin-top: 12px;
-      color: var(--muted);
-      font-weight: 700;
+    .reset-button {
+      background: rgba(255, 255, 255, 0.86);
     }
 
-    .admin-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+    .timer {
+      font-size: clamp(3rem, 8vw, 6rem);
+      line-height: 0.9;
+      margin: 14px 0 10px;
+      font-weight: 900;
     }
 
-    .admin-card {
-      padding: 16px;
-      background: rgba(255, 255, 255, 0.8);
-    }
+    @media (max-width: 900px) {
+      body {
+        padding: 10px;
+      }
 
-    .admin-card strong {
-      display: block;
-      margin-bottom: 8px;
-    }
-
-    .tiny {
-      font-size: 0.86rem;
-      line-height: 1.4;
-    }
-
-    @media (max-width: 1120px) {
-      .app-shell {
+      .app,
+      .grid {
         grid-template-columns: 1fr;
       }
 
-      .sidebar {
+      .side {
         order: 2;
       }
 
-      .main-shell {
+      .main {
         order: 1;
-      }
-    }
-
-    @media (max-width: 860px) {
-      body {
-        padding: 12px;
-      }
-
-      .hero-grid,
-      .room-grid,
-      .double-grid,
-      .watch-grid,
-      .admin-grid,
-      .summary-grid,
-      .question-grid,
-      .choice-grid {
-        grid-template-columns: 1fr;
       }
 
       .topbar {
@@ -686,386 +428,155 @@
         flex-direction: column;
       }
 
-      .mic-button {
-        width: min(62vw, 220px);
+      .exercise-grid,
+      .choice-grid {
+        grid-template-columns: 1fr;
       }
     }
   </style>
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
+  <div class="app">
+    <aside class="side">
       <section class="brand">
         <div class="brand-mark">KW</div>
         <h1>Kids<br>World</h1>
-        <p class="subtle">A calm Android-first shell where the tablet is the window and Server3 becomes the guided learning brain.</p>
+        <p class="subtle">Finish reward exercises, then unlock YouTube time.</p>
       </section>
 
-      <section class="speaker-card">
-        <p class="section-label">Today</p>
-        <p class="subtle">Three short missions unlock safe watch time. Voice stays inside guided rooms instead of becoming an open chatbot.</p>
+      <section class="panel">
+        <p class="label">Today</p>
+        <p class="small">Complete the required maths and English cards. Watch opens for 20 minutes when they are done.</p>
       </section>
 
       <section>
-        <p class="section-label">World Map</p>
-        <div class="nav-grid">
-          <button class="nav-card active" data-view="home">
-            <span class="nav-title">Home</span>
-            <span class="nav-copy">See the child’s whole day at a glance.</span>
+        <p class="label">Sections</p>
+        <div class="nav">
+          <button class="nav-button active" data-view="exercises" type="button">
+            <span class="nav-title">Reward Exercises</span>
+            <span class="small">Required before Watch opens.</span>
           </button>
-          <button class="nav-card" data-view="create">
-            <span class="nav-title">Create</span>
-            <span class="nav-copy">Voice-led art and story generation.</span>
-          </button>
-          <button class="nav-card" data-view="learn">
-            <span class="nav-title">Learn</span>
-            <span class="nav-copy">Short maths and English rounds with adaptive help.</span>
-          </button>
-          <button class="nav-card" data-view="missions">
-            <span class="nav-title">My Missions</span>
-            <span class="nav-copy">Earn watch minutes through small, visible goals.</span>
-          </button>
-          <button class="nav-card" data-view="watch">
+          <button class="nav-button" data-view="watch" type="button">
             <span class="nav-title">Watch</span>
-            <span class="nav-copy">Approved cartoons only. No feed. No autoplay.</span>
+            <span class="small">YouTube for 20 minutes.</span>
           </button>
         </div>
       </section>
 
-      <section class="reward-card">
-        <p class="section-label">Reward Meter</p>
-        <div class="reward-minutes">
+      <section class="panel">
+        <p class="label">Watch Time</p>
+        <div class="meter-number">
           <strong id="rewardMinutes">0</strong>
-          <span class="meta-text">minutes earned</span>
+          <span class="small">of 20 minutes unlocked</span>
         </div>
-        <div class="reward-bar" aria-hidden="true">
-          <div class="reward-fill" id="rewardFill"></div>
+        <div class="bar" aria-hidden="true">
+          <div class="fill" id="rewardFill"></div>
         </div>
-        <p class="tiny" id="rewardHint">Complete a learning mission to unlock safe watch time.</p>
+        <p class="small subtle" id="rewardHint">Complete all exercises to unlock Watch.</p>
       </section>
     </aside>
 
-    <main class="main-shell">
+    <main class="main">
       <section class="topbar">
         <div>
-          <h2 id="screenTitle">A bounded world for the tablet.</h2>
-          <p class="topbar-copy" id="screenCopy">This first prototype makes the product shape concrete before any live LLM or Android wiring is added.</p>
+          <h2 id="screenTitle">Reward Exercises</h2>
+          <p class="subtle" id="screenCopy">Finish the required questions to unlock YouTube for 20 minutes.</p>
         </div>
-        <div class="status-pill" id="statusPill">Prototype state: local only</div>
+        <div class="status" id="statusPill">Exercises required</div>
       </section>
 
-      <section class="screen active" id="screen-home">
-        <div class="hero hero-grid">
-          <div>
-            <p class="section-label">Big Picture</p>
-            <h3 class="hero-title">The tablet is the window. Server3 is the brain.</h3>
-            <p class="hero-copy">Kids World runs as a fullscreen child shell on Android. The tablet handles touch, mic, sound, and display. Server3 later handles the LLM, mission logic, safety rules, watch-time balance, and approved content decisions.</p>
-          </div>
-          <div class="summary-grid">
-            <article class="summary-card">
-              <div class="summary-kicker">Create</div>
-              <div class="summary-value">Voice in, art out</div>
-              <p class="summary-note">Guided prompts become drawings, stories, or music. No raw prompt box.</p>
-            </article>
-            <article class="summary-card">
-              <div class="summary-kicker">Learn</div>
-              <div class="summary-value">Tiny rounds</div>
-              <p class="summary-note">Short maths and English tasks adapt difficulty and feed mission progress.</p>
-            </article>
-            <article class="summary-card">
-              <div class="summary-kicker">Missions</div>
-              <div class="summary-value">Earn minutes</div>
-              <p class="summary-note">Rewards stay visible, limited, and tied to a few concrete goals.</p>
-            </article>
-            <article class="summary-card">
-              <div class="summary-kicker">Watch</div>
-              <div class="summary-value">Approved only</div>
-              <p class="summary-note">Safe shelves replace algorithmic feeds, autoplay chains, and open browsing.</p>
-            </article>
-          </div>
+      <section class="screen active" id="screen-exercises">
+        <div class="hero">
+          <p class="label">Reward Exercises</p>
+          <h3 class="hero-title">Do the cards. Unlock Watch.</h3>
+          <p class="subtle">This version keeps the child experience simple. There are only exercises and watch time.</p>
         </div>
 
-        <div class="double-grid">
-          <section class="room">
-            <p class="section-label">How It Feels To A Child</p>
-            <h3>One icon, five calm rooms.</h3>
-            <div class="choice-grid">
-              <button class="choice" data-jump="create">
-                <strong>Make a dragon</strong>
-                Say an idea out loud and watch it appear.
-              </button>
-              <button class="choice" data-jump="learn">
-                <strong>Play a maths round</strong>
-                Solve tiny questions and fill the reward meter.
-              </button>
-              <button class="choice" data-jump="missions">
-                <strong>Check today’s missions</strong>
-                See what is left before watch time unlocks.
-              </button>
-              <button class="choice" data-jump="watch">
-                <strong>Watch safely</strong>
-                Open only approved shows when minutes are earned.
-              </button>
-            </div>
+        <div class="grid">
+          <section class="panel">
+            <p class="label">Required Cards</p>
+            <h3>Finish all four exercises.</h3>
+            <p class="small">Tap an answer. Correct answers fill the meter.</p>
+            <div class="exercise-grid" id="questionGrid"></div>
           </section>
 
-          <section class="progress-panel">
-            <p class="section-label">Parent View</p>
-            <h3>Control stays outside the child room.</h3>
-            <div class="admin-grid">
-              <article class="admin-card">
-                <strong>Content allowlist</strong>
-                <p class="tiny">Parents choose which cartoons, topics, and creative tools exist in the world.</p>
-              </article>
-              <article class="admin-card">
-                <strong>Daily limits</strong>
-                <p class="tiny">Server3 enforces minute caps, quiet hours, and expiry of earned time.</p>
-              </article>
-              <article class="admin-card">
-                <strong>LLM boundaries</strong>
-                <p class="tiny">The model answers inside modes and under rules instead of acting as a free companion.</p>
-              </article>
-            </div>
-          </section>
-        </div>
-      </section>
-
-      <section class="screen" id="screen-create">
-        <div class="room-grid">
-          <section class="mic-panel">
-            <p class="section-label">Create Room</p>
-            <h3>Press the giant microphone and ask for something.</h3>
-            <div class="mic-stage">
-              <button class="mic-button" id="micButton" type="button">Tap To Speak</button>
-              <div class="transcript" id="transcriptBox">Try a prompt like “Make a rainbow dragon with a tiny castle on its back.”</div>
-            </div>
-          </section>
-
-          <section class="room">
-            <p class="section-label">Behind The Scenes</p>
-            <h3>Later Server3 flow</h3>
-            <div class="mission-list">
-              <article class="hint-card">
-                <strong>1. Voice capture</strong>
-                Tablet records the child’s request and ships it to Server3.
-              </article>
-              <article class="hint-card">
-                <strong>2. LLM guidance</strong>
-                The model rewrites the request into a safe structured art or story job.
-              </article>
-              <article class="hint-card">
-                <strong>3. Result cards</strong>
-                The child gets big follow-up buttons instead of a scrolling chat log.
-              </article>
-            </div>
-          </section>
-        </div>
-
-        <div class="double-grid">
-          <section class="story-card">
-            <p class="section-label">Generated Canvas</p>
-            <h3 id="artTitle">Rainbow Dragon Meadow</h3>
-            <p class="subtle" id="artCopy">A sample generated scene shows what a safe “voice in, picture out” flow could feel like on Android.</p>
-            <div class="story-preview" aria-hidden="true"></div>
-          </section>
-
-          <section class="room">
-            <p class="section-label">Follow-Up Buttons</p>
-            <h3>No open prompt box needed.</h3>
-            <div class="choice-grid">
-              <button class="choice prompt-choice" type="button" data-slot="0" data-prompt="Make the dragon blue and add a moon.">
-                <strong>Make it blue</strong>
-                Keep the same idea and change the mood.
-              </button>
-              <button class="choice prompt-choice" type="button" data-slot="1" data-prompt="Add a funny robot friend for the dragon.">
-                <strong>Add a robot</strong>
-                Turn one drawing into a tiny world.
-              </button>
-              <button class="choice prompt-choice" type="button" data-slot="2" data-prompt="Tell a short story about the dragon going home.">
-                <strong>Tell a story</strong>
-                Reuse the same scene for language and reading.
-              </button>
-              <button class="choice prompt-choice" type="button" data-slot="3" data-prompt="Make it gentler and bedtime calm.">
-                <strong>Bedtime version</strong>
-                This is where age and mood rules would apply.
-              </button>
-            </div>
-          </section>
-        </div>
-      </section>
-
-      <section class="screen" id="screen-learn">
-        <div class="double-grid">
-          <section class="room">
-            <p class="section-label">Learn Room</p>
-            <h3>Short rounds, quick wins.</h3>
-            <p class="subtle">This first version simulates the mission loop: answer tiny questions, complete a round, and unlock minutes without turning the tablet into school all day.</p>
-            <div class="question-grid" id="questionGrid"></div>
-          </section>
-
-          <section class="progress-panel">
-            <p class="section-label">Round Progress</p>
-            <h3 id="roundHeadline">Earn 10 watch minutes by finishing the round.</h3>
-            <p class="subtle" id="roundCopy">Questions reset after a completed mission so the child sees a clean next step.</p>
-            <div class="reward-bar" aria-hidden="true">
-              <div class="reward-fill" id="learnFill"></div>
+          <section class="panel">
+            <p class="label">Progress</p>
+            <h3 id="roundHeadline">Watch is locked.</h3>
+            <p class="small" id="roundCopy">Complete the required exercises to unlock YouTube for 20 minutes.</p>
+            <div class="bar" aria-hidden="true">
+              <div class="fill" id="learnFill"></div>
             </div>
             <div class="progress-row">
               <span id="learnStatus">0 of 4 solved</span>
-              <span id="learnBadge" class="tag">Maths + English</span>
-            </div>
-            <div class="mission-list">
-              <article class="hint-card">
-                <strong>Adaptive later</strong>
-                Server3 can adjust difficulty, hints, and question type by age and past results.
-              </article>
-              <article class="hint-card">
-                <strong>Psychology-safe direction</strong>
-                Sessions stay short, visible, and finite so the child is not trapped in endless optimization loops.
-              </article>
-            </div>
-          </section>
-        </div>
-      </section>
-
-      <section class="screen" id="screen-missions">
-        <div class="double-grid">
-          <section class="room">
-            <p class="section-label">Mission Board</p>
-            <h3>Three small jobs for today.</h3>
-            <div class="mission-list" id="missionList"></div>
-          </section>
-
-          <section class="progress-panel">
-            <p class="section-label">Design Intent</p>
-            <h3>Rewards stay bounded and visible.</h3>
-            <div class="mission-list">
-              <article class="hint-card">
-                <strong>Not an app store</strong>
-                There are no feeds, tabs, social loops, or recommendation holes.
-              </article>
-              <article class="hint-card">
-                <strong>Not a raw chatbot</strong>
-                Voice and LLM live inside guided rooms like Create or Ask.
-              </article>
-              <article class="hint-card">
-                <strong>Not pure bribery</strong>
-                Rewards are one layer. Progress, creation, praise, and visible mastery should matter too.
-              </article>
+              <span class="tag">Maths + English</span>
             </div>
           </section>
         </div>
       </section>
 
       <section class="screen" id="screen-watch">
-        <div class="watch-grid" id="watchGrid"></div>
+        <div class="grid">
+          <section class="watch-box" id="watchPanel">
+            <p class="label">Watch</p>
+            <h3 id="watchHeadline">YouTube is locked.</h3>
+            <p class="small" id="watchCopy">Finish the reward exercises first. Then this section opens for a 20-minute YouTube session.</p>
+            <div class="watch-art" aria-hidden="true"></div>
+            <div class="choice-grid">
+              <button class="choice youtube-button" id="youtubeButton" type="button" disabled>
+                <strong>Open YouTube</strong>
+                Complete the required exercises first.
+              </button>
+              <button class="choice reset-button" id="resetButton" type="button">
+                <strong>Reset Demo</strong>
+                Lock Watch and start the exercises again.
+              </button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <p class="label">Timer</p>
+            <div class="timer" id="timerHeadline">20:00</div>
+            <p class="small" id="timerCopy">The countdown starts when YouTube is opened.</p>
+            <p class="small subtle">Prototype note: this opens regular YouTube in the browser. Proper enforcement later belongs in Android kiosk controls or a Server3-controlled browser wrapper.</p>
+          </section>
+        </div>
       </section>
     </main>
   </div>
 
   <script>
+    const WATCH_MINUTES = 20;
+    const WATCH_SECONDS = WATCH_MINUTES * 60;
+
     const state = {
-      activeView: "home",
+      activeView: "exercises",
       serverConnected: false,
-      watchMinutes: 0,
-      promptIndex: 0,
-      busyCreate: false,
-      prompts: [
-        {
-          text: "Make a rainbow dragon with a tiny castle on its back.",
-          title: "Rainbow Dragon Meadow",
-          copy: "The child asked with voice. Server3 later turns that into a safe art prompt and returns a simple result card.",
-          followUps: [
-            {
-              label: "Make it blue",
-              copy: "Keep the same idea and change the mood.",
-              prompt: "Make the dragon blue and add a moon."
-            },
-            {
-              label: "Add a robot",
-              copy: "Turn one drawing into a tiny world.",
-              prompt: "Add a funny robot friend for the dragon."
-            },
-            {
-              label: "Tell a story",
-              copy: "Reuse the same scene for language and reading.",
-              prompt: "Tell a short story about the dragon going home."
-            },
-            {
-              label: "Bedtime version",
-              copy: "This is where age and mood rules would apply.",
-              prompt: "Make it gentler and bedtime calm."
-            }
-          ]
-        },
-        {
-          text: "Add a funny robot friend for the dragon.",
-          title: "Dragon And Robot Parade",
-          copy: "Follow-up buttons let the child refine one idea without falling into a raw conversational loop.",
-          followUps: []
-        },
-        {
-          text: "Tell a short story about the dragon going home.",
-          title: "The Dragon Finds Home",
-          copy: "The same scene can branch into reading, narration, or bedtime-safe storytelling.",
-          followUps: []
-        },
-        {
-          text: "Make it gentler and bedtime calm.",
-          title: "Moonlit Dragon Nest",
-          copy: "Mood rules, bedtime limits, and age filters belong on Server3, not in the child’s head.",
-          followUps: []
-        }
-      ],
+      watchUnlocked: false,
+      watchStarted: false,
+      remainingSeconds: WATCH_SECONDS,
+      timerId: null,
       questions: [
-        { id: "q1", prompt: "What is 4 + 3?", answer: "7", reward: 4, solved: false, status: null },
-        { id: "q2", prompt: "Which word starts with B: moon, bird, cloud?", answer: "bird", reward: 2, solved: false, status: null },
-        { id: "q3", prompt: "What is 10 - 6?", answer: "4", reward: 2, solved: false, status: null },
-        { id: "q4", prompt: "Pick the rhyme for star: car or tree?", answer: "car", reward: 2, solved: false, status: null }
-      ],
-      missions: [
-        { id: "m1", title: "Finish one learn round", copy: "Solve four mini maths and English questions.", reward: 10, complete: false },
-        { id: "m2", title: "Create one picture", copy: "Use the microphone and ask for a drawing.", reward: 5, complete: false },
-        { id: "m3", title: "Watch only approved shelves", copy: "Spend earned minutes inside the safe watch room.", reward: 0, complete: false }
-      ],
-      shows: [
-        { id: "s1", title: "Ocean Friends", minutes: 8, copy: "Short, approved episode about curious sea creatures." },
-        { id: "s2", title: "Robot Builders", minutes: 12, copy: "Gentle teamwork cartoon with clear episode endings." },
-        { id: "s3", title: "Sleepy Forest Stories", minutes: 6, copy: "Quiet story shelf for calmer evening use." }
+        { id: "q1", prompt: "What is 4 + 3?", answer: "7", choices: ["6", "7"], solved: false },
+        { id: "q2", prompt: "Which word starts with B?", answer: "bird", choices: ["moon", "bird"], solved: false },
+        { id: "q3", prompt: "What is 10 - 6?", answer: "4", choices: ["4", "5"], solved: false },
+        { id: "q4", prompt: "Which word rhymes with star?", answer: "car", choices: ["car", "tree"], solved: false }
       ]
     };
 
     const titleMap = {
-      home: {
-        title: "A bounded world for the tablet.",
-        copy: "This first prototype makes the product shape concrete before any live LLM or Android wiring is added."
-      },
-      create: {
-        title: "Create is a guided room, not an open chatbot.",
-        copy: "The child speaks one idea, the system interprets it safely, and the interface returns result cards and simple follow-ups."
-      },
-      learn: {
-        title: "Learning rounds become visible, finite missions.",
-        copy: "Tiny maths and English steps feed a reward meter without turning the experience into endless worksheets."
-      },
-      missions: {
-        title: "Missions make the reward economy legible.",
-        copy: "The child can see what is left, what was earned, and why Watch is open or closed."
+      exercises: {
+        title: "Reward Exercises",
+        copy: "Finish the required questions to unlock YouTube for 20 minutes."
       },
       watch: {
-        title: "Watch is a safe shelf, not a feed.",
-        copy: "Server3 would later enforce watch balance, approved content lists, and no autoplay or recommendation drift."
+        title: "Watch",
+        copy: "YouTube is available after the reward exercises are complete."
       }
     };
 
-    const navCards = [...document.querySelectorAll(".nav-card")];
+    const navCards = [...document.querySelectorAll(".nav-button")];
     const screens = [...document.querySelectorAll(".screen")];
-    const jumpButtons = [...document.querySelectorAll("[data-jump]")];
-    const promptChoices = [...document.querySelectorAll(".prompt-choice")];
-    const micButton = document.getElementById("micButton");
-    const transcriptBox = document.getElementById("transcriptBox");
-    const artTitle = document.getElementById("artTitle");
-    const artCopy = document.getElementById("artCopy");
     const rewardMinutes = document.getElementById("rewardMinutes");
     const rewardFill = document.getElementById("rewardFill");
     const rewardHint = document.getElementById("rewardHint");
@@ -1077,119 +588,19 @@
     const learnStatus = document.getElementById("learnStatus");
     const roundHeadline = document.getElementById("roundHeadline");
     const roundCopy = document.getElementById("roundCopy");
-    const missionList = document.getElementById("missionList");
-    const watchGrid = document.getElementById("watchGrid");
-    const defaultStatusText = "Prototype state: local only";
+    const watchHeadline = document.getElementById("watchHeadline");
+    const watchCopy = document.getElementById("watchCopy");
+    const youtubeButton = document.getElementById("youtubeButton");
+    const resetButton = document.getElementById("resetButton");
+    const timerHeadline = document.getElementById("timerHeadline");
+    const timerCopy = document.getElementById("timerCopy");
 
     function backendAvailable() {
       return window.location.protocol === "http:" || window.location.protocol === "https:";
     }
 
-    function setView(view) {
-      state.activeView = view;
-      navCards.forEach((card) => {
-        const active = card.dataset.view === view;
-        card.classList.toggle("active", active);
-      });
-      screens.forEach((screen) => {
-        screen.classList.toggle("active", screen.id === `screen-${view}`);
-      });
-      screenTitle.textContent = titleMap[view].title;
-      screenCopy.textContent = titleMap[view].copy;
-      if (!state.busyCreate) {
-        if (state.serverConnected) {
-          statusPill.textContent = `Kids World server live: ${view}`;
-        } else {
-          statusPill.textContent = backendAvailable() ? `Server check pending: ${view}` : `Prototype state: ${view}`;
-        }
-      }
-    }
-
-    function updateRewardUI() {
-      rewardMinutes.textContent = String(state.watchMinutes);
-      const fill = Math.min((state.watchMinutes / 30) * 100, 100);
-      rewardFill.style.width = `${fill}%`;
-      if (state.watchMinutes > 0) {
-        rewardHint.textContent = "Watch is unlocked only for approved shelves and only while earned balance remains.";
-      } else {
-        rewardHint.textContent = "Complete a learning mission to unlock safe watch time.";
-      }
-    }
-
-    function renderPrompt(prompt) {
-      transcriptBox.textContent = `"${prompt.text}"`;
-      artTitle.textContent = prompt.title;
-      artCopy.textContent = prompt.copy;
-      renderFollowUps(prompt.followUps || []);
-      if (!state.missions[1].complete) {
-        state.missions[1].complete = true;
-        state.watchMinutes += state.missions[1].reward;
-        renderMissions();
-        renderWatch();
-        updateRewardUI();
-      }
-    }
-
-    function renderFollowUps(items) {
-      const fallback = state.prompts[0].followUps || [];
-      promptChoices.forEach((button, index) => {
-        const item = items[index] || fallback[index];
-        if (!item) {
-          return;
-        }
-        button.dataset.prompt = item.prompt;
-        button.innerHTML = `<strong>${item.label}</strong>${item.copy}`;
-      });
-    }
-
-    async function callCreateBackend(promptText) {
-      const response = await fetch("/api/create-demo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: promptText })
-      });
-      if (!response.ok) {
-        throw new Error(`Create demo failed with ${response.status}`);
-      }
-      const payload = await response.json();
-      return {
-        text: payload.prompt,
-        title: payload.sceneTitle,
-        copy: payload.sceneCopy,
-        followUps: payload.followUps || []
-      };
-    }
-
-    async function runCreatePrompt(promptText) {
-      if (state.busyCreate) {
-        return;
-      }
-      state.busyCreate = true;
-      micButton.classList.add("listening");
-      statusPill.textContent = backendAvailable() ? "Kids World server: creating" : "Prototype: creating";
-      try {
-        let prompt;
-        if (backendAvailable()) {
-          prompt = await callCreateBackend(promptText);
-          state.serverConnected = true;
-        } else {
-          prompt = state.prompts.find((item) => item.text === promptText) || state.prompts[state.promptIndex];
-        }
-        renderPrompt(prompt);
-        statusPill.textContent = state.serverConnected ? "Kids World server live: create" : "Prototype state: create";
-      } catch (error) {
-        console.error(error);
-        transcriptBox.textContent = "The create room could not reach the demo server, so this screen stayed local.";
-        statusPill.textContent = "Create demo error";
-      } finally {
-        state.busyCreate = false;
-        micButton.classList.remove("listening");
-      }
-    }
-
     async function detectServer() {
       if (!backendAvailable()) {
-        statusPill.textContent = defaultStatusText;
         return;
       }
       try {
@@ -1198,142 +609,157 @@
       } catch (error) {
         state.serverConnected = false;
       }
-      statusPill.textContent = state.serverConnected ? "Kids World server live" : "Kids World server unavailable";
+    }
+
+    function setView(view) {
+      state.activeView = view;
+      navCards.forEach((card) => {
+        card.classList.toggle("active", card.dataset.view === view);
+      });
+      screens.forEach((screen) => {
+        screen.classList.toggle("active", screen.id === `screen-${view}`);
+      });
+      screenTitle.textContent = titleMap[view].title;
+      screenCopy.textContent = titleMap[view].copy;
+      statusPill.textContent = state.watchUnlocked ? "Watch unlocked" : "Exercises required";
+    }
+
+    function solvedCount() {
+      return state.questions.filter((question) => question.solved).length;
+    }
+
+    function updateRewardUI() {
+      const solved = solvedCount();
+      const progress = state.watchUnlocked ? 100 : (solved / state.questions.length) * 100;
+      rewardMinutes.textContent = String(state.watchUnlocked ? WATCH_MINUTES : 0);
+      rewardFill.style.width = `${progress}%`;
+      rewardHint.textContent = state.watchUnlocked ? "Watch is unlocked for 20 minutes." : "Complete all exercises to unlock Watch.";
+      learnFill.style.width = `${progress}%`;
+      learnStatus.textContent = `${solved} of ${state.questions.length} solved`;
+    }
+
+    function maybeUnlockWatch() {
+      if (solvedCount() === state.questions.length) {
+        state.watchUnlocked = true;
+        roundHeadline.textContent = "Watch unlocked.";
+        roundCopy.textContent = "YouTube is now available for 20 minutes.";
+      } else {
+        roundHeadline.textContent = "Watch is locked.";
+        roundCopy.textContent = "Complete the required exercises to unlock YouTube for 20 minutes.";
+      }
     }
 
     function renderQuestions() {
       questionGrid.innerHTML = "";
-      const solvedCount = state.questions.filter((question) => question.solved).length;
-      const fill = (solvedCount / state.questions.length) * 100;
-      learnFill.style.width = `${fill}%`;
-      learnStatus.textContent = `${solvedCount} of ${state.questions.length} solved`;
-      if (solvedCount === state.questions.length) {
-        roundHeadline.textContent = "Round complete. Watch minutes earned.";
-        roundCopy.textContent = "This is where Server3 would refresh the next adaptive round based on age, history, and time-of-day rules.";
-      } else {
-        roundHeadline.textContent = "Earn 10 watch minutes by finishing the round.";
-        roundCopy.textContent = "Questions reset after a completed mission so the child sees a clean next step.";
-      }
-
       state.questions.forEach((question) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "question-card";
-        if (question.status === "correct") {
-          button.classList.add("correct");
-        } else if (question.status === "incorrect") {
-          button.classList.add("incorrect");
-        }
-        button.innerHTML = `<strong>${question.prompt}</strong><span>${question.solved ? `Solved: ${question.answer}` : "Tap to answer correctly in this prototype."}</span>`;
+        const card = document.createElement("article");
+        card.className = `exercise-card${question.solved ? " correct" : ""}`;
+        const choices = question.choices.map((choice) => {
+          return `<button class="choice answer-choice" type="button" data-question="${question.id}" data-answer="${choice}" ${question.solved ? "disabled" : ""}>${choice}</button>`;
+        }).join("");
+        card.innerHTML = `<strong>${question.prompt}</strong><div class="choice-grid">${choices}</div>`;
+        questionGrid.appendChild(card);
+      });
+
+      [...questionGrid.querySelectorAll(".answer-choice")].forEach((button) => {
         button.addEventListener("click", () => {
-          if (question.solved) {
+          const question = state.questions.find((item) => item.id === button.dataset.question);
+          if (!question || question.solved) {
             return;
           }
-          question.solved = true;
-          question.status = "correct";
-          const remaining = state.questions.filter((item) => !item.solved).length;
-          if (remaining === 0 && !state.missions[0].complete) {
-            state.missions[0].complete = true;
-            state.watchMinutes += state.missions[0].reward;
-            renderMissions();
-            renderWatch();
-            updateRewardUI();
+          if (button.dataset.answer === question.answer) {
+            question.solved = true;
+            statusPill.textContent = "Correct";
+          } else {
+            statusPill.textContent = "Try again";
           }
+          maybeUnlockWatch();
           renderQuestions();
+          renderWatch();
+          updateRewardUI();
         });
-        questionGrid.appendChild(button);
       });
     }
 
-    function renderMissions() {
-      missionList.innerHTML = "";
-      state.missions.forEach((mission) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `mission-card${mission.complete ? " complete" : ""}`;
-        button.innerHTML = `
-          <div class="mission-top">
-            <strong>${mission.title}</strong>
-            <span class="mission-reward">${mission.reward > 0 ? `+${mission.reward} min` : "flow"}</span>
-          </div>
-          <p class="subtle">${mission.copy}</p>
-          <p class="tiny">${mission.complete ? "Completed" : "Tap the matching room to progress."}</p>
-        `;
-        button.addEventListener("click", () => {
-          const target = mission.id === "m1" ? "learn" : mission.id === "m2" ? "create" : "watch";
-          setView(target);
-        });
-        missionList.appendChild(button);
-      });
+    function formatTime(totalSeconds) {
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
     }
 
     function renderWatch() {
-      watchGrid.innerHTML = "";
-      state.shows.forEach((show) => {
-        const available = state.watchMinutes >= show.minutes;
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `watch-card ${available ? "available" : "locked"}`;
-        button.innerHTML = `
-          <div class="watch-top">
-            <strong>${show.title}</strong>
-            <span class="watch-badge">${available ? "ready" : `${show.minutes} min needed`}</span>
-          </div>
-          <p class="subtle">${show.copy}</p>
-          <div class="watch-thumb" aria-hidden="true"></div>
-          <p class="tiny">${available ? "Tap to spend earned time in this prototype." : "Locked until enough minutes are earned."}</p>
-        `;
-        button.addEventListener("click", () => {
-          if (!available) {
-            return;
+      youtubeButton.disabled = !state.watchUnlocked || state.remainingSeconds <= 0;
+      if (!state.watchUnlocked) {
+        watchHeadline.textContent = "YouTube is locked.";
+        watchCopy.textContent = "Finish the reward exercises first. Then this section opens for a 20-minute YouTube session.";
+        youtubeButton.innerHTML = "<strong>Open YouTube</strong>Complete the required exercises first.";
+      } else if (state.remainingSeconds <= 0) {
+        watchHeadline.textContent = "Watch time is finished.";
+        watchCopy.textContent = "The 20-minute reward session has ended.";
+        youtubeButton.innerHTML = "<strong>Time Finished</strong>Reset the demo to earn another session.";
+      } else {
+        watchHeadline.textContent = "YouTube is unlocked.";
+        watchCopy.textContent = "Open YouTube and use the unlocked 20-minute reward session.";
+        youtubeButton.innerHTML = "<strong>Open YouTube</strong>Start or continue the reward session.";
+      }
+      timerHeadline.textContent = formatTime(state.remainingSeconds);
+      timerCopy.textContent = state.watchStarted ? "Reward time is counting down." : "The countdown starts when YouTube is opened.";
+    }
+
+    function startWatchSession() {
+      if (!state.watchUnlocked || state.remainingSeconds <= 0) {
+        return;
+      }
+      if (!state.watchStarted) {
+        state.watchStarted = true;
+        state.timerId = window.setInterval(() => {
+          state.remainingSeconds = Math.max(0, state.remainingSeconds - 1);
+          if (state.remainingSeconds === 0 && state.timerId) {
+            window.clearInterval(state.timerId);
+            state.timerId = null;
           }
-          state.watchMinutes = Math.max(0, state.watchMinutes - show.minutes);
-          state.missions[2].complete = true;
-          updateRewardUI();
           renderWatch();
-          renderMissions();
-          statusPill.textContent = `Watching sample: ${show.title}`;
-        });
-        watchGrid.appendChild(button);
+          updateRewardUI();
+        }, 1000);
+      }
+      window.open("https://www.youtube.com/", "_blank", "noopener");
+      statusPill.textContent = "YouTube opened";
+      renderWatch();
+      updateRewardUI();
+    }
+
+    function resetDemo() {
+      if (state.timerId) {
+        window.clearInterval(state.timerId);
+        state.timerId = null;
+      }
+      state.questions.forEach((question) => {
+        question.solved = false;
       });
+      state.watchUnlocked = false;
+      state.watchStarted = false;
+      state.remainingSeconds = WATCH_SECONDS;
+      setView("exercises");
+      maybeUnlockWatch();
+      renderQuestions();
+      renderWatch();
+      updateRewardUI();
+      statusPill.textContent = "Demo reset";
     }
 
     navCards.forEach((card) => {
       card.addEventListener("click", () => setView(card.dataset.view));
     });
 
-    jumpButtons.forEach((button) => {
-      button.addEventListener("click", () => setView(button.dataset.jump));
-    });
+    youtubeButton.addEventListener("click", startWatchSession);
+    resetButton.addEventListener("click", resetDemo);
 
-    micButton.addEventListener("click", async () => {
-      state.promptIndex = (state.promptIndex + 1) % state.prompts.length;
-      const prompt = state.prompts[state.promptIndex];
-      await runCreatePrompt(prompt.text);
-    });
-
-    promptChoices.forEach((button) => {
-      button.addEventListener("click", async () => {
-        const promptText = button.dataset.prompt;
-        if (!promptText) {
-          return;
-        }
-        const next = state.prompts.find((prompt) => prompt.text === promptText);
-        if (next && !backendAvailable()) {
-          renderPrompt(next);
-          return;
-        }
-        await runCreatePrompt(promptText);
-      });
-    });
-
-    updateRewardUI();
-    renderPrompt(state.prompts[0]);
-    renderQuestions();
-    renderMissions();
-    renderWatch();
-    setView("home");
     detectServer();
+    maybeUnlockWatch();
+    renderQuestions();
+    renderWatch();
+    updateRewardUI();
+    setView("exercises");
   </script>
 </body>
 </html>
