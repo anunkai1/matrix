@@ -707,3 +707,12 @@ Summary:
 
 Migrated out of summary during this trim:
 - 2026-04-17: updated `docs/projects/foodle.html` so the combined calendar now supports a second dot-style marker for coffee in brown, alongside the existing fasting dot. Foodle now exposes a coffee tracker card, coffee-day counter, legend entry, and shared-calendar copy that explicitly describes the two dot markers without altering the three main sugar/carbs/dairy bands.
+
+## 2026-04-20 (Summary Roll-Forward Trim for Kidstories Model/UI Update)
+
+Summary:
+- Added rolling summary coverage for the Server2 Kidstories Venice text-model switch and one-prompt public form change.
+- Kept the rolling summary bounded by migrating the oldest item into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-17: moved SignalTube’s live public app path onto Server2 while keeping Browser Brain collection on Server3. Server2 now runs a repo-tracked `signaltube-api.service` behind `https://mavali.top/signaltube/api/` with the frontend rendered into `https://mavali.top/projects/SignalTube/`; the Server2 infra repo now tracks SignalTube app source, nginx wiring, deploy script, and ownership manifest. Server3’s overnight collector now pulls the current SQLite DB from Server2 before collecting, then pushes the updated DB back and triggers a rerender on Server2 via the new `ops/signaltube/sync_server2_state.sh` hook wired into `signaltube-lab-overnight.service`. The old FileGator auto-publish env was removed from the live `/etc/default/signaltube-lab`.
