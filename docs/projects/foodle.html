@@ -240,10 +240,6 @@
       background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(255,255,255,0.18));
     }
 
-    .tracker.fasting-card {
-      grid-column: 1 / -1;
-    }
-
     .tracker-head {
       display: flex;
       justify-content: space-between;
@@ -722,11 +718,44 @@
       }
 
       .tracker-list {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      .tracker {
+      .tracker-sugar,
+      .tracker-carbs,
+      .tracker-dairy {
+        grid-column: 1 / -1;
+      }
+
+      .tracker-fasting,
+      .tracker-coffee {
         padding: 12px;
+      }
+
+      .tracker-fasting .tracker-title,
+      .tracker-coffee .tracker-title {
+        font-size: 1rem;
+      }
+
+      .tracker-fasting .tracker-copy,
+      .tracker-coffee .tracker-copy,
+      .tracker-fasting .tracker-foot,
+      .tracker-coffee .tracker-foot {
+        font-size: 0.78rem;
+      }
+
+      .tracker-fasting .badge,
+      .tracker-coffee .badge {
+        min-width: 72px;
+        padding: 8px 9px;
+        font-size: 0.82rem;
+      }
+
+      .tracker-fasting .decision,
+      .tracker-coffee .decision {
+        min-height: 42px;
+        padding: 8px 9px;
+        font-size: 0.78rem;
       }
 
       .heatmap-shell {
@@ -770,18 +799,14 @@
 
     @media (max-width: 420px) {
       .tracker-list {
-        grid-template-columns: 1fr;
-      }
-
-      .tracker.fasting-card {
-        grid-column: auto;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .tracker {
-        padding: 14px;
+        padding: 12px;
       }
 
-        .tracker-head {
+      .tracker-head {
         flex-direction: column;
         gap: 10px;
         min-height: 0;
@@ -1355,7 +1380,7 @@
           : `Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}`;
 
         const card = document.createElement("article");
-        card.className = `tracker${tracker.mode === "scheduled" ? " fasting-card" : ""}`;
+        card.className = `tracker tracker-${tracker.id}${tracker.mode === "scheduled" ? " fasting-card" : ""}`;
         card.innerHTML = `
           <div class="tracker-head">
             <div>
