@@ -17,6 +17,7 @@
       --dairy: #4d8dc7;
       --fasting: #52c7b8;
       --coffee: #8b5a2b;
+      --overeating: #d64545;
       --ok: #2f8f5b;
       --bad: #c64545;
       --shadow: 0 20px 60px rgba(70, 44, 11, 0.12);
@@ -284,6 +285,7 @@
     .dairy { background: var(--dairy); }
     .fasting { background: var(--fasting); color: #10211d; }
     .coffee { background: var(--coffee); color: #fff8f0; }
+    .overeating { background: var(--overeating); color: #fff2f2; }
 
     .actions {
       display: flex;
@@ -542,9 +544,18 @@
     .combined-marker.miss.track-fasting { background: var(--bad); }
     .combined-marker.good.track-coffee { background: var(--coffee); }
     .combined-marker.miss.track-coffee { background: var(--bad); }
+    .combined-marker.good.track-overeating { background: var(--overeating); }
+    .combined-marker.miss.track-overeating { background: #8d2929; }
     .combined-marker.track-coffee {
       left: -2px;
       right: auto;
+    }
+    .combined-marker.track-overeating {
+      top: auto;
+      bottom: -2px;
+      left: 50%;
+      right: auto;
+      transform: translateX(-50%);
     }
 
     .legend {
@@ -722,31 +733,37 @@
       }
 
       .tracker-fasting,
-      .tracker-coffee {
+      .tracker-coffee,
+      .tracker-overeating {
         padding: 12px;
       }
 
       .tracker-fasting .tracker-title,
-      .tracker-coffee .tracker-title {
+      .tracker-coffee .tracker-title,
+      .tracker-overeating .tracker-title {
         font-size: 1rem;
       }
 
       .tracker-fasting .tracker-copy,
       .tracker-coffee .tracker-copy,
+      .tracker-overeating .tracker-copy,
       .tracker-fasting .tracker-foot,
-      .tracker-coffee .tracker-foot {
+      .tracker-coffee .tracker-foot,
+      .tracker-overeating .tracker-foot {
         font-size: 0.78rem;
       }
 
       .tracker-fasting .badge,
-      .tracker-coffee .badge {
+      .tracker-coffee .badge,
+      .tracker-overeating .badge {
         min-width: 72px;
         padding: 8px 9px;
         font-size: 0.82rem;
       }
 
       .tracker-fasting .decision,
-      .tracker-coffee .decision {
+      .tracker-coffee .decision,
+      .tracker-overeating .decision {
         min-height: 42px;
         padding: 8px 9px;
         font-size: 0.78rem;
@@ -850,6 +867,10 @@
           <span class="mini-label">Coffee days logged</span>
           <strong class="mini-value" id="heroCoffee">0</strong>
         </article>
+        <article class="mini-stat">
+          <span class="mini-label">Over eating days logged</span>
+          <strong class="mini-value" id="heroOvereating">0</strong>
+        </article>
       </div>
     </section>
 
@@ -860,7 +881,7 @@
           Choose one result for today for each category. That is enough to keep the streak going.
         </p>
         <div class="heatmap-shell">
-          <p class="calendar-intro">One shared calendar. Each day cell has three bands for sugar, carbs, dairy, plus dots for fasting and coffee.</p>
+          <p class="calendar-intro">One shared calendar. Each day cell has three bands for sugar, carbs, dairy, plus dots for fasting, coffee, and over eating.</p>
           <div id="combinedCalendar"></div>
         </div>
         <div class="tracker-list" id="trackerList"></div>
@@ -939,6 +960,21 @@
         statusBadText: "Yesterday: no coffee",
         statusEmptyText: "Yesterday: not logged yet",
         lastSuccessEmptyText: "No coffee day logged yet"
+      },
+      {
+        id: "overeating",
+        label: "Over eating",
+        accent: "overeating",
+        mode: "count",
+        copy: "Optional red dot for days when you over ate.",
+        countLabel: "over eating days",
+        countNoun: "over eating day",
+        actionGoodText: "Over ate yesterday",
+        actionBadText: "Did not over eat yesterday",
+        statusGoodText: "Yesterday: over eating logged",
+        statusBadText: "Yesterday: no over eating",
+        statusEmptyText: "Yesterday: not logged yet",
+        lastSuccessEmptyText: "No over eating day logged yet"
       }
     ];
 
@@ -1220,7 +1256,7 @@
                 return `${tracker.label}: ${status === true ? "clean" : status === false ? "had some" : "not logged"}`;
               })
             ].join(" | "),
-            bands: trackers.filter((tracker) => tracker.id !== "fasting" && tracker.id !== "coffee").map((tracker) => {
+            bands: trackers.filter((tracker) => tracker.id !== "fasting" && tracker.id !== "coffee" && tracker.id !== "overeating").map((tracker) => {
               const status = readStatus(data, date, tracker.id);
               return {
                 id: tracker.id,
@@ -1233,6 +1269,10 @@
             })(),
             coffee: (() => {
               const status = readStatus(data, date, "coffee");
+              return status === true ? "good" : status === false ? "miss" : "empty";
+            })(),
+            overeating: (() => {
+              const status = readStatus(data, date, "overeating");
               return status === true ? "good" : status === false ? "miss" : "empty";
             })()
           });
@@ -1293,6 +1333,7 @@
       document.getElementById("heroDairy").textContent = bestStreakFor(data, "dairy");
       document.getElementById("heroFasting").textContent = successCountFor(data, "fasting");
       document.getElementById("heroCoffee").textContent = successCountFor(data, "coffee");
+      document.getElementById("heroOvereating").textContent = successCountFor(data, "overeating");
 
       const combinedCalendar = combinedCalendarFor(data);
       document.getElementById("combinedCalendar").innerHTML = `
@@ -1332,6 +1373,7 @@
                       </span>
                       ${cell.fasting === "empty" ? "" : `<span class="combined-marker ${cell.fasting} track-fasting"></span>`}
                       ${cell.coffee === "empty" ? "" : `<span class="combined-marker ${cell.coffee} track-coffee"></span>`}
+                      ${cell.overeating === "empty" ? "" : `<span class="combined-marker ${cell.overeating} track-overeating"></span>`}
                     </span>
                   `).join("")}
                 </div>
@@ -1349,6 +1391,9 @@
               </span>
               <span class="legend-group">
                 <span class="combined-marker good track-coffee" style="position: static;"></span> Coffee day
+              </span>
+              <span class="legend-group">
+                <span class="combined-marker good track-overeating" style="position: static; transform: none;"></span> Over eating day
               </span>
               <span class="legend-group">
                 <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some
