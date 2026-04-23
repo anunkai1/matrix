@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily AC Schedule Timer - Morning Off
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+Unit=ha-daily-ac-schedule@morning-off.service
+
+[Install]
+WantedBy=timers.target
