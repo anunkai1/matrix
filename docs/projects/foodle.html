@@ -186,6 +186,22 @@
       border: 1px solid var(--line);
     }
 
+    .mini-stat-pair {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      align-items: end;
+    }
+
+    .mini-metric {
+      min-width: 0;
+    }
+
+    .mini-metric + .mini-metric {
+      border-left: 1px solid var(--line);
+      padding-left: 14px;
+    }
+
     .mini-label {
       display: block;
       color: var(--muted);
@@ -670,6 +686,10 @@
         flex-direction: column;
       }
 
+      .mini-stat-pair {
+        gap: 12px;
+      }
+
       .heatmap-frame {
         min-width: 520px;
       }
@@ -831,6 +851,14 @@
         min-width: 0;
         width: 100%;
       }
+
+      .mini-stat-pair {
+        gap: 10px;
+      }
+
+      .mini-metric + .mini-metric {
+        padding-left: 10px;
+      }
     }
   </style>
 </head>
@@ -847,17 +875,35 @@
         Your data stays in your browser, and the share button turns your streaks into a clean message you can send to friends.
       </p>
       <div class="hero-grid">
-        <article class="mini-stat">
-          <span class="mini-label">Longest sugar streak</span>
-          <strong class="mini-value" id="heroSugar">0</strong>
+        <article class="mini-stat mini-stat-pair">
+          <div class="mini-metric">
+            <span class="mini-label">Longest sugar streak</span>
+            <strong class="mini-value" id="heroSugar">0</strong>
+          </div>
+          <div class="mini-metric">
+            <span class="mini-label">Current sugar streak</span>
+            <strong class="mini-value" id="heroSugarCurrent">0</strong>
+          </div>
         </article>
-        <article class="mini-stat">
-          <span class="mini-label">Longest carb streak</span>
-          <strong class="mini-value" id="heroCarbs">0</strong>
+        <article class="mini-stat mini-stat-pair">
+          <div class="mini-metric">
+            <span class="mini-label">Longest carb streak</span>
+            <strong class="mini-value" id="heroCarbs">0</strong>
+          </div>
+          <div class="mini-metric">
+            <span class="mini-label">Current carb streak</span>
+            <strong class="mini-value" id="heroCarbsCurrent">0</strong>
+          </div>
         </article>
-        <article class="mini-stat">
-          <span class="mini-label">Longest dairy streak</span>
-          <strong class="mini-value" id="heroDairy">0</strong>
+        <article class="mini-stat mini-stat-pair">
+          <div class="mini-metric">
+            <span class="mini-label">Longest dairy streak</span>
+            <strong class="mini-value" id="heroDairy">0</strong>
+          </div>
+          <div class="mini-metric">
+            <span class="mini-label">Current dairy streak</span>
+            <strong class="mini-value" id="heroDairyCurrent">0</strong>
+          </div>
         </article>
         <article class="mini-stat">
           <span class="mini-label">Fasting days logged</span>
@@ -1331,6 +1377,9 @@
       document.getElementById("heroSugar").textContent = bestStreakFor(data, "sugar");
       document.getElementById("heroCarbs").textContent = bestStreakFor(data, "carbs");
       document.getElementById("heroDairy").textContent = bestStreakFor(data, "dairy");
+      document.getElementById("heroSugarCurrent").textContent = streakFor(data, "sugar");
+      document.getElementById("heroCarbsCurrent").textContent = streakFor(data, "carbs");
+      document.getElementById("heroDairyCurrent").textContent = streakFor(data, "dairy");
       document.getElementById("heroFasting").textContent = successCountFor(data, "fasting");
       document.getElementById("heroCoffee").textContent = successCountFor(data, "coffee");
       document.getElementById("heroOvereating").textContent = successCountFor(data, "overeating");
