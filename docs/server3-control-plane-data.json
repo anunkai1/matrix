@@ -1,20 +1,20 @@
 {
-  "generatedAt": "2026-04-01T00:54:17.101556+10:00",
+  "generatedAt": "2026-04-24T07:00:15.278883+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
     "runtimeValue": "7 live",
-    "runtimeCopy": "7 healthy, 0 degraded, 0 waiting, 0 offline",
-    "approvalValue": "1 pending",
+    "runtimeCopy": "6 healthy, 1 degraded, 0 waiting, 0 offline",
+    "approvalValue": "0 pending",
     "approvalCopy": "explicit human gates from live Server3 state",
-    "jobValue": "8 tracked",
+    "jobValue": "12 tracked",
     "jobCopy": "timers, approvals, and operator playback in one surface",
-    "hostValue": "load 5.61 / ram 49%",
+    "hostValue": "load 0.72 / ram 12%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "01 Apr 2026 00:54 AEST",
+      "24 Apr 2026 07:00 AEST",
       "snapshot file server3-control-plane-data.js",
-      "1 approval item(s)"
+      "0 approval item(s)"
     ],
     "surfaceBias": [
       "read-only live snapshot",
@@ -32,11 +32,11 @@
       },
       {
         "tone": "warn",
-        "label": "1 approval item(s)"
+        "label": "0 approval item(s)"
       },
       {
         "tone": "busy",
-        "label": "3 operator actions"
+        "label": "8 operator actions"
       },
       {
         "tone": "danger",
@@ -50,19 +50,19 @@
         "title": "Nominal lane",
         "stateClass": "ok",
         "stateText": "healthy",
-        "body": "7 selected runtimes match expected live posture."
+        "body": "6 selected runtimes match expected live posture."
       },
       {
         "title": "Approval lane",
-        "stateClass": "warn",
-        "stateText": "approval",
-        "body": "1 operator approval item(s) currently surfaced."
+        "stateClass": "ok",
+        "stateText": "clear",
+        "body": "0 operator approval item(s) currently surfaced."
       },
       {
         "title": "Watch lane",
-        "stateClass": "danger",
-        "stateText": "watch",
-        "body": "expected inactive, got active"
+        "stateClass": "ok",
+        "stateText": "clear",
+        "body": "No selected runtime is currently off its default expected posture."
       },
       {
         "title": "Offline lane",
@@ -79,100 +79,140 @@
       },
       {
         "label": "operator gates",
-        "value": "1",
+        "value": "0",
         "copy": "explicit human approvals, not implicit risk"
       }
     ]
   },
   "activity": [
     {
-      "time": "00:54:17",
-      "title": "Optional UI layer is active",
-      "channel": "host",
-      "statusClass": "danger",
-      "statusText": "watch",
-      "copy": "expected inactive, got active"
-    },
-    {
-      "time": "00:54:17",
-      "title": "UI layer is active outside its default posture",
-      "channel": "approval",
-      "statusClass": "danger",
-      "statusText": "operator review",
-      "copy": "expected inactive, got active"
-    },
-    {
-      "time": "00:54:15",
+      "time": "07:00:15",
       "title": "Oracle recent service activity",
       "channel": "signal runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "2026-04-01 00:54:15,952 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
+      "statusClass": "danger",
+      "statusText": "degraded",
+      "copy": "2026-04-24 07:00:15,792 WARNING Signal event stream failed: <urlopen error [Errno 111] Connection refused>"
     },
     {
-      "time": "21:15:04",
+      "time": "07:00:15",
       "title": "Architect recent service activity",
       "channel": "telegram primary",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "bridge.request_processing_finished"
+      "copy": "bridge.interrupted_requests_processed"
     },
     {
-      "time": "20:31:04",
-      "title": "Browser Brain recent service activity",
-      "channel": "browser control surface",
-      "statusClass": "busy",
-      "statusText": "attached",
-      "copy": "(1) Lydia Hallie ✨ on X: \"We're aware people are hitting usage limits in Claude C... | x session live; manual login tab open"
-    },
-    {
-      "time": "20:02:14",
+      "time": "07:00:15",
       "title": "Diary recent service activity",
       "channel": "capture runtime",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "bridge.diary_batch_finished"
+      "copy": "bridge.interrupted_requests_processed"
+    },
+    {
+      "time": "07:00:15",
+      "title": "Tank recent service activity",
+      "channel": "telegram sibling",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.interrupted_requests_processed"
+    },
+    {
+      "time": "07:00:15",
+      "title": "Mavali ETH recent service activity",
+      "channel": "venue operations runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.interrupted_requests_processed"
+    },
+    {
+      "time": "07:00:14",
+      "title": "Browser Brain recent service activity",
+      "channel": "browser control surface",
+      "statusClass": "busy",
+      "statusText": "attached",
+      "copy": "no live browser target | no explicit auth cue"
     }
   ],
   "playback": {
     "items": [
       {
-        "time": "00:53:58",
-        "title": "captured incident bundle",
-        "channel": "incident",
+        "time": "21:42:58",
+        "title": "SignalTube rescan started",
+        "channel": "signaltube",
         "statusClass": "ok",
         "statusText": "ok",
-        "copy": "incident bundle via local. /home/architect/.local/state/server3-control-plane/bundles/incident-bundle-20260401T005358.json"
+        "copy": "signaltube rescan via token. signaltube-lab-rescan.service"
       },
       {
-        "time": "00:53:58",
-        "title": "refreshed control-plane snapshot",
-        "channel": "snapshot",
+        "time": "21:39:40",
+        "title": "Ask SignalTube scan started",
+        "channel": "signaltube",
         "statusClass": "ok",
         "statusText": "ok",
-        "copy": "snapshot refresh via local. /home/architect/matrix/docs/server3-control-plane-data.json"
+        "copy": "signaltube ask via token. show me some videos from the last 3 days on cryptocurrency"
       },
       {
-        "time": "00:53:56",
-        "title": "viewed browser logs",
-        "channel": "browser",
+        "time": "21:31:48",
+        "title": "Ask SignalTube scan started",
+        "channel": "signaltube",
         "statusClass": "ok",
         "statusText": "ok",
-        "copy": "runtime logs via local. server3-browser-brain.service"
+        "copy": "signaltube ask via token. I want to watch about science"
+      },
+      {
+        "time": "21:01:28",
+        "title": "Ask SignalTube scan started",
+        "channel": "signaltube",
+        "statusClass": "ok",
+        "statusText": "ok",
+        "copy": "signaltube ask via token. I want to see videos about philosophy"
+      },
+      {
+        "time": "20:48:17",
+        "title": "Ask SignalTube scan started",
+        "channel": "signaltube",
+        "statusClass": "ok",
+        "statusText": "ok",
+        "copy": "signaltube ask via local. I want to see videos about AI news, but not from MSM"
+      },
+      {
+        "time": "20:39:35",
+        "title": "Ask SignalTube scan started",
+        "channel": "signaltube",
+        "statusClass": "ok",
+        "statusText": "ok",
+        "copy": "signaltube ask via token. I want to see videos about AI news, but not from MSM"
+      },
+      {
+        "time": "19:27:59",
+        "title": "Ask SignalTube scan started",
+        "channel": "signaltube",
+        "statusClass": "ok",
+        "statusText": "ok",
+        "copy": "signaltube ask via token. I want to see videos about AI news, but not from MSM"
+      },
+      {
+        "time": "19:12:56",
+        "title": "Ask SignalTube scan started",
+        "channel": "signaltube",
+        "statusClass": "ok",
+        "statusText": "ok",
+        "copy": "signaltube ask via local. That is a bit too much mainstream news, can you remove mainstream news"
       }
     ],
     "meta": [
       {
         "label": "recent operator actions",
-        "value": "3"
+        "value": "8"
       },
       {
         "label": "last actor path",
-        "value": "local"
+        "value": "token"
       },
       {
         "label": "last action",
-        "value": "incident bundle"
+        "value": "signaltube rescan"
       },
       {
         "label": "captured bundles",
@@ -186,46 +226,31 @@
       }
     ]
   },
-  "approvals": [
-    {
-      "title": "UI layer is active outside its default posture",
-      "riskClass": "danger",
-      "riskText": "operator review",
-      "body": "expected inactive, got active",
-      "approveLabel": "accept for session",
-      "rejectLabel": "turn desktop off"
-    }
-  ],
+  "approvals": [],
   "jobs": [
-    {
-      "title": "Approval queue",
-      "tagClass": "warn",
-      "tagText": "1 waiting",
-      "body": "Pending actions are rendered here as operator work, not buried in prompt text."
-    },
     {
       "title": "Observer summary",
       "tagClass": "busy",
-      "tagText": "01 Apr 08:05",
-      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 31 Mar 08:05."
+      "tagText": "24 Apr 08:05",
+      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 23 Apr 08:05."
     },
     {
       "title": "Routing drift check",
       "tagClass": "busy",
-      "tagText": "01 Apr 06:15",
-      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 31 Mar 06:15."
+      "tagText": "25 Apr 06:15",
+      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 24 Apr 06:15."
     },
     {
       "title": "State backup",
       "tagClass": "busy",
-      "tagText": "01 Apr 05:00",
-      "body": "server3-state-backup.timer is active(waiting). Last trigger: not scheduled."
+      "tagText": "01 May 05:00",
+      "body": "server3-state-backup.timer is active(waiting). Last trigger: 01 Apr 05:00."
     },
     {
       "title": "Receipt monitor",
       "tagClass": "busy",
       "tagText": "not scheduled",
-      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 01 Apr 00:35."
+      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 24 Apr 06:54."
     }
   ],
   "floor": [
@@ -233,15 +258,15 @@
       "title": "Disk posture",
       "stateClass": "warn",
       "stateText": "watch",
-      "value": "18% used",
-      "body": "/srv/external/server3-arr | 1402 GiB free of 1833 GiB",
+      "value": "32% used",
+      "body": "/srv/external/server3-arr | 1162 GiB free of 1833 GiB",
       "statusLine": "backup disk: 7% used"
     },
     {
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 5.61 / ram 49%",
+      "value": "load 0.72 / ram 12%",
       "body": "primary route nordlynx / 10.5.0.2",
       "statusLine": "host: server3"
     },
@@ -250,7 +275,7 @@
       "stateClass": "busy",
       "stateText": "live",
       "value": "/data/downloads",
-      "body": "missing | path unavailable",
+      "body": "11% used | 405 GiB free of 480 GiB",
       "statusLine": "canonical media namespace is /data/downloads and /data/media/..."
     },
     {
@@ -259,7 +284,7 @@
       "stateText": "queued",
       "value": "Observer summary, Routing drift check, State backup",
       "body": "Visible timers stay on the floor so continuity work is never hidden behind another tool.",
-      "statusLine": "next: 01 Apr 08:05"
+      "statusLine": "next: 24 Apr 08:05"
     }
   ],
   "runtimes": [
@@ -287,7 +312,7 @@
         },
         {
           "label": "owner",
-          "value": "architect"
+          "value": "sentinel"
         },
         {
           "label": "live state",
@@ -297,7 +322,7 @@
       "recentJobs": [
         {
           "label": "telegram-architect-bridge.service",
-          "value": "21:15:04 bridge.request_processing_finished"
+          "value": "07:00:15 bridge.interrupted_requests_processed"
         }
       ],
       "watchouts": [
@@ -331,7 +356,20 @@
       "unitNames": [
         "telegram-architect-bridge.service"
       ],
-      "auditTrail": [],
+      "auditTrail": [
+        {
+          "label": "10 Apr 23:14 / runtime logs",
+          "value": "ok via local | telegram-architect-bridge.service"
+        },
+        {
+          "label": "10 Apr 23:14 / runtime logs",
+          "value": "ok via local | telegram-architect-bridge.service"
+        },
+        {
+          "label": "10 Apr 23:12 / runtime restart",
+          "value": "ok via local | telegram-architect-bridge.service"
+        }
+      ],
       "browserLane": null
     },
     {
@@ -368,7 +406,7 @@
       "recentJobs": [
         {
           "label": "telegram-tank-bridge.service",
-          "value": "23:42:44 bridge.telegram_api_retry_succeeded | getUpdates"
+          "value": "07:00:15 bridge.interrupted_requests_processed"
         }
       ],
       "watchouts": [
@@ -439,7 +477,7 @@
       "recentJobs": [
         {
           "label": "telegram-diary-bridge.service",
-          "value": "20:02:14 bridge.diary_batch_finished"
+          "value": "07:00:15 bridge.interrupted_requests_processed"
         }
       ],
       "watchouts": [
@@ -510,11 +548,11 @@
       "recentJobs": [
         {
           "label": "whatsapp-govorun-bridge.service",
-          "value": "00:28:14 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
+          "value": "19:15:45 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
         },
         {
           "label": "govorun-whatsapp-bridge.service",
-          "value": "17:51:20 bridge.request_ignored | prefix_required"
+          "value": "07:00:15 bridge.started"
         }
       ],
       "watchouts": [
@@ -555,8 +593,8 @@
     {
       "key": "oracle",
       "name": "Oracle",
-      "stateClass": "ok",
-      "stateText": "healthy",
+      "stateClass": "danger",
+      "stateText": "degraded",
       "role": "Signal runtime",
       "operatorNote": "transport + bridge",
       "summary": "Signal transport sidecar used by the Oracle bridge.",
@@ -580,23 +618,23 @@
         },
         {
           "label": "live state",
-          "value": "active / active"
+          "value": "deactivating / activating"
         }
       ],
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "00:54:15 2026-04-01 00:54:15,952 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
+          "value": "07:00:15 2026-04-24 07:00:15,792 WARNING Signal event stream failed: <urlopen error [Errno 111] Connection refused>"
         },
         {
           "label": "oracle-signal-bridge.service",
-          "value": "21:07:01 bridge.request_processing_finished"
+          "value": "07:00:14 Starting oracle-signal-bridge.service - Oracle Signal Bridge..."
         }
       ],
       "watchouts": [
         {
           "label": "current issue",
-          "value": "no active unit mismatch detected"
+          "value": "expected active, got deactivating"
         },
         {
           "label": "operator note",
@@ -662,11 +700,11 @@
       "recentJobs": [
         {
           "label": "telegram-mavali-eth-bridge.service",
-          "value": "15:16:35 bridge.request_processing_finished"
+          "value": "07:00:15 bridge.interrupted_requests_processed"
         },
         {
           "label": "mavali-eth-receipt-monitor.timer",
-          "value": "17:17:45 Started mavali-eth-receipt-monitor.timer - Poll for confirmed inbound ETH for mavali_eth."
+          "value": "19:15:42 Started mavali-eth-receipt-monitor.timer - Poll for confirmed inbound ETH for mavali_eth."
         }
       ],
       "watchouts": [
@@ -733,16 +771,16 @@
       ],
       "recentJobs": [
         {
-          "label": "20:31:04 snapshot",
-          "value": "261 elements | snap-cbe972f8"
+          "label": "07:45:46 snapshot",
+          "value": "169 elements | snap-1c09f1fc"
         },
         {
-          "label": "20:31:04 snapshot",
-          "value": "235 elements | snap-adee1db6"
+          "label": "07:45:42 tabs.open",
+          "value": "x.com/search"
         },
         {
-          "label": "20:31:03 snapshot",
-          "value": "168 elements | snap-593918bc"
+          "label": "07:45:33 snapshot",
+          "value": "146 elements | snap-4f59332a"
         }
       ],
       "watchouts": [
@@ -786,82 +824,58 @@
         "state": [
           {
             "label": "connection",
-            "value": "existing_session / running"
+            "value": "existing_session / stopped"
           },
           {
             "label": "auth posture",
-            "value": "x session live; manual login tab open"
+            "value": "no explicit auth cue"
           },
           {
             "label": "manual takeover",
-            "value": "server3 (1) Evan Luthra on X: \"POV: Sam Altman refreshing Anthropic’s X account e..."
+            "value": "tv helper not visible"
           },
           {
             "label": "tab footprint",
-            "value": "14 live tabs / x.com x11, example.com x1"
+            "value": "0 live tabs / no http tabs"
           }
         ],
         "targets": [
           {
             "label": "current target",
-            "value": "(1) Lydia Hallie ✨ on X: \"We're aware people are hitting usage limits in Claude C..."
-          },
-          {
-            "label": "tab-e9e43e68",
-            "value": "(1) QuarkQ (@QuarkQ143033) / X"
-          },
-          {
-            "label": "tab-5a0f810f",
-            "value": "(1) Elon Musk on X: \"Cool, well Grok will get even better every week!\" / X"
-          },
-          {
-            "label": "tab-adc826c0",
-            "value": "(1) QuarkQ (@QuarkQ143033) / X"
-          },
-          {
-            "label": "tab-80ad9b7d",
-            "value": "(1) Explore / X"
+            "value": "no live browser target"
           }
         ],
         "captures": [
           {
-            "label": "20260322T114237Z-smo_vz_status_viewport.png",
-            "value": "22 Mar 21:42 / 308 KiB"
-          },
-          {
-            "label": "20260322T114217Z-smo_vz_status.png",
-            "value": "22 Mar 21:42 / 1873 KiB"
-          },
-          {
-            "label": "20260322T084947Z-compose-tab.png",
-            "value": "22 Mar 18:49 / 1098 KiB"
+            "label": "captures",
+            "value": "no retained captures"
           }
         ],
         "activity": [
           {
-            "label": "20:31:04 snapshot",
-            "value": "261 elements | snap-cbe972f8"
+            "label": "07:45:46 snapshot",
+            "value": "169 elements | snap-1c09f1fc"
           },
           {
-            "label": "20:31:04 snapshot",
-            "value": "235 elements | snap-adee1db6"
+            "label": "07:45:42 tabs.open",
+            "value": "x.com/search"
           },
           {
-            "label": "20:31:03 snapshot",
-            "value": "168 elements | snap-593918bc"
+            "label": "07:45:33 snapshot",
+            "value": "146 elements | snap-4f59332a"
           },
           {
-            "label": "20:31:03 snapshot",
-            "value": "138 elements | snap-c5ede80c"
+            "label": "07:45:29 start",
+            "value": "browser event"
           }
         ],
         "summary": {
-          "current_target": "(1) Lydia Hallie ✨ on X: \"We're aware people are hitting usage limits in Claude C...",
-          "tab_count": 14,
-          "auth_posture": "x session live; manual login tab open",
-          "manual_takeover": "visible tv helper open",
+          "current_target": "no live browser target",
+          "tab_count": 0,
+          "auth_posture": "no explicit auth cue",
+          "manual_takeover": "tv helper not visible",
           "capture_dir": "/var/lib/server3-browser-brain/captures",
-          "started_at": "2026-03-22T08:48:16.273908+00:00"
+          "started_at": ""
         }
       }
     }
