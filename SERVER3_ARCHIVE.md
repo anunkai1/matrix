@@ -726,3 +726,12 @@ Summary:
 Migrated out of summary during this trim:
 - 2026-04-18: fixed Arr subtitle import behavior on the live media stack by enabling Sonarr/Radarr `importExtraFiles` with `srt,ass,ssa,vtt`; existing stranded English `.srt` files for 4 movies and Devs S01 were copied from `/srv/external/server3-arr/downloads` into the Jellyfin media tree, and Jellyfin indexed 12 external subtitle tracks after a library refresh.
 - 2026-04-17: added `telegram-sentinel-bridge.service` to the Server3 state restore enable/start flow and post-restore required-service verification so Sentinel is included in disaster-recovery restores; also kept private stack service/container literals composed at runtime so the tracked scripts satisfy the local privacy hook. Live unit state was verified as enabled and active before committing the restore coverage.
+
+## 2026-04-25 (Summary Roll-Forward Trim for Lovelace Frontend Verification Lesson)
+
+Summary:
+- Added rolling summary coverage for the new LESSONS entry requiring real frontend render checks after custom Home Assistant Lovelace dashboard/card/resource/theme changes.
+- Kept the rolling summary bounded by migrating the oldest item into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-19: added Ask SignalTube conversational scan mode. Server2 now renders an authenticated `Ask SignalTube` prompt box and proxies `POST /signaltube/api/ask` to Server3; Server3 control plane exposes authenticated `POST /api/signaltube/ask` and starts `signaltube-lab-ask.service`, which interprets the prompt against the previous Ask session, scans generated YouTube queries through Browser Brain, updates only transient `Ask: ...` result sections, and pushes/rerenders Server2 while preserving normal scheduled topic sections. Current implementation uses a local language planner for topic/refinement/viewpoint parsing; no external LLM key is configured yet.

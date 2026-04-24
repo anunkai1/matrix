@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-04-25T09:10:02+10:00 - Verify Lovelace Frontend Rendering After Dashboard Card Changes
+- Mistake pattern: I reported a Home Assistant dashboard chart change as verified after checking only the saved Lovelace config and entity references, but the HA frontend still rendered a card-level `Configuration error`.
+- Prevention rule: After adding or changing custom Lovelace cards, card schema, chart config, resources, or `card_mod` styling, perform a real frontend render check in HA and scan for visible configuration/card errors before reporting success.
+- Where/when applied: Any Home Assistant dashboard/resource/theme work, especially HACS/custom cards such as `apexcharts-card`, `mini-graph-card`, Mushroom cards, layout-card, and card-mod.
+
 ### 2026-04-03T14:02:00+10:00 - Verify Telegram Attachment Capability Before Saying It Is Unavailable
 - Mistake pattern: I told the owner I could not directly attach a generated image into Telegram from this session, even though the live Architect bridge already exposes outbound `send_photo`/`send_document` support and the current chat target could be resolved from runtime state.
 - Prevention rule: When a user asks for Telegram image/file delivery, check the bridge transport/runtime state first, resolve the active chat/thread, and attempt the supported Telegram attachment path before claiming the capability is unavailable.
