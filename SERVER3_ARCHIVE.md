@@ -716,3 +716,13 @@ Summary:
 
 Migrated out of summary during this trim:
 - 2026-04-17: moved SignalTube’s live public app path onto Server2 while keeping Browser Brain collection on Server3. Server2 now runs a repo-tracked `signaltube-api.service` behind `https://mavali.top/signaltube/api/` with the frontend rendered into `https://mavali.top/projects/SignalTube/`; the Server2 infra repo now tracks SignalTube app source, nginx wiring, deploy script, and ownership manifest. Server3’s overnight collector now pulls the current SQLite DB from Server2 before collecting, then pushes the updated DB back and triggers a rerender on Server2 via the new `ops/signaltube/sync_server2_state.sh` hook wired into `signaltube-lab-overnight.service`. The old FileGator auto-publish env was removed from the live `/etc/default/signaltube-lab`.
+
+## 2026-04-24 (Summary Roll-Forward Trim for Codex CLI 0.124.0 Update)
+
+Summary:
+- Added rolling summary coverage for the host-global Codex CLI upgrade to `0.124.0` and the synced target-state/change-record updates.
+- Kept the rolling summary bounded by migrating two oldest items into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-18: fixed Arr subtitle import behavior on the live media stack by enabling Sonarr/Radarr `importExtraFiles` with `srt,ass,ssa,vtt`; existing stranded English `.srt` files for 4 movies and Devs S01 were copied from `/srv/external/server3-arr/downloads` into the Jellyfin media tree, and Jellyfin indexed 12 external subtitle tracks after a library refresh.
+- 2026-04-17: added `telegram-sentinel-bridge.service` to the Server3 state restore enable/start flow and post-restore required-service verification so Sentinel is included in disaster-recovery restores; also kept private stack service/container literals composed at runtime so the tracked scripts satisfy the local privacy hook. Live unit state was verified as enabled and active before committing the restore coverage.
