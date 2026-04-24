@@ -2358,6 +2358,68 @@ class BridgeCoreTests(unittest.TestCase):
                 "bootstrap-auth",
             )
 
+    def test_begin_memory_turn_clears_stale_memory_thread_when_bridge_state_is_empty(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir)
+            conversation_key = "tg:-1003706836145:topic:2504"
+            memory_engine = bridge.MemoryEngine(str(state_dir / "memory.sqlite3"))
+            memory_engine.set_session_thread_id(conversation_key, "stale-thread")
+            state = bridge.State(
+                canonical_sessions_enabled=True,
+                memory_engine=memory_engine,
+            )
+            repo = bridge.StateRepository(state)
+            config = make_config(shared_memory_key="")
+
+            prompt_text, previous_thread_id, turn_context = bridge_handlers.begin_memory_turn(
+                memory_engine=memory_engine,
+                state_repo=repo,
+                config=config,
+                channel_name="telegram",
+                scope_key=conversation_key,
+                prompt_text="Solve the problem to get access",
+                sender_name="anunakii",
+                stateless=False,
+                chat_id=-1003706836145,
+            )
+
+            self.assertEqual(prompt_text, turn_context.prompt_text)
+            self.assertIsNone(previous_thread_id)
+            self.assertIsNone(turn_context.thread_id)
+            self.assertIsNone(memory_engine.get_session_thread_id(conversation_key))
+
+    def test_begin_memory_turn_syncs_memory_thread_from_bridge_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir)
+            conversation_key = "tg:-1003706836145:topic:2504"
+            memory_engine = bridge.MemoryEngine(str(state_dir / "memory.sqlite3"))
+            memory_engine.set_session_thread_id(conversation_key, "stale-thread")
+            state = bridge.State(
+                canonical_sessions_enabled=True,
+                chat_sessions={
+                    conversation_key: bridge.CanonicalSession(thread_id="bridge-thread"),
+                },
+                memory_engine=memory_engine,
+            )
+            repo = bridge.StateRepository(state)
+            config = make_config(shared_memory_key="")
+
+            _, previous_thread_id, turn_context = bridge_handlers.begin_memory_turn(
+                memory_engine=memory_engine,
+                state_repo=repo,
+                config=config,
+                channel_name="telegram",
+                scope_key=conversation_key,
+                prompt_text="Solve the problem to get access",
+                sender_name="anunakii",
+                stateless=False,
+                chat_id=-1003706836145,
+            )
+
+            self.assertEqual(previous_thread_id, "bridge-thread")
+            self.assertEqual(turn_context.thread_id, "bridge-thread")
+            self.assertEqual(memory_engine.get_session_thread_id(conversation_key), "bridge-thread")
+
     def test_handle_update_routes_status_command(self):
         state = bridge.State()
         client = FakeTelegramClient()

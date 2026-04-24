@@ -325,6 +325,10 @@ class MemoryEngine:
                 (conversation_key, normalized, now),
             )
 
+    def clear_session_thread_id(self, conversation_key: str) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM sessions WHERE conversation_key = ?", (conversation_key,))
+
     def clear_session(self, conversation_key: str) -> None:
         with self._lock, self._connect() as conn:
             conn.execute("DELETE FROM sessions WHERE conversation_key = ?", (conversation_key,))

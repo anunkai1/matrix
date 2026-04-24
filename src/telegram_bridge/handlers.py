@@ -2851,9 +2851,21 @@ def begin_memory_turn(
 ) -> tuple[str, Optional[str], Optional[TurnContext]]:
     if memory_engine is None:
         return prompt_text, (None if stateless else state_repo.get_thread_id(scope_key)), None
+    conversation_key = resolve_memory_conversation_key(config, channel_name, scope_key)
+    persisted_thread_id = None if stateless else state_repo.get_thread_id(scope_key)
+    if not stateless:
+        try:
+            memory_thread_id = memory_engine.get_session_thread_id(conversation_key)
+            if memory_thread_id != persisted_thread_id:
+                if persisted_thread_id:
+                    memory_engine.set_session_thread_id(conversation_key, persisted_thread_id)
+                elif memory_thread_id:
+                    memory_engine.clear_session_thread_id(conversation_key)
+        except Exception:
+            logging.exception("Failed to reconcile memory session thread for chat_id=%s", chat_id)
     try:
         turn_context = memory_engine.begin_turn(
-            conversation_key=resolve_memory_conversation_key(config, channel_name, scope_key),
+            conversation_key=conversation_key,
             channel=channel_name,
             sender_name=sender_name,
             user_input=prompt_text,
@@ -2866,7 +2878,7 @@ def begin_memory_turn(
         return turn_context.prompt_text, turn_context.thread_id, turn_context
     except Exception:
         logging.exception("Failed to prepare shared memory turn for chat_id=%s", chat_id)
-        return prompt_text, (None if stateless else state_repo.get_thread_id(scope_key)), None
+        return prompt_text, persisted_thread_id, None
 
 
 def begin_affective_turn(
