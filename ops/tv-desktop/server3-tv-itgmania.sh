@@ -42,8 +42,12 @@ TV_HOME="/home/tv"
 ITGMANIA_BIN="${SERVER3_TV_ITGMANIA_BIN:-/opt/itgmania/itgmania}"
 LOG_PATH="${SERVER3_TV_ITGMANIA_LOG:-/tmp/server3-tv-itgmania.log}"
 KEYMAP_PATH="${SERVER3_TV_ITGMANIA_KEYMAP:-${TV_HOME}/.itgmania/Save/Keymaps.ini}"
-DISPLAY_MODE="${SERVER3_TV_ITGMANIA_MODE:-1280x720}"
-DISPLAY_RATE="${SERVER3_TV_ITGMANIA_RATE:-}"
+PREFERENCES_PATH="${SERVER3_TV_ITGMANIA_PREFERENCES:-${TV_HOME}/.itgmania/Save/Preferences.ini}"
+DISPLAY_MODE="${SERVER3_TV_ITGMANIA_MODE:-1920x1080}"
+DISPLAY_RATE="${SERVER3_TV_ITGMANIA_RATE:-119.88}"
+GAME_DISPLAY_WIDTH="${SERVER3_TV_ITGMANIA_DISPLAY_WIDTH:-1920}"
+GAME_DISPLAY_HEIGHT="${SERVER3_TV_ITGMANIA_DISPLAY_HEIGHT:-1080}"
+GAME_REFRESH_RATE="${SERVER3_TV_ITGMANIA_REFRESH_RATE:-119}"
 
 if [[ ! -x "${ITGMANIA_BIN}" ]]; then
   echo "ITGmania binary not found or not executable: ${ITGMANIA_BIN}" >&2
@@ -241,6 +245,23 @@ KEYMAP
   sudo chown tv:tv "${KEYMAP_PATH}"
 }
 
+configure_itgmania_latency_preferences() {
+  if [[ ! -f "${PREFERENCES_PATH}" ]]; then
+    return 0
+  fi
+
+  sudo sed -i \
+    -e "s/^DisplayWidth=.*/DisplayWidth=${GAME_DISPLAY_WIDTH}/" \
+    -e "s/^DisplayHeight=.*/DisplayHeight=${GAME_DISPLAY_HEIGHT}/" \
+    -e "s/^RefreshRate=.*/RefreshRate=${GAME_REFRESH_RATE}/" \
+    -e 's/^Vsync=.*/Vsync=0/' \
+    -e 's/^Windowed=.*/Windowed=0/' \
+    -e 's/^FullscreenIsBorderlessWindow=.*/FullscreenIsBorderlessWindow=0/' \
+    -e 's/^InputDebounceTime=.*/InputDebounceTime=0.000000/' \
+    "${PREFERENCES_PATH}"
+  sudo chown tv:tv "${PREFERENCES_PATH}"
+}
+
 focus_itgmania_window() {
   if ! command -v wmctrl >/dev/null 2>&1; then
     return 0
@@ -251,6 +272,10 @@ focus_itgmania_window() {
   local attempt
   local window_id
   local screen_geometry
+  if sudo grep -q '^Windowed=0' "${PREFERENCES_PATH}" 2>/dev/null; then
+    attempts=5
+  fi
+
   for attempt in $(seq 1 "${attempts}"); do
     window_id="$(
       sudo -u tv env "${ENV_VARS[@]}" wmctrl -lx 2>/dev/null \
@@ -276,6 +301,10 @@ focus_itgmania_window() {
     sleep "${delay}"
   done
 
+  if sudo grep -q '^Windowed=0' "${PREFERENCES_PATH}" 2>/dev/null; then
+    return 0
+  fi
+
   echo "Timed out waiting for ITGmania window." >&2
   return 1
 }
@@ -298,6 +327,8 @@ if [[ -n "${existing_pid}" ]]; then
   echo "[server3-tv-itgmania] already_running=1 pid=${existing_pid} window=${window_id:-unknown} fullscreen=${FORCE_FULLSCREEN}"
   exit 0
 fi
+
+configure_itgmania_latency_preferences
 
 sudo install -d -m 755 -o tv -g tv "${TV_HOME}/.local/state"
 sudo -u tv env "${ENV_VARS[@]}" nohup "${ITGMANIA_BIN}" >"${LOG_PATH}" 2>&1 < /dev/null &

@@ -73,7 +73,9 @@ bash ops/tv-desktop/server3-tv-itgmania.sh
 bash ops/tv-desktop/server3-tv-itgmania.sh --restart
 ```
 
-The launcher defaults the HDMI X session to `1280x720`, matching ITGmania's generated render mode on Server3 so the game fills the TV instead of rendering a small 720p viewport inside a 4K desktop. Override with `SERVER3_TV_ITGMANIA_MODE` if a later game config supports a higher render mode.
+The launcher defaults the HDMI X session to `1920x1080` at `119.88Hz` for lower display latency on the current TV. Override with `SERVER3_TV_ITGMANIA_MODE` and `SERVER3_TV_ITGMANIA_RATE` if a different display needs the earlier `1280x720` behavior.
+
+Before fresh launches, the ITGmania helper also keeps the game preferences on the low-latency path: true fullscreen at `1920x1080`, vsync off, and input debounce `0`. Override the saved game render size with `SERVER3_TV_ITGMANIA_DISPLAY_WIDTH`, `SERVER3_TV_ITGMANIA_DISPLAY_HEIGHT`, and `SERVER3_TV_ITGMANIA_REFRESH_RATE`.
 
 The installed Server3 build is ITGmania `1.2.1` under `/opt/itgmania`, installed from the official Linux tarball at `https://github.com/itgmania/itgmania/releases/download/v1.2.1/ITGmania-1.2.1-Linux.tar.gz`. The LTEK pad currently enumerates as `/dev/input/js0` (`LTEK L-TEK Dance Pad PRO`). The launcher enforces the L-TEK button order in `/home/tv/.itgmania/Save/Keymaps.ini`: left `Joy1_B1`, right `Joy1_B2`, up `Joy1_B3`, down `Joy1_B4`.
 
@@ -98,7 +100,7 @@ sudo apt-get install -y yt-dlp wmctrl xdotool libusb-0.1-4
 - Xfce autostarts `server3-tv-session-start.sh`.
 - The session bootstrap only prepares display/audio state; it does not force any browser open.
 - The session bootstrap disables XFCE window-manager compositing for lower display latency.
-- The display bootstrap runs `server3-tv-display.sh`, making HDMI the only active output at `1280x720` by default for every Server3 TV session.
+- The display bootstrap runs `server3-tv-display.sh`, making HDMI the only active output at `1280x720` by default for the base Server3 TV session. The ITGmania launcher switches HDMI to its own low-latency `1920x1080@119.88Hz` mode before launching the game.
 - Browser windows are opened by `server3-tv-open-browser-url.sh` or the YouTube helper when explicitly requested.
 - Firefox launches with a dedicated TV-only profile path so it does not collide with stale/default-profile state.
 - ITGmania launches only when explicitly requested through `server3-tv-itgmania.sh`; the helper reuses an existing game process unless `--restart` is passed.
