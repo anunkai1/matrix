@@ -77,6 +77,10 @@ The launcher defaults the HDMI X session to `1280x720`, matching ITGmania's gene
 
 The installed Server3 build is ITGmania `1.2.1` under `/opt/itgmania`, installed from the official Linux tarball at `https://github.com/itgmania/itgmania/releases/download/v1.2.1/ITGmania-1.2.1-Linux.tar.gz`. The LTEK pad currently enumerates as `/dev/input/js0` (`LTEK L-TEK Dance Pad PRO`). The launcher enforces the L-TEK button order in `/home/tv/.itgmania/Save/Keymaps.ini`: left `Joy1_B1`, right `Joy1_B2`, up `Joy1_B3`, down `Joy1_B4`.
 
+Installed song packs:
+- `Club Fantastic Season 1` and `Club Fantastic Season 2` are bundled with the ITGmania install.
+- `GG Basics` is installed under `/opt/itgmania/Songs/GG Basics`. It was downloaded from StepMania Online pack ID `1745` (`https://stepmaniaonline.net/download/pack/1745/`) on 2026-04-25 and contains 22 `.ssc` pop-song charts.
+
 Note:
 - `server3-youtube-open-top-result.sh` requires `yt-dlp`.
 - For Firefox autoplay-block fallback (focus + click + `k` play key), install:

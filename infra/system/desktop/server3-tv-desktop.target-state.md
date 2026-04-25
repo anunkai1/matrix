@@ -71,6 +71,12 @@ Provide a command-start desktop mode for HDMI TV use while keeping Server3 defau
   - joystick: `/dev/input/js0`
   - event device: `/dev/input/event11`
 
+## Live Additive ITGmania Song Packs (Server3)
+- `GG Basics`
+- Installed manually on 2026-04-25 to `/opt/itgmania/Songs/GG Basics`.
+- Source: StepMania Online pack ID `1745` (`https://stepmaniaonline.net/download/pack/1745/`).
+- Contents: 22 `.ssc` pop-song charts.
+
 ## Operations
 - Apply: `bash ops/tv-desktop/apply_server3.sh`
 - Rollback: `bash ops/tv-desktop/rollback_server3.sh`
