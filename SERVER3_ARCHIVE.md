@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-25 (Summary Roll-Forward Trim for Telegram Status Wording)
+
+Summary:
+- Added a rolling-summary entry for clarifying Telegram bridge `/status` wording around Codex threads, persistent workers, and memory state.
+- Re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-04-20: updated Server2 Kidstories to use Venice text model `zai-org-glm-4.7` while keeping image model `qwen-image`; live env is `/home/lepton/kidstories-api/.env` and service is `kidstories-api.service`. The public Kidstories form at `https://mavali.top/kidstories/` now uses one story prompt textarea (`storyPrompt`) instead of separate character/theme inputs, with the backend request contract preserved by mapping that single prompt to both `characterDescription` and `theme`. Backend parsing now accepts Venice JSON wrapped in Markdown code fences; Server2 infra commit `dae5695` tracks the fix. The live frontend now recovers from long-generation client disconnects by polling the no-store library endpoint and redirecting to the new book when it appears. Rollback backups are `/home/architect/server2-maintenance/20260420-131551-kidstories-model-ui`, `/home/architect/server2-maintenance/20260420-144200-kidstories-json-parser`, and `/home/architect/server2-maintenance/20260420-145200-kidstories-client-recovery`. Verified with a 3-page live generation test (`74151ecb-4186-4adc-aa6e-171de94ade84`) and confirmed the owner's later 10-page attempt created `26f3d7f3-4ddc-4d76-930b-2e4fbc2269b3` with all page images despite a browser-side `499` disconnect.
+
 ## 2026-04-20 (Summary Roll-Forward Trim for Foodle Monday-First Calendar)
 
 Summary:

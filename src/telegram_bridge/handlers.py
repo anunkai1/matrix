@@ -2091,20 +2091,19 @@ def build_status_text(
         f"Allowed chats: {len(config.allowed_chat_ids)}",
         f"Required prefixes: {', '.join(config.required_prefixes) if config.required_prefixes else '(none)'}",
         f"Busy chats: {busy_count}",
-        f"Saved contexts: {thread_count}",
+        f"Saved Codex threads: {thread_count}",
         (
             "Persistent workers: "
             f"enabled={config.persistent_workers_enabled} "
             f"active={worker_count}/{config.persistent_workers_max} "
-            f"idle_expiry=disabled "
-            f"legacy_idle_timeout={config.persistent_workers_idle_timeout_seconds}s"
+            f"idle_expiry=disabled"
         ),
         f"Safe restart queued: {restart_requested}",
         f"Safe restart in progress: {restart_in_progress}",
     ]
 
     if scope_key is not None:
-        lines.append(f"This chat has saved context: {has_thread}")
+        lines.append(f"This chat has Codex thread: {has_thread}")
         lines.append(f"This chat has worker session: {has_worker}")
         memory_engine = state.memory_engine
         if isinstance(memory_engine, MemoryEngine):
@@ -2119,6 +2118,7 @@ def build_status_text(
                 lines.append(f"Memory mode: {memory_status.mode}")
                 lines.append(f"Memory facts: {memory_status.active_fact_count}")
                 lines.append(f"Memory summaries: {memory_status.summary_count}")
+                lines.append(f"Memory messages: {memory_status.message_count}")
                 lines.append(f"Memory session active: {memory_status.session_active}")
 
     return "\n".join(lines)

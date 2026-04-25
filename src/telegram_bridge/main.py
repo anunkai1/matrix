@@ -1032,7 +1032,7 @@ def run_bridge(config: Config) -> int:
     logging.info("Executor command=%s", config.executor_cmd)
     logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
     logging.info(
-        "Persistent workers enabled=%s count=%s max=%s idle_expiry=disabled legacy_idle_timeout=%ss",
+        "Persistent workers enabled=%s count=%s max=%s idle_expiry=disabled idle_timeout_setting=%ss ignored",
         config.persistent_workers_enabled,
         len(loaded_worker_sessions),
         config.persistent_workers_max,

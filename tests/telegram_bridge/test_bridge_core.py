@@ -3340,10 +3340,12 @@ class BridgeCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
             memory_engine.set_mode("wa:9", "session_only")
+            memory_engine.begin_turn("wa:9", "whatsapp", "owner", "hello")
             state = bridge.State(memory_engine=memory_engine)
             config = make_config(channel_plugin="whatsapp")
             status_text = bridge_handlers.build_status_text(state, config, chat_id=9)
             self.assertIn("Memory mode: session_only", status_text)
+            self.assertIn("Memory messages: 1", status_text)
 
     def test_build_status_text_uses_live_shared_memory_scope_when_configured(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -3353,6 +3355,27 @@ class BridgeCoreTests(unittest.TestCase):
             config = make_config(shared_memory_key="shared:architect:main")
             status_text = bridge_handlers.build_status_text(state, config, chat_id=9)
             self.assertIn("Memory mode: session_only", status_text)
+
+    def test_build_status_text_uses_current_session_labels(self):
+        state = bridge.State(
+            canonical_sessions_enabled=True,
+            chat_sessions={
+                "tg:9": bridge.CanonicalSession(
+                    thread_id="thread-1",
+                    worker_created_at=1.0,
+                    worker_last_used_at=2.0,
+                ),
+            },
+        )
+        config = make_config(persistent_workers_idle_timeout_seconds=18000)
+
+        status_text = bridge_handlers.build_status_text(state, config, chat_id=9)
+
+        self.assertIn("Saved Codex threads: 1", status_text)
+        self.assertIn("Persistent workers: enabled=False active=1/2 idle_expiry=disabled", status_text)
+        self.assertIn("This chat has Codex thread: True", status_text)
+        self.assertNotIn("Saved contexts", status_text)
+        self.assertNotIn("legacy_idle_timeout", status_text)
 
     def test_handle_update_rejects_when_chat_busy(self):
         state = bridge.State()
