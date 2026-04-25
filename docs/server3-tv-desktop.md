@@ -87,6 +87,7 @@ Installed song packs:
   - `Macarena` by 2 Locos In A Room, downloaded from ZIv simfile ID `40892` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=40892`) on 2026-04-25. The local `.sm` single chart meters are Basic/Easy `2`, Difficult/Medium `3`, and Expert/Hard `6`; double meters are Basic/Easy `2` and Difficult/Medium `4`.
   - `Mambo NO.5` by Lou Bega, downloaded from ZIv simfile ID `64122` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=64122`) on 2026-04-25. The source chart used `ds3ddx-single`, so the installed `.sm` was converted to `dance-single` for normal ITGmania visibility; the local single chart meter is Difficult/Medium `5`.
   - `DRAGOSTEA DIN TEI` by O-Zone, downloaded from ZIv simfile ID `35635` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=35635`) on 2026-04-25. The local `.sm` single chart meters are Beginner `1`, Basic/Easy `3`, Difficult/Medium `4`, and Expert/Hard `7`, with an edit chart at `6`.
+  - `GOLDEN` by HUNTR/X, installed from direct ZIv simfile assets for simfile ID `67076` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=67076`) on 2026-04-25 after the ZIP endpoint reported the simfile private. The local dance-single meters are Beginner `4`, Basic/Easy `7`, Difficult/Medium `9`, Expert/Hard `13`, and Challenge `15`; double meters are Basic/Easy `6`, Difficult/Medium `9`, and Expert/Hard `14`.
 
 Note:
 - `server3-youtube-open-top-result.sh` requires `yt-dlp`.
