@@ -196,6 +196,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/help` command list
 - `/h` short help alias
 - `/status` bridge health and uptime
+- `/engine status|codex|gemma|reset` show or select this chat/topic's engine
 - `/cancel` cancel the current in-flight request for this chat
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
@@ -213,6 +214,18 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/memory export raw` list stored facts including raw values
 - `/remember <text>` store explicit durable memory (obvious secrets auto-redacted)
 - `/forget <fact_id|fact_key>` disable one fact
+
+## Server4 Gemma Engine
+
+The bridge can use Server4 Beast's Ollama-hosted `gemma4:26b` model as a selectable engine while keeping Server3 as the bot host.
+
+- Default engine remains `codex`.
+- Selectable engines default to `codex,gemma`.
+- Gemma defaults to the SSH-backed Ollama transport (`GEMMA_PROVIDER=ollama_ssh`) via SSH alias `server4-beast`, so Ollama does not need to listen on the LAN.
+- Per chat/topic, use `/engine gemma`, `/engine codex`, `/engine reset`, or `/engine status`.
+- Gemma is currently text-only and does not yet have the Codex tool/action harness.
+
+See [`docs/runbooks/server4-gemma-engine.md`](runbooks/server4-gemma-engine.md).
 - `/forget-all` disable all facts for this key
 - `/reset-session` clear session continuity only
 - `/hard-reset-memory` clear session + facts + summaries + stored messages for this key

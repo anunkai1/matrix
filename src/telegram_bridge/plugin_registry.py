@@ -2,13 +2,13 @@ from typing import Callable, Dict, List
 
 try:
     from .channel_adapter import ChannelAdapter, TelegramChannelAdapter
-    from .engine_adapter import CodexEngineAdapter, EngineAdapter, MavaliEthEngineAdapter
+    from .engine_adapter import CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter
     from .signal_channel import SignalChannelAdapter
     from .transport import TelegramClient
     from .whatsapp_channel import WhatsAppChannelAdapter
 except ImportError:
     from channel_adapter import ChannelAdapter, TelegramChannelAdapter
-    from engine_adapter import CodexEngineAdapter, EngineAdapter, MavaliEthEngineAdapter
+    from engine_adapter import CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter
     from signal_channel import SignalChannelAdapter
     from transport import TelegramClient
     from whatsapp_channel import WhatsAppChannelAdapter
@@ -70,5 +70,6 @@ def build_default_plugin_registry() -> PluginRegistry:
         lambda config: SignalChannelAdapter(config),
     )
     registry.register_engine("codex", lambda: CodexEngineAdapter())
+    registry.register_engine("gemma", lambda: GemmaEngineAdapter())
     registry.register_engine("mavali_eth", lambda: MavaliEthEngineAdapter())
     return registry

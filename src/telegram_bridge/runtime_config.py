@@ -75,6 +75,12 @@ class Config:
     shared_memory_key: str
     channel_plugin: str
     engine_plugin: str
+    selectable_engine_plugins: List[str]
+    gemma_provider: str
+    gemma_model: str
+    gemma_base_url: str
+    gemma_ssh_host: str
+    gemma_request_timeout_seconds: int
     whatsapp_plugin_enabled: bool
     whatsapp_bridge_api_base: str
     whatsapp_bridge_auth_token: str
@@ -216,6 +222,21 @@ def parse_plugin_name_env(name: str, default: str) -> str:
     if not value:
         return default
     return value
+
+
+def parse_plugin_list_env(name: str, default: List[str]) -> List[str]:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return list(default)
+    values = [item.strip().lower() for item in raw.split(",") if item.strip()]
+    seen: Set[str] = set()
+    parsed: List[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        parsed.append(value)
+    return parsed or list(default)
 
 
 def default_voice_alias_replacements() -> List[Tuple[str, str]]:
@@ -500,6 +521,20 @@ def load_config() -> Config:
         busy_message=busy_message,
         channel_plugin=channel_plugin,
         engine_plugin=parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
+        selectable_engine_plugins=parse_plugin_list_env(
+            "TELEGRAM_SELECTABLE_ENGINE_PLUGINS",
+            ["codex", "gemma"],
+        ),
+        gemma_provider=parse_plugin_name_env("GEMMA_PROVIDER", "ollama_ssh"),
+        gemma_model=os.getenv("GEMMA_MODEL", "gemma4:26b").strip() or "gemma4:26b",
+        gemma_base_url=os.getenv("GEMMA_BASE_URL", "http://127.0.0.1:11434").strip()
+        or "http://127.0.0.1:11434",
+        gemma_ssh_host=os.getenv("GEMMA_SSH_HOST", "server4-beast").strip() or "server4-beast",
+        gemma_request_timeout_seconds=parse_int_env(
+            "GEMMA_REQUEST_TIMEOUT_SECONDS",
+            180,
+            minimum=1,
+        ),
         whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),
         whatsapp_bridge_api_base=os.getenv(
             "WHATSAPP_BRIDGE_API_BASE",

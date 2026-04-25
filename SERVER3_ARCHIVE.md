@@ -762,3 +762,12 @@ Summary:
 
 Migrated out of summary during this trim:
 - 2026-04-20: completed Server2 maintenance via the general `server2` SSH operations path. Created DB/app rollback snapshots under `/home/architect/server2-maintenance/20260420-083454`, `/home/architect/server2-maintenance/20260420-084820-nextcloud33`, `/home/architect/server2-maintenance/20260420-094055-node22`, and `/home/architect/server2-maintenance/20260420-111311-node24`; upgraded pending APT packages (`containerd.io`, `docker-compose-plugin`, `grafana`, `rsyslog`, `snapd`), removed stale `musl`, refreshed FileGator/Gitea/Nextcloud Docker stacks, moved Nextcloud from `32.0.5` through `32.0.8` to `33.0.2`, updated Nextcloud apps, and migrated Server2 Node from `v18.20.8` through `v22.22.2` to `v24.14.1` with npm `10.9.8`/corepack `0.34.6`; rebuilt Chordle/Kidstories dependencies after each Node jump. Verified no pending APT updates, no reboot required, no failed units, containers healthy, Nextcloud/OnlyOffice healthy, and Chordle/Kidstories/SignalTube/Gitea public health checks passing. `documentserver_community` is disabled after the Nextcloud 33 upgrade while the active `onlyoffice` app remains enabled.
+
+## 2026-04-26 (Summary Roll-Forward Trim for Server4 Gemma Engine)
+
+Summary:
+- Added rolling summary coverage for the Server4 Beast Gemma selectable-engine path.
+- Kept the rolling summary bounded by migrating the oldest item into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-24: updated the host-global Codex CLI from `0.121.0` to `0.124.0` with `sudo npm install -g @openai/codex@0.124.0`. Verified the active binary remains `/usr/bin/codex`, `codex --version` reports `codex-cli 0.124.0`, and `/usr/lib/node_modules/@openai/codex/package.json` reports `0.124.0`. Updated the tracked target-state and live change record to match.

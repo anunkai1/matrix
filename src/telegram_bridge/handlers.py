@@ -56,6 +56,7 @@ try:
         resolve_memory_conversation_key,
         resolve_shared_memory_archive_key,
     )
+    from .plugin_registry import build_default_plugin_registry
     from .runtime_profile import (
         BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
         HA_KEYWORD_HELP_MESSAGE,
@@ -140,6 +141,7 @@ except ImportError:
         resolve_memory_conversation_key,
         resolve_shared_memory_archive_key,
     )
+    from plugin_registry import build_default_plugin_registry
     from runtime_profile import (
         BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
         HA_KEYWORD_HELP_MESSAGE,
@@ -2014,6 +2016,7 @@ def build_help_text(config) -> str:
         "/start - verify bridge connectivity\n"
         "/help or /h - show this message\n"
         "/status - show bridge status and context\n"
+        "/engine status|codex|gemma|reset - show or select this chat's engine\n"
         "/reset - clear saved context for this chat\n"
         "/cancel - cancel current in-flight request for this chat\n"
         "/restart - queue a safe bridge restart\n"
@@ -2090,6 +2093,8 @@ def build_status_text(
         "Bridge status: online",
         f"Allowed chats: {len(config.allowed_chat_ids)}",
         f"Required prefixes: {', '.join(config.required_prefixes) if config.required_prefixes else '(none)'}",
+        f"Default engine: {getattr(config, 'engine_plugin', 'codex')}",
+        f"Selectable engines: {', '.join(getattr(config, 'selectable_engine_plugins', [])) or '(none)'}",
         f"Busy chats: {busy_count}",
         f"Saved Codex threads: {thread_count}",
         (
@@ -2103,8 +2108,10 @@ def build_status_text(
     ]
 
     if scope_key is not None:
+        selected_engine = StateRepository(state).get_chat_engine(scope_key)
         lines.append(f"This chat has Codex thread: {has_thread}")
         lines.append(f"This chat has worker session: {has_worker}")
+        lines.append(f"This chat engine: {selected_engine or getattr(config, 'engine_plugin', 'codex')}")
         memory_engine = state.memory_engine
         if isinstance(memory_engine, MemoryEngine):
             memory_channel = getattr(config, "channel_plugin", "telegram")
@@ -3658,6 +3665,105 @@ def handle_cancel_command(
     )
 
 
+def configured_default_engine(config) -> str:
+    return str(getattr(config, "engine_plugin", "codex") or "codex").strip().lower()
+
+
+def selectable_engine_plugins(config) -> List[str]:
+    configured = [
+        str(value).strip().lower()
+        for value in getattr(config, "selectable_engine_plugins", ["codex", "gemma"])
+        if str(value).strip()
+    ]
+    default_engine = configured_default_engine(config)
+    if default_engine not in configured:
+        configured.insert(0, default_engine)
+    return configured
+
+
+def build_engine_status_text(state: State, config, scope_key: str) -> str:
+    selected = StateRepository(state).get_chat_engine(scope_key)
+    effective = selected or configured_default_engine(config)
+    lines = [
+        f"Default engine: {configured_default_engine(config)}",
+        f"This chat engine: {effective}",
+        f"Selectable engines: {', '.join(selectable_engine_plugins(config))}",
+    ]
+    if effective == "gemma":
+        lines.append(f"Gemma provider: {getattr(config, 'gemma_provider', 'ollama_ssh')}")
+        lines.append(f"Gemma model: {getattr(config, 'gemma_model', 'gemma4:26b')}")
+        lines.append(f"Gemma host: {getattr(config, 'gemma_ssh_host', 'server4-beast')}")
+    return "\n".join(lines)
+
+
+def handle_engine_command(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+    raw_text: str,
+) -> bool:
+    pieces = raw_text.strip().split(maxsplit=1)
+    tail = pieces[1].strip().lower() if len(pieces) > 1 else "status"
+    state_repo = StateRepository(state)
+    if tail in {"", "status"}:
+        client.send_message(
+            chat_id,
+            build_engine_status_text(state, config, scope_key),
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return True
+    if tail == "reset":
+        removed = state_repo.clear_chat_engine(scope_key)
+        suffix = "removed" if removed else "already using default"
+        client.send_message(
+            chat_id,
+            f"Engine override {suffix}. This chat now uses {configured_default_engine(config)}.",
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return True
+    allowed = selectable_engine_plugins(config)
+    if tail not in allowed:
+        client.send_message(
+            chat_id,
+            f"Unknown or unavailable engine: {tail}\nSelectable engines: {', '.join(allowed)}",
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return True
+    state_repo.set_chat_engine(scope_key, tail)
+    client.send_message(
+        chat_id,
+        f"This chat now uses engine: {tail}",
+        reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
+    )
+    return True
+
+
+def resolve_engine_for_scope(
+    state: State,
+    config,
+    scope_key: str,
+    default_engine: Optional[EngineAdapter],
+) -> EngineAdapter:
+    selected = StateRepository(state).get_chat_engine(scope_key)
+    if not selected:
+        if default_engine is not None:
+            return default_engine
+        return build_default_plugin_registry().build_engine(configured_default_engine(config))
+    engine_name = selected
+    if default_engine is not None and getattr(default_engine, "engine_name", "") == engine_name:
+        return default_engine
+    registry = build_default_plugin_registry()
+    return registry.build_engine(engine_name)
+
+
 def build_voice_alias_help_text() -> str:
     return (
         "Voice alias learning commands:\n"
@@ -4321,6 +4427,17 @@ def handle_known_command(
     if command == "/cancel":
         handle_cancel_command(state, client, scope_key, chat_id, message_thread_id, message_id)
         return True
+    if command == "/engine":
+        return handle_engine_command(
+            state=state,
+            config=config,
+            client=client,
+            scope_key=scope_key,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            message_id=message_id,
+            raw_text=raw_text,
+        )
     if command == "/reset":
         handle_reset_command(state, config, client, scope_key, chat_id, message_thread_id, message_id)
         return True
@@ -4725,6 +4842,18 @@ def handle_update(
         )
         return
 
+    try:
+        active_engine = resolve_engine_for_scope(state, config, scope_key, engine)
+    except Exception as exc:
+        logging.exception("Failed to resolve engine for scope=%s", scope_key)
+        client.send_message(
+            chat_id,
+            f"Engine selection failed: {exc}",
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return
+
     if not stateless:
         if not ensure_chat_worker_session(
             state,
@@ -4774,7 +4903,7 @@ def handle_update(
             state=state,
             config=config,
             client=client,
-            engine=engine,
+            engine=active_engine,
             scope_key=scope_key,
             chat_id=chat_id,
             message_thread_id=message_thread_id,
@@ -4789,7 +4918,7 @@ def handle_update(
             state=state,
             config=config,
             client=client,
-            engine=engine,
+            engine=active_engine,
             scope_key=scope_key,
             chat_id=chat_id,
             message_thread_id=message_thread_id,

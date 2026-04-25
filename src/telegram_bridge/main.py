@@ -62,6 +62,7 @@ try:
         ensure_state_dir,
         load_canonical_sessions,
         load_canonical_sessions_sqlite,
+        load_chat_engines,
         load_chat_threads,
         load_in_flight_requests,
         load_or_import_canonical_sessions_sqlite,
@@ -130,6 +131,7 @@ except ImportError:
         ensure_state_dir,
         load_canonical_sessions,
         load_canonical_sessions_sqlite,
+        load_chat_engines,
         load_chat_threads,
         load_in_flight_requests,
         load_or_import_canonical_sessions_sqlite,
@@ -591,6 +593,7 @@ def run_bridge(config: Config) -> int:
     )
     affective_runtime = build_affective_runtime(config)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
+    chat_engine_path = os.path.join(config.state_dir, "chat_engines.json")
     worker_sessions_path = os.path.join(config.state_dir, "worker_sessions.json")
     in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
     chat_sessions_path = os.path.join(config.state_dir, "chat_sessions.json")
@@ -610,6 +613,23 @@ def run_bridge(config: Config) -> int:
             fields={"state_file": chat_thread_path},
         )
         loaded_threads = {}
+
+    try:
+        loaded_engines = load_chat_engines(chat_engine_path)
+    except Exception:
+        logging.exception(
+            "Failed to load chat engine mappings from %s; starting with empty mappings.",
+            chat_engine_path,
+        )
+        moved = quarantine_corrupt_state_file(chat_engine_path)
+        if moved:
+            logging.error("Quarantined corrupt chat engine state file to %s", moved)
+        emit_event(
+            "bridge.state_load_failed",
+            level=logging.WARNING,
+            fields={"state_file": chat_engine_path},
+        )
+        loaded_engines = {}
 
     try:
         loaded_worker_sessions = load_worker_sessions(worker_sessions_path)
@@ -889,6 +909,8 @@ def run_bridge(config: Config) -> int:
     state = State(
         chat_threads=loaded_threads,
         chat_thread_path=chat_thread_path,
+        chat_engines=loaded_engines,
+        chat_engine_path=chat_engine_path,
         worker_sessions=loaded_worker_sessions,
         worker_sessions_path=worker_sessions_path,
         in_flight_requests=loaded_in_flight,

@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-04-25 (AEST, +10:00)
+Last updated: 2026-04-26 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -17,6 +17,7 @@ Last updated: 2026-04-25 (AEST, +10:00)
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
 - Runtime pattern: Telegram long polling + local `codex exec`
+- Server4 Beast (`192.168.0.124`) now hosts Ollama model `gemma4:26b` and can be selected from Server3 Telegram bridge chats through the new `gemma` engine plugin using SSH alias `server4-beast`; default engine remains `codex`.
 - Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
 - Browser Brain live mode is now `existing_session` on local CDP port `9223`; the visible `tv` Brave helper is the intended on-screen login path for sites like `x.com`, while the Browser Brain API now keeps snapshot refs locator-friendly with ARIA snapshots and supports guarded hover/select/dialog/console/network actions.
 - Telegram reply-context wrappers now use English labels (`Reply Context`, `Original Message Author`, `Message User Replied To`, `Current User Message`) while downstream parsers remain backward-compatible with older Russian wrappers.
@@ -52,8 +53,10 @@ Last updated: 2026-04-25 (AEST, +10:00)
 - Local media services now use one canonical internal namespace: `/data/downloads` and `/data/media/...`; avoid reintroducing alternate path aliases like `/downloads`, `/tv`, `/movies`, or `/media`.
 - Server3 state resilience now uses a monthly quiesced backup path (`server3-state-backup.service` / `server3-state-backup.timer`) that snapshots rebuild-critical host/app/runtime state to `/srv/external/server3-backups/state`; the Arr media payload stays on the external data disk and is intentionally excluded.
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
+- Server4 Gemma integration keeps Server3 as the bot/control-plane host: use `/engine gemma`, `/engine codex`, `/engine reset`, and `/engine status` per chat/topic; current Gemma path is text-only and does not yet provide Codex-style tool/action execution.
 
 ## Recent Changes (Rolling Max 8)
+- 2026-04-26: added a selectable Server4 Gemma engine path for Telegram bridge runtimes. Server4 Beast is reachable as `server4-beast` for both the current operator user and live `architect` service user, Ollama serves `gemma4:26b` locally on Server4, and the new `gemma` bridge engine calls it through SSH-backed Ollama transport without exposing Ollama on the LAN. Added per-chat `/engine status|codex|gemma|reset`, persisted chat engine overrides, config defaults for Gemma, docs/runbook coverage, and tests; live adapter verification returned `architect gemma ok`.
 - 2026-04-25: disabled the SignalTube daily/overnight scheduled scan on Server3. Live `signaltube-lab-overnight.timer` is now disabled/inactive with no next trigger; manual SignalTube collection paths remain available through the signed-in web app Rescan/Ask controls and `signaltube-lab-rescan.service` / `signaltube-lab-ask.service`. Updated the SignalTube installer and runtime manifest so future `apply` runs keep the daily timer disabled unless `enable-timer` is explicitly used.
 - 2026-04-25: clarified Telegram bridge `/status` output for current persistent-worker/memory behavior. User-facing status now reports `Saved Codex threads` instead of ambiguous `Saved contexts`, `This chat has Codex thread` instead of `This chat has saved context`, includes `Memory messages`, and no longer prints the stale-looking `legacy_idle_timeout` field while idle expiry remains disabled. Sentinel live code was updated and a safe restart was handed to the detached verifier to apply after the current request drains.
 - 2026-04-25: restored Sentinel to the canonical shared Codex auth model. `architect` and `sentinel` now both link `~/.codex/auth.json` to `/etc/server3-codex/auth.json`, and the new enabled `server3-codex-auth-sync.service` runs `ops/codex/watch_shared_auth.py` to detect Architect auth replacement within ~2 seconds and relink all Codex-backed manifest runtimes, including Sentinel. The shared-auth installer is now idempotent to avoid symlink/metadata churn, the shared-auth runbook documents automatic refresh, and the Server3 state-backup profile now includes `/etc/server3-codex` plus the watcher service.
@@ -62,7 +65,6 @@ Last updated: 2026-04-25 (AEST, +10:00)
 - 2026-04-25: added a persistent LESSONS entry requiring real HA frontend render checks after custom Lovelace dashboard/card/resource/theme changes. This prevents API-only verification from missing visible card-level `Configuration error` failures, especially for HACS cards and chart configs.
 - 2026-04-24: refreshed the tracked Server3 control-plane snapshot payloads in `docs/server3-control-plane-data.json` and `docs/server3-control-plane-data.js` from live host state. The committed snapshot now reflects `2026-04-24 07:00 AEST` runtime posture with 6 healthy runtimes, Oracle degraded, no approval items, and the updated operator playback/history surface.
 - 2026-04-24: hardened Telegram shared-memory session startup against stale thread reuse. `begin_memory_turn` now reconciles the bridge's canonical per-chat thread ID with the memory engine's stored session thread before `begin_turn`, clearing stale memory-only thread IDs when bridge state is empty and syncing memory state back to the bridge thread when present. Added regression coverage in `tests/telegram_bridge/test_bridge_core.py` for both stale-clear and bridge-sync cases.
-- 2026-04-24: updated the host-global Codex CLI from `0.121.0` to `0.124.0` with `sudo npm install -g @openai/codex@0.124.0`. Verified the active binary remains `/usr/bin/codex`, `codex --version` reports `codex-cli 0.124.0`, and `/usr/lib/node_modules/@openai/codex/package.json` now reports `0.124.0`. Updated the tracked target-state and live change record to match.
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
 - The monitoring stack currently binds Grafana to `192.168.0.148:3000`, but that host-specific LAN IP can change; if it does, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.

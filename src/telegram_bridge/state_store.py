@@ -72,6 +72,8 @@ class State:
     recent_requests: Dict[ScopeKey, List[float]] = field(default_factory=dict)
     chat_threads: Dict[ScopeKey, str] = field(default_factory=dict)
     chat_thread_path: str = ""
+    chat_engines: Dict[ScopeKey, str] = field(default_factory=dict)
+    chat_engine_path: str = ""
     worker_sessions: Dict[ScopeKey, WorkerSession] = field(default_factory=dict)
     worker_sessions_path: str = ""
     in_flight_requests: Dict[ScopeKey, Dict[str, object]] = field(default_factory=dict)
@@ -135,6 +137,27 @@ def load_chat_threads(path: str) -> Dict[ScopeKey, str]:
         if scope_key is None:
             continue
         parsed[scope_key] = value.strip()
+    return parsed
+
+
+def load_chat_engines(path: str) -> Dict[ScopeKey, str]:
+    data_path = Path(path)
+    if not data_path.exists():
+        return {}
+    try:
+        raw = json.loads(data_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to parse chat engine state {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid chat engine state {path}: root is not object")
+    parsed: Dict[ScopeKey, str] = {}
+    for key, value in raw.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+        scope_key = normalize_scope_storage_key(key)
+        if scope_key is None:
+            continue
+        parsed[scope_key] = value.strip().lower()
     return parsed
 
 
@@ -596,6 +619,42 @@ def persist_chat_threads(state: State) -> None:
     persist_json_state_file(state.chat_thread_path, serialized)
 
 
+def persist_chat_engines(state: State) -> None:
+    with state.lock:
+        serialized = {
+            normalize_scope_key(scope_key): engine_name
+            for scope_key, engine_name in state.chat_engines.items()
+        }
+    persist_json_state_file(state.chat_engine_path, serialized)
+
+
+def get_chat_engine(state: State, scope_key: ScopeKey) -> Optional[str]:
+    scope_key = normalize_scope_key(scope_key)
+    with state.lock:
+        engine_name = state.chat_engines.get(scope_key, "").strip().lower()
+    return engine_name or None
+
+
+def set_chat_engine(state: State, scope_key: ScopeKey, engine_name: str) -> None:
+    scope_key = normalize_scope_key(scope_key)
+    normalized_engine = engine_name.strip().lower()
+    with state.lock:
+        state.chat_engines[scope_key] = normalized_engine
+    persist_chat_engines(state)
+
+
+def clear_chat_engine(state: State, scope_key: ScopeKey) -> bool:
+    scope_key = normalize_scope_key(scope_key)
+    removed = False
+    with state.lock:
+        if scope_key in state.chat_engines:
+            del state.chat_engines[scope_key]
+            removed = True
+    if removed:
+        persist_chat_engines(state)
+    return removed
+
+
 def persist_worker_sessions(state: State) -> None:
     with state.lock:
         serialized = {
@@ -963,6 +1022,15 @@ class StateRepository:
 
     def clear_worker_session(self, scope_key: ScopeKey) -> bool:
         return clear_worker_session(self.state, scope_key)
+
+    def get_chat_engine(self, scope_key: ScopeKey) -> Optional[str]:
+        return get_chat_engine(self.state, scope_key)
+
+    def set_chat_engine(self, scope_key: ScopeKey, engine_name: str) -> None:
+        set_chat_engine(self.state, scope_key, engine_name)
+
+    def clear_chat_engine(self, scope_key: ScopeKey) -> bool:
+        return clear_chat_engine(self.state, scope_key)
 
     def mark_in_flight_request(self, scope_key: ScopeKey, message_id: Optional[int]) -> None:
         mark_in_flight_request(self.state, scope_key, message_id)

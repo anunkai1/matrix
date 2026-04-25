@@ -221,6 +221,12 @@ def make_config(**overrides):
         "shared_memory_key": "",
         "channel_plugin": "telegram",
         "engine_plugin": "codex",
+        "selectable_engine_plugins": ["codex", "gemma"],
+        "gemma_provider": "ollama_ssh",
+        "gemma_model": "gemma4:26b",
+        "gemma_base_url": "http://127.0.0.1:11434",
+        "gemma_ssh_host": "server4-beast",
+        "gemma_request_timeout_seconds": 180,
         "whatsapp_plugin_enabled": False,
         "whatsapp_bridge_api_base": "http://127.0.0.1:8787",
         "whatsapp_bridge_auth_token": "",
@@ -517,7 +523,7 @@ class BridgeCoreTests(unittest.TestCase):
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
         self.assertEqual(registry.list_channels(), ["signal", "telegram", "whatsapp"])
-        self.assertEqual(registry.list_engines(), ["codex", "mavali_eth"])
+        self.assertEqual(registry.list_engines(), ["codex", "gemma", "mavali_eth"])
 
     def test_default_plugin_registry_builds_default_plugins(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
@@ -526,6 +532,7 @@ class BridgeCoreTests(unittest.TestCase):
         engine = registry.build_engine("codex")
         self.assertIsInstance(channel, bridge_channel_adapter.TelegramChannelAdapter)
         self.assertIsInstance(engine, bridge_engine_adapter.CodexEngineAdapter)
+        self.assertIsInstance(registry.build_engine("gemma"), bridge_engine_adapter.GemmaEngineAdapter)
 
     def test_default_plugin_registry_whatsapp_disabled_fails_fast(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
@@ -580,6 +587,9 @@ class BridgeCoreTests(unittest.TestCase):
             config = bridge.load_config()
         self.assertEqual(config.channel_plugin, "telegram")
         self.assertEqual(config.engine_plugin, "codex")
+        self.assertEqual(config.selectable_engine_plugins, ["codex", "gemma"])
+        self.assertEqual(config.gemma_provider, "ollama_ssh")
+        self.assertEqual(config.gemma_model, "gemma4:26b")
 
     def test_load_config_reads_plugin_selection_overrides(self):
         with mock.patch.dict(
@@ -589,12 +599,24 @@ class BridgeCoreTests(unittest.TestCase):
                 "TELEGRAM_ALLOWED_CHAT_IDS": "1,2",
                 "TELEGRAM_CHANNEL_PLUGIN": "  whatsapp ",
                 "TELEGRAM_ENGINE_PLUGIN": "  codex ",
+                "TELEGRAM_SELECTABLE_ENGINE_PLUGINS": "codex,gemma",
+                "GEMMA_PROVIDER": "ollama_http",
+                "GEMMA_MODEL": "gemma-test",
+                "GEMMA_BASE_URL": "http://beast:11434",
+                "GEMMA_SSH_HOST": "server4-test",
+                "GEMMA_REQUEST_TIMEOUT_SECONDS": "55",
             },
             clear=True,
         ):
             config = bridge.load_config()
         self.assertEqual(config.channel_plugin, "whatsapp")
         self.assertEqual(config.engine_plugin, "codex")
+        self.assertEqual(config.selectable_engine_plugins, ["codex", "gemma"])
+        self.assertEqual(config.gemma_provider, "ollama_http")
+        self.assertEqual(config.gemma_model, "gemma-test")
+        self.assertEqual(config.gemma_base_url, "http://beast:11434")
+        self.assertEqual(config.gemma_ssh_host, "server4-test")
+        self.assertEqual(config.gemma_request_timeout_seconds, 55)
 
     def test_load_config_reads_whatsapp_plugin_settings(self):
         with mock.patch.dict(
