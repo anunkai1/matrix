@@ -85,7 +85,7 @@ Installed song packs:
 - `V` is installed under `/opt/itgmania/Songs/V` for individually added requested songs. It currently contains:
   - `Starships` by Nicki Minaj, downloaded from ZIv simfile ID `23437` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=23437`) on 2026-04-25. The local `.sm` chart meters are Beginner `1`, Basic/Easy `4`, Difficult/Medium `6`, and Expert/Hard `10`.
   - `Macarena` by 2 Locos In A Room, downloaded from ZIv simfile ID `40892` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=40892`) on 2026-04-25. The local `.sm` single chart meters are Basic/Easy `2`, Difficult/Medium `3`, and Expert/Hard `6`; double meters are Basic/Easy `2` and Difficult/Medium `4`.
-  - `Mambo NO.5` by Lou Bega, downloaded from ZIv simfile ID `64122` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=64122`) on 2026-04-25. The local `.sm` single chart meter is Difficult/Medium `5`.
+  - `Mambo NO.5` by Lou Bega, downloaded from ZIv simfile ID `64122` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=64122`) on 2026-04-25. The source chart used `ds3ddx-single`, so the installed `.sm` was converted to `dance-single` for normal ITGmania visibility; the local single chart meter is Difficult/Medium `5`.
   - `DRAGOSTEA DIN TEI` by O-Zone, downloaded from ZIv simfile ID `35635` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=35635`) on 2026-04-25. The local `.sm` single chart meters are Beginner `1`, Basic/Easy `3`, Difficult/Medium `4`, and Expert/Hard `7`, with an edit chart at `6`.
 
 Note:
