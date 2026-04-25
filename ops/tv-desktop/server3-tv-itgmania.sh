@@ -41,6 +41,7 @@ done
 TV_HOME="/home/tv"
 ITGMANIA_BIN="${SERVER3_TV_ITGMANIA_BIN:-/opt/itgmania/itgmania}"
 LOG_PATH="${SERVER3_TV_ITGMANIA_LOG:-/tmp/server3-tv-itgmania.log}"
+KEYMAP_PATH="${SERVER3_TV_ITGMANIA_KEYMAP:-${TV_HOME}/.itgmania/Save/Keymaps.ini}"
 DISPLAY_MODE="${SERVER3_TV_ITGMANIA_MODE:-1280x720}"
 DISPLAY_RATE="${SERVER3_TV_ITGMANIA_RATE:-}"
 
@@ -185,6 +186,61 @@ stop_existing_itgmania() {
   sudo pkill -KILL -u tv -x itgmania >/dev/null 2>&1 || true
 }
 
+configure_ltek_keymap() {
+  sudo install -d -m 755 -o tv -g tv "$(dirname "${KEYMAP_PATH}")"
+
+  if [[ ! -f "${KEYMAP_PATH}" ]]; then
+    sudo -u tv tee "${KEYMAP_PATH}" >/dev/null <<'KEYMAP'
+[dance]
+1_Back=Joy1_B9
+1_Coin=
+1_Down=Joy1_B4
+1_EffectDown=
+1_EffectUp=
+1_Left=Joy1_B1
+1_MenuDown=
+1_MenuLeft=
+1_MenuRight=
+1_MenuUp=
+1_Operator=
+1_Restart=
+1_Right=Joy1_B2
+1_Select=
+1_Start=Joy1_B10
+1_Up=Joy1_B3
+1_UpLeft=Joy1_B8
+1_UpRight=Joy1_B7
+2_Back=
+2_Coin=
+2_Down=
+2_EffectDown=
+2_EffectUp=
+2_Left=
+2_MenuDown=
+2_MenuLeft=
+2_MenuRight=
+2_MenuUp=
+2_Operator=
+2_Restart=
+2_Right=
+2_Select=
+2_Start=
+2_Up=
+2_UpLeft=
+2_UpRight=
+KEYMAP
+    return 0
+  fi
+
+  sudo sed -i \
+    -e 's/^1_Left=.*/1_Left=Joy1_B1/' \
+    -e 's/^1_Right=.*/1_Right=Joy1_B2/' \
+    -e 's/^1_Up=.*/1_Up=Joy1_B3/' \
+    -e 's/^1_Down=.*/1_Down=Joy1_B4/' \
+    "${KEYMAP_PATH}"
+  sudo chown tv:tv "${KEYMAP_PATH}"
+}
+
 focus_itgmania_window() {
   if ! command -v wmctrl >/dev/null 2>&1; then
     return 0
@@ -230,6 +286,7 @@ close_display_settings
 configure_tv_display
 wait_for_tv_audio
 build_env_vars
+configure_ltek_keymap
 
 if (( RESTART_EXISTING == 1 )); then
   stop_existing_itgmania
