@@ -73,6 +73,8 @@ bash ops/tv-desktop/server3-tv-itgmania.sh
 bash ops/tv-desktop/server3-tv-itgmania.sh --restart
 ```
 
+The launcher defaults the HDMI X session to `1280x720`, matching ITGmania's generated render mode on Server3 so the game fills the TV instead of rendering a small 720p viewport inside a 4K desktop. Override with `SERVER3_TV_ITGMANIA_MODE` if a later game config supports a higher render mode.
+
 The installed Server3 build is ITGmania `1.2.1` under `/opt/itgmania`, installed from the official Linux tarball at `https://github.com/itgmania/itgmania/releases/download/v1.2.1/ITGmania-1.2.1-Linux.tar.gz`. The LTEK pad currently enumerates as `/dev/input/js0` (`LTEK L-TEK Dance Pad PRO`), which ITGmania should detect as a joystick. Use ITGmania's in-game input mapping screen for final arrow/menu bindings.
 
 Note:

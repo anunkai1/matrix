@@ -59,6 +59,8 @@ Provide a command-start desktop mode for HDMI TV use while keeping Server3 defau
 - Source URL: `https://github.com/itgmania/itgmania/releases/download/v1.2.1/ITGmania-1.2.1-Linux.tar.gz`
 - Runtime launcher:
   - `bash ops/tv-desktop/server3-tv-itgmania.sh`
+- Launcher display default:
+  - HDMI-only `1280x720`, matching ITGmania's generated render mode on Server3; override with `SERVER3_TV_ITGMANIA_MODE`.
 - LTEK dance pad detected as:
   - USB: `03eb:8041 Atmel Corp. L-TEK Dance Pad PRO`
   - joystick: `/dev/input/js0`

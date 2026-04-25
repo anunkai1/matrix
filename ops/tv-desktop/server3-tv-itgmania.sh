@@ -41,8 +41,8 @@ done
 TV_HOME="/home/tv"
 ITGMANIA_BIN="${SERVER3_TV_ITGMANIA_BIN:-/opt/itgmania/itgmania}"
 LOG_PATH="${SERVER3_TV_ITGMANIA_LOG:-/tmp/server3-tv-itgmania.log}"
-DISPLAY_MODE="${SERVER3_TV_ITGMANIA_MODE:-3840x2160}"
-DISPLAY_RATE="${SERVER3_TV_ITGMANIA_RATE:-60}"
+DISPLAY_MODE="${SERVER3_TV_ITGMANIA_MODE:-1280x720}"
+DISPLAY_RATE="${SERVER3_TV_ITGMANIA_RATE:-}"
 
 if [[ ! -x "${ITGMANIA_BIN}" ]]; then
   echo "ITGmania binary not found or not executable: ${ITGMANIA_BIN}" >&2
@@ -153,9 +153,12 @@ configure_tv_display() {
     return 0
   fi
 
-  sudo -u tv env "${ENV_VARS[@]}" xrandr \
-    --output "${hdmi_output}" --primary --mode "${DISPLAY_MODE}" --rate "${DISPLAY_RATE}" --pos 0x0 \
-    >/dev/null 2>&1 \
+  xrandr_args=(--output "${hdmi_output}" --primary --mode "${DISPLAY_MODE}" --pos 0x0)
+  if [[ -n "${DISPLAY_RATE}" ]]; then
+    xrandr_args+=(--rate "${DISPLAY_RATE}")
+  fi
+
+  sudo -u tv env "${ENV_VARS[@]}" xrandr "${xrandr_args[@]}" >/dev/null 2>&1 \
     || sudo -u tv env "${ENV_VARS[@]}" xrandr --output "${hdmi_output}" --primary --auto --pos 0x0 >/dev/null 2>&1 \
     || true
 
