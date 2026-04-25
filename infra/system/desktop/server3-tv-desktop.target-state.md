@@ -14,6 +14,7 @@ Provide a command-start desktop mode for HDMI TV use while keeping Server3 defau
 - TV session startup assets:
   - `/home/tv/.local/bin/server3-tv-session-start.sh`
   - `/home/tv/.local/bin/server3-tv-audio.sh`
+  - `/home/tv/.local/bin/server3-tv-display.sh`
   - `/home/tv/.config/autostart/server3-tv-brave.desktop`
   - source: `infra/system/tv-desktop/home-tv/`
 
@@ -22,6 +23,7 @@ Provide a command-start desktop mode for HDMI TV use while keeping Server3 defau
 - Desktop launch: on demand via `server3-tv-start`
 - Desktop stop: via `server3-tv-stop`
 - Browser: Brave, autostart maximized to YouTube
+- Display preference: HDMI-only `1280x720` by default in every tv session
 - Audio preference: first detected HDMI sink set as default in tv session
 
 ## User Model

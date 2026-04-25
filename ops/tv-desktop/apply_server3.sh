@@ -46,6 +46,7 @@ for template in \
   "${TEMPLATE_ROOT}/lightdm/50-server3-tv-autologin.conf" \
   "${TEMPLATE_ROOT}/usr-local-bin/server3-tv-start" \
   "${TEMPLATE_ROOT}/usr-local-bin/server3-tv-stop" \
+  "${TEMPLATE_ROOT}/home-tv/.local/bin/server3-tv-display.sh" \
   "${TEMPLATE_ROOT}/home-tv/.local/bin/server3-tv-audio.sh" \
   "${TEMPLATE_ROOT}/home-tv/.local/bin/server3-tv-session-start.sh" \
   "${TEMPLATE_ROOT}/home-tv/.config/autostart/server3-tv-brave.desktop"; do
@@ -118,6 +119,9 @@ run_privileged install -d -m 755 /home/tv/.config/autostart
 run_privileged chown tv:tv /home/tv/.local /home/tv/.local/bin /home/tv/.config /home/tv/.config/autostart
 
 run_privileged install -m 755 \
+  "${TEMPLATE_ROOT}/home-tv/.local/bin/server3-tv-display.sh" \
+  /home/tv/.local/bin/server3-tv-display.sh
+run_privileged install -m 755 \
   "${TEMPLATE_ROOT}/home-tv/.local/bin/server3-tv-audio.sh" \
   /home/tv/.local/bin/server3-tv-audio.sh
 run_privileged install -m 755 \
@@ -129,6 +133,7 @@ run_privileged install -m 644 \
 
 run_privileged chown tv:tv \
   /home/tv/.local/bin/server3-tv-audio.sh \
+  /home/tv/.local/bin/server3-tv-display.sh \
   /home/tv/.local/bin/server3-tv-session-start.sh \
   /home/tv/.config/autostart/server3-tv-brave.desktop
 

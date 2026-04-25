@@ -92,6 +92,7 @@ sudo apt-get install -y yt-dlp wmctrl xdotool libusb-0.1-4
 - LightDM autologins `tv` only when desktop is started.
 - Xfce autostarts `server3-tv-session-start.sh`.
 - The session bootstrap only prepares display/audio state; it does not force any browser open.
+- The display bootstrap runs `server3-tv-display.sh`, making HDMI the only active output at `1280x720` by default for every Server3 TV session.
 - Browser windows are opened by `server3-tv-open-browser-url.sh` or the YouTube helper when explicitly requested.
 - Firefox launches with a dedicated TV-only profile path so it does not collide with stale/default-profile state.
 - ITGmania launches only when explicitly requested through `server3-tv-itgmania.sh`; the helper reuses an existing game process unless `--restart` is passed.
