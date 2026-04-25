@@ -18,6 +18,7 @@ This runbook configures Server3 for HDMI TV usage while keeping default boot in 
   - `ops/tv-desktop/server3-youtube-open-top-result.sh`
   - `ops/tv-desktop/server3-tv-browser-youtube-pause.sh`
   - `ops/tv-desktop/server3-tv-browser-youtube-play.sh`
+  - `ops/tv-desktop/server3-tv-itgmania.sh`
 
 ## Apply
 ```bash
@@ -66,14 +67,23 @@ bash ops/tv-desktop/server3-tv-browser-youtube-play.sh brave
 bash ops/tv-desktop/server3-tv-browser-youtube-play.sh firefox
 ```
 
+Launch ITGmania full-screen on the HDMI desktop:
+```bash
+bash ops/tv-desktop/server3-tv-itgmania.sh
+bash ops/tv-desktop/server3-tv-itgmania.sh --restart
+```
+
+The installed Server3 build is ITGmania `1.2.1` under `/opt/itgmania`, installed from the official Linux tarball at `https://github.com/itgmania/itgmania/releases/download/v1.2.1/ITGmania-1.2.1-Linux.tar.gz`. The LTEK pad currently enumerates as `/dev/input/js0` (`LTEK L-TEK Dance Pad PRO`), which ITGmania should detect as a joystick. Use ITGmania's in-game input mapping screen for final arrow/menu bindings.
+
 Note:
 - `server3-youtube-open-top-result.sh` requires `yt-dlp`.
 - For Firefox autoplay-block fallback (focus + click + `k` play key), install:
   - `wmctrl`
   - `xdotool`
+- ITGmania requires the compatibility package `libusb-0.1-4`.
 - Install if needed:
 ```bash
-sudo apt-get install -y yt-dlp wmctrl xdotool
+sudo apt-get install -y yt-dlp wmctrl xdotool libusb-0.1-4
 ```
 
 ## TV Session Behavior
@@ -82,6 +92,7 @@ sudo apt-get install -y yt-dlp wmctrl xdotool
 - The session bootstrap only prepares display/audio state; it does not force any browser open.
 - Browser windows are opened by `server3-tv-open-browser-url.sh` or the YouTube helper when explicitly requested.
 - Firefox launches with a dedicated TV-only profile path so it does not collide with stale/default-profile state.
+- ITGmania launches only when explicitly requested through `server3-tv-itgmania.sh`; the helper reuses an existing game process unless `--restart` is passed.
 
 ## Audio Routing
 At session start, `server3-tv-audio.sh`:

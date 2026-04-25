@@ -735,3 +735,12 @@ Summary:
 
 Migrated out of summary during this trim:
 - 2026-04-19: added Ask SignalTube conversational scan mode. Server2 now renders an authenticated `Ask SignalTube` prompt box and proxies `POST /signaltube/api/ask` to Server3; Server3 control plane exposes authenticated `POST /api/signaltube/ask` and starts `signaltube-lab-ask.service`, which interprets the prompt against the previous Ask session, scans generated YouTube queries through Browser Brain, updates only transient `Ask: ...` result sections, and pushes/rerenders Server2 while preserving normal scheduled topic sections. Current implementation uses a local language planner for topic/refinement/viewpoint parsing; no external LLM key is configured yet.
+
+## 2026-04-25 (Summary Roll-Forward Trim for Server3 ITGmania)
+
+Summary:
+- Added rolling summary coverage for Server3 HDMI dance-pad gameplay support with ITGmania and the LTEK pad.
+- Kept the rolling summary bounded by migrating the oldest item into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-20/21/25: updated Foodle in `docs/projects/foodle.html` so the combined calendar starts weeks on Monday, share text includes the public URL, the mobile tracker layout keeps compact dot-tracker cards side by side, the calendar/trackers support a third red dot-style `Over eating` marker, and the top Sugar/Carb/Dairy stat cards show both longest and current streaks; the live Server2 Foodle HTML was republished after each change.

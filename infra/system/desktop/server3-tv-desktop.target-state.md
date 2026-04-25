@@ -50,6 +50,19 @@ Provide a command-start desktop mode for HDMI TV use while keeping Server3 defau
 - `wmctrl`
 - `xdotool`
 - Installed manually on 2026-03-02 to support Firefox autoplay-block UI fallback (focus/click/play key).
+- `libusb-0.1-4`
+- Installed manually on 2026-04-25 for ITGmania's Linux runtime compatibility.
+
+## Live Additive Applications (Server3)
+- `ITGmania 1.2.1`
+- Installed manually on 2026-04-25 from the official Linux tarball to `/opt/itgmania`.
+- Source URL: `https://github.com/itgmania/itgmania/releases/download/v1.2.1/ITGmania-1.2.1-Linux.tar.gz`
+- Runtime launcher:
+  - `bash ops/tv-desktop/server3-tv-itgmania.sh`
+- LTEK dance pad detected as:
+  - USB: `03eb:8041 Atmel Corp. L-TEK Dance Pad PRO`
+  - joystick: `/dev/input/js0`
+  - event device: `/dev/input/event11`
 
 ## Operations
 - Apply: `bash ops/tv-desktop/apply_server3.sh`
@@ -59,3 +72,4 @@ Provide a command-start desktop mode for HDMI TV use while keeping Server3 defau
   - `bash ops/tv-desktop/server3-youtube-open-top-result.sh --query "<text>" [--min-duration-seconds <n>]`
   - `bash ops/tv-desktop/server3-tv-browser-youtube-pause.sh <brave|firefox>`
   - `bash ops/tv-desktop/server3-tv-browser-youtube-play.sh <brave|firefox>`
+  - `bash ops/tv-desktop/server3-tv-itgmania.sh [--restart] [--no-fullscreen]`
