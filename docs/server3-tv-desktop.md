@@ -92,6 +92,18 @@ Installed song packs:
   - `Freestyler` by Bomfunk MCs, downloaded from ZIv simfile ID `33310` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=33310`) on 2026-04-25. The local dance-single meters are Beginner `2`, Basic/Easy `3`, Difficult/Medium `6`, Expert/Hard `8`, and Challenge `11`; double Challenge is `11`.
   - `I Feel It Coming` by The Weeknd feat. Daft Punk, installed from ZIv simfile ID `31823` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=31823`) on 2026-04-25. The local dance-single meters are Beginner `1`, Basic/Easy `2`, Difficult/Medium `4`, and Expert/Hard `8`; double Challenge is `7`.
   - `I WANT YOU TO KNOW` by ZEDD feat. SELENA GOMEZ, downloaded from ZIv simfile ID `28967` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=28967`) on 2026-04-25. The local dance-single meters are Beginner `3`, Basic/Easy `5`, Difficult/Medium `6`, and Expert/Hard `8`.
+  - `Gangnam Style` by Psy, downloaded from ZIv simfile ID `19558` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=19558`) on 2026-04-25.
+  - `Despacito` by Luis Fonsi ft. Daddy Yankee, downloaded from ZIv simfile ID `48516` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=48516`) on 2026-04-25.
+  - `Say So` by Doja Cat, downloaded from ZIv simfile ID `47891` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=47891`) on 2026-04-25.
+  - `Chandelier` by Sia, downloaded from ZIv simfile ID `27525` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=27525`) on 2026-04-25.
+  - `1 2 Step (DDR Cut)` by Ciara ft. Missy Elliott, installed from direct ZIv simfile assets for simfile ID `42518` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=42518`) on 2026-04-25.
+  - `Listen To Your Heart (Furious F EZ Radio Edit)` by D.H.T. feat. Edmee, installed from direct ZIv simfile assets for simfile ID `478` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=478`) on 2026-04-25.
+  - `Boom Boom Boom Boom! (Eurobeat Mix)` by Vengaboys, installed from direct ZIv simfile assets for simfile ID `65060` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=65060`) on 2026-04-25.
+  - `CINEMA (SKRILLEX REMIX)` by Benny Benassi feat. Gary Go, downloaded from ZIv simfile ID `23664` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=23664`) on 2026-04-25.
+  - `Call Me Maybe` by Carly Rae Jepsen, downloaded from ZIv simfile ID `19451` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=19451`) on 2026-04-25.
+  - `Whistle` by Flo Rida, downloaded from ZIv simfile ID `20600` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=20600`) on 2026-04-25.
+  - `Starboy` by The Weeknd feat. Daft Punk, downloaded from ZIv simfile ID `31387` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=31387`) on 2026-04-25.
+  - Optional video assets under `/opt/itgmania/Songs/V` were removed after the 2026-04-25 batch so ITGmania loads quickly and reliably on the TV; charts, audio, banners, jackets, and backgrounds remain installed.
 
 Note:
 - `server3-youtube-open-top-result.sh` requires `yt-dlp`.
