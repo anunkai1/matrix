@@ -744,3 +744,12 @@ Summary:
 
 Migrated out of summary during this trim:
 - 2026-04-20/21/25: updated Foodle in `docs/projects/foodle.html` so the combined calendar starts weeks on Monday, share text includes the public URL, the mobile tracker layout keeps compact dot-tracker cards side by side, the calendar/trackers support a third red dot-style `Over eating` marker, and the top Sugar/Carb/Dairy stat cards show both longest and current streaks; the live Server2 Foodle HTML was republished after each change.
+
+## 2026-04-25 (Summary Roll-Forward Trim for Shared Codex Auth Watcher)
+
+Summary:
+- Added rolling summary coverage for restoring Sentinel to the canonical shared Codex auth model and adding the host watcher service that keeps Codex-backed runtimes relinked after Architect auth replacement.
+- Kept the rolling summary bounded by migrating the oldest item into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-20: completed Server2 maintenance via the general `server2` SSH operations path. Created DB/app rollback snapshots under `/home/architect/server2-maintenance/20260420-083454`, `/home/architect/server2-maintenance/20260420-084820-nextcloud33`, `/home/architect/server2-maintenance/20260420-094055-node22`, and `/home/architect/server2-maintenance/20260420-111311-node24`; upgraded pending APT packages (`containerd.io`, `docker-compose-plugin`, `grafana`, `rsyslog`, `snapd`), removed stale `musl`, refreshed FileGator/Gitea/Nextcloud Docker stacks, moved Nextcloud from `32.0.5` through `32.0.8` to `33.0.2`, updated Nextcloud apps, and migrated Server2 Node from `v18.20.8` through `v22.22.2` to `v24.14.1` with npm `10.9.8`/corepack `0.34.6`; rebuilt Chordle/Kidstories dependencies after each Node jump. Verified no pending APT updates, no reboot required, no failed units, containers healthy, Nextcloud/OnlyOffice healthy, and Chordle/Kidstories/SignalTube/Gitea public health checks passing. `documentserver_community` is disabled after the Nextcloud 33 upgrade while the active `onlyoffice` app remains enabled.

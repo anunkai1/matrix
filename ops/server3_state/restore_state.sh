@@ -99,6 +99,7 @@ if [[ "${START_SERVICES}" == "yes" ]]; then
 
   systemctl enable \
     server3-state-backup.timer \
+    server3-codex-auth-sync.service \
     server3-monitoring.service \
     "${media_unit}" \
     telegram-architect-bridge.service \
@@ -134,6 +135,7 @@ if [[ "${START_SERVICES}" == "yes" ]]; then
     telegram-macrorayd-bridge.service \
     "${media_unit}" \
     server3-monitoring.service \
+    server3-codex-auth-sync.service \
     server3-state-backup.timer \
     server3-runtime-observer.timer \
     server3-chat-routing-contract-check.timer \

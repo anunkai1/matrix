@@ -103,8 +103,14 @@ run_privileged install -d -m 750 -o root -g "${SHARED_GROUP}" "${SHARED_DIR}"
 if [[ ! -s "${SHARED_AUTH_PATH}" || "${REFRESH_SHARED}" == "true" ]]; then
   run_privileged install -m 640 -o root -g "${SHARED_GROUP}" "${SOURCE_AUTH_PATH}" "${SHARED_AUTH_PATH}"
 else
-  run_privileged chown root:"${SHARED_GROUP}" "${SHARED_AUTH_PATH}"
-  run_privileged chmod 640 "${SHARED_AUTH_PATH}"
+  shared_auth_owner="$(stat -c '%U:%G' "${SHARED_AUTH_PATH}" 2>/dev/null || true)"
+  if [[ "${shared_auth_owner}" != "root:${SHARED_GROUP}" ]]; then
+    run_privileged chown root:"${SHARED_GROUP}" "${SHARED_AUTH_PATH}"
+  fi
+  shared_auth_mode="$(stat -c '%a' "${SHARED_AUTH_PATH}" 2>/dev/null || true)"
+  if [[ "${shared_auth_mode}" != "640" ]]; then
+    run_privileged chmod 640 "${SHARED_AUTH_PATH}"
+  fi
 fi
 
 timestamp="$(date +%Y%m%d-%H%M%S)"
@@ -122,7 +128,18 @@ for user_name in "${USERS[@]}"; do
   user_codex_dir="${user_home}/.codex"
   user_auth_path="${user_codex_dir}/auth.json"
 
-  run_privileged install -d -m 700 -o "${user_name}" -g "${user_group}" "${user_codex_dir}"
+  if [[ ! -d "${user_codex_dir}" ]]; then
+    run_privileged install -d -m 700 -o "${user_name}" -g "${user_group}" "${user_codex_dir}"
+  else
+    codex_dir_owner="$(stat -c '%U:%G' "${user_codex_dir}" 2>/dev/null || true)"
+    if [[ "${codex_dir_owner}" != "${user_name}:${user_group}" ]]; then
+      run_privileged chown "${user_name}:${user_group}" "${user_codex_dir}"
+    fi
+    codex_dir_mode="$(stat -c '%a' "${user_codex_dir}" 2>/dev/null || true)"
+    if [[ "${codex_dir_mode}" != "700" ]]; then
+      run_privileged chmod 700 "${user_codex_dir}"
+    fi
+  fi
 
   if id -nG "${user_name}" | tr ' ' '\n' | grep -Fxq "${SHARED_GROUP}"; then
     :
@@ -131,17 +148,27 @@ for user_name in "${USERS[@]}"; do
     restarted_users+=("${user_name}")
   fi
 
+  link_needs_update=true
   if [[ -L "${user_auth_path}" ]]; then
     current_target="$(readlink -f "${user_auth_path}" || true)"
     if [[ "${current_target}" != "${SHARED_AUTH_PATH}" ]]; then
       run_privileged mv "${user_auth_path}" "${user_auth_path}.bak.${timestamp}"
+    else
+      link_needs_update=false
     fi
   elif [[ -e "${user_auth_path}" ]]; then
     run_privileged mv "${user_auth_path}" "${user_auth_path}.bak.${timestamp}"
   fi
 
-  run_privileged ln -sfn "${SHARED_AUTH_PATH}" "${user_auth_path}"
-  run_privileged chown -h "${user_name}:${user_group}" "${user_auth_path}"
+  if [[ "${link_needs_update}" == "true" ]]; then
+    run_privileged ln -sfn "${SHARED_AUTH_PATH}" "${user_auth_path}"
+    run_privileged chown -h "${user_name}:${user_group}" "${user_auth_path}"
+  else
+    link_owner="$(stat -c '%U:%G' "${user_auth_path}" 2>/dev/null || true)"
+    if [[ "${link_owner}" != "${user_name}:${user_group}" ]]; then
+      run_privileged chown -h "${user_name}:${user_group}" "${user_auth_path}"
+    fi
+  fi
 
   printf 'shared-auth linked for %s -> %s\n' "${user_name}" "${SHARED_AUTH_PATH}"
 done

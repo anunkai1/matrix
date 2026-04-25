@@ -13,7 +13,7 @@
         "local repo workspace",
         "authenticated Codex executor"
       ],
-      "owner_user": "sentinel",
+      "owner_user": "architect",
       "notes": [
         "Primary operator entry point on Server3."
       ],

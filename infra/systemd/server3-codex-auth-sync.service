@@ -1,0 +1,13 @@
+[Unit]
+Description=Server3 Codex Shared Auth Sync Watcher
+After=local-fs.target
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/architect/matrix/ops/codex/watch_shared_auth.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

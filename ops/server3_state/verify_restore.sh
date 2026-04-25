@@ -50,6 +50,7 @@ declare -a required_services=(
   govorun-whatsapp-bridge.service
   signal-oracle-bridge.service
   oracle-signal-bridge.service
+  server3-codex-auth-sync.service
   "${media_prefix}.service"
   server3-monitoring.service
 )
