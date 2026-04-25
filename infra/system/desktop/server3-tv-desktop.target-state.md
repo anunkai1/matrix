@@ -24,6 +24,7 @@ Provide a command-start desktop mode for HDMI TV use while keeping Server3 defau
 - Desktop stop: via `server3-tv-stop`
 - Browser: Brave, autostart maximized to YouTube
 - Display preference: HDMI-only `1280x720` by default in every tv session
+- Compositor preference: XFCE window-manager compositing disabled in every tv session to reduce display latency
 - Audio preference: first detected HDMI sink set as default in tv session
 
 ## User Model
