@@ -37,8 +37,13 @@ case "${MODE}" in
       echo "Created ${ENV_DST} from template."
     fi
     sudo systemctl daemon-reload
+    sudo systemctl disable --now "${TIMER_NAME}" >/dev/null
+    echo "Installed SignalTube collector units; ${TIMER_NAME} remains disabled"
+    ;;
+  enable-timer)
+    sudo systemctl daemon-reload
     sudo systemctl enable --now "${TIMER_NAME}"
-    echo "Installed and enabled ${TIMER_NAME}"
+    echo "Enabled ${TIMER_NAME}"
     ;;
   status)
     sudo systemctl --no-pager --full status "${TIMER_NAME}" "${SERVICE_NAME}" "${RESCAN_SERVICE_NAME}" "${ASK_SERVICE_NAME}"
@@ -59,7 +64,7 @@ case "${MODE}" in
     echo "Removed ${SERVICE_NAME} and ${TIMER_NAME}"
     ;;
   *)
-    echo "Usage: $0 [apply|status|run-now|rollback]" >&2
+    echo "Usage: $0 [apply|enable-timer|status|run-now|rollback]" >&2
     exit 1
     ;;
 esac

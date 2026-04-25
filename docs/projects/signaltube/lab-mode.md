@@ -73,11 +73,17 @@ It also refuses Browser Brain `existing_session` mode. Run this against a manage
 
 The helper `ops/signaltube_lab_browser.sh` starts that disposable managed Browser Brain server on `127.0.0.1:47832`.
 
-Install the overnight timer on Server3:
+Install the Server3 collector units. The daily overnight timer is intentionally left disabled; use the web app Rescan/Ask controls or `run-now` for manual collection.
 
 ```bash
 bash ops/signaltube/install_overnight_collector.sh apply
 sudo systemctl --no-pager --full status signaltube-lab-overnight.timer signaltube-lab-overnight.service
+```
+
+Re-enable daily scheduled collection only when explicitly wanted:
+
+```bash
+bash ops/signaltube/install_overnight_collector.sh enable-timer
 ```
 
 Timer configuration lives in `/etc/default/signaltube-lab`, with the repo example at `infra/env/signaltube-lab.env.example`.
