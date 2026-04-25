@@ -91,6 +91,7 @@ Installed song packs:
   - `...Baby One More Time` by Britney Spears, downloaded from ZIv simfile ID `52501` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=52501`) on 2026-04-25. The local `.sm` single chart meters are Beginner `1`, Basic/Easy `2`, Difficult/Medium `5`, and Expert/Hard `9`; double Expert/Hard is `10`.
   - `Freestyler` by Bomfunk MCs, downloaded from ZIv simfile ID `33310` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=33310`) on 2026-04-25. The local dance-single meters are Beginner `2`, Basic/Easy `3`, Difficult/Medium `6`, Expert/Hard `8`, and Challenge `11`; double Challenge is `11`.
   - `I Feel It Coming` by The Weeknd feat. Daft Punk, installed from ZIv simfile ID `31823` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=31823`) on 2026-04-25. The local dance-single meters are Beginner `1`, Basic/Easy `2`, Difficult/Medium `4`, and Expert/Hard `8`; double Challenge is `7`.
+  - `I WANT YOU TO KNOW` by ZEDD feat. SELENA GOMEZ, downloaded from ZIv simfile ID `28967` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=28967`) on 2026-04-25. The local dance-single meters are Beginner `3`, Basic/Easy `5`, Difficult/Medium `6`, and Expert/Hard `8`.
 
 Note:
 - `server3-youtube-open-top-result.sh` requires `yt-dlp`.
