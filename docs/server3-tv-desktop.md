@@ -82,7 +82,10 @@ The installed Server3 build is ITGmania `1.2.1` under `/opt/itgmania`, installed
 Installed song packs:
 - `Club Fantastic Season 1` and `Club Fantastic Season 2` are bundled with the ITGmania install.
 - `GG Basics` is installed under `/opt/itgmania/Songs/GG Basics`. It was downloaded from StepMania Online pack ID `1745` (`https://stepmaniaonline.net/download/pack/1745/`) on 2026-04-25 and contains 22 `.ssc` pop-song charts.
-- `V` is installed under `/opt/itgmania/Songs/V` for individually added requested songs. It currently contains `Starships` by Nicki Minaj, downloaded from ZIv simfile ID `23437` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=23437`) on 2026-04-25. The local `.sm` chart meters are Beginner `1`, Basic/Easy `4`, Difficult/Medium `6`, and Expert/Hard `10`.
+- `V` is installed under `/opt/itgmania/Songs/V` for individually added requested songs. It currently contains:
+  - `Starships` by Nicki Minaj, downloaded from ZIv simfile ID `23437` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=23437`) on 2026-04-25. The local `.sm` chart meters are Beginner `1`, Basic/Easy `4`, Difficult/Medium `6`, and Expert/Hard `10`.
+  - `Macarena` by 2 Locos In A Room, downloaded from ZIv simfile ID `40892` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=40892`) on 2026-04-25. The local `.sm` single chart meters are Basic/Easy `2`, Difficult/Medium `3`, and Expert/Hard `6`; double meters are Basic/Easy `2` and Difficult/Medium `4`.
+  - `Mambo NO.5` by Lou Bega, downloaded from ZIv simfile ID `64122` (`https://zenius-i-vanisher.com/v5.2/viewsimfile.php?simfileid=64122`) on 2026-04-25. The local `.sm` single chart meter is Difficult/Medium `5`.
 
 Note:
 - `server3-youtube-open-top-result.sh` requires `yt-dlp`.
