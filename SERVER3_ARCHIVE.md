@@ -806,3 +806,12 @@ Summary:
 
 Migrated out of summary during this trim:
 - 2026-04-24: refreshed the tracked Server3 control-plane snapshot payloads in `docs/server3-control-plane-data.json` and `docs/server3-control-plane-data.js` from live host state. The committed snapshot reflects `2026-04-24 07:00 AEST` runtime posture with 6 healthy runtimes, Oracle degraded, no approval items, and the updated operator playback/history surface.
+
+## 2026-04-26 (Summary Roll-Forward Trim for Gemma Web Research)
+
+Summary:
+- Added rolling summary coverage for enabling raw public Gemma web research mode through the Server3 harness.
+- Kept the rolling summary bounded by migrating the oldest item into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-25: restored Sentinel to the canonical shared Codex auth model. `architect` and `sentinel` now both link `~/.codex/auth.json` to `/etc/server3-codex/auth.json`, and the new enabled `server3-codex-auth-sync.service` runs `ops/codex/watch_shared_auth.py` to detect Architect auth replacement within ~2 seconds and relink all Codex-backed manifest runtimes, including Sentinel. The shared-auth installer is now idempotent to avoid symlink/metadata churn, the shared-auth runbook documents automatic refresh, and the Server3 state-backup profile now includes `/etc/server3-codex` plus the watcher service.

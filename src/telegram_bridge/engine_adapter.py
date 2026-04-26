@@ -90,6 +90,7 @@ class GemmaEngineAdapter:
         r"(?:^|[\s`'\"“”])([A-Za-z0-9_.\-/]+\.(?:md|txt|json|yaml|yml|py|sh|toml|service|timer))",
         re.IGNORECASE,
     )
+    _URL_RE = re.compile(r"https?://[^\s`'\"“”<>]+", re.IGNORECASE)
 
     def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(
@@ -201,6 +202,7 @@ class GemmaEngineAdapter:
         return GemmaReadonlyToolHarness(
             allowed_roots=roots,
             timeout_seconds=int(getattr(config, "gemma_readonly_tool_timeout_seconds", 20)),
+            web_research_enabled=bool(getattr(config, "gemma_web_research_enabled", False)),
         )
 
     def _extract_tool_request(self, text: str) -> Optional[tuple[str, Mapping[str, Any]]]:
@@ -245,6 +247,18 @@ class GemmaEngineAdapter:
             return "list_files", {"path": ".", "max_depth": 1}
         if "files" in normalized and "access" in normalized and "read" in normalized:
             return "list_files", {"path": ".", "max_depth": 1}
+        url_match = self._URL_RE.search(current_request)
+        if url_match and any(
+            verb in normalized
+            for verb in ("fetch", "open", "read", "research", "web", "url", "link", "page")
+        ):
+            return "fetch_url", {"url": url_match.group(0), "max_bytes": 64000}
+        if any(phrase in normalized for phrase in ("web search", "search web", "search the web", "internet search")):
+            query = current_request
+            for phrase in ("web search", "search web", "search the web", "internet search"):
+                query = re.sub(re.escape(phrase), "", query, flags=re.IGNORECASE)
+            query = query.strip(" :.-\n\t") or current_request
+            return "web_search", {"query": query, "max_results": 5}
         return None
 
     def _format_direct_tool_answer(self, tool: str, result) -> str:

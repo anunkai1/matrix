@@ -128,6 +128,38 @@ class GemmaPluginTests(unittest.TestCase):
         self.assertIn("agent instructions", result.stdout)
         self.assertNotIn("Current listing", result.stdout)
 
+    def test_gemma_http_engine_fetches_url_when_initial_web_prompt_returns_empty(self):
+        engine = bridge_engine_adapter.GemmaEngineAdapter()
+        config = SimpleNamespace(
+            gemma_provider="ollama_http",
+            gemma_model="gemma4:26b",
+            gemma_base_url="http://server4-beast:11434",
+            gemma_request_timeout_seconds=30,
+            gemma_readonly_tools_enabled=True,
+            gemma_readonly_roots=[str(ROOT)],
+            gemma_readonly_tool_timeout_seconds=5,
+            gemma_web_research_enabled=True,
+        )
+        fake_urlopen = mock.MagicMock()
+        fake_urlopen.return_value.__enter__.return_value.read.return_value = (
+            b'{"message":{"role":"assistant","content":""},"done":true}'
+        )
+        with (
+            mock.patch.object(bridge_engine_adapter.urllib_request, "urlopen", fake_urlopen),
+            mock.patch.object(
+                gemma_readonly_tools.GemmaReadonlyToolHarness,
+                "_fetch_public_text",
+                return_value="<html><body>web fallback content</body></html>",
+            ),
+        ):
+            result = engine.run(
+                config=config,
+                prompt="Current User Message:\nresearch https://example.com",
+                thread_id=None,
+            )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("web fallback content", result.stdout)
+
     def test_readonly_harness_blocks_paths_outside_allowed_roots(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             harness = gemma_readonly_tools.GemmaReadonlyToolHarness(allowed_roots=[tmpdir])
@@ -159,6 +191,106 @@ class GemmaPluginTests(unittest.TestCase):
         result = harness.execute("run_readonly_command", {"command": "rm -rf /tmp/example"})
         self.assertFalse(result.ok)
         self.assertIn("not allowlisted", result.error)
+
+    def test_web_research_tools_are_disabled_by_default(self):
+        harness = gemma_readonly_tools.GemmaReadonlyToolHarness(allowed_roots=[str(ROOT)])
+        result = harness.execute("fetch_url", {"url": "https://example.com"})
+        self.assertFalse(result.ok)
+        self.assertIn("disabled", result.error)
+
+    def test_fetch_url_blocks_local_network_targets(self):
+        harness = gemma_readonly_tools.GemmaReadonlyToolHarness(
+            allowed_roots=[str(ROOT)],
+            web_research_enabled=True,
+        )
+        result = harness.execute("fetch_url", {"url": "http://127.0.0.1:11434/api/tags"})
+        self.assertFalse(result.ok)
+        self.assertIn("Blocked non-public URL host", result.error)
+
+    def test_fetch_url_reads_public_text_when_web_research_enabled(self):
+        harness = gemma_readonly_tools.GemmaReadonlyToolHarness(
+            allowed_roots=[str(ROOT)],
+            web_research_enabled=True,
+        )
+        fake_response = mock.MagicMock()
+        fake_response.headers.get.return_value = "text/html; charset=utf-8"
+        fake_response.headers.get_content_charset.return_value = "utf-8"
+        fake_response.read.return_value = b"<html><body><h1>Example</h1><p>Visible text.</p></body></html>"
+        fake_urlopen = mock.MagicMock()
+        fake_urlopen.return_value.__enter__.return_value = fake_response
+        with (
+            mock.patch.object(
+                gemma_readonly_tools.socket,
+                "getaddrinfo",
+                return_value=[(gemma_readonly_tools.socket.AF_INET, None, None, None, ("93.184.216.34", 0))],
+            ),
+            mock.patch.object(gemma_readonly_tools.urllib_request, "urlopen", fake_urlopen),
+        ):
+            result = harness.execute("fetch_url", {"url": "https://example.com", "max_bytes": 2000})
+        self.assertTrue(result.ok)
+        self.assertIn("Example", result.output)
+        self.assertIn("Visible text.", result.output)
+
+    def test_web_search_parses_public_results(self):
+        harness = gemma_readonly_tools.GemmaReadonlyToolHarness(
+            allowed_roots=[str(ROOT)],
+            web_research_enabled=True,
+        )
+        duck_html = (
+            '<a rel="nofollow" class="result__a" href="/l/?uddg=https%3A%2F%2Fexample.com%2Fone">'
+            "First &amp; Result</a>"
+            '<a class="result__snippet">Useful snippet &amp; detail.</a>'
+        )
+        fake_response = mock.MagicMock()
+        fake_response.headers.get.return_value = "text/html; charset=utf-8"
+        fake_response.headers.get_content_charset.return_value = "utf-8"
+        fake_response.read.return_value = duck_html.encode("utf-8")
+        fake_urlopen = mock.MagicMock()
+        fake_urlopen.return_value.__enter__.return_value = fake_response
+        with (
+            mock.patch.object(
+                gemma_readonly_tools.socket,
+                "getaddrinfo",
+                return_value=[(gemma_readonly_tools.socket.AF_INET, None, None, None, ("52.149.246.39", 0))],
+            ),
+            mock.patch.object(gemma_readonly_tools.urllib_request, "urlopen", fake_urlopen),
+        ):
+            result = harness.execute("web_search", {"query": "server3 gemma", "max_results": 3})
+        self.assertTrue(result.ok)
+        self.assertIn("First & Result", result.output)
+        self.assertIn("https://example.com/one", result.output)
+        self.assertIn("Useful snippet & detail.", result.output)
+
+    def test_gemma_engine_executes_web_research_tool_request(self):
+        engine = bridge_engine_adapter.GemmaEngineAdapter()
+        config = SimpleNamespace(
+            gemma_provider="ollama_http",
+            gemma_model="gemma4:26b",
+            gemma_base_url="http://server4-beast:11434",
+            gemma_request_timeout_seconds=30,
+            gemma_readonly_tools_enabled=True,
+            gemma_readonly_roots=[str(ROOT)],
+            gemma_readonly_tool_timeout_seconds=5,
+            gemma_web_research_enabled=True,
+        )
+        responses = [
+            b'{"message":{"role":"assistant","content":"{\\"tool\\":\\"fetch_url\\",\\"args\\":{\\"url\\":\\"https://example.com\\"}}"},"done":true}',
+            b'{"message":{"role":"assistant","content":"Example.com says visible text."},"done":true}',
+        ]
+        fake_model_urlopen = mock.MagicMock()
+        fake_model_urlopen.return_value.__enter__.return_value.read.side_effect = responses
+        with (
+            mock.patch.object(bridge_engine_adapter.urllib_request, "urlopen", fake_model_urlopen),
+            mock.patch.object(
+                gemma_readonly_tools.GemmaReadonlyToolHarness,
+                "_fetch_public_text",
+                return_value="<html><body>visible text</body></html>",
+            ),
+        ):
+            result = engine.run(config=config, prompt="Research https://example.com", thread_id=None)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Example.com says visible text.", result.stdout)
+        self.assertEqual(fake_model_urlopen.call_count, 2)
 
 
 def json_body_from_request(request):
