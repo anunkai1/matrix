@@ -219,6 +219,21 @@ class GemmaEngineAdapter:
             return None
         return tool, args
 
+    def _infer_empty_response_tool_request(self, prompt: str) -> Optional[tuple[str, Mapping[str, Any]]]:
+        normalized = str(prompt or "").lower()
+        if "list" in normalized and "file" in normalized:
+            return "list_files", {"path": ".", "max_depth": 1}
+        if "files" in normalized and "access" in normalized and "read" in normalized:
+            return "list_files", {"path": ".", "max_depth": 1}
+        return None
+
+    def _format_direct_tool_answer(self, tool: str, result) -> str:
+        if result.ok:
+            if tool == "list_files":
+                return "I can read within the configured Gemma read-only roots. Current listing:\n\n" + result.output
+            return result.output
+        return f"Read-only tool request failed: {result.error or result.output}"
+
     def _run_with_readonly_tools(
         self,
         config,
@@ -232,6 +247,12 @@ class GemmaEngineAdapter:
             {"role": "user", "content": prompt},
         ]
         output = self._run_model(config, provider, prompt, cancel_event, messages)
+        if not output.strip():
+            inferred = self._infer_empty_response_tool_request(prompt)
+            if inferred is not None:
+                tool, args = inferred
+                return self._format_direct_tool_answer(tool, harness.execute(tool, args))
+            return "Gemma returned an empty response. Try a more specific request or switch to `/engine codex`."
         for _ in range(self._MAX_TOOL_ROUNDS):
             request = self._extract_tool_request(output)
             if request is None:
@@ -256,6 +277,8 @@ class GemmaEngineAdapter:
                 }
             )
             output = self._run_model(config, provider, prompt, cancel_event, messages)
+            if not output.strip():
+                return self._format_direct_tool_answer(tool, result)
         return (
             "Gemma read-only tool limit reached before a final answer. "
             "Ask again with a narrower request or switch to `/engine codex` for deeper operations."

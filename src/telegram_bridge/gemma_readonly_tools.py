@@ -30,6 +30,14 @@ _BLOCKED_NAME_PARTS = (
     "session",
     "token",
 )
+_BLOCKED_EXACT_NAMES = {
+    ".git",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "private",
+}
 
 
 @dataclass(frozen=True)
@@ -116,6 +124,8 @@ class GemmaReadonlyToolHarness:
         if not any(resolved == root or root in resolved.parents for root in self.allowed_roots):
             raise PermissionError(f"Path is outside allowed Gemma read roots: {resolved}")
         lowered_parts = [part.lower() for part in resolved.parts]
+        if any(part in _BLOCKED_EXACT_NAMES for part in lowered_parts):
+            raise PermissionError(f"Path is blocked by private/internal guard: {resolved}")
         if any(blocked in part for part in lowered_parts for blocked in _BLOCKED_NAME_PARTS):
             raise PermissionError(f"Path is blocked by sensitive-name guard: {resolved}")
         return resolved
@@ -204,7 +214,7 @@ def _bounded_int(value: Any, *, minimum: int, maximum: int) -> int:
 
 def _is_sensitive_name(name: str) -> bool:
     lowered = str(name or "").lower()
-    return any(part in lowered for part in _BLOCKED_NAME_PARTS)
+    return lowered in _BLOCKED_EXACT_NAMES or any(part in lowered for part in _BLOCKED_NAME_PARTS)
 
 
 def _validate_unit(value: Any) -> str:
