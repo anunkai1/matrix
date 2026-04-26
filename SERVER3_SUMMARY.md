@@ -17,7 +17,7 @@ Last updated: 2026-04-26 (AEST, +10:00)
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
 - Runtime pattern: Telegram long polling + local `codex exec`
-- Server4 Beast (`192.168.0.124`) now hosts Ollama model `gemma4:26b`; Server3 Telegram bridge chats can select `gemma` directly through Ollama or `pi` through local Server3 Pi using Server4 as the model backend; default engine remains `codex`.
+- Server4 Beast (`192.168.0.124`) now hosts Ollama models `gemma4:26b` and `qwen3-coder:30b`; Server3 Telegram bridge chats can select `gemma` directly through Ollama or `pi` through local Server3 Pi using Server4 as the model backend; default engine remains `codex`.
 - Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional canonical session model, safe queued `/restart`
 - Browser Brain live mode is now `existing_session` on local CDP port `9223`; the visible `tv` Brave helper is the intended on-screen login path for sites like `x.com`, while the Browser Brain API now keeps snapshot refs locator-friendly with ARIA snapshots and supports guarded hover/select/dialog/console/network actions.
 - Telegram reply-context wrappers now use English labels (`Reply Context`, `Original Message Author`, `Message User Replied To`, `Current User Message`) while downstream parsers remain backward-compatible with older Russian wrappers.
@@ -53,7 +53,7 @@ Last updated: 2026-04-26 (AEST, +10:00)
 - Local media services now use one canonical internal namespace: `/data/downloads` and `/data/media/...`; avoid reintroducing alternate path aliases like `/downloads`, `/tv`, `/movies`, or `/media`.
 - Server3 state resilience now uses a monthly quiesced backup path (`server3-state-backup.service` / `server3-state-backup.timer`) that snapshots rebuild-critical host/app/runtime state to `/srv/external/server3-backups/state`; the Arr media payload stays on the external data disk and is intentionally excluded.
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
-- Server4 engine integration keeps Server3 as the bot/control-plane host: use `/engine gemma`, `/engine pi`, `/engine codex`, `/engine reset`, and `/engine status` per chat/topic. Gemma is a direct text-only Ollama path; Pi is an SSH-backed non-interactive `pi -p` path on Server4; both report live health details in `/engine status`.
+- Server4 engine integration keeps Server3 as the bot/control-plane host: use `/engine gemma`, `/engine pi`, `/engine codex`, `/engine reset`, and `/engine status` per chat/topic. Gemma is a direct text-only Ollama path; Pi runs locally in the Server3 runtime root while using Server4 Ollama through the tunnel; both report live health details in `/engine status`.
 
 ## Recent Changes (Rolling Max 8)
 - 2026-04-26: added a selectable Pi engine path to the shared Telegram bridge. The corrected `pi` design runs the Pi binary locally inside each Server3 runtime root and uses Server4 Beast only as the Ollama model backend through an SSH tunnel; configurable knobs include `PI_RUNNER`, `PI_LOCAL_CWD`, `PI_PROVIDER`, `PI_MODEL`, `PI_TOOLS_MODE`, `PI_SESSION_MODE`, and timeout/tunnel settings. `/engine status` reports Pi health/version/model availability. Verified focused bridge tests and direct Tank local Pi checks.

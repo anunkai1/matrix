@@ -228,7 +228,7 @@ class PiEngineAdapter:
         provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip()
         if provider.strip().lower() in {"ollama_ssh", "ssh"}:
             provider = "ollama"
-        model = str(getattr(config, "pi_model", "gemma4:26b") or "gemma4:26b").strip()
+        model = str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip()
         tools_mode = (
             str(getattr(config, "pi_tools_mode", "default") or "default")
             .strip()

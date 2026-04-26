@@ -555,7 +555,7 @@ def load_config() -> Config:
             minimum=1,
         ),
         pi_provider=parse_plugin_name_env("PI_PROVIDER", "ollama"),
-        pi_model=os.getenv("PI_MODEL", "gemma4:26b").strip() or "gemma4:26b",
+        pi_model=os.getenv("PI_MODEL", "qwen3-coder:30b").strip() or "qwen3-coder:30b",
         pi_runner=parse_plugin_name_env("PI_RUNNER", "ssh"),
         pi_bin=os.getenv("PI_BIN", "pi").strip() or "pi",
         pi_ssh_host=os.getenv("PI_SSH_HOST", "server4-beast").strip() or "server4-beast",

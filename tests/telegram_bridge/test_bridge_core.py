@@ -228,7 +228,7 @@ def make_config(**overrides):
         "gemma_ssh_host": "server4-beast",
         "gemma_request_timeout_seconds": 180,
         "pi_provider": "ollama",
-        "pi_model": "gemma4:26b",
+        "pi_model": "qwen3-coder:30b",
         "pi_runner": "ssh",
         "pi_bin": "pi",
         "pi_ssh_host": "server4-beast",
@@ -609,7 +609,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.gemma_provider, "ollama_ssh")
         self.assertEqual(config.gemma_model, "gemma4:26b")
         self.assertEqual(config.pi_provider, "ollama")
-        self.assertEqual(config.pi_model, "gemma4:26b")
+        self.assertEqual(config.pi_model, "qwen3-coder:30b")
         self.assertEqual(config.pi_runner, "ssh")
         self.assertEqual(config.pi_ssh_host, "server4-beast")
         self.assertEqual(config.pi_session_mode, "none")
@@ -739,7 +739,7 @@ class BridgeCoreTests(unittest.TestCase):
         completed = subprocess.CompletedProcess(
             args=[],
             returncode=0,
-            stdout="gemma4:26b latest 1 GB\n",
+            stdout="qwen3-coder:30b latest 18 GB\n",
             stderr="0.70.2\n",
         )
 

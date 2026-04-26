@@ -3789,7 +3789,7 @@ def check_gemma_health(config) -> Dict[str, object]:
 def check_pi_health(config) -> Dict[str, object]:
     host = str(getattr(config, "pi_ssh_host", "server4-beast") or "").strip()
     provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip().lower()
-    model = str(getattr(config, "pi_model", "gemma4:26b") or "gemma4:26b").strip()
+    model = str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip()
     if not host:
         return {
             "ok": False,
@@ -3865,7 +3865,7 @@ def build_engine_status_text(state: State, config, scope_key: str) -> str:
         lines.append(f"Gemma last check error: {health['error'] or '(none)'}")
     if effective == "pi":
         lines.append(f"Pi provider: {getattr(config, 'pi_provider', 'ollama')}")
-        lines.append(f"Pi model: {getattr(config, 'pi_model', 'gemma4:26b')}")
+        lines.append(f"Pi model: {getattr(config, 'pi_model', 'qwen3-coder:30b')}")
         lines.append(f"Pi runner: {getattr(config, 'pi_runner', 'ssh')}")
         if str(getattr(config, "pi_runner", "ssh") or "ssh").strip().lower() in {"local", "server3"}:
             lines.append(f"Pi local cwd: {getattr(config, 'pi_local_cwd', '')}")

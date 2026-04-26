@@ -36,6 +36,12 @@ Each runtime user needs a Pi model config. For Tank, Pi uses `/home/tank/.pi/age
         {
           "_launch": true,
           "contextWindow": 262144,
+          "id": "qwen3-coder:30b",
+          "input": ["text"]
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
           "id": "gemma4:26b",
           "input": ["text", "image"],
           "reasoning": true
@@ -51,7 +57,7 @@ Each runtime user needs a Pi model config. For Tank, Pi uses `/home/tank/.pi/age
 - Host/IP: `192.168.0.124`
 - SSH alias from Server3 service users: `server4-beast`
 - Ollama local endpoint on Server4: `http://127.0.0.1:11434`
-- Default model: `gemma4:26b`
+- Default model: `qwen3-coder:30b`
 
 Verify from Server3 as the runtime user:
 
@@ -67,7 +73,7 @@ Generic defaults:
 TELEGRAM_ENGINE_PLUGIN=codex
 TELEGRAM_SELECTABLE_ENGINE_PLUGINS=codex,gemma,pi
 PI_PROVIDER=ollama
-PI_MODEL=gemma4:26b
+PI_MODEL=qwen3-coder:30b
 PI_RUNNER=ssh
 PI_SSH_HOST=server4-beast
 PI_SESSION_MODE=none
@@ -112,7 +118,7 @@ from executor import parse_executor_output
 
 config = SimpleNamespace(
     pi_provider="ollama",
-    pi_model="gemma4:26b",
+    pi_model="qwen3-coder:30b",
     pi_runner="local",
     pi_bin="pi",
     pi_ssh_host="server4-beast",
