@@ -52,7 +52,7 @@ Defaults are intentionally usable without changing `/etc/default/telegram-archit
 
 ```bash
 TELEGRAM_ENGINE_PLUGIN=codex
-TELEGRAM_SELECTABLE_ENGINE_PLUGINS=codex,gemma
+TELEGRAM_SELECTABLE_ENGINE_PLUGINS=codex,gemma,pi
 GEMMA_PROVIDER=ollama_ssh
 GEMMA_MODEL=gemma4:26b
 GEMMA_SSH_HOST=server4-beast

@@ -221,12 +221,20 @@ def make_config(**overrides):
         "shared_memory_key": "",
         "channel_plugin": "telegram",
         "engine_plugin": "codex",
-        "selectable_engine_plugins": ["codex", "gemma"],
+        "selectable_engine_plugins": ["codex", "gemma", "pi"],
         "gemma_provider": "ollama_ssh",
         "gemma_model": "gemma4:26b",
         "gemma_base_url": "http://127.0.0.1:11434",
         "gemma_ssh_host": "server4-beast",
         "gemma_request_timeout_seconds": 180,
+        "pi_provider": "ollama",
+        "pi_model": "gemma4:26b",
+        "pi_ssh_host": "server4-beast",
+        "pi_remote_cwd": "/tmp",
+        "pi_tools_mode": "default",
+        "pi_tools_allowlist": "",
+        "pi_extra_args": "",
+        "pi_request_timeout_seconds": 180,
         "whatsapp_plugin_enabled": False,
         "whatsapp_bridge_api_base": "http://127.0.0.1:8787",
         "whatsapp_bridge_auth_token": "",
@@ -523,7 +531,7 @@ class BridgeCoreTests(unittest.TestCase):
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
         self.assertEqual(registry.list_channels(), ["signal", "telegram", "whatsapp"])
-        self.assertEqual(registry.list_engines(), ["codex", "gemma", "mavali_eth"])
+        self.assertEqual(registry.list_engines(), ["codex", "gemma", "mavali_eth", "pi"])
 
     def test_default_plugin_registry_builds_default_plugins(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
@@ -533,6 +541,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIsInstance(channel, bridge_channel_adapter.TelegramChannelAdapter)
         self.assertIsInstance(engine, bridge_engine_adapter.CodexEngineAdapter)
         self.assertIsInstance(registry.build_engine("gemma"), bridge_engine_adapter.GemmaEngineAdapter)
+        self.assertIsInstance(registry.build_engine("pi"), bridge_engine_adapter.PiEngineAdapter)
 
     def test_default_plugin_registry_whatsapp_disabled_fails_fast(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
@@ -587,9 +596,12 @@ class BridgeCoreTests(unittest.TestCase):
             config = bridge.load_config()
         self.assertEqual(config.channel_plugin, "telegram")
         self.assertEqual(config.engine_plugin, "codex")
-        self.assertEqual(config.selectable_engine_plugins, ["codex", "gemma"])
+        self.assertEqual(config.selectable_engine_plugins, ["codex", "gemma", "pi"])
         self.assertEqual(config.gemma_provider, "ollama_ssh")
         self.assertEqual(config.gemma_model, "gemma4:26b")
+        self.assertEqual(config.pi_provider, "ollama")
+        self.assertEqual(config.pi_model, "gemma4:26b")
+        self.assertEqual(config.pi_ssh_host, "server4-beast")
 
     def test_load_config_reads_plugin_selection_overrides(self):
         with mock.patch.dict(
@@ -599,24 +611,40 @@ class BridgeCoreTests(unittest.TestCase):
                 "TELEGRAM_ALLOWED_CHAT_IDS": "1,2",
                 "TELEGRAM_CHANNEL_PLUGIN": "  whatsapp ",
                 "TELEGRAM_ENGINE_PLUGIN": "  codex ",
-                "TELEGRAM_SELECTABLE_ENGINE_PLUGINS": "codex,gemma",
+                "TELEGRAM_SELECTABLE_ENGINE_PLUGINS": "codex,gemma,pi",
                 "GEMMA_PROVIDER": "ollama_http",
                 "GEMMA_MODEL": "gemma-test",
                 "GEMMA_BASE_URL": "http://beast:11434",
                 "GEMMA_SSH_HOST": "server4-test",
                 "GEMMA_REQUEST_TIMEOUT_SECONDS": "55",
+                "PI_PROVIDER": "ollama",
+                "PI_MODEL": "pi-model",
+                "PI_SSH_HOST": "pi-host",
+                "PI_REMOTE_CWD": "/srv/pi",
+                "PI_TOOLS_MODE": "allowlist",
+                "PI_TOOLS_ALLOWLIST": "read,bash",
+                "PI_EXTRA_ARGS": "--thinking low",
+                "PI_REQUEST_TIMEOUT_SECONDS": "66",
             },
             clear=True,
         ):
             config = bridge.load_config()
         self.assertEqual(config.channel_plugin, "whatsapp")
         self.assertEqual(config.engine_plugin, "codex")
-        self.assertEqual(config.selectable_engine_plugins, ["codex", "gemma"])
+        self.assertEqual(config.selectable_engine_plugins, ["codex", "gemma", "pi"])
         self.assertEqual(config.gemma_provider, "ollama_http")
         self.assertEqual(config.gemma_model, "gemma-test")
         self.assertEqual(config.gemma_base_url, "http://beast:11434")
         self.assertEqual(config.gemma_ssh_host, "server4-test")
         self.assertEqual(config.gemma_request_timeout_seconds, 55)
+        self.assertEqual(config.pi_provider, "ollama")
+        self.assertEqual(config.pi_model, "pi-model")
+        self.assertEqual(config.pi_ssh_host, "pi-host")
+        self.assertEqual(config.pi_remote_cwd, "/srv/pi")
+        self.assertEqual(config.pi_tools_mode, "allowlist")
+        self.assertEqual(config.pi_tools_allowlist, "read,bash")
+        self.assertEqual(config.pi_extra_args, "--thinking low")
+        self.assertEqual(config.pi_request_timeout_seconds, 66)
 
     def test_engine_status_includes_live_gemma_health(self):
         state = bridge.State(chat_engines={"tg:1": "gemma"})
@@ -674,6 +702,39 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Gemma response time: 50ms", text)
         self.assertIn("Gemma model available: no", text)
         self.assertIn("Gemma last check error: ssh failed more detail", text)
+
+    def test_engine_status_includes_live_pi_health(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(engine_plugin="codex", pi_ssh_host="server4-test")
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="gemma4:26b latest 1 GB\n",
+            stderr="0.70.2\n",
+        )
+
+        with (
+            mock.patch.object(
+                bridge_handlers.subprocess,
+                "run",
+                return_value=completed,
+            ) as run_mock,
+            mock.patch.object(
+                bridge_handlers.time,
+                "monotonic",
+                side_effect=[300.0, 300.042],
+            ),
+        ):
+            text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
+
+        self.assertIn("This chat engine: pi", text)
+        self.assertIn("Pi health: ok", text)
+        self.assertIn("Pi response time: 41ms", text)
+        self.assertIn("Pi version: 0.70.2", text)
+        self.assertIn("Pi model available: yes", text)
+        self.assertIn("Pi last check error: (none)", text)
+        run_mock.assert_called_once()
+        self.assertIn("server4-test", run_mock.call_args.args[0])
 
     def test_load_config_reads_whatsapp_plugin_settings(self):
         with mock.patch.dict(

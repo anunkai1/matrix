@@ -81,6 +81,14 @@ class Config:
     gemma_base_url: str
     gemma_ssh_host: str
     gemma_request_timeout_seconds: int
+    pi_provider: str
+    pi_model: str
+    pi_ssh_host: str
+    pi_remote_cwd: str
+    pi_tools_mode: str
+    pi_tools_allowlist: str
+    pi_extra_args: str
+    pi_request_timeout_seconds: int
     whatsapp_plugin_enabled: bool
     whatsapp_bridge_api_base: str
     whatsapp_bridge_auth_token: str
@@ -523,7 +531,7 @@ def load_config() -> Config:
         engine_plugin=parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
         selectable_engine_plugins=parse_plugin_list_env(
             "TELEGRAM_SELECTABLE_ENGINE_PLUGINS",
-            ["codex", "gemma"],
+            ["codex", "gemma", "pi"],
         ),
         gemma_provider=parse_plugin_name_env("GEMMA_PROVIDER", "ollama_ssh"),
         gemma_model=os.getenv("GEMMA_MODEL", "gemma4:26b").strip() or "gemma4:26b",
@@ -532,6 +540,18 @@ def load_config() -> Config:
         gemma_ssh_host=os.getenv("GEMMA_SSH_HOST", "server4-beast").strip() or "server4-beast",
         gemma_request_timeout_seconds=parse_int_env(
             "GEMMA_REQUEST_TIMEOUT_SECONDS",
+            180,
+            minimum=1,
+        ),
+        pi_provider=parse_plugin_name_env("PI_PROVIDER", "ollama"),
+        pi_model=os.getenv("PI_MODEL", "gemma4:26b").strip() or "gemma4:26b",
+        pi_ssh_host=os.getenv("PI_SSH_HOST", "server4-beast").strip() or "server4-beast",
+        pi_remote_cwd=os.getenv("PI_REMOTE_CWD", "/tmp").strip() or "/tmp",
+        pi_tools_mode=parse_plugin_name_env("PI_TOOLS_MODE", "default"),
+        pi_tools_allowlist=os.getenv("PI_TOOLS_ALLOWLIST", "").strip(),
+        pi_extra_args=os.getenv("PI_EXTRA_ARGS", "").strip(),
+        pi_request_timeout_seconds=parse_int_env(
+            "PI_REQUEST_TIMEOUT_SECONDS",
             180,
             minimum=1,
         ),

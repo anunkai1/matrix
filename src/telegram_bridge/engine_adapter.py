@@ -1,5 +1,6 @@
 import json
 import re
+import shlex
 import subprocess
 import threading
 import sys
@@ -199,6 +200,127 @@ class GemmaEngineAdapter:
             raise
         except (RuntimeError, OSError, urllib_error.URLError) as exc:
             return self._completed_process_with_output(f"Gemma request failed: {exc}")
+
+
+class PiEngineAdapter:
+    engine_name = "pi"
+
+    def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=["pi"],
+            returncode=0,
+            stdout=f"{OUTPUT_BEGIN_MARKER}\n{str(output or '').strip()}",
+            stderr="",
+        )
+
+    def _build_remote_command(self, config, prompt: str) -> str:
+        timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
+        remote_cwd = str(getattr(config, "pi_remote_cwd", "/tmp") or "/tmp").strip()
+        provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip()
+        if provider.strip().lower() in {"ollama_ssh", "ssh"}:
+            provider = "ollama"
+        model = str(getattr(config, "pi_model", "gemma4:26b") or "gemma4:26b").strip()
+        tools_mode = (
+            str(getattr(config, "pi_tools_mode", "default") or "default")
+            .strip()
+            .lower()
+        )
+        tools_allowlist = str(getattr(config, "pi_tools_allowlist", "") or "").strip()
+        extra_args = str(getattr(config, "pi_extra_args", "") or "").strip()
+
+        args = [
+            "timeout",
+            str(timeout),
+            "pi",
+            "--provider",
+            provider,
+            "--model",
+            model,
+            "--mode",
+            "text",
+            "--print",
+            "--no-session",
+            "--no-context-files",
+        ]
+        if tools_mode in {"none", "no_tools", "disabled", "off"}:
+            args.append("--no-tools")
+        elif tools_mode in {"no_builtin", "no_builtin_tools"}:
+            args.append("--no-builtin-tools")
+        elif tools_mode in {"allowlist", "tools"} and tools_allowlist:
+            args.extend(["--tools", tools_allowlist])
+        elif tools_mode not in {"", "default", "all"}:
+            raise RuntimeError(f"Unsupported Pi tools mode: {tools_mode}")
+        if extra_args:
+            args.extend(shlex.split(extra_args))
+        args.append(prompt)
+
+        quoted = " ".join(shlex.quote(part) for part in args)
+        if remote_cwd:
+            return f"cd {shlex.quote(remote_cwd)} && {quoted}"
+        return quoted
+
+    def _run_pi_ssh(
+        self,
+        config,
+        prompt: str,
+        cancel_event: Optional[threading.Event],
+    ) -> str:
+        timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
+        ssh_host = str(getattr(config, "pi_ssh_host", "server4-beast")).strip() or "server4-beast"
+        process = subprocess.Popen(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                ssh_host,
+                self._build_remote_command(config, prompt),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            stdout, stderr = process.communicate(timeout=timeout + 10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+            raise
+        if cancel_event is not None and cancel_event.is_set():
+            raise ExecutorCancelledError("Pi request canceled by user.")
+        if process.returncode != 0:
+            raise RuntimeError((stderr or stdout or "Pi SSH transport failed.").strip())
+        return stdout.strip()
+
+    def run(
+        self,
+        config,
+        prompt: str,
+        thread_id: Optional[str],
+        session_key: Optional[str] = None,
+        channel_name: Optional[str] = None,
+        actor_chat_id: Optional[int] = None,
+        actor_user_id: Optional[int] = None,
+        image_path: Optional[str] = None,
+        image_paths: Optional[list[str]] = None,
+        progress_callback: Optional[ProgressCallback] = None,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> subprocess.CompletedProcess[str]:
+        del thread_id, session_key, channel_name, actor_chat_id, actor_user_id, progress_callback
+        if image_path or image_paths:
+            return self._completed_process_with_output(
+                "Pi is configured for text-only bridge requests right now. Use `/engine codex` for image or file-heavy work."
+            )
+        try:
+            if cancel_event is not None and cancel_event.is_set():
+                raise ExecutorCancelledError("Pi request canceled by user.")
+            output = self._run_pi_ssh(config, prompt, cancel_event)
+            return self._completed_process_with_output(output)
+        except ExecutorCancelledError:
+            raise
+        except subprocess.TimeoutExpired:
+            raise
+        except (RuntimeError, OSError, ValueError) as exc:
+            return self._completed_process_with_output(f"Pi request failed: {exc}")
 
 
 class MavaliEthEngineAdapter:

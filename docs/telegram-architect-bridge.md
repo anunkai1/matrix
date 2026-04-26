@@ -196,7 +196,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/help` command list
 - `/h` short help alias
 - `/status` bridge health and uptime
-- `/engine status|codex|gemma|reset` show or select this chat/topic's engine
+- `/engine status|codex|gemma|pi|reset` show or select this chat/topic's engine
 - `/cancel` cancel the current in-flight request for this chat
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/reset` clear this chat's saved context/thread
@@ -220,13 +220,25 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 The bridge can use Server4 Beast's Ollama-hosted `gemma4:26b` model as a selectable engine while keeping Server3 as the bot host.
 
 - Default engine remains `codex`.
-- Selectable engines default to `codex,gemma`.
+- Selectable engines default to `codex,gemma,pi`.
 - Gemma defaults to the SSH-backed Ollama transport (`GEMMA_PROVIDER=ollama_ssh`) via SSH alias `server4-beast`, so Ollama does not need to listen on the LAN.
 - Per chat/topic, use `/engine gemma`, `/engine codex`, `/engine reset`, or `/engine status`.
 - When Gemma is the effective engine, `/engine status` performs a bounded live Ollama health check and reports health, response time, model availability, and current check error.
 - Gemma is currently text-only and does not yet have the Codex tool/action harness.
 
 See [`docs/runbooks/server4-gemma-engine.md`](runbooks/server4-gemma-engine.md).
+
+## Server4 Pi Engine
+
+The bridge can also select Server4 Beast's installed `pi` coding agent as an engine through the same `/engine` override path.
+
+- Server3 remains the Telegram bot host and calls Pi over SSH alias `server4-beast`.
+- Defaults: `PI_PROVIDER=ollama`, `PI_MODEL=gemma4:26b`, `PI_SSH_HOST=server4-beast`, `PI_REMOTE_CWD=/tmp`, `PI_TOOLS_MODE=default`.
+- Per chat/topic, use `/engine pi`, `/engine codex`, `/engine reset`, or `/engine status`.
+- When Pi is the effective engine, `/engine status` checks that Pi is reachable on Server4 and reports version, model availability, response time, and current check error.
+- Pi bridge requests are text-only for now; use Codex for image/file-heavy turns.
+
+See [`docs/runbooks/server4-pi-engine.md`](runbooks/server4-pi-engine.md).
 - `/forget-all` disable all facts for this key
 - `/reset-session` clear session continuity only
 - `/hard-reset-memory` clear session + facts + summaries + stored messages for this key

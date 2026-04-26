@@ -2020,7 +2020,7 @@ def build_help_text(config) -> str:
         "/start - verify bridge connectivity\n"
         "/help or /h - show this message\n"
         "/status - show bridge status and context\n"
-        "/engine status|codex|gemma|reset - show or select this chat's engine\n"
+        "/engine status|codex|gemma|pi|reset - show or select this chat's engine\n"
         "/reset - clear saved context for this chat\n"
         "/cancel - cancel current in-flight request for this chat\n"
         "/restart - queue a safe bridge restart\n"
@@ -3676,7 +3676,7 @@ def configured_default_engine(config) -> str:
 def selectable_engine_plugins(config) -> List[str]:
     configured = [
         str(value).strip().lower()
-        for value in getattr(config, "selectable_engine_plugins", ["codex", "gemma"])
+        for value in getattr(config, "selectable_engine_plugins", ["codex", "gemma", "pi"])
         if str(value).strip()
     ]
     default_engine = configured_default_engine(config)
@@ -3786,6 +3786,66 @@ def check_gemma_health(config) -> Dict[str, object]:
         }
 
 
+def check_pi_health(config) -> Dict[str, object]:
+    host = str(getattr(config, "pi_ssh_host", "server4-beast") or "").strip()
+    provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip().lower()
+    model = str(getattr(config, "pi_model", "gemma4:26b") or "gemma4:26b").strip()
+    if not host:
+        return {
+            "ok": False,
+            "response_ms": 0,
+            "version": "",
+            "model_available": False,
+            "error": "PI_SSH_HOST is empty",
+        }
+    started = time.monotonic()
+    try:
+        remote_parts = ["command -v pi >/dev/null", "pi --version"]
+        if provider in {"ollama", "ollama_ssh", "ssh"}:
+            remote_parts.append("ollama list")
+        completed = subprocess.run(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                f"ConnectTimeout={GEMMA_HEALTH_TIMEOUT_SECONDS}",
+                host,
+                " && ".join(remote_parts),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=GEMMA_HEALTH_TIMEOUT_SECONDS + 4,
+        )
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        if completed.returncode != 0:
+            raise RuntimeError(
+                completed.stderr.strip()
+                or completed.stdout.strip()
+                or f"ssh exited {completed.returncode}"
+            )
+        stdout = completed.stdout.strip()
+        stderr = completed.stderr.strip()
+        version_source = stderr or stdout
+        version = version_source.splitlines()[0].strip() if version_source else ""
+        return {
+            "ok": True,
+            "response_ms": elapsed_ms,
+            "version": version,
+            "model_available": (model in stdout) if model else False,
+            "error": "",
+        }
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        return {
+            "ok": False,
+            "response_ms": elapsed_ms,
+            "version": "",
+            "model_available": False,
+            "error": _brief_health_error(exc),
+        }
+
+
 def build_engine_status_text(state: State, config, scope_key: str) -> str:
     selected = StateRepository(state).get_chat_engine(scope_key)
     effective = selected or configured_default_engine(config)
@@ -3803,6 +3863,17 @@ def build_engine_status_text(state: State, config, scope_key: str) -> str:
         lines.append(f"Gemma response time: {health['response_ms']}ms")
         lines.append(f"Gemma model available: {'yes' if health['model_available'] else 'no'}")
         lines.append(f"Gemma last check error: {health['error'] or '(none)'}")
+    if effective == "pi":
+        lines.append(f"Pi provider: {getattr(config, 'pi_provider', 'ollama')}")
+        lines.append(f"Pi model: {getattr(config, 'pi_model', 'gemma4:26b')}")
+        lines.append(f"Pi host: {getattr(config, 'pi_ssh_host', 'server4-beast')}")
+        lines.append(f"Pi tools mode: {getattr(config, 'pi_tools_mode', 'default')}")
+        health = check_pi_health(config)
+        lines.append(f"Pi health: {'ok' if health['ok'] else 'error'}")
+        lines.append(f"Pi response time: {health['response_ms']}ms")
+        lines.append(f"Pi version: {health['version'] or '(unknown)'}")
+        lines.append(f"Pi model available: {'yes' if health['model_available'] else 'no'}")
+        lines.append(f"Pi last check error: {health['error'] or '(none)'}")
     return "\n".join(lines)
 
 
