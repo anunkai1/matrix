@@ -780,3 +780,12 @@ Summary:
 
 Migrated out of summary during this trim:
 - 2026-04-24: hardened Telegram shared-memory session startup against stale thread reuse. `begin_memory_turn` now reconciles the bridge's canonical per-chat thread ID with the memory engine's stored session thread before `begin_turn`, clearing stale memory-only thread IDs when bridge state is empty and syncing memory state back to the bridge thread when present. Added regression coverage in `tests/telegram_bridge/test_bridge_core.py` for both stale-clear and bridge-sync cases.
+
+## 2026-04-26 (Summary Roll-Forward Trim for Tank Default Gemma)
+
+Summary:
+- Added rolling summary coverage for switching Tank's default engine to Gemma.
+- Kept the rolling summary bounded by migrating the oldest item into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-24: refreshed the tracked Server3 control-plane snapshot payloads in `docs/server3-control-plane-data.json` and `docs/server3-control-plane-data.js` from live host state. The committed snapshot reflects `2026-04-24 07:00 AEST` runtime posture with 6 healthy runtimes, Oracle degraded, no approval items, and the updated operator playback/history surface.
