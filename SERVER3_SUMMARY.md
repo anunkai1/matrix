@@ -24,6 +24,7 @@ Last updated: 2026-04-26 (AEST, +10:00)
 - Canonical runtime inventory now lives in `infra/server3-runtime-manifest.json`, with shared live inspection via `python3 ops/server3_runtime_status.py`
 - Shared runtime core now lives in `/home/architect/matrix/src/telegram_bridge`; Tank/Govorun/Oracle run as per-runtime overlays, while Trinity now runs from its own dedicated code tree under `/home/trinity/trinitybot`.
 - AgentSmith now runs as an isolated shared-core Telegram sibling runtime under `/home/agentsmith/agentsmithbot` with its own service/env/state.
+- AgentSmith Pi uses local Server3 Pi in `/home/agentsmith/agentsmithbot`, Server4 Ollama through SSH tunnel port `11436`, and its own Server4 SSH key/config plus Pi model config under `/home/agentsmith/.pi/agent/models.json`.
 - Diary now runs as an isolated shared-core Telegram sibling runtime under `/home/diary/diarybot` with its own service/env/state.
 - Runtime personas now live canonically in `infra/runtime_personas`, companion runtime docs now live canonically in `docs/runtime_docs`, and the live runtime roots consume those tracked files through repo-backed symlinks verified by `bash ops/runtime_personas/check_runtime_repo_links.sh`.
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
