@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Set, Tuple
 try:
     from .runtime_paths import (
         build_shared_core_root,
+        build_runtime_root,
         dedupe_paths,
         runtime_path,
         shared_core_path,
@@ -18,6 +19,7 @@ try:
 except ImportError:
     from runtime_paths import (
         build_shared_core_root,
+        build_runtime_root,
         dedupe_paths,
         runtime_path,
         shared_core_path,
@@ -83,11 +85,18 @@ class Config:
     gemma_request_timeout_seconds: int
     pi_provider: str
     pi_model: str
+    pi_runner: str
+    pi_bin: str
     pi_ssh_host: str
+    pi_local_cwd: str
     pi_remote_cwd: str
     pi_tools_mode: str
     pi_tools_allowlist: str
     pi_extra_args: str
+    pi_ollama_tunnel_enabled: bool
+    pi_ollama_tunnel_local_port: int
+    pi_ollama_tunnel_remote_host: str
+    pi_ollama_tunnel_remote_port: int
     pi_request_timeout_seconds: int
     whatsapp_plugin_enabled: bool
     whatsapp_bridge_api_base: str
@@ -545,11 +554,31 @@ def load_config() -> Config:
         ),
         pi_provider=parse_plugin_name_env("PI_PROVIDER", "ollama"),
         pi_model=os.getenv("PI_MODEL", "gemma4:26b").strip() or "gemma4:26b",
+        pi_runner=parse_plugin_name_env("PI_RUNNER", "ssh"),
+        pi_bin=os.getenv("PI_BIN", "pi").strip() or "pi",
         pi_ssh_host=os.getenv("PI_SSH_HOST", "server4-beast").strip() or "server4-beast",
+        pi_local_cwd=os.getenv("PI_LOCAL_CWD", build_runtime_root()).strip()
+        or build_runtime_root(),
         pi_remote_cwd=os.getenv("PI_REMOTE_CWD", "/tmp").strip() or "/tmp",
         pi_tools_mode=parse_plugin_name_env("PI_TOOLS_MODE", "default"),
         pi_tools_allowlist=os.getenv("PI_TOOLS_ALLOWLIST", "").strip(),
         pi_extra_args=os.getenv("PI_EXTRA_ARGS", "").strip(),
+        pi_ollama_tunnel_enabled=parse_bool_env("PI_OLLAMA_TUNNEL_ENABLED", True),
+        pi_ollama_tunnel_local_port=parse_int_env(
+            "PI_OLLAMA_TUNNEL_LOCAL_PORT",
+            11435,
+            minimum=1,
+        ),
+        pi_ollama_tunnel_remote_host=os.getenv(
+            "PI_OLLAMA_TUNNEL_REMOTE_HOST",
+            "127.0.0.1",
+        ).strip()
+        or "127.0.0.1",
+        pi_ollama_tunnel_remote_port=parse_int_env(
+            "PI_OLLAMA_TUNNEL_REMOTE_PORT",
+            11434,
+            minimum=1,
+        ),
         pi_request_timeout_seconds=parse_int_env(
             "PI_REQUEST_TIMEOUT_SECONDS",
             180,

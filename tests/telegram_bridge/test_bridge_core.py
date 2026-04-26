@@ -229,11 +229,18 @@ def make_config(**overrides):
         "gemma_request_timeout_seconds": 180,
         "pi_provider": "ollama",
         "pi_model": "gemma4:26b",
+        "pi_runner": "ssh",
+        "pi_bin": "pi",
         "pi_ssh_host": "server4-beast",
+        "pi_local_cwd": "/tmp",
         "pi_remote_cwd": "/tmp",
         "pi_tools_mode": "default",
         "pi_tools_allowlist": "",
         "pi_extra_args": "",
+        "pi_ollama_tunnel_enabled": True,
+        "pi_ollama_tunnel_local_port": 11435,
+        "pi_ollama_tunnel_remote_host": "127.0.0.1",
+        "pi_ollama_tunnel_remote_port": 11434,
         "pi_request_timeout_seconds": 180,
         "whatsapp_plugin_enabled": False,
         "whatsapp_bridge_api_base": "http://127.0.0.1:8787",
@@ -601,6 +608,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.gemma_model, "gemma4:26b")
         self.assertEqual(config.pi_provider, "ollama")
         self.assertEqual(config.pi_model, "gemma4:26b")
+        self.assertEqual(config.pi_runner, "ssh")
         self.assertEqual(config.pi_ssh_host, "server4-beast")
 
     def test_load_config_reads_plugin_selection_overrides(self):
@@ -619,11 +627,18 @@ class BridgeCoreTests(unittest.TestCase):
                 "GEMMA_REQUEST_TIMEOUT_SECONDS": "55",
                 "PI_PROVIDER": "ollama",
                 "PI_MODEL": "pi-model",
+                "PI_RUNNER": "local",
+                "PI_BIN": "/usr/local/bin/pi",
                 "PI_SSH_HOST": "pi-host",
+                "PI_LOCAL_CWD": "/srv/local-pi",
                 "PI_REMOTE_CWD": "/srv/pi",
                 "PI_TOOLS_MODE": "allowlist",
                 "PI_TOOLS_ALLOWLIST": "read,bash",
                 "PI_EXTRA_ARGS": "--thinking low",
+                "PI_OLLAMA_TUNNEL_ENABLED": "true",
+                "PI_OLLAMA_TUNNEL_LOCAL_PORT": "19091",
+                "PI_OLLAMA_TUNNEL_REMOTE_HOST": "127.0.0.2",
+                "PI_OLLAMA_TUNNEL_REMOTE_PORT": "11435",
                 "PI_REQUEST_TIMEOUT_SECONDS": "66",
             },
             clear=True,
@@ -639,11 +654,18 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.gemma_request_timeout_seconds, 55)
         self.assertEqual(config.pi_provider, "ollama")
         self.assertEqual(config.pi_model, "pi-model")
+        self.assertEqual(config.pi_runner, "local")
+        self.assertEqual(config.pi_bin, "/usr/local/bin/pi")
         self.assertEqual(config.pi_ssh_host, "pi-host")
+        self.assertEqual(config.pi_local_cwd, "/srv/local-pi")
         self.assertEqual(config.pi_remote_cwd, "/srv/pi")
         self.assertEqual(config.pi_tools_mode, "allowlist")
         self.assertEqual(config.pi_tools_allowlist, "read,bash")
         self.assertEqual(config.pi_extra_args, "--thinking low")
+        self.assertTrue(config.pi_ollama_tunnel_enabled)
+        self.assertEqual(config.pi_ollama_tunnel_local_port, 19091)
+        self.assertEqual(config.pi_ollama_tunnel_remote_host, "127.0.0.2")
+        self.assertEqual(config.pi_ollama_tunnel_remote_port, 11435)
         self.assertEqual(config.pi_request_timeout_seconds, 66)
 
     def test_engine_status_includes_live_gemma_health(self):

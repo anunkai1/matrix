@@ -3866,6 +3866,12 @@ def build_engine_status_text(state: State, config, scope_key: str) -> str:
     if effective == "pi":
         lines.append(f"Pi provider: {getattr(config, 'pi_provider', 'ollama')}")
         lines.append(f"Pi model: {getattr(config, 'pi_model', 'gemma4:26b')}")
+        lines.append(f"Pi runner: {getattr(config, 'pi_runner', 'ssh')}")
+        if str(getattr(config, "pi_runner", "ssh") or "ssh").strip().lower() in {"local", "server3"}:
+            lines.append(f"Pi local cwd: {getattr(config, 'pi_local_cwd', '')}")
+            lines.append(
+                f"Pi Ollama tunnel: 127.0.0.1:{getattr(config, 'pi_ollama_tunnel_local_port', 11435)}"
+            )
         lines.append(f"Pi host: {getattr(config, 'pi_ssh_host', 'server4-beast')}")
         lines.append(f"Pi tools mode: {getattr(config, 'pi_tools_mode', 'default')}")
         health = check_pi_health(config)

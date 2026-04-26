@@ -228,14 +228,15 @@ The bridge can use Server4 Beast's Ollama-hosted `gemma4:26b` model as a selecta
 
 See [`docs/runbooks/server4-gemma-engine.md`](runbooks/server4-gemma-engine.md).
 
-## Server4 Pi Engine
+## Pi Engine
 
-The bridge can also select Server4 Beast's installed `pi` coding agent as an engine through the same `/engine` override path.
+The bridge can also select the `pi` coding agent as an engine through the same `/engine` override path.
 
-- Server3 remains the Telegram bot host and calls Pi over SSH alias `server4-beast`.
-- Defaults: `PI_PROVIDER=ollama`, `PI_MODEL=gemma4:26b`, `PI_SSH_HOST=server4-beast`, `PI_REMOTE_CWD=/tmp`, `PI_TOOLS_MODE=default`.
+- Correct engine-swap mode runs Pi locally on Server3 inside the chatbot runtime root, while Server4 Beast supplies the Ollama model through an SSH tunnel.
+- Defaults: `PI_PROVIDER=ollama`, `PI_MODEL=gemma4:26b`, `PI_RUNNER=ssh`, `PI_SSH_HOST=server4-beast`, `PI_TOOLS_MODE=default`.
+- For true runtime-root preservation, set `PI_RUNNER=local` and `PI_LOCAL_CWD` to the bot runtime root, for example `/home/tank/tankbot`.
 - Per chat/topic, use `/engine pi`, `/engine codex`, `/engine reset`, or `/engine status`.
-- When Pi is the effective engine, `/engine status` checks that Pi is reachable on Server4 and reports version, model availability, response time, and current check error.
+- When Pi is the effective engine, `/engine status` reports Pi runner/config details and checks model availability.
 - Pi bridge requests are text-only for now; use Codex for image/file-heavy turns.
 
 See [`docs/runbooks/server4-pi-engine.md`](runbooks/server4-pi-engine.md).

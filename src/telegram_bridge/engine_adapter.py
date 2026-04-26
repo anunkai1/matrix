@@ -1,9 +1,12 @@
 import json
+import os
 import re
 import shlex
+import socket
 import subprocess
 import threading
 import sys
+import time
 from pathlib import Path
 from typing import Callable, Optional, Protocol
 from urllib import error as urllib_error
@@ -213,9 +216,13 @@ class PiEngineAdapter:
             stderr="",
         )
 
-    def _build_remote_command(self, config, prompt: str) -> str:
-        timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
-        remote_cwd = str(getattr(config, "pi_remote_cwd", "/tmp") or "/tmp").strip()
+    def _build_pi_args(
+        self,
+        config,
+        prompt: str,
+        *,
+        include_no_context_files: bool,
+    ) -> list[str]:
         provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip()
         if provider.strip().lower() in {"ollama_ssh", "ssh"}:
             provider = "ollama"
@@ -229,9 +236,7 @@ class PiEngineAdapter:
         extra_args = str(getattr(config, "pi_extra_args", "") or "").strip()
 
         args = [
-            "timeout",
-            str(timeout),
-            "pi",
+            str(getattr(config, "pi_bin", "pi") or "pi").strip(),
             "--provider",
             provider,
             "--model",
@@ -240,8 +245,9 @@ class PiEngineAdapter:
             "text",
             "--print",
             "--no-session",
-            "--no-context-files",
         ]
+        if include_no_context_files:
+            args.append("--no-context-files")
         if tools_mode in {"none", "no_tools", "disabled", "off"}:
             args.append("--no-tools")
         elif tools_mode in {"no_builtin", "no_builtin_tools"}:
@@ -253,6 +259,16 @@ class PiEngineAdapter:
         if extra_args:
             args.extend(shlex.split(extra_args))
         args.append(prompt)
+        return args
+
+    def _build_remote_command(self, config, prompt: str) -> str:
+        timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
+        remote_cwd = str(getattr(config, "pi_remote_cwd", "/tmp") or "/tmp").strip()
+        args = ["timeout", str(timeout)] + self._build_pi_args(
+            config,
+            prompt,
+            include_no_context_files=True,
+        )
 
         quoted = " ".join(shlex.quote(part) for part in args)
         if remote_cwd:
@@ -291,6 +307,86 @@ class PiEngineAdapter:
             raise RuntimeError((stderr or stdout or "Pi SSH transport failed.").strip())
         return stdout.strip()
 
+    def _local_ollama_tunnel_healthy(self, port: int) -> bool:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1.0):
+                return True
+        except OSError:
+            return False
+
+    def _ensure_local_ollama_tunnel(self, config) -> None:
+        enabled = bool(getattr(config, "pi_ollama_tunnel_enabled", True))
+        if not enabled:
+            return
+        port = int(getattr(config, "pi_ollama_tunnel_local_port", 11435))
+        if self._local_ollama_tunnel_healthy(port):
+            return
+        ssh_host = str(getattr(config, "pi_ssh_host", "server4-beast")).strip() or "server4-beast"
+        remote_host = str(getattr(config, "pi_ollama_tunnel_remote_host", "127.0.0.1") or "127.0.0.1").strip()
+        remote_port = int(getattr(config, "pi_ollama_tunnel_remote_port", 11434))
+        tunnel_spec = f"127.0.0.1:{port}:{remote_host}:{remote_port}"
+        completed = subprocess.run(
+            [
+                "ssh",
+                "-fN",
+                "-o",
+                "ExitOnForwardFailure=yes",
+                "-o",
+                "BatchMode=yes",
+                "-L",
+                tunnel_spec,
+                ssh_host,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if completed.returncode != 0 and not self._local_ollama_tunnel_healthy(port):
+            raise RuntimeError(
+                completed.stderr.strip()
+                or completed.stdout.strip()
+                or f"failed to start Pi Ollama tunnel on port {port}"
+            )
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if self._local_ollama_tunnel_healthy(port):
+                return
+            time.sleep(0.1)
+        raise RuntimeError(f"Pi Ollama tunnel did not become ready on port {port}")
+
+    def _run_pi_local(
+        self,
+        config,
+        prompt: str,
+        cancel_event: Optional[threading.Event],
+    ) -> str:
+        timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
+        self._ensure_local_ollama_tunnel(config)
+        cwd = str(getattr(config, "pi_local_cwd", "") or "").strip() or None
+        cmd = self._build_pi_args(config, prompt, include_no_context_files=False)
+        env = os.environ.copy()
+        tunnel_port = int(getattr(config, "pi_ollama_tunnel_local_port", 11435))
+        env.setdefault("OLLAMA_HOST", f"http://127.0.0.1:{tunnel_port}")
+        process = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+        try:
+            stdout, stderr = process.communicate(timeout=timeout + 10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+            raise
+        if cancel_event is not None and cancel_event.is_set():
+            raise ExecutorCancelledError("Pi request canceled by user.")
+        if process.returncode != 0:
+            raise RuntimeError((stderr or stdout or "Pi local runner failed.").strip())
+        return stdout.strip()
+
     def run(
         self,
         config,
@@ -313,7 +409,13 @@ class PiEngineAdapter:
         try:
             if cancel_event is not None and cancel_event.is_set():
                 raise ExecutorCancelledError("Pi request canceled by user.")
-            output = self._run_pi_ssh(config, prompt, cancel_event)
+            runner = str(getattr(config, "pi_runner", "ssh") or "ssh").strip().lower()
+            if runner in {"local", "server3"}:
+                output = self._run_pi_local(config, prompt, cancel_event)
+            elif runner in {"ssh", "server4"}:
+                output = self._run_pi_ssh(config, prompt, cancel_event)
+            else:
+                raise RuntimeError(f"Unsupported Pi runner: {runner}")
             return self._completed_process_with_output(output)
         except ExecutorCancelledError:
             raise

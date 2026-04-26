@@ -28,11 +28,18 @@ class PiPluginTests(unittest.TestCase):
         config = SimpleNamespace(
             pi_provider="ollama",
             pi_model="gemma4:26b",
+            pi_runner="ssh",
+            pi_bin="pi",
             pi_ssh_host="server4-test",
+            pi_local_cwd="/tmp/local",
             pi_remote_cwd="/tmp",
             pi_tools_mode="none",
             pi_tools_allowlist="",
             pi_extra_args="--thinking low",
+            pi_ollama_tunnel_enabled=True,
+            pi_ollama_tunnel_local_port=11435,
+            pi_ollama_tunnel_remote_host="127.0.0.1",
+            pi_ollama_tunnel_remote_port=11434,
             pi_request_timeout_seconds=30,
         )
         fake_process = mock.MagicMock()
@@ -58,6 +65,45 @@ class PiPluginTests(unittest.TestCase):
         self.assertIn("--model gemma4:26b", cmd[-1])
         self.assertIn("--no-tools", cmd[-1])
         self.assertIn("--thinking low", cmd[-1])
+
+    def test_pi_engine_can_run_locally_in_runtime_cwd(self):
+        engine = bridge_engine_adapter.PiEngineAdapter()
+        config = SimpleNamespace(
+            pi_provider="ollama",
+            pi_model="gemma4:26b",
+            pi_runner="local",
+            pi_bin="pi",
+            pi_ssh_host="server4-test",
+            pi_local_cwd="/runtime/root",
+            pi_remote_cwd="/tmp",
+            pi_tools_mode="none",
+            pi_tools_allowlist="",
+            pi_extra_args="",
+            pi_ollama_tunnel_enabled=False,
+            pi_ollama_tunnel_local_port=19091,
+            pi_ollama_tunnel_remote_host="127.0.0.1",
+            pi_ollama_tunnel_remote_port=11434,
+            pi_request_timeout_seconds=30,
+        )
+        fake_process = mock.MagicMock()
+        fake_process.communicate.return_value = ("hello from local pi\n", "")
+        fake_process.returncode = 0
+        fake_process.args = []
+        fake_process.wait.return_value = 0
+
+        with mock.patch.object(
+            bridge_engine_adapter.subprocess,
+            "Popen",
+            return_value=fake_process,
+        ) as popen_mock:
+            result = engine.run(config=config, prompt="hello", thread_id=None)
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("hello from local pi", result.stdout)
+        popen_mock.assert_called_once()
+        self.assertEqual(popen_mock.call_args.kwargs["cwd"], "/runtime/root")
+        self.assertEqual(popen_mock.call_args.args[0][0], "pi")
+        self.assertNotIn("--no-context-files", popen_mock.call_args.args[0])
 
 
 if __name__ == "__main__":
