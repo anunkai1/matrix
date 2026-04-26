@@ -57,14 +57,9 @@ GEMMA_PROVIDER=ollama_ssh
 GEMMA_MODEL=gemma4:26b
 GEMMA_SSH_HOST=server4-beast
 GEMMA_REQUEST_TIMEOUT_SECONDS=180
-GEMMA_READONLY_TOOLS_ENABLED=true
-GEMMA_READONLY_ROOTS=
-GEMMA_READONLY_TOOL_TIMEOUT_SECONDS=20
 ```
 
 Use `GEMMA_PROVIDER=ollama_http` only after deliberately exposing Ollama over a controlled LAN bind/firewall rule.
-
-`GEMMA_READONLY_ROOTS` is optional. When unset, the read-only harness allows the runtime root and shared core root. File tools also block sensitive-looking path names such as token, secret, credential, password, auth, key, and session.
 
 ## Telegram Commands
 
@@ -90,10 +85,4 @@ When the effective engine is `gemma`, `/engine status` also performs a short liv
 
 - Gemma engine supports text requests through Ollama.
 - Chat memory is still owned by the bridge memory layer.
-- Gemma has a Server3-side read-only agent harness. The model can request:
-  - `list_files(path, max_depth)`
-  - `read_file(path, max_bytes)`
-  - `service_status(unit)`
-  - `inspect_logs(unit, lines)`
-  - `run_readonly_command(command)` for a small exact allowlist such as `date`, `uptime`, `df -h`, `free -h`, selected `systemctl` list commands, `git status --short`, and `git log -1 --oneline`
-- The harness does not allow writes, deletes, restarts, installs, network changes, shell pipelines, or arbitrary commands. Use Codex for repo edits, image handling, and high-risk actions.
+- Gemma does not yet have a tool/action harness. Use Codex for server operations, repo edits, image handling, and high-risk actions until the harness is added.

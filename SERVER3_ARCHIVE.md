@@ -2,14 +2,6 @@
 
 This file stores detailed operational history for Server3 tasks.
 
-## 2026-04-26 (Summary Roll-Forward Trim for Gemma Read-Only Harness)
-
-Summary:
-- Added a rolling-summary entry for the new Server3-side Gemma read-only agent harness and re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
-
-Migrated out of summary during this trim:
-- 2026-04-25: added Server3 HDMI dance-pad gameplay support. The LTEK pad enumerated as `03eb:8041 Atmel Corp. L-TEK Dance Pad PRO` with `/dev/input/js0` and `/dev/input/event11`; ITGmania `1.2.1` was installed to `/opt/itgmania`; `ops/tv-desktop/server3-tv-itgmania.sh` starts the on-demand `tv` desktop and launches/focuses/fullscreens ITGmania as the `tv` user. The launcher sets the L-TEK keymap order left/right/up/down = `Joy1_B1/B2/B3/B4`, defaults HDMI to `1920x1080@119.88Hz`, and keeps ITGmania true-fullscreen, no-vsync, and `InputDebounceTime=0`. Song assets include `GG Basics` under `/opt/itgmania/Songs/GG Basics` and selected individual songs under `/opt/itgmania/Songs/V`; optional video assets were removed to keep ITGmania startup reliable.
-
 ## 2026-04-26 (Summary Roll-Forward Trim for Gemma Status Health)
 
 Summary:
