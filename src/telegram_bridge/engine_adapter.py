@@ -86,6 +86,10 @@ class GemmaEngineAdapter:
     engine_name = "gemma"
     _MAX_TOOL_ROUNDS = 3
     _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.IGNORECASE | re.DOTALL)
+    _FILE_PATH_RE = re.compile(
+        r"(?:^|[\s`'\"“”])([A-Za-z0-9_.\-/]+\.(?:md|txt|json|yaml|yml|py|sh|toml|service|timer))",
+        re.IGNORECASE,
+    )
 
     def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(
@@ -219,8 +223,24 @@ class GemmaEngineAdapter:
             return None
         return tool, args
 
+    def _current_user_request_text(self, prompt: str) -> str:
+        text = str(prompt or "")
+        markers = ["Current User Message:\n", "Current User Input:\n"]
+        positions = [(text.rfind(marker), marker) for marker in markers]
+        position, marker = max(positions, key=lambda item: item[0])
+        if position >= 0:
+            text = text[position + len(marker) :]
+        return text.strip()
+
     def _infer_empty_response_tool_request(self, prompt: str) -> Optional[tuple[str, Mapping[str, Any]]]:
-        normalized = str(prompt or "").lower()
+        current_request = self._current_user_request_text(prompt)
+        normalized = current_request.lower()
+        file_match = self._FILE_PATH_RE.search(current_request)
+        if file_match and any(
+            verb in normalized
+            for verb in ("inside", "post", "read", "show", "what's in", "whats in", "what is in")
+        ):
+            return "read_file", {"path": file_match.group(1), "max_bytes": 24000}
         if "list" in normalized and "file" in normalized:
             return "list_files", {"path": ".", "max_depth": 1}
         if "files" in normalized and "access" in normalized and "read" in normalized:
