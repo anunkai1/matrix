@@ -4,11 +4,12 @@ import subprocess
 import threading
 import sys
 from pathlib import Path
-from typing import Callable, Optional, Protocol
+from typing import Any, Callable, Mapping, Optional, Protocol
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 try:
+    from .gemma_readonly_tools import GemmaReadonlyToolHarness, parse_roots
     from .executor import (
         ExecutorCancelledError,
         ExecutorProgressEvent,
@@ -17,6 +18,7 @@ try:
         run_executor,
     )
 except ImportError:
+    from gemma_readonly_tools import GemmaReadonlyToolHarness, parse_roots
     from executor import (
         ExecutorCancelledError,
         ExecutorProgressEvent,
@@ -82,6 +84,8 @@ class CodexEngineAdapter:
 
 class GemmaEngineAdapter:
     engine_name = "gemma"
+    _MAX_TOOL_ROUNDS = 3
+    _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.IGNORECASE | re.DOTALL)
 
     def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(
@@ -91,20 +95,25 @@ class GemmaEngineAdapter:
             stderr="",
         )
 
-    def _payload(self, config, prompt: str) -> str:
+    def _payload(self, config, prompt: str, messages: Optional[list[dict[str, str]]] = None) -> str:
         payload = {
             "model": getattr(config, "gemma_model", "gemma4:26b"),
             "stream": False,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages or [{"role": "user", "content": prompt}],
         }
         return json.dumps(payload)
 
-    def _run_ollama_http(self, config, prompt: str) -> str:
+    def _run_ollama_http(
+        self,
+        config,
+        prompt: str,
+        messages: Optional[list[dict[str, str]]] = None,
+    ) -> str:
         base_url = str(getattr(config, "gemma_base_url", "http://127.0.0.1:11434")).rstrip("/")
         timeout = int(getattr(config, "gemma_request_timeout_seconds", 180))
         req = urllib_request.Request(
             f"{base_url}/api/chat",
-            data=self._payload(config, prompt).encode("utf-8"),
+            data=self._payload(config, prompt, messages).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -117,6 +126,7 @@ class GemmaEngineAdapter:
         config,
         prompt: str,
         cancel_event: Optional[threading.Event],
+        messages: Optional[list[dict[str, str]]] = None,
     ) -> str:
         timeout = int(getattr(config, "gemma_request_timeout_seconds", 180))
         ssh_host = str(getattr(config, "gemma_ssh_host", "server4-beast")).strip() or "server4-beast"
@@ -137,7 +147,7 @@ class GemmaEngineAdapter:
         )
         try:
             stdout, stderr = process.communicate(
-                input=self._payload(config, prompt),
+                input=self._payload(config, prompt, messages),
                 timeout=timeout + 10,
             )
         except subprocess.TimeoutExpired:
@@ -163,6 +173,94 @@ class GemmaEngineAdapter:
             raise RuntimeError("Gemma response did not contain text content.")
         return content.strip()
 
+    def _run_model(
+        self,
+        config,
+        provider: str,
+        prompt: str,
+        cancel_event: Optional[threading.Event],
+        messages: Optional[list[dict[str, str]]] = None,
+    ) -> str:
+        if provider in {"ollama_http", "http", "ollama"}:
+            return self._run_ollama_http(config, prompt, messages)
+        if provider in {"ollama_ssh", "ssh"}:
+            return self._run_ollama_ssh(config, prompt, cancel_event, messages)
+        raise RuntimeError(f"Unsupported Gemma provider: {provider}")
+
+    def _build_readonly_harness(self, config) -> GemmaReadonlyToolHarness:
+        configured_roots = getattr(config, "gemma_readonly_roots", None)
+        raw_roots = getattr(config, "gemma_readonly_roots_raw", "")
+        if configured_roots:
+            roots = configured_roots
+        else:
+            roots = parse_roots(str(raw_roots or ""))
+        return GemmaReadonlyToolHarness(
+            allowed_roots=roots,
+            timeout_seconds=int(getattr(config, "gemma_readonly_tool_timeout_seconds", 20)),
+        )
+
+    def _extract_tool_request(self, text: str) -> Optional[tuple[str, Mapping[str, Any]]]:
+        candidate = str(text or "").strip()
+        fenced_match = self._JSON_FENCE_RE.search(candidate)
+        if fenced_match:
+            candidate = fenced_match.group(1).strip()
+        try:
+            if candidate.startswith("{"):
+                payload, _ = json.JSONDecoder().raw_decode(candidate)
+            else:
+                return None
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        tool = payload.get("tool")
+        args = payload.get("args", {})
+        if not isinstance(tool, str) or not isinstance(args, dict):
+            return None
+        return tool, args
+
+    def _run_with_readonly_tools(
+        self,
+        config,
+        provider: str,
+        prompt: str,
+        cancel_event: Optional[threading.Event],
+    ) -> str:
+        harness = self._build_readonly_harness(config)
+        messages = [
+            {"role": "system", "content": harness.instructions()},
+            {"role": "user", "content": prompt},
+        ]
+        output = self._run_model(config, provider, prompt, cancel_event, messages)
+        for _ in range(self._MAX_TOOL_ROUNDS):
+            request = self._extract_tool_request(output)
+            if request is None:
+                return output
+            tool, args = request
+            result = harness.execute(tool, args)
+            messages.append({"role": "assistant", "content": output})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "READ-ONLY TOOL RESULT:\n"
+                    + json.dumps(
+                        {
+                            "tool": tool,
+                            "args": dict(args),
+                            "result": result.as_payload(),
+                        },
+                        ensure_ascii=True,
+                    )
+                    + "\nUse the tool result above and answer the original user request. "
+                    "If another read-only tool is essential, request it with the same JSON-only format.",
+                }
+            )
+            output = self._run_model(config, provider, prompt, cancel_event, messages)
+        return (
+            "Gemma read-only tool limit reached before a final answer. "
+            "Ask again with a narrower request or switch to `/engine codex` for deeper operations."
+        )
+
     def run(
         self,
         config,
@@ -186,12 +284,10 @@ class GemmaEngineAdapter:
         try:
             if cancel_event is not None and cancel_event.is_set():
                 raise ExecutorCancelledError("Gemma request canceled by user.")
-            if provider in {"ollama_http", "http", "ollama"}:
-                output = self._run_ollama_http(config, prompt)
-            elif provider in {"ollama_ssh", "ssh"}:
-                output = self._run_ollama_ssh(config, prompt, cancel_event)
+            if bool(getattr(config, "gemma_readonly_tools_enabled", True)):
+                output = self._run_with_readonly_tools(config, provider, prompt, cancel_event)
             else:
-                raise RuntimeError(f"Unsupported Gemma provider: {provider}")
+                output = self._run_model(config, provider, prompt, cancel_event)
             return self._completed_process_with_output(output)
         except ExecutorCancelledError:
             raise

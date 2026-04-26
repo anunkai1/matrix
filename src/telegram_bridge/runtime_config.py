@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
 try:
@@ -121,6 +121,9 @@ class Config:
         "Voice transcription was empty. Please send clearer audio."
     )
     empty_output_message: str = "(No output from assistant)"
+    gemma_readonly_tools_enabled: bool = True
+    gemma_readonly_roots: List[str] = field(default_factory=list)
+    gemma_readonly_tool_timeout_seconds: int = 20
 
 
 def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
@@ -533,6 +536,22 @@ def load_config() -> Config:
         gemma_request_timeout_seconds=parse_int_env(
             "GEMMA_REQUEST_TIMEOUT_SECONDS",
             180,
+            minimum=1,
+        ),
+        gemma_readonly_tools_enabled=parse_bool_env(
+            "GEMMA_READONLY_TOOLS_ENABLED",
+            True,
+        ),
+        gemma_readonly_roots=dedupe_paths(
+            [
+                item.strip()
+                for item in os.getenv("GEMMA_READONLY_ROOTS", "").split(",")
+                if item.strip()
+            ]
+        ),
+        gemma_readonly_tool_timeout_seconds=parse_int_env(
+            "GEMMA_READONLY_TOOL_TIMEOUT_SECONDS",
+            20,
             minimum=1,
         ),
         whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),

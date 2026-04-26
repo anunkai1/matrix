@@ -224,7 +224,7 @@ The bridge can use Server4 Beast's Ollama-hosted `gemma4:26b` model as a selecta
 - Gemma defaults to the SSH-backed Ollama transport (`GEMMA_PROVIDER=ollama_ssh`) via SSH alias `server4-beast`, so Ollama does not need to listen on the LAN.
 - Per chat/topic, use `/engine gemma`, `/engine codex`, `/engine reset`, or `/engine status`.
 - When Gemma is the effective engine, `/engine status` performs a bounded live Ollama health check and reports health, response time, model availability, and current check error.
-- Gemma is currently text-only and does not yet have the Codex tool/action harness.
+- Gemma now has a Server3-side read-only agent harness. It can request bounded tools for allowed file listing/reading, service status, log inspection, and a small allowlist of read-only commands. Writes, deletes, restarts, installs, network changes, and shell pipelines are not allowed in the Gemma harness.
 
 See [`docs/runbooks/server4-gemma-engine.md`](runbooks/server4-gemma-engine.md).
 - `/forget-all` disable all facts for this key
