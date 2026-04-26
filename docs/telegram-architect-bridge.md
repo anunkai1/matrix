@@ -235,6 +235,7 @@ The bridge can also select the `pi` coding agent as an engine through the same `
 - Correct engine-swap mode runs Pi locally on Server3 inside the chatbot runtime root, while Server4 Beast supplies the Ollama model through an SSH tunnel.
 - Defaults: `PI_PROVIDER=ollama`, `PI_MODEL=gemma4:26b`, `PI_RUNNER=ssh`, `PI_SSH_HOST=server4-beast`, `PI_TOOLS_MODE=default`.
 - For true runtime-root preservation, set `PI_RUNNER=local` and `PI_LOCAL_CWD` to the bot runtime root, for example `/home/tank/tankbot`.
+- By default Pi runs with `PI_SESSION_MODE=none`; optional `PI_SESSION_MODE=telegram_scope` maps native Pi sessions to Telegram scope keys instead of the shared working directory.
 - Per chat/topic, use `/engine pi`, `/engine codex`, `/engine reset`, or `/engine status`.
 - When Pi is the effective engine, `/engine status` reports Pi runner/config details and checks model availability.
 - Pi bridge requests are text-only for now; use Codex for image/file-heavy turns.

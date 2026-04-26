@@ -33,6 +33,8 @@ class PiPluginTests(unittest.TestCase):
             pi_ssh_host="server4-test",
             pi_local_cwd="/tmp/local",
             pi_remote_cwd="/tmp",
+            pi_session_mode="none",
+            pi_session_dir="",
             pi_tools_mode="none",
             pi_tools_allowlist="",
             pi_extra_args="--thinking low",
@@ -76,6 +78,8 @@ class PiPluginTests(unittest.TestCase):
             pi_ssh_host="server4-test",
             pi_local_cwd="/runtime/root",
             pi_remote_cwd="/tmp",
+            pi_session_mode="none",
+            pi_session_dir="",
             pi_tools_mode="none",
             pi_tools_allowlist="",
             pi_extra_args="",
@@ -104,6 +108,56 @@ class PiPluginTests(unittest.TestCase):
         self.assertEqual(popen_mock.call_args.kwargs["cwd"], "/runtime/root")
         self.assertEqual(popen_mock.call_args.args[0][0], "pi")
         self.assertNotIn("--no-context-files", popen_mock.call_args.args[0])
+        self.assertIn("--no-session", popen_mock.call_args.args[0])
+
+    def test_pi_engine_can_use_telegram_scope_session_path(self):
+        engine = bridge_engine_adapter.PiEngineAdapter()
+        config = SimpleNamespace(
+            pi_provider="ollama",
+            pi_model="gemma4:26b",
+            pi_runner="local",
+            pi_bin="pi",
+            pi_ssh_host="server4-test",
+            pi_local_cwd="/runtime/root",
+            pi_remote_cwd="/tmp",
+            pi_session_mode="telegram_scope",
+            pi_session_dir="/runtime/pi-sessions",
+            pi_tools_mode="none",
+            pi_tools_allowlist="",
+            pi_extra_args="",
+            pi_ollama_tunnel_enabled=False,
+            pi_ollama_tunnel_local_port=19091,
+            pi_ollama_tunnel_remote_host="127.0.0.1",
+            pi_ollama_tunnel_remote_port=11434,
+            pi_request_timeout_seconds=30,
+        )
+        fake_process = mock.MagicMock()
+        fake_process.communicate.return_value = ("hello from scoped pi\n", "")
+        fake_process.returncode = 0
+        fake_process.args = []
+        fake_process.wait.return_value = 0
+
+        with mock.patch.object(
+            bridge_engine_adapter.subprocess,
+            "Popen",
+            return_value=fake_process,
+        ) as popen_mock:
+            result = engine.run(
+                config=config,
+                prompt="hello",
+                thread_id=None,
+                session_key="tg:-1003706836145:topic:2843",
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("hello from scoped pi", result.stdout)
+        cmd = popen_mock.call_args.args[0]
+        self.assertNotIn("--no-session", cmd)
+        self.assertIn("--session-dir", cmd)
+        self.assertIn("/runtime/pi-sessions", cmd)
+        session_arg = cmd[cmd.index("--session") + 1]
+        self.assertTrue(session_arg.startswith("/runtime/pi-sessions/tg_-1003706836145_topic_2843-"))
+        self.assertTrue(session_arg.endswith(".jsonl"))
 
 
 if __name__ == "__main__":

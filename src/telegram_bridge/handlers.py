@@ -3873,6 +3873,7 @@ def build_engine_status_text(state: State, config, scope_key: str) -> str:
                 f"Pi Ollama tunnel: 127.0.0.1:{getattr(config, 'pi_ollama_tunnel_local_port', 11435)}"
             )
         lines.append(f"Pi host: {getattr(config, 'pi_ssh_host', 'server4-beast')}")
+        lines.append(f"Pi session mode: {getattr(config, 'pi_session_mode', 'none')}")
         lines.append(f"Pi tools mode: {getattr(config, 'pi_tools_mode', 'default')}")
         health = check_pi_health(config)
         lines.append(f"Pi health: {'ok' if health['ok'] else 'error'}")

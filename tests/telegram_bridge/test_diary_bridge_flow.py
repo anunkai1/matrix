@@ -126,6 +126,8 @@ def make_config(state_dir: str):
         pi_ssh_host="server4-beast",
         pi_local_cwd="/tmp",
         pi_remote_cwd="/tmp",
+        pi_session_mode="none",
+        pi_session_dir="",
         pi_tools_mode="default",
         pi_tools_allowlist="",
         pi_extra_args="",

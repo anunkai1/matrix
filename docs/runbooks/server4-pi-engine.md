@@ -70,6 +70,7 @@ PI_PROVIDER=ollama
 PI_MODEL=gemma4:26b
 PI_RUNNER=ssh
 PI_SSH_HOST=server4-beast
+PI_SESSION_MODE=none
 PI_TOOLS_MODE=default
 PI_REQUEST_TIMEOUT_SECONDS=180
 ```
@@ -79,6 +80,7 @@ True engine-swap mode for Tank:
 ```bash
 PI_RUNNER=local
 PI_LOCAL_CWD=/home/tank/tankbot
+PI_SESSION_MODE=none
 PI_OLLAMA_TUNNEL_LOCAL_PORT=11435
 PI_OLLAMA_TUNNEL_REMOTE_HOST=127.0.0.1
 PI_OLLAMA_TUNNEL_REMOTE_PORT=11434
@@ -90,6 +92,11 @@ PI_OLLAMA_TUNNEL_REMOTE_PORT=11434
 - `none` / `no_tools`: pass `--no-tools`.
 - `no_builtin`: pass `--no-builtin-tools`.
 - `allowlist`: pass `--tools "$PI_TOOLS_ALLOWLIST"`.
+
+`PI_SESSION_MODE` values:
+
+- `none`: pass `--no-session`; bridge memory owns chat continuity.
+- `telegram_scope`: use native Pi sessions keyed by Telegram scope under `PI_SESSION_DIR` or `~/.pi/agent/telegram-sessions`.
 
 ## Verify Local Tank Pi
 
@@ -148,5 +155,6 @@ Per chat/topic:
 - Pi supports text requests through local non-interactive Pi on Server3.
 - Server4 supplies only the model backend.
 - Chat memory is still owned by the bridge memory layer.
-- Pi runs with `--no-session`; Server3 bridge memory provides conversation context.
+- Pi runs with `--no-session` by default; Server3 bridge memory provides conversation context.
+- Optional native Pi sessions are available with `PI_SESSION_MODE=telegram_scope`; this maps each Telegram scope key to a stable JSONL file under `PI_SESSION_DIR` or `~/.pi/agent/telegram-sessions`.
 - Image and document-heavy turns should stay on Codex for now.

@@ -90,6 +90,8 @@ class Config:
     pi_ssh_host: str
     pi_local_cwd: str
     pi_remote_cwd: str
+    pi_session_mode: str
+    pi_session_dir: str
     pi_tools_mode: str
     pi_tools_allowlist: str
     pi_extra_args: str
@@ -560,6 +562,8 @@ def load_config() -> Config:
         pi_local_cwd=os.getenv("PI_LOCAL_CWD", build_runtime_root()).strip()
         or build_runtime_root(),
         pi_remote_cwd=os.getenv("PI_REMOTE_CWD", "/tmp").strip() or "/tmp",
+        pi_session_mode=parse_plugin_name_env("PI_SESSION_MODE", "none"),
+        pi_session_dir=os.getenv("PI_SESSION_DIR", "").strip(),
         pi_tools_mode=parse_plugin_name_env("PI_TOOLS_MODE", "default"),
         pi_tools_allowlist=os.getenv("PI_TOOLS_ALLOWLIST", "").strip(),
         pi_extra_args=os.getenv("PI_EXTRA_ARGS", "").strip(),

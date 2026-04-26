@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import re
 import shlex
@@ -222,6 +223,7 @@ class PiEngineAdapter:
         prompt: str,
         *,
         include_no_context_files: bool,
+        session_key: Optional[str] = None,
     ) -> list[str]:
         provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip()
         if provider.strip().lower() in {"ollama_ssh", "ssh"}:
@@ -244,8 +246,8 @@ class PiEngineAdapter:
             "--mode",
             "text",
             "--print",
-            "--no-session",
         ]
+        args.extend(self._build_session_args(config, session_key))
         if include_no_context_files:
             args.append("--no-context-files")
         if tools_mode in {"none", "no_tools", "disabled", "off"}:
@@ -261,6 +263,26 @@ class PiEngineAdapter:
         args.append(prompt)
         return args
 
+    def _safe_session_filename(self, session_key: str) -> str:
+        digest = hashlib.sha256(session_key.encode("utf-8")).hexdigest()[:12]
+        label = re.sub(r"[^A-Za-z0-9._-]+", "_", session_key).strip("._-")
+        if not label:
+            label = "telegram_scope"
+        return f"{label[:80]}-{digest}.jsonl"
+
+    def _build_session_args(self, config, session_key: Optional[str]) -> list[str]:
+        mode = str(getattr(config, "pi_session_mode", "none") or "none").strip().lower()
+        if mode in {"", "none", "off", "disabled", "no_session"}:
+            return ["--no-session"]
+        if mode not in {"telegram_scope", "scope", "session_key"}:
+            raise RuntimeError(f"Unsupported Pi session mode: {mode}")
+        if not session_key:
+            return ["--no-session"]
+        configured_dir = str(getattr(config, "pi_session_dir", "") or "").strip()
+        base_dir = Path(configured_dir).expanduser() if configured_dir else Path.home() / ".pi" / "agent" / "telegram-sessions"
+        session_path = base_dir / self._safe_session_filename(session_key)
+        return ["--session-dir", str(base_dir), "--session", str(session_path)]
+
     def _build_remote_command(self, config, prompt: str) -> str:
         timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
         remote_cwd = str(getattr(config, "pi_remote_cwd", "/tmp") or "/tmp").strip()
@@ -268,6 +290,7 @@ class PiEngineAdapter:
             config,
             prompt,
             include_no_context_files=True,
+            session_key=None,
         )
 
         quoted = " ".join(shlex.quote(part) for part in args)
@@ -358,12 +381,18 @@ class PiEngineAdapter:
         self,
         config,
         prompt: str,
+        session_key: Optional[str],
         cancel_event: Optional[threading.Event],
     ) -> str:
         timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
         self._ensure_local_ollama_tunnel(config)
         cwd = str(getattr(config, "pi_local_cwd", "") or "").strip() or None
-        cmd = self._build_pi_args(config, prompt, include_no_context_files=False)
+        cmd = self._build_pi_args(
+            config,
+            prompt,
+            include_no_context_files=False,
+            session_key=session_key,
+        )
         env = os.environ.copy()
         tunnel_port = int(getattr(config, "pi_ollama_tunnel_local_port", 11435))
         env.setdefault("OLLAMA_HOST", f"http://127.0.0.1:{tunnel_port}")
@@ -401,7 +430,7 @@ class PiEngineAdapter:
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
-        del thread_id, session_key, channel_name, actor_chat_id, actor_user_id, progress_callback
+        del thread_id, channel_name, actor_chat_id, actor_user_id, progress_callback
         if image_path or image_paths:
             return self._completed_process_with_output(
                 "Pi is configured for text-only bridge requests right now. Use `/engine codex` for image or file-heavy work."
@@ -411,7 +440,7 @@ class PiEngineAdapter:
                 raise ExecutorCancelledError("Pi request canceled by user.")
             runner = str(getattr(config, "pi_runner", "ssh") or "ssh").strip().lower()
             if runner in {"local", "server3"}:
-                output = self._run_pi_local(config, prompt, cancel_event)
+                output = self._run_pi_local(config, prompt, session_key, cancel_event)
             elif runner in {"ssh", "server4"}:
                 output = self._run_pi_ssh(config, prompt, cancel_event)
             else:

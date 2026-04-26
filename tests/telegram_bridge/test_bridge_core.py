@@ -234,6 +234,8 @@ def make_config(**overrides):
         "pi_ssh_host": "server4-beast",
         "pi_local_cwd": "/tmp",
         "pi_remote_cwd": "/tmp",
+        "pi_session_mode": "none",
+        "pi_session_dir": "",
         "pi_tools_mode": "default",
         "pi_tools_allowlist": "",
         "pi_extra_args": "",
@@ -610,6 +612,8 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.pi_model, "gemma4:26b")
         self.assertEqual(config.pi_runner, "ssh")
         self.assertEqual(config.pi_ssh_host, "server4-beast")
+        self.assertEqual(config.pi_session_mode, "none")
+        self.assertEqual(config.pi_session_dir, "")
 
     def test_load_config_reads_plugin_selection_overrides(self):
         with mock.patch.dict(
@@ -632,6 +636,8 @@ class BridgeCoreTests(unittest.TestCase):
                 "PI_SSH_HOST": "pi-host",
                 "PI_LOCAL_CWD": "/srv/local-pi",
                 "PI_REMOTE_CWD": "/srv/pi",
+                "PI_SESSION_MODE": "telegram_scope",
+                "PI_SESSION_DIR": "/srv/pi-sessions",
                 "PI_TOOLS_MODE": "allowlist",
                 "PI_TOOLS_ALLOWLIST": "read,bash",
                 "PI_EXTRA_ARGS": "--thinking low",
@@ -659,6 +665,8 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.pi_ssh_host, "pi-host")
         self.assertEqual(config.pi_local_cwd, "/srv/local-pi")
         self.assertEqual(config.pi_remote_cwd, "/srv/pi")
+        self.assertEqual(config.pi_session_mode, "telegram_scope")
+        self.assertEqual(config.pi_session_dir, "/srv/pi-sessions")
         self.assertEqual(config.pi_tools_mode, "allowlist")
         self.assertEqual(config.pi_tools_allowlist, "read,bash")
         self.assertEqual(config.pi_extra_args, "--thinking low")
