@@ -3,17 +3,11 @@
 from __future__ import annotations
 
 import os
-import re
 import shlex
-import socket
 import subprocess
-from html import unescape
-from ipaddress import ip_address
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
-from urllib import parse as urllib_parse
-from urllib import request as urllib_request
 
 try:
     from .runtime_paths import build_runtime_root, build_shared_core_root, dedupe_paths
@@ -26,9 +20,6 @@ MAX_READ_BYTES = 128000
 MAX_LOG_LINES = 200
 MAX_LIST_ENTRIES = 300
 MAX_DEPTH = 4
-MAX_WEB_RESULTS = 8
-MAX_WEB_FETCH_BYTES = 192000
-WEB_USER_AGENT = "Server3-Gemma-WebResearch/1.0"
 _SERVICE_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@_.-")
 _BLOCKED_NAME_PARTS = (
     "auth",
@@ -79,37 +70,25 @@ class GemmaReadonlyToolHarness:
         allowed_roots: Optional[Iterable[str]] = None,
         timeout_seconds: int = 20,
         max_output_chars: int = MAX_TOOL_OUTPUT_CHARS,
-        web_research_enabled: bool = False,
     ) -> None:
         roots = list(allowed_roots) if allowed_roots is not None else build_default_allowed_roots()
         self.allowed_roots = [Path(root).expanduser().resolve() for root in roots if str(root).strip()]
         self.timeout_seconds = max(1, int(timeout_seconds))
         self.max_output_chars = max(1000, int(max_output_chars))
-        self.web_research_enabled = bool(web_research_enabled)
 
     def instructions(self) -> str:
         root_text = ", ".join(str(root) for root in self.allowed_roots) or "(none)"
-        tools = (
-            "list_files(path, max_depth), read_file(path, max_bytes), "
-            "service_status(unit), inspect_logs(unit, lines), "
-            "run_readonly_command(command)"
-        )
-        web_text = ""
-        if self.web_research_enabled:
-            tools += ", web_search(query, max_results), fetch_url(url, max_bytes)"
-            web_text = (
-                " Web research may fetch arbitrary public http/https URLs; "
-                "local, private, loopback, link-local, and multicast network targets are blocked."
-            )
         return (
             "You may request one read-only Server3 tool call when needed. "
             "To request a tool, reply with only compact JSON in this shape: "
             '{"tool":"tool_name","args":{...}}. '
-            f"Available tools: {tools}. "
+            "Available tools: "
+            "list_files(path, max_depth), read_file(path, max_bytes), "
+            "service_status(unit), inspect_logs(unit, lines), "
+            "run_readonly_command(command). "
             "Allowed file roots: "
             f"{root_text}. "
-            "Do not request writes, deletes, restarts, installs, or shell pipelines."
-            f"{web_text} "
+            "Do not request writes, deletes, restarts, installs, network changes, or shell pipelines. "
             "After receiving a tool result, answer the user normally."
         )
 
@@ -126,10 +105,6 @@ class GemmaReadonlyToolHarness:
                 return self._inspect_logs(args)
             if normalized == "run_readonly_command":
                 return self._run_readonly_command(args)
-            if normalized == "web_search":
-                return self._web_search(args)
-            if normalized == "fetch_url":
-                return self._fetch_url(args)
             return ToolResult(False, "", f"Unknown read-only tool: {normalized}")
         except Exception as exc:
             return ToolResult(False, "", str(exc))
@@ -249,56 +224,6 @@ class GemmaReadonlyToolHarness:
             return ToolResult(False, self._truncate(output), self._truncate(error or f"exit {completed.returncode}"))
         return ToolResult(True, self._truncate(output or error))
 
-    def _ensure_web_research_enabled(self) -> None:
-        if not self.web_research_enabled:
-            raise PermissionError("Gemma web research tools are disabled.")
-
-    def _web_search(self, args: Mapping[str, Any]) -> ToolResult:
-        self._ensure_web_research_enabled()
-        query = str(args.get("query", "")).strip()
-        if not query:
-            return ToolResult(False, "", "Empty web search query.")
-        max_results = _bounded_int(args.get("max_results", 5), minimum=1, maximum=MAX_WEB_RESULTS)
-        search_url = "https://duckduckgo.com/html/?" + urllib_parse.urlencode({"q": query})
-        html = self._fetch_public_text(search_url, max_bytes=MAX_WEB_FETCH_BYTES)
-        results = _parse_duckduckgo_results(html, max_results=max_results)
-        if not results:
-            return ToolResult(True, f"No web search results found for: {query}")
-        lines: List[str] = [f"Web search results for: {query}"]
-        for index, result in enumerate(results, start=1):
-            lines.append(f"{index}. {result['title']}")
-            lines.append(f"   URL: {result['url']}")
-            if result.get("snippet"):
-                lines.append(f"   Snippet: {result['snippet']}")
-        return ToolResult(True, self._truncate("\n".join(lines)))
-
-    def _fetch_url(self, args: Mapping[str, Any]) -> ToolResult:
-        self._ensure_web_research_enabled()
-        url = str(args.get("url", "")).strip()
-        max_bytes = _bounded_int(args.get("max_bytes", 64000), minimum=1, maximum=MAX_WEB_FETCH_BYTES)
-        text = self._fetch_public_text(url, max_bytes=max_bytes)
-        cleaned = _html_to_text(text) if _looks_like_html(text) else text
-        return ToolResult(True, self._truncate(cleaned.strip()))
-
-    def _fetch_public_text(self, url: str, *, max_bytes: int) -> str:
-        parsed = _validate_public_http_url(url)
-        request = urllib_request.Request(
-            parsed.geturl(),
-            headers={
-                "Accept": "text/html,text/plain,application/xhtml+xml,application/json;q=0.8,*/*;q=0.2",
-                "User-Agent": WEB_USER_AGENT,
-            },
-        )
-        with urllib_request.urlopen(request, timeout=self.timeout_seconds) as response:
-            content_type = response.headers.get("Content-Type", "")
-            charset = response.headers.get_content_charset() or "utf-8"
-            data = response.read(max_bytes + 1)
-        suffix = "\n[byte limit reached]" if len(data) > max_bytes else ""
-        text = data[:max_bytes].decode(charset, errors="replace")
-        if content_type and not _looks_like_text_content_type(content_type):
-            return f"Fetched non-text content type {content_type}; first bytes decoded as text:\n{text}{suffix}"
-        return text + suffix
-
 
 def _bounded_int(value: Any, *, minimum: int, maximum: int) -> int:
     try:
@@ -333,95 +258,3 @@ def _allowed_readonly_commands() -> List[List[str]]:
         ["git", "status", "--short"],
         ["git", "log", "-1", "--oneline"],
     ]
-
-
-def _validate_public_http_url(raw_url: str) -> urllib_parse.ParseResult:
-    url = str(raw_url or "").strip()
-    parsed = urllib_parse.urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        raise PermissionError("Only public http/https URLs are allowed.")
-    if not parsed.hostname:
-        raise PermissionError("URL host is required.")
-    host = parsed.hostname.strip()
-    try:
-        ip = ip_address(host)
-        if _is_blocked_ip(ip):
-            raise PermissionError(f"Blocked non-public URL host: {host}")
-    except ValueError:
-        for family, _, _, _, sockaddr in socket.getaddrinfo(host, None):
-            if family not in {socket.AF_INET, socket.AF_INET6}:
-                continue
-            resolved_ip = ip_address(sockaddr[0])
-            if _is_blocked_ip(resolved_ip):
-                raise PermissionError(f"Blocked non-public URL host: {host}")
-    return parsed
-
-
-def _is_blocked_ip(ip) -> bool:
-    return (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_multicast
-        or ip.is_reserved
-        or ip.is_unspecified
-    )
-
-
-def _looks_like_text_content_type(content_type: str) -> bool:
-    lowered = content_type.lower()
-    return any(
-        marker in lowered
-        for marker in (
-            "text/",
-            "application/json",
-            "application/xml",
-            "application/xhtml+xml",
-            "application/rss+xml",
-            "application/atom+xml",
-        )
-    )
-
-
-def _looks_like_html(text: str) -> bool:
-    lowered = text[:1000].lower()
-    return "<html" in lowered or "<body" in lowered or "<p" in lowered or "<div" in lowered
-
-
-def _html_to_text(text: str) -> str:
-    cleaned = re.sub(r"(?is)<(script|style|noscript).*?</\1>", " ", text)
-    cleaned = re.sub(r"(?is)<br\s*/?>", "\n", cleaned)
-    cleaned = re.sub(r"(?is)</(p|div|li|h[1-6]|tr)>", "\n", cleaned)
-    cleaned = re.sub(r"(?is)<[^>]+>", " ", cleaned)
-    cleaned = unescape(cleaned)
-    cleaned = re.sub(r"[ \t\r\f\v]+", " ", cleaned)
-    cleaned = re.sub(r"\n\s+", "\n", cleaned)
-    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    return cleaned.strip()
-
-
-def _parse_duckduckgo_results(html: str, *, max_results: int) -> List[Dict[str, str]]:
-    results: List[Dict[str, str]] = []
-    blocks = re.findall(r'(?is)<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html)
-    snippets = re.findall(r'(?is)<a[^>]+class="result__snippet"[^>]*>(.*?)</a>', html)
-    for index, (raw_url, raw_title) in enumerate(blocks):
-        url = _normalize_duckduckgo_url(unescape(raw_url))
-        title = _html_to_text(raw_title)
-        if not url or not title:
-            continue
-        snippet = _html_to_text(snippets[index]) if index < len(snippets) else ""
-        results.append({"title": title, "url": url, "snippet": snippet})
-        if len(results) >= max_results:
-            break
-    return results
-
-
-def _normalize_duckduckgo_url(raw_url: str) -> str:
-    parsed = urllib_parse.urlparse(raw_url)
-    if parsed.path.startswith("/l/"):
-        query = urllib_parse.parse_qs(parsed.query)
-        if query.get("uddg"):
-            return query["uddg"][0]
-    if raw_url.startswith("//"):
-        return "https:" + raw_url
-    return raw_url

@@ -60,19 +60,11 @@ GEMMA_REQUEST_TIMEOUT_SECONDS=180
 GEMMA_READONLY_TOOLS_ENABLED=true
 GEMMA_READONLY_ROOTS=
 GEMMA_READONLY_TOOL_TIMEOUT_SECONDS=20
-GEMMA_WEB_RESEARCH_ENABLED=false
 ```
 
 Use `GEMMA_PROVIDER=ollama_http` only after deliberately exposing Ollama over a controlled LAN bind/firewall rule.
 
 `GEMMA_READONLY_ROOTS` is optional. When unset, the read-only harness allows the runtime root and shared core root. File tools also block sensitive-looking path names such as token, secret, credential, password, auth, key, and session.
-
-`GEMMA_WEB_RESEARCH_ENABLED=true` enables raw public web research mode through Server3. In that mode Gemma can request:
-
-- `web_search(query, max_results)` using a public web search page
-- `fetch_url(url, max_bytes)` for arbitrary public `http`/`https` URLs
-
-The gateway is intentionally broad for public web research, but still blocks local, private, loopback, link-local, multicast, reserved, and unspecified network targets so web mode cannot be used to probe Server3, Server4, or LAN services.
 
 ## Telegram Commands
 
@@ -104,5 +96,4 @@ When the effective engine is `gemma`, `/engine status` also performs a short liv
   - `service_status(unit)`
   - `inspect_logs(unit, lines)`
   - `run_readonly_command(command)` for a small exact allowlist such as `date`, `uptime`, `df -h`, `free -h`, selected `systemctl` list commands, `git status --short`, and `git log -1 --oneline`
-  - when enabled, `web_search(query, max_results)` and `fetch_url(url, max_bytes)` for public web research
-- The harness does not allow writes, deletes, restarts, installs, shell pipelines, or arbitrary commands. Use Codex for repo edits, image handling, and high-risk actions.
+- The harness does not allow writes, deletes, restarts, installs, network changes, shell pipelines, or arbitrary commands. Use Codex for repo edits, image handling, and high-risk actions.

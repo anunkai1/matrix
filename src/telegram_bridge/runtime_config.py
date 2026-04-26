@@ -124,7 +124,6 @@ class Config:
     gemma_readonly_tools_enabled: bool = True
     gemma_readonly_roots: List[str] = field(default_factory=list)
     gemma_readonly_tool_timeout_seconds: int = 20
-    gemma_web_research_enabled: bool = False
 
 
 def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
@@ -554,10 +553,6 @@ def load_config() -> Config:
             "GEMMA_READONLY_TOOL_TIMEOUT_SECONDS",
             20,
             minimum=1,
-        ),
-        gemma_web_research_enabled=parse_bool_env(
-            "GEMMA_WEB_RESEARCH_ENABLED",
-            False,
         ),
         whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),
         whatsapp_bridge_api_base=os.getenv(
