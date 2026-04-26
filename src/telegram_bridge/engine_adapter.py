@@ -276,19 +276,6 @@ class GemmaEngineAdapter:
             query = re.sub(r"\b(can you|please|could you)\b", "", current_request, flags=re.IGNORECASE)
             query = query.strip(" :.-\n\t") or current_request
             return "web_search", {"query": query, "max_results": 5}
-        if any(phrase in normalized for phrase in ("look for", "find", "get", "report")) and any(
-            term in normalized for term in ("news", "headline", "headlines")
-        ):
-            query = re.sub(
-                r"\b(can you|please|could you|look for|find|get|report)\b",
-                "",
-                current_request,
-                flags=re.IGNORECASE,
-            )
-            query = re.sub(r"\b(and|the)\b", " ", query, flags=re.IGNORECASE)
-            query = re.sub(r"\s+", " ", query)
-            query = query.strip(" :.-\n\t") or current_request
-            return "web_search", {"query": query, "max_results": 5}
         return None
 
     def _format_direct_tool_answer(self, tool: str, result) -> str:
