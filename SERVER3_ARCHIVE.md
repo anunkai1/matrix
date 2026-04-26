@@ -771,3 +771,12 @@ Summary:
 
 Migrated out of summary during this trim:
 - 2026-04-24: updated the host-global Codex CLI from `0.121.0` to `0.124.0` with `sudo npm install -g @openai/codex@0.124.0`. Verified the active binary remains `/usr/bin/codex`, `codex --version` reports `codex-cli 0.124.0`, and `/usr/lib/node_modules/@openai/codex/package.json` reports `0.124.0`. Updated the tracked target-state and live change record to match.
+
+## 2026-04-26 (Summary Roll-Forward Trim for Chatbot Engine Help Rollout)
+
+Summary:
+- Added rolling summary coverage for the `/engine` help text rollout across chatbot runtimes.
+- Kept the rolling summary bounded by migrating the oldest item into archive.
+
+Migrated out of summary during this trim:
+- 2026-04-24: hardened Telegram shared-memory session startup against stale thread reuse. `begin_memory_turn` now reconciles the bridge's canonical per-chat thread ID with the memory engine's stored session thread before `begin_turn`, clearing stale memory-only thread IDs when bridge state is empty and syncing memory state back to the bridge thread when present. Added regression coverage in `tests/telegram_bridge/test_bridge_core.py` for both stale-clear and bridge-sync cases.
