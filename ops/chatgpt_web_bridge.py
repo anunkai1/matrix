@@ -45,6 +45,11 @@ SEND_HINTS = (
     "send message",
     "send",
 )
+COPY_HINTS = (
+    "copy",
+    "copy response",
+    "copy code",
+)
 NOISE_LINE_PATTERNS = (
     r"^\s*-?\s*(button|link|textbox|combobox|menuitem|navigation|banner|complementary)\b",
     r"\b(copy|regenerate|thumbs up|thumbs down|read aloud|share|new chat|temporary chat)\b",
@@ -162,6 +167,30 @@ def find_send_button(snapshot: dict[str, Any]) -> dict[str, str] | None:
         return None
     _, best = min(candidates, key=lambda item: item[0])
     return {"snapshot_id": str(snapshot["snapshot_id"]), "ref": str(best["ref"])}
+
+
+def find_latest_copy_button(snapshot: dict[str, Any]) -> dict[str, str] | None:
+    elements = snapshot.get("elements")
+    if not isinstance(elements, list):
+        return None
+    matches: list[dict[str, Any]] = []
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        if str(element.get("role") or "").lower() != "button":
+            continue
+        if not bool(element.get("visible", True)) or not bool(element.get("enabled", True)):
+            continue
+        blob = " ".join(
+            str(element.get(key) or "")
+            for key in ("name", "text", "aria_label", "placeholder", "title")
+        ).lower()
+        if any(hint == blob or hint in blob for hint in COPY_HINTS):
+            matches.append(element)
+    if not matches:
+        return None
+    latest = matches[-1]
+    return {"snapshot_id": str(snapshot["snapshot_id"]), "ref": str(latest["ref"])}
 
 
 def detect_blocked_state(snapshot: dict[str, Any]) -> str:
@@ -300,7 +329,7 @@ def wait_for_response(
         blocked = detect_blocked_state(snapshot)
         if blocked:
             raise ChatGPTWebBridgeError(f"ChatGPT web became blocked: {blocked}")
-        candidate = extract_response(snapshot, prompt)
+        candidate = copy_latest_response(client, tab_id, snapshot) or extract_response(snapshot, prompt)
         if len(candidate) > len(best):
             best = candidate
         if candidate and candidate == last:
@@ -314,6 +343,27 @@ def wait_for_response(
     if best:
         return best
     raise ChatGPTWebBridgeError("timed out waiting for a ChatGPT response")
+
+
+def copy_latest_response(client: BrowserBrainClient, tab_id: str, snapshot: dict[str, Any]) -> str:
+    copy_button = find_latest_copy_button(snapshot)
+    if copy_button is None:
+        return ""
+    try:
+        client.request(
+            "POST",
+            "/v1/act/click",
+            {
+                "tab_id": tab_id,
+                "snapshot_id": copy_button["snapshot_id"],
+                "ref": copy_button["ref"],
+            },
+        )
+        time.sleep(0.2)
+        payload = client.request("POST", "/v1/clipboard/read", {"tab_id": tab_id})
+    except ChatGPTWebBridgeError:
+        return ""
+    return str(payload.get("text") or "").strip()
 
 
 def run_ask(args: argparse.Namespace) -> int:

@@ -5,6 +5,7 @@ import unittest
 from ops.chatgpt_web_bridge import (
     detect_blocked_state,
     extract_response,
+    find_latest_copy_button,
     find_prompt_box,
     find_send_button,
 )
@@ -39,6 +40,17 @@ class ChatGPTWebBridgeTests(unittest.TestCase):
         }
 
         self.assertEqual(find_send_button(snapshot), {"snapshot_id": "snap-2", "ref": "el-2"})
+
+    def test_find_latest_copy_button_returns_last_visible_copy(self) -> None:
+        snapshot = {
+            "snapshot_id": "snap-3",
+            "elements": [
+                {"ref": "el-1", "role": "button", "aria_label": "Copy", "visible": True, "enabled": True},
+                {"ref": "el-2", "role": "button", "aria_label": "Copy", "visible": True, "enabled": True},
+            ],
+        }
+
+        self.assertEqual(find_latest_copy_button(snapshot), {"snapshot_id": "snap-3", "ref": "el-2"})
 
     def test_detect_blocked_state_login(self) -> None:
         snapshot = {"aria_snapshot": "Log in\nSign up\nContinue with Google", "elements": []}

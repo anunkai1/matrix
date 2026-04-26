@@ -101,6 +101,9 @@ def build_parser() -> argparse.ArgumentParser:
     network_parser.add_argument("--tab-id")
     network_parser.add_argument("--limit", type=int)
 
+    clipboard_parser = subparsers.add_parser("clipboard-read")
+    clipboard_parser.add_argument("--tab-id")
+
     dialogs_parser = subparsers.add_parser("dialogs")
     dialogs_parser.add_argument("--tab-id")
 
@@ -199,6 +202,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.limit is not None:
             request_payload["limit"] = args.limit
         payload = _request(args.base_url, "POST", "/v1/network", request_payload)
+    elif command == "clipboard-read":
+        request_payload = {}
+        if args.tab_id:
+            request_payload["tab_id"] = args.tab_id
+        payload = _request(args.base_url, "POST", "/v1/clipboard/read", request_payload)
     elif command == "dialogs":
         request_payload = {}
         if args.tab_id:

@@ -49,6 +49,9 @@ class FakeController:
     def network_events(self, payload):
         return {"events": [], "payload": payload}
 
+    def clipboard_read(self, payload):
+        return {"text": "clipboard text", "payload": payload}
+
     def dialogs_list(self, payload):
         return {"dialog": None, "payload": payload}
 
@@ -116,6 +119,10 @@ class BrowserBrainHTTPServerTests(unittest.TestCase):
             status_code, body = _request(server, "POST", "/v1/console", {"limit": 3})
             self.assertEqual(status_code, 200)
             self.assertEqual(body["messages"], [])
+
+            status_code, body = _request(server, "POST", "/v1/clipboard/read", {"tab_id": "tab-1"})
+            self.assertEqual(status_code, 200)
+            self.assertEqual(body["text"], "clipboard text")
 
             status_code, body = _request(server, "POST", "/v1/act/select", {"value": "one"})
             self.assertEqual(status_code, 200)

@@ -23,6 +23,7 @@ ROUTES = {
     ("POST", "/v1/wait"): "wait",
     ("POST", "/v1/console"): "console_messages",
     ("POST", "/v1/network"): "network_events",
+    ("POST", "/v1/clipboard/read"): "clipboard_read",
     ("POST", "/v1/dialogs"): "dialogs_list",
     ("POST", "/v1/dialogs/handle"): "dialog_handle",
     ("POST", "/v1/act/click"): "act_click",

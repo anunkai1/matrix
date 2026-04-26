@@ -101,8 +101,17 @@ class BrowserBrainCLITests(unittest.TestCase):
             {"tab_id": "tab-1", "limit": 5},
         )
 
-        self.assertEqual(ensure_service.call_count, 2)
-        self.assertEqual(printer.call_count, 2)
+        exit_code = browser_brain_ctl.main(["clipboard-read", "--tab-id", "tab-1"])
+        self.assertEqual(exit_code, 0)
+        request.assert_called_with(
+            browser_brain_ctl.DEFAULT_BASE_URL,
+            "POST",
+            "/v1/clipboard/read",
+            {"tab_id": "tab-1"},
+        )
+
+        self.assertEqual(ensure_service.call_count, 3)
+        self.assertEqual(printer.call_count, 3)
 
 
 if __name__ == "__main__":

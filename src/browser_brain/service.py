@@ -448,6 +448,29 @@ class BrowserBrainService:
             limit = int(payload.get("limit") or 50)
             return {"tab": self._tab_payload(page), "events": events[-limit:]}
 
+    def clipboard_read(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            page = self._page_for_payload(payload)
+            tab = self._tab_payload(page)
+            try:
+                parsed = urlparse(tab["url"])
+                origin = f"{parsed.scheme}://{parsed.netloc}"
+                if hasattr(page, "context") and origin.startswith("https://"):
+                    page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=origin)
+            except Exception:
+                pass
+            try:
+                text = str(page.evaluate("navigator.clipboard.readText()") or "")
+            except Exception as exc:
+                raise BrowserBrainError(
+                    "clipboard_read_failed",
+                    "Could not read browser clipboard",
+                    status=409,
+                    details={"exception": str(exc)},
+                ) from exc
+            self._log_action("clipboard.read", {"tab_id": tab["tab_id"], "length": len(text)})
+            return {"tab": tab, "text": text, "length": len(text)}
+
     def dialogs_list(self, payload: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             page = self._page_for_payload(payload)

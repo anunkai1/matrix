@@ -15,12 +15,16 @@ class FakePage:
     def __init__(self, url: str, title: str) -> None:
         self.url = url
         self._title = title
+        self.context = mock.Mock()
 
     def is_closed(self) -> bool:
         return False
 
     def title(self) -> str:
         return self._title
+
+    def evaluate(self, _script: str) -> str:
+        return "clipboard text"
 
     def on(self, _event, _callback) -> None:
         return None
@@ -238,6 +242,24 @@ class BrowserBrainServiceTests(unittest.TestCase):
 
         self.assertTrue(result["armed"])
         self.assertFalse(service._next_dialog_policy_by_tab[result["tab"]["tab_id"]]["accept"])
+
+    def test_clipboard_read_grants_permission_and_reads_text(self) -> None:
+        service = BrowserBrainService(BrowserBrainConfig())
+        page = FakePage("https://chatgpt.com/c/123", "ChatGPT")
+
+        with (
+            mock.patch.object(service, "_page_for_payload", return_value=page),
+            mock.patch.object(service, "_tab_payload", return_value={"tab_id": "tab-1", "url": page.url}),
+            mock.patch.object(service, "_log_action"),
+        ):
+            result = service.clipboard_read({"tab_id": "tab-1"})
+
+        page.context.grant_permissions.assert_called_once_with(
+            ["clipboard-read", "clipboard-write"],
+            origin="https://chatgpt.com",
+        )
+        self.assertEqual(result["text"], "clipboard text")
+        self.assertEqual(result["length"], len("clipboard text"))
 
 
 if __name__ == "__main__":
