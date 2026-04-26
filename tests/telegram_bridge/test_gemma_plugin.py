@@ -99,35 +99,6 @@ class GemmaPluginTests(unittest.TestCase):
         self.assertIn("visible.txt", result.stdout)
         self.assertNotIn("(No output", result.stdout)
 
-    def test_gemma_http_engine_reads_current_file_request_despite_prior_list_context(self):
-        engine = bridge_engine_adapter.GemmaEngineAdapter()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            Path(tmpdir, "AGENTS.md").write_text("agent instructions\n", encoding="utf-8")
-            config = SimpleNamespace(
-                gemma_provider="ollama_http",
-                gemma_model="gemma4:26b",
-                gemma_base_url="http://server4-beast:11434",
-                gemma_request_timeout_seconds=30,
-                gemma_readonly_tools_enabled=True,
-                gemma_readonly_roots=[tmpdir],
-                gemma_readonly_tool_timeout_seconds=5,
-            )
-            fake_urlopen = mock.MagicMock()
-            fake_urlopen.return_value.__enter__.return_value.read.return_value = (
-                b'{"message":{"role":"assistant","content":""},"done":true}'
-            )
-            prompt = (
-                "Recent Messages:\n"
-                "- [user] anunakii: Can you list files you have access to read?\n\n"
-                "Current User Message:\n"
-                "can you post whats inside agents.md file here"
-            )
-            with mock.patch.object(bridge_engine_adapter.urllib_request, "urlopen", fake_urlopen):
-                result = engine.run(config=config, prompt=prompt, thread_id=None)
-        self.assertEqual(result.returncode, 0)
-        self.assertIn("agent instructions", result.stdout)
-        self.assertNotIn("Current listing", result.stdout)
-
     def test_readonly_harness_blocks_paths_outside_allowed_roots(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             harness = gemma_readonly_tools.GemmaReadonlyToolHarness(allowed_roots=[tmpdir])
@@ -145,14 +116,11 @@ class GemmaPluginTests(unittest.TestCase):
             harness = gemma_readonly_tools.GemmaReadonlyToolHarness(allowed_roots=[tmpdir])
             read_result = harness.execute("read_file", {"path": "private/SOUL.md"})
             list_result = harness.execute("list_files", {"path": ".", "max_depth": 1})
-            case_result = harness.execute("read_file", {"path": "PUBLIC.TXT"})
         self.assertFalse(read_result.ok)
         self.assertIn("private/internal", read_result.error)
         self.assertIn("public.txt", list_result.output)
         self.assertNotIn("SOUL.md", list_result.output)
         self.assertNotIn(".git", list_result.output)
-        self.assertTrue(case_result.ok)
-        self.assertIn("ok", case_result.output)
 
     def test_readonly_harness_rejects_non_allowlisted_commands(self):
         harness = gemma_readonly_tools.GemmaReadonlyToolHarness(allowed_roots=[str(ROOT)])

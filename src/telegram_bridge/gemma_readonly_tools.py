@@ -121,8 +121,6 @@ class GemmaReadonlyToolHarness:
             base = self.allowed_roots[0] if self.allowed_roots else Path.cwd().resolve()
             path = base / path
         resolved = path.resolve()
-        if not resolved.exists():
-            resolved = self._resolve_case_insensitive_path(path)
         if not any(resolved == root or root in resolved.parents for root in self.allowed_roots):
             raise PermissionError(f"Path is outside allowed Gemma read roots: {resolved}")
         lowered_parts = [part.lower() for part in resolved.parts]
@@ -131,25 +129,6 @@ class GemmaReadonlyToolHarness:
         if any(blocked in part for part in lowered_parts for blocked in _BLOCKED_NAME_PARTS):
             raise PermissionError(f"Path is blocked by sensitive-name guard: {resolved}")
         return resolved
-
-    def _resolve_case_insensitive_path(self, path: Path) -> Path:
-        parts = path.expanduser().parts
-        if not parts:
-            return path.resolve()
-        current = Path(parts[0])
-        for part in parts[1:]:
-            candidate = current / part
-            if candidate.exists():
-                current = candidate
-                continue
-            if not current.is_dir():
-                return path.resolve()
-            lowered = part.lower()
-            matches = [child for child in current.iterdir() if child.name.lower() == lowered]
-            if len(matches) != 1:
-                return path.resolve()
-            current = matches[0]
-        return current.resolve()
 
     def _list_files(self, args: Mapping[str, Any]) -> ToolResult:
         root = self._resolve_allowed_path(args.get("path", "."))
