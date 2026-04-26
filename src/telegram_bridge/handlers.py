@@ -13,6 +13,8 @@ from difflib import SequenceMatcher
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 from urllib.parse import urlparse
 
 try:
@@ -206,6 +208,8 @@ CANCEL_NO_ACTIVE_MESSAGE = "No active request to cancel."
 REQUEST_CANCELED_MESSAGE = "Request canceled."
 YOUTUBE_ANALYZER_TIMEOUT_SECONDS = 1800
 YOUTUBE_INLINE_TRANSCRIPT_LIMIT = 12000
+GEMMA_HEALTH_TIMEOUT_SECONDS = 6
+GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = 5
 
 
 @dataclass
@@ -3681,6 +3685,107 @@ def selectable_engine_plugins(config) -> List[str]:
     return configured
 
 
+def _brief_health_error(error: object, limit: int = 180) -> str:
+    text = str(error).strip().replace("\n", " ")
+    if not text:
+        return "unknown error"
+    if len(text) > limit:
+        return text[: limit - 3].rstrip() + "..."
+    return text
+
+
+def _parse_ollama_tags(payload: str) -> List[str]:
+    data = json.loads(payload)
+    models = data.get("models", [])
+    if not isinstance(models, list):
+        return []
+    names: List[str] = []
+    for item in models:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def check_gemma_health(config) -> Dict[str, object]:
+    provider = (
+        str(getattr(config, "gemma_provider", "ollama_ssh") or "ollama_ssh")
+        .strip()
+        .lower()
+    )
+    model = str(getattr(config, "gemma_model", "gemma4:26b") or "gemma4:26b").strip()
+    started = time.monotonic()
+    try:
+        if provider == "ollama_http":
+            base_url = str(
+                getattr(config, "gemma_base_url", "http://127.0.0.1:11434") or ""
+            ).rstrip("/")
+            if not base_url:
+                raise ValueError("GEMMA_BASE_URL is empty")
+            with urllib_request.urlopen(
+                f"{base_url}/api/tags",
+                timeout=GEMMA_HEALTH_TIMEOUT_SECONDS,
+            ) as response:
+                payload = response.read().decode("utf-8", errors="replace")
+        elif provider == "ollama_ssh":
+            host = str(getattr(config, "gemma_ssh_host", "server4-beast") or "").strip()
+            if not host:
+                raise ValueError("GEMMA_SSH_HOST is empty")
+            remote_cmd = (
+                "curl -sS "
+                f"--max-time {GEMMA_HEALTH_CURL_TIMEOUT_SECONDS} "
+                "http://127.0.0.1:11434/api/tags"
+            )
+            completed = subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    f"ConnectTimeout={GEMMA_HEALTH_TIMEOUT_SECONDS}",
+                    host,
+                    remote_cmd,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=GEMMA_HEALTH_TIMEOUT_SECONDS + 2,
+            )
+            if completed.returncode != 0:
+                raise RuntimeError(
+                    completed.stderr.strip()
+                    or completed.stdout.strip()
+                    or f"ssh exited {completed.returncode}"
+                )
+            payload = completed.stdout
+        else:
+            raise ValueError(f"unsupported provider {provider!r}")
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        model_names = _parse_ollama_tags(payload)
+        return {
+            "ok": True,
+            "response_ms": elapsed_ms,
+            "model_available": model in model_names,
+            "error": "",
+        }
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        json.JSONDecodeError,
+        subprocess.TimeoutExpired,
+        urllib_error.URLError,
+    ) as exc:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        return {
+            "ok": False,
+            "response_ms": elapsed_ms,
+            "model_available": False,
+            "error": _brief_health_error(exc),
+        }
+
+
 def build_engine_status_text(state: State, config, scope_key: str) -> str:
     selected = StateRepository(state).get_chat_engine(scope_key)
     effective = selected or configured_default_engine(config)
@@ -3693,6 +3798,11 @@ def build_engine_status_text(state: State, config, scope_key: str) -> str:
         lines.append(f"Gemma provider: {getattr(config, 'gemma_provider', 'ollama_ssh')}")
         lines.append(f"Gemma model: {getattr(config, 'gemma_model', 'gemma4:26b')}")
         lines.append(f"Gemma host: {getattr(config, 'gemma_ssh_host', 'server4-beast')}")
+        health = check_gemma_health(config)
+        lines.append(f"Gemma health: {'ok' if health['ok'] else 'error'}")
+        lines.append(f"Gemma response time: {health['response_ms']}ms")
+        lines.append(f"Gemma model available: {'yes' if health['model_available'] else 'no'}")
+        lines.append(f"Gemma last check error: {health['error'] or '(none)'}")
     return "\n".join(lines)
 
 

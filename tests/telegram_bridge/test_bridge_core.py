@@ -618,6 +618,63 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.gemma_ssh_host, "server4-test")
         self.assertEqual(config.gemma_request_timeout_seconds, 55)
 
+    def test_engine_status_includes_live_gemma_health(self):
+        state = bridge.State(chat_engines={"tg:1": "gemma"})
+        config = make_config(engine_plugin="codex", gemma_ssh_host="server4-test")
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps({"models": [{"name": "gemma4:26b"}]}),
+            stderr="",
+        )
+
+        with (
+            mock.patch.object(
+                bridge_handlers.subprocess,
+                "run",
+                return_value=completed,
+            ) as run_mock,
+            mock.patch.object(
+                bridge_handlers.time,
+                "monotonic",
+                side_effect=[100.0, 100.123],
+            ),
+        ):
+            text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
+
+        self.assertIn("This chat engine: gemma", text)
+        self.assertIn("Gemma health: ok", text)
+        self.assertIn("Gemma response time: 123ms", text)
+        self.assertIn("Gemma model available: yes", text)
+        self.assertIn("Gemma last check error: (none)", text)
+        run_mock.assert_called_once()
+        self.assertIn("server4-test", run_mock.call_args.args[0])
+
+    def test_engine_status_reports_gemma_health_error(self):
+        state = bridge.State(chat_engines={"tg:1": "gemma"})
+        config = make_config(engine_plugin="codex", gemma_ssh_host="server4-test")
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=255,
+            stdout="",
+            stderr="ssh failed\nmore detail",
+        )
+
+        with (
+            mock.patch.object(bridge_handlers.subprocess, "run", return_value=completed),
+            mock.patch.object(
+                bridge_handlers.time,
+                "monotonic",
+                side_effect=[200.0, 200.051],
+            ),
+        ):
+            text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
+
+        self.assertIn("Gemma health: error", text)
+        self.assertIn("Gemma response time: 50ms", text)
+        self.assertIn("Gemma model available: no", text)
+        self.assertIn("Gemma last check error: ssh failed more detail", text)
+
     def test_load_config_reads_whatsapp_plugin_settings(self):
         with mock.patch.dict(
             os.environ,

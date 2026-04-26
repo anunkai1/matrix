@@ -2,6 +2,15 @@
 
 This file stores detailed operational history for Server3 tasks.
 
+## 2026-04-26 (Summary Roll-Forward Trim for Gemma Status Health)
+
+Summary:
+- Added a rolling-summary entry for Gemma `/engine status` live health details and re-trimmed `SERVER3_SUMMARY.md` back to the rolling max-8 recent-change bound.
+
+Migrated out of summary during this trim:
+- 2026-04-25: updated the host-global Codex CLI from `0.124.0` to `0.125.0` with `sudo npm install -g @openai/codex@0.125.0`. Verified the active binary remains `/usr/bin/codex`, `codex --version` reports `codex-cli 0.125.0`, `npm list -g @openai/codex --depth=0` reports `@openai/codex@0.125.0`, and `/usr/lib/node_modules/@openai/codex/package.json` now reports `0.125.0`.
+- 2026-04-25: added a persistent LESSONS entry requiring real HA frontend render checks after custom Lovelace dashboard/card/resource/theme changes. This prevents API-only verification from missing visible card-level `Configuration error` failures, especially for HACS cards and chart configs.
+
 ## 2026-04-25 (Summary Roll-Forward Trim for Telegram Status Wording)
 
 Summary:

@@ -74,6 +74,13 @@ Per chat/topic:
 
 There is no smart routing in this mode. The service default or explicit chat selection decides the engine.
 
+When the effective engine is `gemma`, `/engine status` also performs a short live health check and reports:
+
+- Gemma health: `ok` or `error`
+- Gemma response time
+- Whether the configured model is listed by Ollama
+- The current check error, or `(none)`
+
 ## Current Capability
 
 - Gemma engine supports text requests through Ollama.
