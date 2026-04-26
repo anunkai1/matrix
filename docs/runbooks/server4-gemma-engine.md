@@ -61,6 +61,7 @@ GEMMA_READONLY_TOOLS_ENABLED=true
 GEMMA_READONLY_ROOTS=
 GEMMA_READONLY_TOOL_TIMEOUT_SECONDS=20
 GEMMA_WEB_RESEARCH_ENABLED=false
+GEMMA_DANGEROUS_SUDO_ENABLED=false
 ```
 
 Use `GEMMA_PROVIDER=ollama_http` only after deliberately exposing Ollama over a controlled LAN bind/firewall rule.
@@ -73,6 +74,8 @@ Use `GEMMA_PROVIDER=ollama_http` only after deliberately exposing Ollama over a 
 - `fetch_url(url, max_bytes)` for arbitrary public `http`/`https` URLs
 
 The gateway is intentionally broad for public web research, but still blocks local, private, loopback, link-local, multicast, reserved, and unspecified network targets so web mode cannot be used to probe Server3, Server4, or LAN services.
+
+`GEMMA_DANGEROUS_SUDO_ENABLED=true` enables full-sudo lab mode for runtimes that also have a matching sudoers grant. In that mode Gemma can request `run_sudo_command(command)`, which executes an arbitrary shell command as root through `sudo -n bash -lc`. This is intentionally dangerous and should only be enabled for explicit research experiments.
 
 ## Telegram Commands
 
@@ -105,4 +108,5 @@ When the effective engine is `gemma`, `/engine status` also performs a short liv
   - `inspect_logs(unit, lines)`
   - `run_readonly_command(command)` for a small exact allowlist such as `date`, `uptime`, `df -h`, `free -h`, selected `systemctl` list commands, `git status --short`, and `git log -1 --oneline`
   - when enabled, `web_search(query, max_results)` and `fetch_url(url, max_bytes)` for public web research
-- The harness does not allow writes, deletes, restarts, installs, shell pipelines, or arbitrary commands. Use Codex for repo edits, image handling, and high-risk actions.
+  - when explicitly enabled, `run_sudo_command(command)` for arbitrary root shell execution in lab mode
+- Unless full-sudo lab mode is explicitly enabled, the harness does not allow writes, deletes, restarts, installs, shell pipelines, or arbitrary commands. Use Codex for normal repo edits, image handling, and high-risk production actions.

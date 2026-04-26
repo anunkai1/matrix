@@ -1,0 +1,4 @@
+# Mirror of /etc/sudoers.d/tank-gemma-full-sudo on Server3.
+# DANGEROUS RESEARCH MODE: gives Tank full passwordless root sudo for Gemma lab experiments.
+Defaults:tank !requiretty
+tank ALL=(root) NOPASSWD: ALL

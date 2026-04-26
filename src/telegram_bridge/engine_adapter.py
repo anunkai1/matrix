@@ -207,6 +207,7 @@ class GemmaEngineAdapter:
             allowed_roots=roots,
             timeout_seconds=int(getattr(config, "gemma_readonly_tool_timeout_seconds", 20)),
             web_research_enabled=bool(getattr(config, "gemma_web_research_enabled", False)),
+            dangerous_sudo_enabled=bool(getattr(config, "gemma_dangerous_sudo_enabled", False)),
         )
 
     def _extract_tool_request(self, text: str) -> Optional[tuple[str, Mapping[str, Any]]]:
@@ -289,6 +290,12 @@ class GemmaEngineAdapter:
             query = re.sub(r"\s+", " ", query)
             query = query.strip(" :.-\n\t") or current_request
             return "web_search", {"query": query, "max_results": 5}
+        sudo_match = re.match(
+            r"(?is)^\s*(?:run\s+)?sudo(?:\s+command)?\s*:?\s+(.+?)\s*$",
+            current_request,
+        )
+        if sudo_match:
+            return "run_sudo_command", {"command": sudo_match.group(1)}
         return None
 
     def _format_direct_tool_answer(self, tool: str, result) -> str:

@@ -80,12 +80,14 @@ class GemmaReadonlyToolHarness:
         timeout_seconds: int = 20,
         max_output_chars: int = MAX_TOOL_OUTPUT_CHARS,
         web_research_enabled: bool = False,
+        dangerous_sudo_enabled: bool = False,
     ) -> None:
         roots = list(allowed_roots) if allowed_roots is not None else build_default_allowed_roots()
         self.allowed_roots = [Path(root).expanduser().resolve() for root in roots if str(root).strip()]
         self.timeout_seconds = max(1, int(timeout_seconds))
         self.max_output_chars = max(1000, int(max_output_chars))
         self.web_research_enabled = bool(web_research_enabled)
+        self.dangerous_sudo_enabled = bool(dangerous_sudo_enabled)
 
     def instructions(self) -> str:
         root_text = ", ".join(str(root) for root in self.allowed_roots) or "(none)"
@@ -101,6 +103,19 @@ class GemmaReadonlyToolHarness:
                 " Web research may fetch arbitrary public http/https URLs; "
                 "local, private, loopback, link-local, and multicast network targets are blocked."
             )
+        sudo_text = ""
+        if self.dangerous_sudo_enabled:
+            tools += ", run_sudo_command(command)"
+            sudo_text = (
+                " DANGEROUS LAB MODE IS ENABLED: run_sudo_command executes an arbitrary shell command "
+                "as root through sudo on Server3."
+            )
+        safety_text = "Do not request writes, deletes, restarts, installs, or shell pipelines."
+        if self.dangerous_sudo_enabled:
+            safety_text = (
+                "Prefer read-only tools when enough, but run_sudo_command may perform writes, restarts, "
+                "installs, shell pipelines, and destructive operations because the operator explicitly enabled lab mode."
+            )
         return (
             "You may request one read-only Server3 tool call when needed. "
             "To request a tool, reply with only compact JSON in this shape: "
@@ -108,8 +123,9 @@ class GemmaReadonlyToolHarness:
             f"Available tools: {tools}. "
             "Allowed file roots: "
             f"{root_text}. "
-            "Do not request writes, deletes, restarts, installs, or shell pipelines."
+            f"{safety_text}"
             f"{web_text} "
+            f"{sudo_text} "
             "After receiving a tool result, answer the user normally."
         )
 
@@ -130,6 +146,8 @@ class GemmaReadonlyToolHarness:
                 return self._web_search(args)
             if normalized == "fetch_url":
                 return self._fetch_url(args)
+            if normalized == "run_sudo_command":
+                return self._run_sudo_command(args)
             return ToolResult(False, "", f"Unknown read-only tool: {normalized}")
         except Exception as exc:
             return ToolResult(False, "", str(exc))
@@ -248,6 +266,14 @@ class GemmaReadonlyToolHarness:
         if completed.returncode != 0:
             return ToolResult(False, self._truncate(output), self._truncate(error or f"exit {completed.returncode}"))
         return ToolResult(True, self._truncate(output or error))
+
+    def _run_sudo_command(self, args: Mapping[str, Any]) -> ToolResult:
+        if not self.dangerous_sudo_enabled:
+            raise PermissionError("Gemma dangerous sudo lab mode is disabled.")
+        raw_command = str(args.get("command", "")).strip()
+        if not raw_command:
+            return ToolResult(False, "", "Empty sudo command.")
+        return self._run_command(["sudo", "-n", "bash", "-lc", raw_command])
 
     def _ensure_web_research_enabled(self) -> None:
         if not self.web_research_enabled:

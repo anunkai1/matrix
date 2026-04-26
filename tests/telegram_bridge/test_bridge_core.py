@@ -591,6 +591,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.gemma_provider, "ollama_ssh")
         self.assertEqual(config.gemma_model, "gemma4:26b")
         self.assertFalse(config.gemma_web_research_enabled)
+        self.assertFalse(config.gemma_dangerous_sudo_enabled)
 
     def test_load_config_reads_plugin_selection_overrides(self):
         with mock.patch.dict(
@@ -607,6 +608,7 @@ class BridgeCoreTests(unittest.TestCase):
                 "GEMMA_SSH_HOST": "server4-test",
                 "GEMMA_REQUEST_TIMEOUT_SECONDS": "55",
                 "GEMMA_WEB_RESEARCH_ENABLED": "true",
+                "GEMMA_DANGEROUS_SUDO_ENABLED": "true",
             },
             clear=True,
         ):
@@ -620,6 +622,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.gemma_ssh_host, "server4-test")
         self.assertEqual(config.gemma_request_timeout_seconds, 55)
         self.assertTrue(config.gemma_web_research_enabled)
+        self.assertTrue(config.gemma_dangerous_sudo_enabled)
 
     def test_engine_status_includes_live_gemma_health(self):
         state = bridge.State(chat_engines={"tg:1": "gemma"})
