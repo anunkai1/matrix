@@ -1,5 +1,4 @@
 import os
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -227,40 +226,6 @@ class GemmaPluginTests(unittest.TestCase):
         self.assertIn("ai headline fallback content", result.stdout)
         search_mock.assert_called_once_with({"query": "AI news headlines", "max_results": 5})
 
-    def test_gemma_http_engine_runs_sudo_command_when_initial_response_empty(self):
-        engine = bridge_engine_adapter.GemmaEngineAdapter()
-        config = SimpleNamespace(
-            gemma_provider="ollama_http",
-            gemma_model="gemma4:26b",
-            gemma_base_url="http://server4-beast:11434",
-            gemma_request_timeout_seconds=30,
-            gemma_readonly_tools_enabled=True,
-            gemma_readonly_roots=[str(ROOT)],
-            gemma_readonly_tool_timeout_seconds=5,
-            gemma_web_research_enabled=True,
-            gemma_dangerous_sudo_enabled=True,
-        )
-        fake_urlopen = mock.MagicMock()
-        fake_urlopen.return_value.__enter__.return_value.read.return_value = (
-            b'{"message":{"role":"assistant","content":""},"done":true}'
-        )
-        with (
-            mock.patch.object(bridge_engine_adapter.urllib_request, "urlopen", fake_urlopen),
-            mock.patch.object(
-                gemma_readonly_tools.GemmaReadonlyToolHarness,
-                "_run_sudo_command",
-                return_value=gemma_readonly_tools.ToolResult(True, "uid=0(root)"),
-            ) as sudo_mock,
-        ):
-            result = engine.run(
-                config=config,
-                prompt="Current User Message:\nsudo id",
-                thread_id=None,
-            )
-        self.assertEqual(result.returncode, 0)
-        self.assertIn("uid=0(root)", result.stdout)
-        sudo_mock.assert_called_once_with({"command": "id"})
-
     def test_readonly_harness_blocks_paths_outside_allowed_roots(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             harness = gemma_readonly_tools.GemmaReadonlyToolHarness(allowed_roots=[tmpdir])
@@ -292,30 +257,6 @@ class GemmaPluginTests(unittest.TestCase):
         result = harness.execute("run_readonly_command", {"command": "rm -rf /tmp/example"})
         self.assertFalse(result.ok)
         self.assertIn("not allowlisted", result.error)
-
-    def test_sudo_lab_tool_is_disabled_by_default(self):
-        harness = gemma_readonly_tools.GemmaReadonlyToolHarness(allowed_roots=[str(ROOT)])
-        result = harness.execute("run_sudo_command", {"command": "id"})
-        self.assertFalse(result.ok)
-        self.assertIn("disabled", result.error)
-
-    def test_sudo_lab_tool_executes_arbitrary_root_shell_when_enabled(self):
-        harness = gemma_readonly_tools.GemmaReadonlyToolHarness(
-            allowed_roots=[str(ROOT)],
-            dangerous_sudo_enabled=True,
-        )
-        completed = subprocess.CompletedProcess(
-            args=["sudo", "-n", "bash", "-lc", "id"],
-            returncode=0,
-            stdout="uid=0(root)\n",
-            stderr="",
-        )
-        with mock.patch.object(gemma_readonly_tools.subprocess, "run", return_value=completed) as run_mock:
-            result = harness.execute("run_sudo_command", {"command": "id"})
-        self.assertTrue(result.ok)
-        self.assertIn("uid=0(root)", result.output)
-        run_mock.assert_called_once()
-        self.assertEqual(run_mock.call_args.args[0], ["sudo", "-n", "bash", "-lc", "id"])
 
     def test_web_research_tools_are_disabled_by_default(self):
         harness = gemma_readonly_tools.GemmaReadonlyToolHarness(allowed_roots=[str(ROOT)])

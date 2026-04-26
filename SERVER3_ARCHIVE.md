@@ -815,12 +815,3 @@ Summary:
 
 Migrated out of summary during this trim:
 - 2026-04-25: restored Sentinel to the canonical shared Codex auth model. `architect` and `sentinel` now both link `~/.codex/auth.json` to `/etc/server3-codex/auth.json`, and the new enabled `server3-codex-auth-sync.service` runs `ops/codex/watch_shared_auth.py` to detect Architect auth replacement within ~2 seconds and relink all Codex-backed manifest runtimes, including Sentinel. The shared-auth installer is now idempotent to avoid symlink/metadata churn, the shared-auth runbook documents automatic refresh, and the Server3 state-backup profile now includes `/etc/server3-codex` plus the watcher service.
-
-## 2026-04-26 (Watchout Trim for Tank/Gemma Full Sudo Lab Mode)
-
-Summary:
-- Added current-risk coverage for Tank/Gemma full-sudo lab mode.
-- Kept active summary watchouts bounded by migrating the least urgent watchout into archive.
-
-Migrated out of summary during this trim:
-- `Mavali ETH` is live on a temporary public Ethereum RPC (`https://mainnet.gateway.tenderly.co`); replace it with a dedicated authenticated provider before treating the wallet runtime as durable production infrastructure.
