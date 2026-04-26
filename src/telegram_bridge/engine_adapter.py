@@ -91,10 +91,6 @@ class GemmaEngineAdapter:
         re.IGNORECASE,
     )
     _URL_RE = re.compile(r"https?://[^\s`'\"“”<>]+", re.IGNORECASE)
-    _BARE_DOMAIN_RE = re.compile(
-        r"(?:^|[\s`'\"“”<>])([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)(?:[/:?#[\]\s`'\"“”<>]|$)",
-        re.IGNORECASE,
-    )
 
     def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(
@@ -257,23 +253,10 @@ class GemmaEngineAdapter:
             for verb in ("fetch", "open", "read", "research", "web", "url", "link", "page")
         ):
             return "fetch_url", {"url": url_match.group(0), "max_bytes": 64000}
-        domain_match = self._BARE_DOMAIN_RE.search(current_request)
-        if domain_match and any(
-            term in normalized
-            for term in ("headline", "headlines", "homepage", "front page", "frontpage", "from", "source")
-        ):
-            if "search" in normalized and any(term in normalized for term in ("headline", "headlines")):
-                domain = domain_match.group(1)
-                return "web_search", {"query": f"site:{domain} headlines", "max_results": 5}
-            return "fetch_url", {"url": f"https://{domain_match.group(1)}", "max_bytes": 64000}
         if any(phrase in normalized for phrase in ("web search", "search web", "search the web", "internet search")):
             query = current_request
             for phrase in ("web search", "search web", "search the web", "internet search"):
                 query = re.sub(re.escape(phrase), "", query, flags=re.IGNORECASE)
-            query = query.strip(" :.-\n\t") or current_request
-            return "web_search", {"query": query, "max_results": 5}
-        if "search" in normalized:
-            query = re.sub(r"\b(can you|please|could you)\b", "", current_request, flags=re.IGNORECASE)
             query = query.strip(" :.-\n\t") or current_request
             return "web_search", {"query": query, "max_results": 5}
         return None

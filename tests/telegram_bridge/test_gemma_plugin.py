@@ -160,39 +160,6 @@ class GemmaPluginTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("web fallback content", result.stdout)
 
-    def test_gemma_http_engine_searches_bare_domain_headline_request_when_initial_response_empty(self):
-        engine = bridge_engine_adapter.GemmaEngineAdapter()
-        config = SimpleNamespace(
-            gemma_provider="ollama_http",
-            gemma_model="gemma4:26b",
-            gemma_base_url="http://server4-beast:11434",
-            gemma_request_timeout_seconds=30,
-            gemma_readonly_tools_enabled=True,
-            gemma_readonly_roots=[str(ROOT)],
-            gemma_readonly_tool_timeout_seconds=5,
-            gemma_web_research_enabled=True,
-        )
-        fake_urlopen = mock.MagicMock()
-        fake_urlopen.return_value.__enter__.return_value.read.return_value = (
-            b'{"message":{"role":"assistant","content":""},"done":true}'
-        )
-        with (
-            mock.patch.object(bridge_engine_adapter.urllib_request, "urlopen", fake_urlopen),
-            mock.patch.object(
-                gemma_readonly_tools.GemmaReadonlyToolHarness,
-                "_web_search",
-                return_value=gemma_readonly_tools.ToolResult(True, "headline search fallback content"),
-            ) as search_mock,
-        ):
-            result = engine.run(
-                config=config,
-                prompt="Current User Message:\nCan you search headlines from rt.com",
-                thread_id=None,
-            )
-        self.assertEqual(result.returncode, 0)
-        self.assertIn("headline search fallback content", result.stdout)
-        search_mock.assert_called_once_with({"query": "site:rt.com headlines", "max_results": 5})
-
     def test_readonly_harness_blocks_paths_outside_allowed_roots(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             harness = gemma_readonly_tools.GemmaReadonlyToolHarness(allowed_roots=[tmpdir])
@@ -270,9 +237,6 @@ class GemmaPluginTests(unittest.TestCase):
             web_research_enabled=True,
         )
         duck_html = (
-            '<a rel="nofollow" class="result__a" href="https://duckduckgo.com/y.js?ad_domain=example.org">'
-            "Sponsored Result</a>"
-            '<a class="result__snippet">Sponsored snippet.</a>'
             '<a rel="nofollow" class="result__a" href="/l/?uddg=https%3A%2F%2Fexample.com%2Fone">'
             "First &amp; Result</a>"
             '<a class="result__snippet">Useful snippet &amp; detail.</a>'
@@ -293,7 +257,6 @@ class GemmaPluginTests(unittest.TestCase):
         ):
             result = harness.execute("web_search", {"query": "server3 gemma", "max_results": 3})
         self.assertTrue(result.ok)
-        self.assertNotIn("Sponsored Result", result.output)
         self.assertIn("First & Result", result.output)
         self.assertIn("https://example.com/one", result.output)
         self.assertIn("Useful snippet & detail.", result.output)

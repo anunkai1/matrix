@@ -389,7 +389,7 @@ def _looks_like_html(text: str) -> bool:
 
 
 def _html_to_text(text: str) -> str:
-    cleaned = re.sub(r"(?is)<(script|style|noscript|svg).*?</\1>", " ", text)
+    cleaned = re.sub(r"(?is)<(script|style|noscript).*?</\1>", " ", text)
     cleaned = re.sub(r"(?is)<br\s*/?>", "\n", cleaned)
     cleaned = re.sub(r"(?is)</(p|div|li|h[1-6]|tr)>", "\n", cleaned)
     cleaned = re.sub(r"(?is)<[^>]+>", " ", cleaned)
@@ -407,7 +407,7 @@ def _parse_duckduckgo_results(html: str, *, max_results: int) -> List[Dict[str, 
     for index, (raw_url, raw_title) in enumerate(blocks):
         url = _normalize_duckduckgo_url(unescape(raw_url))
         title = _html_to_text(raw_title)
-        if not url or not title or _is_duckduckgo_ad_url(url):
+        if not url or not title:
             continue
         snippet = _html_to_text(snippets[index]) if index < len(snippets) else ""
         results.append({"title": title, "url": url, "snippet": snippet})
@@ -425,9 +425,3 @@ def _normalize_duckduckgo_url(raw_url: str) -> str:
     if raw_url.startswith("//"):
         return "https:" + raw_url
     return raw_url
-
-
-def _is_duckduckgo_ad_url(url: str) -> bool:
-    parsed = urllib_parse.urlparse(url)
-    host = (parsed.hostname or "").lower()
-    return host.endswith("duckduckgo.com") and parsed.path.endswith("/y.js")
