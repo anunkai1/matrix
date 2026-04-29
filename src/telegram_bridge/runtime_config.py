@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import shlex
+import tomllib
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 try:
@@ -78,11 +80,28 @@ class Config:
     channel_plugin: str
     engine_plugin: str
     selectable_engine_plugins: List[str]
+    codex_model: str
+    codex_reasoning_effort: str
     gemma_provider: str
     gemma_model: str
     gemma_base_url: str
     gemma_ssh_host: str
     gemma_request_timeout_seconds: int
+    venice_api_key: str
+    venice_base_url: str
+    venice_model: str
+    venice_temperature: float
+    venice_request_timeout_seconds: int
+    chatgpt_web_bridge_script: str
+    chatgpt_web_python_bin: str
+    chatgpt_web_browser_brain_url: str
+    chatgpt_web_browser_brain_service: str
+    chatgpt_web_url: str
+    chatgpt_web_start_service: bool
+    chatgpt_web_request_timeout_seconds: int
+    chatgpt_web_ready_timeout_seconds: int
+    chatgpt_web_response_timeout_seconds: int
+    chatgpt_web_poll_seconds: float
     pi_provider: str
     pi_model: str
     pi_runner: str
@@ -92,6 +111,10 @@ class Config:
     pi_remote_cwd: str
     pi_session_mode: str
     pi_session_dir: str
+    pi_session_max_bytes: int
+    pi_session_max_age_seconds: int
+    pi_session_archive_retention_seconds: int
+    pi_session_archive_dir: str
     pi_tools_mode: str
     pi_tools_allowlist: str
     pi_extra_args: str
@@ -348,6 +371,41 @@ def parse_optional_cmd_env(name: str) -> List[str]:
     return cmd
 
 
+def load_codex_model() -> str:
+    # Resolution order:
+    # 1) explicit CODEX_MODEL
+    # 2) model from CODEX_CONFIG_PATH or ~/.codex/config.toml
+    env_model = os.getenv("CODEX_MODEL", "").strip()
+    if env_model:
+        return env_model
+
+    config_path = Path(os.getenv("CODEX_CONFIG_PATH", Path.home() / ".codex" / "config.toml")).expanduser()
+    try:
+        with config_path.open("rb") as fh:
+            payload = tomllib.load(fh)
+    except (FileNotFoundError, IsADirectoryError, PermissionError, tomllib.TOMLDecodeError):
+        return ""
+
+    model = payload.get("model", "")
+    return str(model).strip() if isinstance(model, str) else ""
+
+
+def load_codex_reasoning_effort() -> str:
+    env_effort = os.getenv("CODEX_REASONING_EFFORT", "").strip().lower()
+    if env_effort:
+        return env_effort
+
+    config_path = Path(os.getenv("CODEX_CONFIG_PATH", Path.home() / ".codex" / "config.toml")).expanduser()
+    try:
+        with config_path.open("rb") as fh:
+            payload = tomllib.load(fh)
+    except (FileNotFoundError, IsADirectoryError, PermissionError, tomllib.TOMLDecodeError):
+        return ""
+
+    effort = payload.get("model_reasoning_effort", "")
+    return str(effort).strip().lower() if isinstance(effort, str) else ""
+
+
 def load_config() -> Config:
     channel_plugin = parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram")
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -544,6 +602,8 @@ def load_config() -> Config:
             "TELEGRAM_SELECTABLE_ENGINE_PLUGINS",
             ["codex", "gemma", "pi"],
         ),
+        codex_model=load_codex_model(),
+        codex_reasoning_effort=load_codex_reasoning_effort(),
         gemma_provider=parse_plugin_name_env("GEMMA_PROVIDER", "ollama_ssh"),
         gemma_model=os.getenv("GEMMA_MODEL", "gemma4:26b").strip() or "gemma4:26b",
         gemma_base_url=os.getenv("GEMMA_BASE_URL", "http://127.0.0.1:11434").strip()
@@ -553,6 +613,62 @@ def load_config() -> Config:
             "GEMMA_REQUEST_TIMEOUT_SECONDS",
             180,
             minimum=1,
+        ),
+        venice_api_key=os.getenv("VENICE_API_KEY", "").strip(),
+        venice_base_url=os.getenv("VENICE_BASE_URL", "https://api.venice.ai/api/v1").strip()
+        or "https://api.venice.ai/api/v1",
+        venice_model=os.getenv("VENICE_MODEL", "mistral-31-24b").strip() or "mistral-31-24b",
+        venice_temperature=parse_float_env(
+            "VENICE_TEMPERATURE",
+            0.2,
+            minimum=0.0,
+            maximum=2.0,
+        ),
+        venice_request_timeout_seconds=parse_int_env(
+            "VENICE_REQUEST_TIMEOUT_SECONDS",
+            180,
+            minimum=1,
+        ),
+        chatgpt_web_bridge_script=os.getenv(
+            "CHATGPT_WEB_BRIDGE_SCRIPT",
+            shared_core_path("ops", "chatgpt_web_bridge.py"),
+        ).strip()
+        or shared_core_path("ops", "chatgpt_web_bridge.py"),
+        chatgpt_web_python_bin=os.getenv("CHATGPT_WEB_PYTHON_BIN", "python3").strip()
+        or "python3",
+        chatgpt_web_browser_brain_url=os.getenv(
+            "CHATGPT_WEB_BROWSER_BRAIN_URL",
+            "http://127.0.0.1:47831",
+        ).strip()
+        or "http://127.0.0.1:47831",
+        chatgpt_web_browser_brain_service=os.getenv(
+            "CHATGPT_WEB_BROWSER_BRAIN_SERVICE",
+            "server3-browser-brain.service",
+        ).strip()
+        or "server3-browser-brain.service",
+        chatgpt_web_url=os.getenv("CHATGPT_WEB_URL", "https://chatgpt.com/").strip()
+        or "https://chatgpt.com/",
+        chatgpt_web_start_service=parse_bool_env("CHATGPT_WEB_START_SERVICE", False),
+        chatgpt_web_request_timeout_seconds=parse_int_env(
+            "CHATGPT_WEB_REQUEST_TIMEOUT_SECONDS",
+            30,
+            minimum=1,
+        ),
+        chatgpt_web_ready_timeout_seconds=parse_int_env(
+            "CHATGPT_WEB_READY_TIMEOUT_SECONDS",
+            45,
+            minimum=1,
+        ),
+        chatgpt_web_response_timeout_seconds=parse_int_env(
+            "CHATGPT_WEB_RESPONSE_TIMEOUT_SECONDS",
+            180,
+            minimum=1,
+        ),
+        chatgpt_web_poll_seconds=parse_float_env(
+            "CHATGPT_WEB_POLL_SECONDS",
+            3.0,
+            minimum=0.1,
+            maximum=30.0,
         ),
         pi_provider=parse_plugin_name_env("PI_PROVIDER", "ollama"),
         pi_model=os.getenv("PI_MODEL", "qwen3-coder:30b").strip() or "qwen3-coder:30b",
@@ -564,6 +680,22 @@ def load_config() -> Config:
         pi_remote_cwd=os.getenv("PI_REMOTE_CWD", "/tmp").strip() or "/tmp",
         pi_session_mode=parse_plugin_name_env("PI_SESSION_MODE", "none"),
         pi_session_dir=os.getenv("PI_SESSION_DIR", "").strip(),
+        pi_session_max_bytes=parse_int_env(
+            "PI_SESSION_MAX_BYTES",
+            2 * 1024 * 1024,
+            minimum=1,
+        ),
+        pi_session_max_age_seconds=parse_int_env(
+            "PI_SESSION_MAX_AGE_SECONDS",
+            7 * 24 * 60 * 60,
+            minimum=1,
+        ),
+        pi_session_archive_retention_seconds=parse_int_env(
+            "PI_SESSION_ARCHIVE_RETENTION_SECONDS",
+            14 * 24 * 60 * 60,
+            minimum=1,
+        ),
+        pi_session_archive_dir=os.getenv("PI_SESSION_ARCHIVE_DIR", "").strip(),
         pi_tools_mode=parse_plugin_name_env("PI_TOOLS_MODE", "default"),
         pi_tools_allowlist=os.getenv("PI_TOOLS_ALLOWLIST", "").strip(),
         pi_extra_args=os.getenv("PI_EXTRA_ARGS", "").strip(),

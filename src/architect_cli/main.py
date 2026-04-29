@@ -26,7 +26,7 @@ DEFAULT_STATE_DIR = "/home/architect/.local/state/telegram-architect-bridge"
 DEFAULT_LAUNCHER_NAME = os.getenv("CLI_LAUNCHER_NAME", "architect").strip() or "architect"
 DEFAULT_ASSISTANT_NAME = os.getenv("CLI_ASSISTANT_NAME", "Architect").strip() or "Architect"
 DEFAULT_MEMORY_NAMESPACE = os.getenv("CLI_MEMORY_NAMESPACE", "architect").strip() or "architect"
-DEFAULT_CONVERSATION_KEY = os.getenv("CLI_CONVERSATION_KEY", "").strip()
+DEFAULT_CONVERSATION_KEY = os.getenv("CLI_CONVERSATION_KEY", "shared:architect:main").strip()
 
 
 def parse_args() -> argparse.Namespace:
@@ -94,6 +94,8 @@ def build_memory_db_path(args: argparse.Namespace) -> str:
 def build_conversation_key(args: argparse.Namespace) -> str:
     if args.conversation_key.strip():
         return args.conversation_key.strip()
+    if DEFAULT_CONVERSATION_KEY:
+        return DEFAULT_CONVERSATION_KEY
     return MemoryEngine.cli_key(args.profile, namespace=args.memory_namespace)
 
 

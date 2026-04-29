@@ -30,6 +30,35 @@ def make_executable_script(path: Path, contents: str) -> None:
 
 
 class ExecutorPhaseBreakdownTests(unittest.TestCase):
+    def test_run_executor_passes_codex_model_and_effort_env_overrides(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="executor-env-") as tmpdir:
+            tmp_path = Path(tmpdir)
+            fake_executor = tmp_path / "fake_executor.sh"
+            make_executable_script(
+                fake_executor,
+                """#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+printf '%s|%s\n' "${CODEX_MODEL:-missing}" "${CODEX_REASONING_EFFORT:-missing}"
+""",
+            )
+            config = SimpleNamespace(
+                executor_cmd=[str(fake_executor)],
+                exec_timeout_seconds=5,
+                codex_model="gpt-5.5",
+                codex_reasoning_effort="high",
+            )
+
+            result = executor.run_executor(
+                config=config,
+                prompt="hello",
+                thread_id=None,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("gpt-5.5", result.stdout)
+        self.assertIn("high", result.stdout)
+
     def test_run_executor_emits_executor_phase_timing_events(self) -> None:
         with tempfile.TemporaryDirectory(prefix="executor-phase-breakdown-") as tmpdir:
             tmp_path = Path(tmpdir)

@@ -42,6 +42,8 @@ class FakeTelegramClient:
     def __init__(self, channel_name: str = "telegram") -> None:
         self.channel_name = channel_name
         self.messages = []
+        self.edits = []
+        self.callback_answers = []
         self.photos = []
         self.documents = []
         self.audios = []
@@ -49,18 +51,39 @@ class FakeTelegramClient:
         self.chat_actions = []
         self.raise_on_voice = None
 
-    def send_message_get_id(self, chat_id, text, reply_to_message_id=None, message_thread_id=None):
+    def send_message_get_id(
+        self,
+        chat_id,
+        text,
+        reply_to_message_id=None,
+        message_thread_id=None,
+        reply_markup=None,
+    ):
         self.send_message(
             chat_id,
             text,
             reply_to_message_id=reply_to_message_id,
             message_thread_id=message_thread_id,
+            reply_markup=reply_markup,
         )
         return len(self.messages)
 
-    def send_message(self, chat_id, text, reply_to_message_id=None, message_thread_id=None):
+    def send_message(
+        self,
+        chat_id,
+        text,
+        reply_to_message_id=None,
+        message_thread_id=None,
+        reply_markup=None,
+    ):
         del message_thread_id
-        self.messages.append((chat_id, text, reply_to_message_id))
+        self.messages.append((chat_id, text, reply_to_message_id, reply_markup))
+
+    def edit_message(self, chat_id, message_id, text, reply_markup=None):
+        self.edits.append((chat_id, message_id, text, reply_markup))
+
+    def answer_callback_query(self, callback_query_id, text=None):
+        self.callback_answers.append((callback_query_id, text))
 
     def send_photo(
         self,
@@ -143,7 +166,8 @@ class FakeProgressEditClient:
         self.last_thread_id = message_thread_id
         return 101
 
-    def edit_message(self, chat_id, message_id, text):
+    def edit_message(self, chat_id, message_id, text, reply_markup=None):
+        del reply_markup
         raise RuntimeError("WhatsApp bridge HTTP 502: message edit failed")
 
     def send_chat_action(self, chat_id, action="typing", message_thread_id=None):
@@ -164,7 +188,8 @@ class FakeSignalProgressClient:
     ):
         return 202
 
-    def edit_message(self, chat_id, message_id, text):
+    def edit_message(self, chat_id, message_id, text, reply_markup=None):
+        del reply_markup
         raise AssertionError("edit_message should not be called for signal")
 
     def send_chat_action(self, chat_id, action="typing", message_thread_id=None):
@@ -222,11 +247,28 @@ def make_config(**overrides):
         "channel_plugin": "telegram",
         "engine_plugin": "codex",
         "selectable_engine_plugins": ["codex", "gemma", "pi"],
+        "codex_model": "gpt-5.4-mini",
+        "codex_reasoning_effort": "medium",
         "gemma_provider": "ollama_ssh",
         "gemma_model": "gemma4:26b",
         "gemma_base_url": "http://127.0.0.1:11434",
         "gemma_ssh_host": "server4-beast",
         "gemma_request_timeout_seconds": 180,
+        "venice_api_key": "",
+        "venice_base_url": "https://api.venice.ai/api/v1",
+        "venice_model": "mistral-31-24b",
+        "venice_temperature": 0.2,
+        "venice_request_timeout_seconds": 180,
+        "chatgpt_web_bridge_script": "/home/architect/matrix/ops/chatgpt_web_bridge.py",
+        "chatgpt_web_python_bin": "python3",
+        "chatgpt_web_browser_brain_url": "http://127.0.0.1:47831",
+        "chatgpt_web_browser_brain_service": "server3-browser-brain.service",
+        "chatgpt_web_url": "https://chatgpt.com/",
+        "chatgpt_web_start_service": True,
+        "chatgpt_web_request_timeout_seconds": 30,
+        "chatgpt_web_ready_timeout_seconds": 45,
+        "chatgpt_web_response_timeout_seconds": 180,
+        "chatgpt_web_poll_seconds": 3.0,
         "pi_provider": "ollama",
         "pi_model": "qwen3-coder:30b",
         "pi_runner": "ssh",
@@ -236,6 +278,10 @@ def make_config(**overrides):
         "pi_remote_cwd": "/tmp",
         "pi_session_mode": "none",
         "pi_session_dir": "",
+        "pi_session_max_bytes": 2 * 1024 * 1024,
+        "pi_session_max_age_seconds": 7 * 24 * 60 * 60,
+        "pi_session_archive_retention_seconds": 14 * 24 * 60 * 60,
+        "pi_session_archive_dir": "",
         "pi_tools_mode": "default",
         "pi_tools_allowlist": "",
         "pi_extra_args": "",
@@ -525,7 +571,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("/help or /h - show this message", text)
         self.assertIn("/status - show bridge status and context", text)
         self.assertIn("/reset - clear saved context for this chat", text)
-        self.assertIn("/cancel - cancel current in-flight request for this chat", text)
+        self.assertIn("/cancel or /c - cancel current in-flight request for this chat", text)
         self.assertIn("/restart - queue a safe bridge restart", text)
         self.assertIn(
             "/voice-alias add <source> => <target> - add approved alias manually",
@@ -537,10 +583,26 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertNotIn("Use `HA ...`", text)
         self.assertNotIn("/memory mode", text)
 
+    def test_help_text_includes_pi_provider_commands(self):
+        cfg = make_config()
+        text = bridge_handlers.build_help_text(cfg)
+        self.assertIn("/model - show this chat's current model for the active engine", text)
+        self.assertIn("/model list - list model choices/help for the active engine", text)
+        self.assertIn("/model <name> - set this chat's model for the active engine", text)
+        self.assertIn("/model reset - clear this chat's model override for the active engine", text)
+        self.assertIn("/effort - show this chat's current Codex reasoning effort", text)
+        self.assertIn("/effort list - list effort choices/help for the active model", text)
+        self.assertIn("/effort <low|medium|high|xhigh> - set this chat's Codex reasoning effort", text)
+        self.assertIn("/effort reset - clear this chat's Codex reasoning effort override", text)
+        self.assertIn("/pi - show Pi provider/model status for this chat", text)
+        self.assertIn("/pi providers - list available Pi providers", text)
+        self.assertIn("/pi provider <name> - set this chat's Pi provider", text)
+        self.assertIn("/pi reset - clear this chat's Pi provider and model overrides", text)
+
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
         self.assertEqual(registry.list_channels(), ["signal", "telegram", "whatsapp"])
-        self.assertEqual(registry.list_engines(), ["codex", "gemma", "mavali_eth", "pi"])
+        self.assertEqual(registry.list_engines(), ["chatgptweb", "codex", "gemma", "mavali_eth", "pi", "venice"])
 
     def test_default_plugin_registry_builds_default_plugins(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
@@ -549,8 +611,11 @@ class BridgeCoreTests(unittest.TestCase):
         engine = registry.build_engine("codex")
         self.assertIsInstance(channel, bridge_channel_adapter.TelegramChannelAdapter)
         self.assertIsInstance(engine, bridge_engine_adapter.CodexEngineAdapter)
+        self.assertIsInstance(registry.build_engine("chatgptweb"), bridge_engine_adapter.ChatGPTWebEngineAdapter)
+        self.assertIsInstance(registry.build_engine("chatgpt_web"), bridge_engine_adapter.ChatGPTWebEngineAdapter)
         self.assertIsInstance(registry.build_engine("gemma"), bridge_engine_adapter.GemmaEngineAdapter)
         self.assertIsInstance(registry.build_engine("pi"), bridge_engine_adapter.PiEngineAdapter)
+        self.assertIsInstance(registry.build_engine("venice"), bridge_engine_adapter.VeniceEngineAdapter)
 
     def test_default_plugin_registry_whatsapp_disabled_fails_fast(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
@@ -614,6 +679,24 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.pi_ssh_host, "server4-beast")
         self.assertEqual(config.pi_session_mode, "none")
         self.assertEqual(config.pi_session_dir, "")
+        self.assertEqual(config.pi_session_max_bytes, 2 * 1024 * 1024)
+        self.assertEqual(config.pi_session_max_age_seconds, 7 * 24 * 60 * 60)
+        self.assertEqual(config.pi_session_archive_retention_seconds, 14 * 24 * 60 * 60)
+        self.assertEqual(config.pi_session_archive_dir, "")
+        self.assertEqual(config.venice_api_key, "")
+        self.assertEqual(config.venice_base_url, "https://api.venice.ai/api/v1")
+        self.assertEqual(config.venice_model, "mistral-31-24b")
+        self.assertEqual(config.venice_temperature, 0.2)
+        self.assertEqual(config.venice_request_timeout_seconds, 180)
+        self.assertEqual(config.chatgpt_web_python_bin, "python3")
+        self.assertEqual(config.chatgpt_web_browser_brain_url, "http://127.0.0.1:47831")
+        self.assertEqual(config.chatgpt_web_browser_brain_service, "server3-browser-brain.service")
+        self.assertEqual(config.chatgpt_web_url, "https://chatgpt.com/")
+        self.assertFalse(config.chatgpt_web_start_service)
+        self.assertEqual(config.chatgpt_web_request_timeout_seconds, 30)
+        self.assertEqual(config.chatgpt_web_ready_timeout_seconds, 45)
+        self.assertEqual(config.chatgpt_web_response_timeout_seconds, 180)
+        self.assertEqual(config.chatgpt_web_poll_seconds, 3.0)
 
     def test_load_config_reads_plugin_selection_overrides(self):
         with mock.patch.dict(
@@ -623,12 +706,27 @@ class BridgeCoreTests(unittest.TestCase):
                 "TELEGRAM_ALLOWED_CHAT_IDS": "1,2",
                 "TELEGRAM_CHANNEL_PLUGIN": "  whatsapp ",
                 "TELEGRAM_ENGINE_PLUGIN": "  codex ",
-                "TELEGRAM_SELECTABLE_ENGINE_PLUGINS": "codex,gemma,pi",
+                "TELEGRAM_SELECTABLE_ENGINE_PLUGINS": "codex,gemma,pi,venice,chatgptweb",
                 "GEMMA_PROVIDER": "ollama_http",
                 "GEMMA_MODEL": "gemma-test",
                 "GEMMA_BASE_URL": "http://beast:11434",
                 "GEMMA_SSH_HOST": "server4-test",
                 "GEMMA_REQUEST_TIMEOUT_SECONDS": "55",
+                "VENICE_API_KEY": "venice-key",
+                "VENICE_BASE_URL": "https://api.venice.ai/api/v1",
+                "VENICE_MODEL": "venice-uncensored-1-2",
+                "VENICE_TEMPERATURE": "0.4",
+                "VENICE_REQUEST_TIMEOUT_SECONDS": "77",
+                "CHATGPT_WEB_BRIDGE_SCRIPT": "/srv/chatgpt_web_bridge.py",
+                "CHATGPT_WEB_PYTHON_BIN": "/usr/bin/python3",
+                "CHATGPT_WEB_BROWSER_BRAIN_URL": "http://127.0.0.1:47831",
+                "CHATGPT_WEB_BROWSER_BRAIN_SERVICE": "browser-brain-test.service",
+                "CHATGPT_WEB_URL": "https://chatgpt.com/g/g-test",
+                "CHATGPT_WEB_START_SERVICE": "false",
+                "CHATGPT_WEB_REQUEST_TIMEOUT_SECONDS": "11",
+                "CHATGPT_WEB_READY_TIMEOUT_SECONDS": "22",
+                "CHATGPT_WEB_RESPONSE_TIMEOUT_SECONDS": "33",
+                "CHATGPT_WEB_POLL_SECONDS": "0.5",
                 "PI_PROVIDER": "ollama",
                 "PI_MODEL": "pi-model",
                 "PI_RUNNER": "local",
@@ -652,12 +750,27 @@ class BridgeCoreTests(unittest.TestCase):
             config = bridge.load_config()
         self.assertEqual(config.channel_plugin, "whatsapp")
         self.assertEqual(config.engine_plugin, "codex")
-        self.assertEqual(config.selectable_engine_plugins, ["codex", "gemma", "pi"])
+        self.assertEqual(config.selectable_engine_plugins, ["codex", "gemma", "pi", "venice", "chatgptweb"])
         self.assertEqual(config.gemma_provider, "ollama_http")
         self.assertEqual(config.gemma_model, "gemma-test")
         self.assertEqual(config.gemma_base_url, "http://beast:11434")
         self.assertEqual(config.gemma_ssh_host, "server4-test")
         self.assertEqual(config.gemma_request_timeout_seconds, 55)
+        self.assertEqual(config.venice_api_key, "venice-key")
+        self.assertEqual(config.venice_base_url, "https://api.venice.ai/api/v1")
+        self.assertEqual(config.venice_model, "venice-uncensored-1-2")
+        self.assertEqual(config.venice_temperature, 0.4)
+        self.assertEqual(config.venice_request_timeout_seconds, 77)
+        self.assertEqual(config.chatgpt_web_bridge_script, "/srv/chatgpt_web_bridge.py")
+        self.assertEqual(config.chatgpt_web_python_bin, "/usr/bin/python3")
+        self.assertEqual(config.chatgpt_web_browser_brain_url, "http://127.0.0.1:47831")
+        self.assertEqual(config.chatgpt_web_browser_brain_service, "browser-brain-test.service")
+        self.assertEqual(config.chatgpt_web_url, "https://chatgpt.com/g/g-test")
+        self.assertFalse(config.chatgpt_web_start_service)
+        self.assertEqual(config.chatgpt_web_request_timeout_seconds, 11)
+        self.assertEqual(config.chatgpt_web_ready_timeout_seconds, 22)
+        self.assertEqual(config.chatgpt_web_response_timeout_seconds, 33)
+        self.assertEqual(config.chatgpt_web_poll_seconds, 0.5)
         self.assertEqual(config.pi_provider, "ollama")
         self.assertEqual(config.pi_model, "pi-model")
         self.assertEqual(config.pi_runner, "local")
@@ -667,6 +780,10 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(config.pi_remote_cwd, "/srv/pi")
         self.assertEqual(config.pi_session_mode, "telegram_scope")
         self.assertEqual(config.pi_session_dir, "/srv/pi-sessions")
+        self.assertEqual(config.pi_session_max_bytes, 2 * 1024 * 1024)
+        self.assertEqual(config.pi_session_max_age_seconds, 7 * 24 * 60 * 60)
+        self.assertEqual(config.pi_session_archive_retention_seconds, 14 * 24 * 60 * 60)
+        self.assertEqual(config.pi_session_archive_dir, "")
         self.assertEqual(config.pi_tools_mode, "allowlist")
         self.assertEqual(config.pi_tools_allowlist, "read,bash")
         self.assertEqual(config.pi_extra_args, "--thinking low")
@@ -733,14 +850,63 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Gemma model available: no", text)
         self.assertIn("Gemma last check error: ssh failed more detail", text)
 
-    def test_engine_status_includes_live_pi_health(self):
-        state = bridge.State(chat_engines={"tg:1": "pi"})
-        config = make_config(engine_plugin="codex", pi_ssh_host="server4-test")
+    def test_engine_status_includes_live_venice_health(self):
+        state = bridge.State(chat_engines={"tg:1": "venice"})
+        config = make_config(
+            engine_plugin="codex",
+            venice_api_key="venice-key",
+            venice_model="mistral-31-24b",
+        )
         completed = subprocess.CompletedProcess(
             args=[],
             returncode=0,
-            stdout="qwen3-coder:30b latest 18 GB\n",
-            stderr="0.70.2\n",
+            stdout=json.dumps({"data": [{"id": "mistral-31-24b"}], "object": "list", "type": "text"}),
+            stderr="",
+        )
+
+        with (
+            mock.patch.object(
+                bridge_handlers.urllib_request,
+                "urlopen",
+                return_value=mock.MagicMock(
+                    __enter__=mock.MagicMock(
+                        return_value=mock.MagicMock(read=mock.MagicMock(return_value=completed.stdout.encode("utf-8")))
+                    ),
+                    __exit__=mock.MagicMock(return_value=False),
+                ),
+            ) as urlopen_mock,
+            mock.patch.object(
+                bridge_handlers.time,
+                "monotonic",
+                side_effect=[250.0, 250.05],
+            ),
+        ):
+            text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
+
+        self.assertIn("This chat engine: venice", text)
+        self.assertIn("Venice health: ok", text)
+        self.assertIn("Venice response time: 50ms", text)
+        self.assertIn("Venice model available: yes", text)
+        self.assertIn("Venice last check error: (none)", text)
+        urlopen_mock.assert_called_once()
+
+    def test_engine_status_includes_live_chatgpt_web_health(self):
+        state = bridge.State(chat_engines={"tg:1": "chatgptweb"})
+        config = make_config(
+            engine_plugin="codex",
+            chatgpt_web_bridge_script="/srv/chatgpt_web_bridge.py",
+            chatgpt_web_browser_brain_url="http://127.0.0.1:47831",
+        )
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "running": True,
+                    "tabs": [{"url": "https://chatgpt.com/c/test", "tab_id": "tab-1"}],
+                }
+            ),
+            stderr="",
         )
 
         with (
@@ -748,6 +914,48 @@ class BridgeCoreTests(unittest.TestCase):
                 bridge_handlers.subprocess,
                 "run",
                 return_value=completed,
+            ) as run_mock,
+            mock.patch.object(
+                bridge_handlers.time,
+                "monotonic",
+                side_effect=[300.0, 300.027],
+            ),
+        ):
+            text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
+
+        self.assertIn("This chat engine: chatgptweb", text)
+        self.assertIn("ChatGPT web health: ok", text)
+        self.assertIn("ChatGPT web response time: 26ms", text)
+        self.assertIn("ChatGPT web Browser Brain running: yes", text)
+        self.assertIn("ChatGPT web tab visible: yes", text)
+        self.assertIn("ChatGPT web last check error: (none)", text)
+        run_mock.assert_called_once()
+        self.assertIn("/srv/chatgpt_web_bridge.py", run_mock.call_args.args[0])
+
+    def test_engine_status_includes_live_pi_health(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(engine_plugin="codex", pi_ssh_host="server4-test")
+        version_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="0.70.2\n",
+            stderr="",
+        )
+        models_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                "provider  model                         context  max-out  thinking  images\n"
+                "ollama    qwen3-coder:30b              128K     16.4K    no        no\n"
+            ),
+            stderr="",
+        )
+
+        with (
+            mock.patch.object(
+                bridge_handlers.subprocess,
+                "run",
+                side_effect=[version_completed, models_completed],
             ) as run_mock,
             mock.patch.object(
                 bridge_handlers.time,
@@ -763,8 +971,760 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Pi version: 0.70.2", text)
         self.assertIn("Pi model available: yes", text)
         self.assertIn("Pi last check error: (none)", text)
-        run_mock.assert_called_once()
-        self.assertIn("server4-test", run_mock.call_args.args[0])
+        self.assertIn("Pi selectability: /pi providers, /pi provider <name>, /model list, /model <name>", text)
+        self.assertEqual(run_mock.call_count, 2)
+        self.assertIn("server4-test", run_mock.call_args_list[0].args[0])
+
+    def test_engine_status_shows_pi_tunnel_for_local_ollama_provider(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(
+            engine_plugin="codex",
+            pi_runner="local",
+            pi_provider="ollama",
+            pi_local_cwd="/runtime/root",
+            pi_ollama_tunnel_enabled=True,
+            pi_ollama_tunnel_local_port=19091,
+        )
+        version_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="0.70.2\n",
+            stderr="",
+        )
+        models_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                "provider  model                         context  max-out  thinking  images\n"
+                "ollama    qwen3-coder:30b              128K     16.4K    no        no\n"
+            ),
+            stderr="",
+        )
+
+        with (
+            mock.patch.object(
+                bridge_handlers.subprocess,
+                "run",
+                side_effect=[version_completed, models_completed],
+            ) as run_mock,
+            mock.patch.object(
+                bridge_handlers.time,
+                "monotonic",
+                side_effect=[250.0, 250.05],
+            ),
+        ):
+            text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
+
+        self.assertIn("Pi local cwd: /runtime/root", text)
+        self.assertIn("Pi Ollama tunnel: 127.0.0.1:19091", text)
+        first_call = run_mock.call_args_list[0]
+        self.assertEqual(
+            first_call.kwargs["env"]["OLLAMA_HOST"],
+            "http://127.0.0.1:19091",
+        )
+
+    def test_engine_status_marks_pi_tunnel_unused_for_non_ollama_provider(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(
+            engine_plugin="codex",
+            pi_runner="local",
+            pi_provider="venice",
+            pi_model="deepseek-v4-flash",
+            pi_local_cwd="/runtime/root",
+        )
+        version_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="0.70.2\n",
+            stderr="",
+        )
+        models_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                "provider  model                         context  max-out  thinking  images\n"
+                "venice    deepseek-v4-flash            128K     16.4K    no        no\n"
+            ),
+            stderr="",
+        )
+
+        with (
+            mock.patch.object(
+                bridge_handlers.subprocess,
+                "run",
+                side_effect=[version_completed, models_completed],
+            ),
+            mock.patch.object(
+                bridge_handlers.time,
+                "monotonic",
+                side_effect=[250.0, 250.05],
+            ),
+        ):
+            text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
+
+        self.assertIn("Pi provider: venice", text)
+        self.assertIn("Pi local cwd: /runtime/root", text)
+        self.assertIn("Pi Ollama tunnel: not used for this provider", text)
+
+    def test_pi_provider_command_sets_provider_and_model(self):
+        state = bridge.State()
+        config = make_config(engine_plugin="codex", pi_provider="venice", pi_model="mistral-31-24b")
+        client = FakeTelegramClient()
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                "provider  model                         context  max-out  thinking  images\n"
+                "deepseek  deepseek-chat               128K     16.4K    no        no\n"
+                "deepseek  deepseek-reasoner           128K     16.4K    yes       no\n"
+            ),
+            stderr="",
+        )
+
+        with mock.patch.object(bridge_handlers.subprocess, "run", return_value=completed):
+            handled = bridge_handlers.handle_pi_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/pi provider deepseek",
+            )
+
+        self.assertTrue(handled)
+        self.assertEqual(bridge_handlers.StateRepository(state).get_chat_pi_provider("tg:1"), "deepseek")
+        self.assertEqual(bridge_handlers.StateRepository(state).get_chat_pi_model("tg:1"), "deepseek-chat")
+        self.assertIn("Pi provider for this chat is now deepseek", client.messages[0][1])
+
+    def test_pi_reset_clears_provider_and_model_overrides(self):
+        state = bridge.State()
+        repo = bridge_handlers.StateRepository(state)
+        repo.set_chat_pi_provider("tg:1", "deepseek")
+        repo.set_chat_pi_model("tg:1", "deepseek-chat")
+        config = make_config(engine_plugin="codex")
+        client = FakeTelegramClient()
+
+        handled = bridge_handlers.handle_pi_command(
+            state=state,
+            config=config,
+            client=client,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=42,
+            raw_text="/pi reset",
+        )
+
+        self.assertTrue(handled)
+        self.assertIsNone(repo.get_chat_pi_provider("tg:1"))
+        self.assertIsNone(repo.get_chat_pi_model("tg:1"))
+        self.assertIn("Pi provider is now ollama", client.messages[0][1])
+
+    def test_diary_progress_context_uses_selected_engine(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(
+            engine_plugin="codex",
+            pi_provider="venice",
+            pi_model="deepseek-v4-flash",
+        )
+
+        label = bridge_handlers.build_diary_progress_context_label(state, config, "tg:1")
+
+        self.assertEqual(label, "(pi | venice | deepseek-v4-flash)")
+
+    def test_engine_progress_context_uses_codex_model(self):
+        config = make_config(
+            engine_plugin="codex",
+            codex_model="gpt-5.4-mini",
+        )
+
+        self.assertEqual(
+            bridge_handlers.build_engine_progress_context_label(config, "codex"),
+            "(codex | gpt-5.4-mini)",
+        )
+
+    def test_engine_status_includes_codex_model_when_selected(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        config = make_config(
+            engine_plugin="codex",
+            codex_model="gpt-5.4-mini",
+            codex_reasoning_effort="high",
+        )
+
+        text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
+
+        self.assertIn("This chat engine: codex", text)
+        self.assertIn("Codex model: gpt-5.4-mini", text)
+        self.assertIn("Codex effort: high", text)
+
+    def test_engine_command_status_includes_inline_picker(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        config = make_config(
+            engine_plugin="codex",
+            selectable_engine_plugins=["codex", "gemma", "pi", "venice"],
+        )
+        client = FakeTelegramClient()
+
+        handled = bridge_handlers.handle_engine_command(
+            state=state,
+            config=config,
+            client=client,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=42,
+            raw_text="/engine",
+        )
+
+        self.assertTrue(handled)
+        self.assertIn("This chat engine: codex", client.messages[0][1])
+        self.assertIsInstance(client.messages[0][3], dict)
+        self.assertEqual(
+            client.messages[0][3]["inline_keyboard"][0][0]["callback_data"],
+            "cfg|engine|codex|set",
+        )
+        callback_values = [
+            button["callback_data"]
+            for row in client.messages[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn(
+            "cfg|model|codex|menu",
+            callback_values,
+        )
+
+    def test_callback_query_updates_engine_menu(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        config = make_config(
+            engine_plugin="codex",
+            selectable_engine_plugins=["codex", "gemma", "pi"],
+        )
+        client = FakeTelegramClient()
+        update = {
+            "update_id": 8,
+            "callback_query": {
+                "id": "cb-engine-1",
+                "data": "cfg|engine|pi|set",
+                "message": {
+                    "message_id": 56,
+                    "chat": {"id": 1, "type": "private"},
+                    "text": "/engine",
+                },
+            },
+        }
+
+        bridge_handlers.handle_update(state, config, client, update, engine=None)
+
+        self.assertEqual(bridge_handlers.StateRepository(state).get_chat_engine("tg:1"), "pi")
+        self.assertEqual(client.callback_answers[0], ("cb-engine-1", "Updated."))
+        self.assertIn("This chat now uses engine: pi", client.edits[0][2])
+        callback_values = [
+            button["callback_data"]
+            for row in client.edits[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn(
+            "cfg|model|pi|menu",
+            callback_values,
+        )
+        self.assertIn(
+            "cfg|provider|pi|menu",
+            callback_values,
+        )
+
+    def test_callback_query_from_engine_menu_opens_model_menu(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        config = make_config(
+            engine_plugin="codex",
+            codex_model="gpt-5.4",
+        )
+        client = FakeTelegramClient()
+        update = {
+            "update_id": 9,
+            "callback_query": {
+                "id": "cb-engine-model-1",
+                "data": "cfg|model|codex|menu",
+                "message": {
+                    "message_id": 57,
+                    "chat": {"id": 1, "type": "private"},
+                    "text": "/engine",
+                },
+            },
+        }
+
+        with mock.patch.object(
+            bridge_handlers,
+            "_load_codex_model_choices",
+            return_value=[("gpt-5.5", "GPT-5.5"), ("gpt-5.4", "gpt-5.4")],
+        ):
+            bridge_handlers.handle_update(state, config, client, update, engine=None)
+
+        self.assertEqual(client.callback_answers[0], ("cb-engine-model-1", "Updated."))
+        self.assertIn("Active engine: codex", client.edits[0][2])
+        callback_values = [
+            button["callback_data"]
+            for row in client.edits[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn(
+            "cfg|effort|codex|menu",
+            callback_values,
+        )
+        self.assertIn(
+            "cfg|engine|codex|menu",
+            callback_values,
+        )
+
+    def test_callback_query_from_engine_menu_opens_provider_menu(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(
+            engine_plugin="codex",
+            pi_provider="venice",
+            pi_model="deepseek-v4-flash",
+        )
+        client = FakeTelegramClient()
+        update = {
+            "update_id": 12,
+            "callback_query": {
+                "id": "cb-provider-menu-1",
+                "data": "cfg|provider|pi|menu",
+                "message": {
+                    "message_id": 60,
+                    "chat": {"id": 1, "type": "private"},
+                    "text": "/engine",
+                },
+            },
+        }
+
+        with mock.patch.object(
+            bridge_handlers,
+            "_pi_available_provider_names",
+            return_value=["venice", "deepseek"],
+        ):
+            bridge_handlers.handle_update(state, config, client, update, engine=None)
+
+        self.assertEqual(client.callback_answers[0], ("cb-provider-menu-1", "Updated."))
+        self.assertIn("Available Pi providers:", client.edits[0][2])
+        callback_values = [
+            button["callback_data"]
+            for row in client.edits[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("cfg|provider|pi|set|venice", callback_values)
+        self.assertIn("cfg|provider|pi|set|deepseek", callback_values)
+        self.assertIn("cfg|engine|pi|menu", callback_values)
+
+    def test_callback_query_sets_pi_provider_and_returns_to_engine_menu(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(
+            engine_plugin="codex",
+            pi_provider="venice",
+            pi_model="deepseek-v4-flash",
+        )
+        client = FakeTelegramClient()
+        update = {
+            "update_id": 13,
+            "callback_query": {
+                "id": "cb-provider-set-1",
+                "data": "cfg|provider|pi|set|deepseek",
+                "message": {
+                    "message_id": 61,
+                    "chat": {"id": 1, "type": "private"},
+                    "text": "/engine",
+                },
+            },
+        }
+
+        def fake_pi_provider_model_names(runtime_config):
+            if bridge_handlers.configured_pi_provider(runtime_config) == "deepseek":
+                return ["deepseek-chat", "deepseek-reasoner"]
+            return ["deepseek-v4-flash"]
+
+        with mock.patch.object(
+            bridge_handlers,
+            "_pi_provider_model_names",
+            side_effect=fake_pi_provider_model_names,
+        ):
+            bridge_handlers.handle_update(state, config, client, update, engine=None)
+
+        repo = bridge_handlers.StateRepository(state)
+        self.assertEqual(client.callback_answers[0], ("cb-provider-set-1", "Updated."))
+        self.assertEqual(repo.get_chat_pi_provider("tg:1"), "deepseek")
+        self.assertEqual(repo.get_chat_pi_model("tg:1"), "deepseek-chat")
+        self.assertIn("Pi provider for this chat is now deepseek", client.edits[0][2])
+        callback_values = [
+            button["callback_data"]
+            for row in client.edits[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("cfg|provider|pi|menu", callback_values)
+        self.assertIn("cfg|model|pi|menu", callback_values)
+
+    def test_callback_query_from_effort_menu_goes_back_to_models(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        config = make_config(
+            engine_plugin="codex",
+            codex_model="gpt-5.4",
+            codex_reasoning_effort="medium",
+        )
+        client = FakeTelegramClient()
+        update = {
+            "update_id": 10,
+            "callback_query": {
+                "id": "cb-effort-menu-1",
+                "data": "cfg|effort|codex|menu",
+                "message": {
+                    "message_id": 58,
+                    "chat": {"id": 1, "type": "private"},
+                    "text": "/model",
+                },
+            },
+        }
+
+        with mock.patch.object(
+            bridge_handlers,
+            "_load_codex_model_catalog",
+            return_value=[
+                {
+                    "slug": "gpt-5.4",
+                    "display_name": "gpt-5.4",
+                    "supported_efforts": ["low", "medium", "high", "xhigh"],
+                }
+            ],
+        ):
+            bridge_handlers.handle_update(state, config, client, update, engine=None)
+
+        self.assertEqual(client.callback_answers[0], ("cb-effort-menu-1", "Updated."))
+        callback_values = [
+            button["callback_data"]
+            for row in client.edits[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("cfg|model|codex|menu", callback_values)
+
+    def test_model_command_sets_codex_model_override(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        config = make_config(engine_plugin="codex", codex_model="gpt-5.4")
+        client = FakeTelegramClient()
+
+        with mock.patch.object(
+            bridge_handlers,
+            "_load_codex_model_choices",
+            return_value=[("gpt-5.5", "GPT-5.5"), ("gpt-5.4", "gpt-5.4")],
+        ):
+            handled = bridge_handlers.handle_model_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/model GPT-5.5",
+            )
+
+        self.assertTrue(handled)
+        self.assertEqual(bridge_handlers.StateRepository(state).get_chat_codex_model("tg:1"), "gpt-5.5")
+        self.assertIn("Codex model for this chat is now gpt-5.5", client.messages[0][1])
+        self.assertIsInstance(client.messages[0][3], dict)
+
+    def test_model_reset_clears_codex_model_override(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        repo = bridge_handlers.StateRepository(state)
+        repo.set_chat_codex_model("tg:1", "gpt-5.5")
+        config = make_config(engine_plugin="codex", codex_model="gpt-5.4")
+        client = FakeTelegramClient()
+
+        handled = bridge_handlers.handle_model_command(
+            state=state,
+            config=config,
+            client=client,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=42,
+            raw_text="/model reset",
+        )
+
+        self.assertTrue(handled)
+        self.assertIsNone(repo.get_chat_codex_model("tg:1"))
+        self.assertIn("Codex model is now gpt-5.4", client.messages[0][1])
+
+    def test_effort_command_sets_codex_effort_override(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        config = make_config(
+            engine_plugin="codex",
+            codex_model="gpt-5.4",
+            codex_reasoning_effort="medium",
+        )
+        client = FakeTelegramClient()
+
+        with mock.patch.object(
+            bridge_handlers,
+            "_load_codex_model_catalog",
+            return_value=[
+                {
+                    "slug": "gpt-5.4",
+                    "display_name": "gpt-5.4",
+                    "supported_efforts": ["low", "medium", "high", "xhigh"],
+                }
+            ],
+        ):
+            handled = bridge_handlers.handle_effort_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/effort high",
+            )
+
+        self.assertTrue(handled)
+        self.assertEqual(bridge_handlers.StateRepository(state).get_chat_codex_effort("tg:1"), "high")
+        self.assertIn("Codex reasoning effort for this chat is now high", client.messages[0][1])
+        self.assertIsInstance(client.messages[0][3], dict)
+
+    def test_effort_reset_clears_codex_effort_override(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        repo = bridge_handlers.StateRepository(state)
+        repo.set_chat_codex_effort("tg:1", "high")
+        config = make_config(engine_plugin="codex", codex_reasoning_effort="medium")
+        client = FakeTelegramClient()
+
+        handled = bridge_handlers.handle_effort_command(
+            state=state,
+            config=config,
+            client=client,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=42,
+            raw_text="/effort reset",
+        )
+
+        self.assertTrue(handled)
+        self.assertIsNone(repo.get_chat_codex_effort("tg:1"))
+        self.assertIn("Codex reasoning effort is now medium", client.messages[0][1])
+
+    def test_callback_query_updates_codex_effort_menu(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        config = make_config(
+            engine_plugin="codex",
+            codex_model="gpt-5.4",
+            codex_reasoning_effort="medium",
+        )
+        client = FakeTelegramClient()
+        update = {
+            "update_id": 7,
+            "callback_query": {
+                "id": "cb-1",
+                "data": "cfg|effort|codex|set|high",
+                "message": {
+                    "message_id": 55,
+                    "chat": {"id": 1, "type": "private"},
+                    "text": "/effort",
+                },
+            },
+        }
+
+        with mock.patch.object(
+            bridge_handlers,
+            "_load_codex_model_catalog",
+            return_value=[
+                {
+                    "slug": "gpt-5.4",
+                    "display_name": "gpt-5.4",
+                    "supported_efforts": ["low", "medium", "high", "xhigh"],
+                }
+            ],
+        ):
+            bridge_handlers.handle_update(state, config, client, update, engine=None)
+
+        self.assertEqual(bridge_handlers.StateRepository(state).get_chat_codex_effort("tg:1"), "high")
+        self.assertEqual(client.callback_answers[0], ("cb-1", "Updated."))
+        self.assertIn("Codex reasoning effort for this chat is now high", client.edits[0][2])
+
+    def test_model_command_sets_pi_model_for_active_pi_engine(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(engine_plugin="codex", pi_provider="venice", pi_model="mistral-31-24b")
+        client = FakeTelegramClient()
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                "provider  model                         context  max-out  thinking  images\n"
+                "venice    deepseek-v4-flash            128K     16.4K    no        no\n"
+            ),
+            stderr="",
+        )
+
+        with mock.patch.object(bridge_handlers.subprocess, "run", return_value=completed):
+            handled = bridge_handlers.handle_model_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/model deepseek-v4-flash",
+            )
+
+        self.assertTrue(handled)
+        self.assertEqual(bridge_handlers.StateRepository(state).get_chat_pi_model("tg:1"), "deepseek-v4-flash")
+        self.assertIn("Pi model for this chat is now deepseek-v4-flash", client.messages[0][1])
+
+    def test_model_command_for_pi_uses_paged_inline_picker(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(engine_plugin="codex", pi_provider="venice", pi_model="model-01")
+        client = FakeTelegramClient()
+        model_names = [f"model-{index:02d}" for index in range(1, 31)]
+
+        with mock.patch.object(bridge_handlers, "_pi_provider_model_names", return_value=model_names):
+            handled = bridge_handlers.handle_model_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/model",
+            )
+
+        self.assertTrue(handled)
+        self.assertIsInstance(client.messages[0][3], dict)
+        button_texts = [
+            button["text"]
+            for row in client.messages[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("model-01 *", button_texts)
+        self.assertIn("model-16", button_texts)
+        self.assertNotIn("model-17", button_texts)
+        self.assertIn("1/2", button_texts)
+        self.assertIn("Next", button_texts)
+
+    def test_callback_query_for_pi_model_page_opens_requested_page(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(engine_plugin="codex", pi_provider="venice", pi_model="model-01")
+        client = FakeTelegramClient()
+        model_names = [f"model-{index:02d}" for index in range(1, 31)]
+        update = {
+            "update_id": 11,
+            "callback_query": {
+                "id": "cb-model-page-1",
+                "data": "cfg|model|pi|page|1",
+                "message": {
+                    "message_id": 59,
+                    "chat": {"id": 1, "type": "private"},
+                    "text": "/model",
+                },
+            },
+        }
+
+        with mock.patch.object(bridge_handlers, "_pi_provider_model_names", return_value=model_names):
+            bridge_handlers.handle_update(state, config, client, update, engine=None)
+
+        self.assertEqual(client.callback_answers[0], ("cb-model-page-1", "Updated."))
+        button_texts = [
+            button["text"]
+            for row in client.edits[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("model-17", button_texts)
+        self.assertIn("model-30", button_texts)
+        self.assertIn("2/2", button_texts)
+        self.assertIn("Prev", button_texts)
+        self.assertNotIn("Next", button_texts)
+
+    def test_pi_models_alias_points_users_to_model_list(self):
+        state = bridge.State()
+        config = make_config(engine_plugin="codex", pi_provider="venice", pi_model="deepseek-v4-flash")
+        client = FakeTelegramClient()
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                "provider  model                         context  max-out  thinking  images\n"
+                "venice    deepseek-v4-flash            128K     16.4K    no        no\n"
+            ),
+            stderr="",
+        )
+
+        with mock.patch.object(bridge_handlers.subprocess, "run", return_value=completed):
+            handled = bridge_handlers.handle_pi_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/pi models",
+            )
+
+        self.assertTrue(handled)
+        self.assertIn(
+            "Deprecated alias: `/pi models` still works for compatibility, but `/model list` is the canonical command.",
+            client.messages[0][1],
+        )
+
+    def test_pi_model_alias_points_users_to_model_command(self):
+        state = bridge.State()
+        config = make_config(engine_plugin="codex", pi_provider="venice", pi_model="mistral-31-24b")
+        client = FakeTelegramClient()
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                "provider  model                         context  max-out  thinking  images\n"
+                "venice    deepseek-v4-flash            128K     16.4K    no        no\n"
+            ),
+            stderr="",
+        )
+
+        with mock.patch.object(bridge_handlers.subprocess, "run", return_value=completed):
+            handled = bridge_handlers.handle_pi_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/pi model deepseek-v4-flash",
+            )
+
+        self.assertTrue(handled)
+        self.assertIn(
+            "Deprecated alias: `/pi model` still works for compatibility, but `/model <name>` is the canonical command.",
+            client.messages[0][1],
+        )
+
+    def test_model_list_for_codex_uses_local_model_cache(self):
+        state = bridge.State(chat_engines={"tg:1": "codex"})
+        config = make_config(engine_plugin="codex", codex_model="gpt-5.4")
+
+        with mock.patch.object(
+            bridge_handlers,
+            "_load_codex_model_choices",
+            return_value=[
+                ("gpt-5.5", "GPT-5.5"),
+                ("gpt-5.4", "gpt-5.4"),
+                ("gpt-5.4-mini", "GPT-5.4-Mini"),
+            ],
+        ):
+            text = bridge_handlers.build_model_list_text(state, config, "tg:1")
+
+        self.assertIn("Available Codex models:", text)
+        self.assertIn("- gpt-5.5 - GPT-5.5", text)
+        self.assertIn("- gpt-5.4 (current)", text)
+        self.assertIn("- gpt-5.4-mini - GPT-5.4-Mini", text)
 
     def test_load_config_reads_whatsapp_plugin_settings(self):
         with mock.patch.dict(
@@ -1641,6 +2601,25 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertEqual(reporter._render_progress_text(), "Oracle is thinking...")
 
+    def test_progress_reporter_renders_engine_context_in_standard_progress_text(self):
+        client = FakeSignalProgressClient()
+        reporter = bridge_handlers.ProgressReporter(
+            client=client,
+            chat_id=1,
+            reply_to_message_id=5,
+            message_thread_id=None,
+            assistant_name="Architect",
+            progress_context_label="(pi | venice | zai-org-glm-5-1)",
+        )
+        reporter.started_at = 74.0
+        reporter.set_phase("Finalizing response.")
+
+        with mock.patch.object(bridge_handlers.time, "time", return_value=100.0):
+            self.assertEqual(
+                reporter._render_progress_text(),
+                "Architect (pi | venice | zai-org-glm-5-1) is working... 26s elapsed.\nFinalizing response.",
+            )
+
     def test_progress_reporter_passes_message_thread_id_to_progress_calls(self):
         client = FakeProgressEditClient()
         reporter = bridge_handlers.ProgressReporter(
@@ -2285,6 +3264,85 @@ class BridgeCoreTests(unittest.TestCase):
             threads_after = json.loads(Path(state.chat_thread_path).read_text(encoding="utf-8"))
             self.assertEqual(threads_after, {})
 
+    def test_handle_reset_command_archives_live_memory_before_clearing_session(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
+            live_key = "shared:architect:main:session:tg:1"
+            archive_key = "shared:architect:main"
+
+            turn = memory_engine.begin_turn(
+                conversation_key=live_key,
+                channel="telegram",
+                sender_name="User",
+                user_input="remember this before reset",
+            )
+            memory_engine.finish_turn(
+                turn,
+                channel="telegram",
+                assistant_text="stored locally",
+                new_thread_id="thread-live",
+            )
+
+            state = bridge.State(
+                memory_engine=memory_engine,
+                chat_threads={"tg:1": "thread-live"},
+                chat_thread_path=str(Path(tmpdir) / "chat_threads.json"),
+                worker_sessions_path=str(Path(tmpdir) / "worker_sessions.json"),
+            )
+            Path(state.chat_thread_path).write_text('{"tg:1":"thread-live"}', encoding="utf-8")
+            client = FakeTelegramClient(channel_name="telegram")
+            config = make_config(shared_memory_key=archive_key)
+
+            bridge_handlers.handle_reset_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=50,
+            )
+
+            live_status = memory_engine.get_status(live_key)
+            archive_status = memory_engine.get_status(archive_key)
+            self.assertEqual(live_status.message_count, 0)
+            self.assertGreaterEqual(archive_status.summary_count, 1)
+            self.assertEqual(archive_status.message_count, 0)
+            self.assertEqual(len(client.messages), 1)
+            self.assertIn("Context reset.", client.messages[0][1])
+
+    def test_begin_memory_turn_uses_state_repo_thread_as_authority(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
+            conversation_key = "shared:architect:main:session:tg:1"
+            memory_engine.set_session_thread_id(conversation_key, "thread-from-memory")
+
+            state = bridge.State(
+                memory_engine=memory_engine,
+                chat_threads={"tg:1": "thread-from-state"},
+                chat_thread_path=str(Path(tmpdir) / "chat_threads.json"),
+            )
+            Path(state.chat_thread_path).write_text('{"tg:1":"thread-from-state"}', encoding="utf-8")
+            repo = bridge.StateRepository(state)
+            config = make_config(shared_memory_key="shared:architect:main")
+
+            prompt_text, previous_thread_id, turn_context = bridge_handlers.begin_memory_turn(
+                memory_engine=memory_engine,
+                state_repo=repo,
+                config=config,
+                channel_name="telegram",
+                scope_key="tg:1",
+                prompt_text="hello",
+                sender_name="User",
+                stateless=False,
+                chat_id=1,
+            )
+
+            self.assertEqual(prompt_text.splitlines()[-1], "hello")
+            self.assertEqual(previous_thread_id, "thread-from-state")
+            self.assertIsNotNone(turn_context)
+            self.assertEqual(turn_context.thread_id, "thread-from-state")
+
     def test_ensure_chat_worker_session_rejects_when_all_workers_busy(self):
         state = bridge.State(
             chat_threads={2: "thread-busy"},
@@ -2629,7 +3687,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Mention `server2` or `staker2`", client.messages[-1][1])
         self.assertIn("Use `Nextcloud ...`", client.messages[-1][1])
         self.assertIn("Use `SRO ...`", client.messages[-1][1])
-        self.assertIn("/cancel", client.messages[-1][1])
+        self.assertIn("/cancel or /c", client.messages[-1][1])
         self.assertIn("/voice-alias add <source> => <target>", client.messages[-1][1])
         self.assertIn("/memory mode", client.messages[-1][1])
         self.assertNotIn("/memory mode full - legacy alias for all_context", client.messages[-1][1])
@@ -2665,6 +3723,28 @@ class BridgeCoreTests(unittest.TestCase):
                 "message_id": 22,
                 "chat": {"id": 1},
                 "text": "/cancel",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+        self.assertTrue(client.messages)
+        self.assertEqual(client.messages[-1][1], "Cancel requested. Stopping current request.")
+        with state.lock:
+            self.assertTrue(state.cancel_events["tg:1"].is_set())
+
+    def test_handle_update_routes_c_alias_when_request_active(self):
+        state = bridge.State()
+        with state.lock:
+            state.busy_chats.add(1)
+            state.cancel_events[1] = threading.Event()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 4,
+            "message": {
+                "message_id": 23,
+                "chat": {"id": 1},
+                "text": "/c",
             },
         }
 

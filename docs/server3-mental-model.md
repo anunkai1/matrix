@@ -6,7 +6,7 @@ This document is the human map of Server3: what exists, why it exists, how the p
 
 Server3 is a multi-runtime automation host built around one reusable Python bridge core that can talk through different channels, switch into deterministic operation modes, and hand work off to local scripts or Codex execution.
 
-## The Four Layers
+## The Five Layers
 
 ### 1. Entry Points
 
@@ -30,13 +30,23 @@ These are the ways work enters the server.
 The main reusable runtime lives in [`src/telegram_bridge`](../src/telegram_bridge):
 
 - [`main.py`](../src/telegram_bridge/main.py): bootstraps config, channel plugin, polling loop, and state loading.
+- [`runtime_paths.py`](../src/telegram_bridge/runtime_paths.py): resolves shared-core paths against the active runtime root.
 - [`runtime_config.py`](../src/telegram_bridge/runtime_config.py): centralizes env parsing and runtime config defaults for the shared bridge core.
 - [`runtime_profile.py`](../src/telegram_bridge/runtime_profile.py): centralizes runtime-facing profile helpers such as assistant labels, keyword routing prompts, and channel reply conventions.
 - [`runtime_routing.py`](../src/telegram_bridge/runtime_routing.py): centralizes prefix gating and keyword-route resolution before handlers dispatch work.
 - [`handlers.py`](../src/telegram_bridge/handlers.py): command handling, keyword routing, media handling, progress updates, and restart/cancel flows.
+- [`transport.py`](../src/telegram_bridge/transport.py): Telegram Bot API client used by the Telegram channel adapter.
+- [`channel_adapter.py`](../src/telegram_bridge/channel_adapter.py): shared channel interface plus Telegram adapter methods.
+- [`http_channel.py`](../src/telegram_bridge/http_channel.py), [`signal_channel.py`](../src/telegram_bridge/signal_channel.py), and [`whatsapp_channel.py`](../src/telegram_bridge/whatsapp_channel.py): non-Telegram channel integrations around the same core.
 - [`executor.py`](../src/telegram_bridge/executor.py) and [`executor.sh`](../src/telegram_bridge/executor.sh): invoke local Codex safely and stream output back.
+- [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py): pluggable engine layer for Codex, Gemma, Pi, Venice, ChatGPT Web, and the Mavali ETH deterministic wallet engine.
 - [`memory_engine.py`](../src/telegram_bridge/memory_engine.py): durable chat memory and summaries.
+- [`memory_scope.py`](../src/telegram_bridge/memory_scope.py), [`memory_merge.py`](../src/telegram_bridge/memory_merge.py), and [`conversation_scope.py`](../src/telegram_bridge/conversation_scope.py): scope-key normalization and memory/session merge helpers.
 - [`session_manager.py`](../src/telegram_bridge/session_manager.py): worker/session lifecycle, busy state, and safe restart coordination.
+- [`state_store.py`](../src/telegram_bridge/state_store.py): persisted chat state, engine/model overrides, and canonical session backing stores.
+- [`attachment_store.py`](../src/telegram_bridge/attachment_store.py), [`media.py`](../src/telegram_bridge/media.py), and [`stream_buffer.py`](../src/telegram_bridge/stream_buffer.py): attachment staging, media handling, and streamed output buffering.
+- [`voice_transcribe.py`](../src/telegram_bridge/voice_transcribe.py), [`voice_transcribe_service.py`](../src/telegram_bridge/voice_transcribe_service.py), and [`voice_alias_learning.py`](../src/telegram_bridge/voice_alias_learning.py): voice-note transcription, warm-service management, and learned correction flow.
+- [`structured_logging.py`](../src/telegram_bridge/structured_logging.py), [`affective_runtime.py`](../src/telegram_bridge/affective_runtime.py), [`diary_store.py`](../src/telegram_bridge/diary_store.py), [`auth_state.py`](../src/telegram_bridge/auth_state.py), and [`wait_for_signal_transport.py`](../src/telegram_bridge/wait_for_signal_transport.py): support layers for runtime telemetry, diary state, auth prompts, and transport coordination.
 - [`plugin_registry.py`](../src/telegram_bridge/plugin_registry.py): lets the same core speak Telegram, WhatsApp, or Signal.
 
 Mental shortcut:
@@ -46,7 +56,31 @@ Mental shortcut:
 - Oracle reuses the same Python bridge core, but its transport is fronted by a local Signal sidecar around `signal-cli`.
 - Govorun reuses the same Python bridge core, but its transport is fronted by a Node WhatsApp API bridge.
 
-### 3. Deterministic Operation Modules
+### 3. Engine Selection Layer
+
+The shared bridge core has a separate engine layer from the transport/channel layer.
+
+- The configured service default comes from `TELEGRAM_ENGINE_PLUGIN`.
+- Per-chat or per-topic overrides are stored in bridge state and exposed through `/engine`.
+- The selectable set comes from `TELEGRAM_SELECTABLE_ENGINE_PLUGINS`.
+- `/model` is the engine-specific model-selection layer on top of `/engine`.
+- [`plugin_registry.py`](../src/telegram_bridge/plugin_registry.py) registers both channel plugins and engine plugins, so the same runtime can mix Telegram/Signal/WhatsApp transport with different execution backends.
+
+Current live engine shape:
+
+| Engine | What it does | Main source |
+| --- | --- | --- |
+| `codex` | Full local Codex execution with tool/action harness | [`executor.py`](../src/telegram_bridge/executor.py), [`executor.sh`](../src/telegram_bridge/executor.sh) |
+| `gemma` | Text-only Ollama-backed model path on Server4 | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/server4-gemma-engine.md`](./runbooks/server4-gemma-engine.md) |
+| `pi` | Pi agent path that preserves runtime identity while using local or Server4-backed models | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/server4-pi-engine.md`](./runbooks/server4-pi-engine.md) |
+| `venice` | Venice API-backed text/image chat path without the Codex tool harness | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py) |
+| `chatgptweb` | Experimental Browser Brain-backed ChatGPT web bridge | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), `ops/chatgpt_web_bridge.py` |
+| `mavali_eth` | Deterministic wallet/protocol engine with Codex fallback for unsupported prompts | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/mavali-eth-engine.md`](./runbooks/mavali-eth-engine.md) |
+
+Operational rule:
+- `/engine status` is the runtime-facing truth source for default engine, chat override, selectable engines, and engine-specific health checks.
+
+### 4. Deterministic Operation Modules
 
 When a request should not be handled as open-ended assistant chat, the bridge can route into specific script-backed modes.
 
@@ -60,7 +94,7 @@ When a request should not be handled as open-ended assistant chat, the bridge ca
 
 These modes are meant to be predictable and script-bounded. They are the "do the known thing" paths, not the "figure out anything" path.
 
-### 4. Platform and Safety Layer
+### 5. Platform and Safety Layer
 
 This is the infrastructure around the assistant runtimes.
 

@@ -2,6 +2,7 @@ import importlib.util
 import os
 import sys
 import unittest
+import tempfile
 from pathlib import Path
 from unittest import mock
 
@@ -75,6 +76,41 @@ class RuntimeConfigTests(unittest.TestCase):
             config.executor_cmd,
             [str(ROOT / "src" / "telegram_bridge" / "executor.sh")],
         )
+
+    def test_load_config_reads_codex_model_from_codex_config(self):
+        with tempfile.TemporaryDirectory(prefix="codex-config-") as tmpdir:
+            codex_dir = Path(tmpdir) / ".codex"
+            codex_dir.mkdir()
+            (codex_dir / "config.toml").write_text('model = "gpt-5.4-mini"\n', encoding="utf-8")
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                    "CODEX_CONFIG_PATH": str(codex_dir / "config.toml"),
+                },
+                clear=True,
+            ):
+                config = runtime_config.load_config()
+        self.assertEqual(config.codex_model, "gpt-5.4-mini")
+
+    def test_load_config_prefers_codex_model_env_over_codex_config(self):
+        with tempfile.TemporaryDirectory(prefix="codex-config-") as tmpdir:
+            codex_dir = Path(tmpdir) / ".codex"
+            codex_dir.mkdir()
+            (codex_dir / "config.toml").write_text('model = "gpt-5.4-mini"\n', encoding="utf-8")
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "TELEGRAM_BOT_TOKEN": "token",
+                    "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                    "CODEX_CONFIG_PATH": str(codex_dir / "config.toml"),
+                    "CODEX_MODEL": "gpt-5.5",
+                },
+                clear=True,
+            ):
+                config = runtime_config.load_config()
+        self.assertEqual(config.codex_model, "gpt-5.5")
 
     def test_load_config_defaults_affective_runtime_to_disabled(self):
         with mock.patch.dict(

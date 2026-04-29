@@ -20,13 +20,13 @@ spec.loader.exec_module(module)
 
 
 class ArchitectCliMainTests(unittest.TestCase):
-    def test_build_conversation_key_defaults_to_cli_namespace(self):
+    def test_build_conversation_key_defaults_to_shared_archive(self):
         args = SimpleNamespace(
             conversation_key='',
             profile='default',
             memory_namespace='architect',
         )
-        self.assertEqual(module.build_conversation_key(args), 'cli:architect:default')
+        self.assertEqual(module.build_conversation_key(args), 'shared:architect:main')
 
     def test_build_conversation_key_respects_explicit_override(self):
         args = SimpleNamespace(
@@ -40,7 +40,7 @@ class ArchitectCliMainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = str(Path(tmpdir) / 'memory.sqlite3')
             engine = module.MemoryEngine(db_path)
-            key = module.MemoryEngine.cli_key('default', namespace='architect')
+            key = 'shared:architect:main'
 
             for user_text in ('first note', 'second note'):
                 turn = engine.begin_turn(

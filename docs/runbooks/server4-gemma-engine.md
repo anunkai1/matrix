@@ -52,11 +52,16 @@ Defaults are intentionally usable without changing `/etc/default/telegram-archit
 
 ```bash
 TELEGRAM_ENGINE_PLUGIN=codex
-TELEGRAM_SELECTABLE_ENGINE_PLUGINS=codex,gemma,pi
+TELEGRAM_SELECTABLE_ENGINE_PLUGINS=codex,gemma,pi,venice
 GEMMA_PROVIDER=ollama_ssh
 GEMMA_MODEL=gemma4:26b
 GEMMA_SSH_HOST=server4-beast
 GEMMA_REQUEST_TIMEOUT_SECONDS=180
+VENICE_API_KEY=replace_me
+VENICE_BASE_URL=https://api.venice.ai/api/v1
+VENICE_MODEL=mistral-31-24b
+VENICE_TEMPERATURE=0.2
+VENICE_REQUEST_TIMEOUT_SECONDS=180
 ```
 
 Use `GEMMA_PROVIDER=ollama_http` only after deliberately exposing Ollama over a controlled LAN bind/firewall rule.

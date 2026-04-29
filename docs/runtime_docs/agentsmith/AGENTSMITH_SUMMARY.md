@@ -1,6 +1,6 @@
 # AgentSmith Summary
 
-Last updated: 2026-03-22 (AEST, +10:00)
+Last updated: 2026-04-27 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context for AgentSmith.
@@ -27,6 +27,8 @@ Last updated: 2026-03-22 (AEST, +10:00)
 - Architect and several sibling bots share bridge code in different ways; implementation topology must be checked before drawing rollout conclusions.
 
 ## Recent Changes
+- 2026-04-27: aligned AgentSmith's live Venice model to `zai-org-glm-5-1` so it matches the current Venice account models list.
+- 2026-04-27: mirrored the local Pi/Venice provider shape into AgentSmith so the `pi` engine can select `venice` from `/home/agentsmith/agentsmithbot` while still reading its own runtime-root `AGENTS.md`.
 - 2026-03-22: collapsed the separate capability doc into `AGENTSMITH_SUMMARY.md` and `AGENTSMITH_INSTRUCTION.md` so AgentSmith keeps fewer runtime docs while preserving the key capability guardrails.
 - 2026-03-21: added AgentSmith operating structure with authoritative instructions, summary, lessons log, and local soul guidance.
 - 2026-03-21: implemented `SRO` routing and updated `/help` to advertise it as a real Server3 Runtime Observer mode.

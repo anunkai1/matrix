@@ -94,6 +94,29 @@ class BrowserBrainServiceTests(unittest.TestCase):
             connection.close.assert_not_called()
             playwright_handle.stop.assert_called_once()
 
+    def test_existing_session_attach_failure_cleans_up_playwright(self) -> None:
+        connection = FakeBrowserConnection([])
+        playwright_handle = FakePlaywrightHandle(connection)
+        playwright_handle.chromium.connect_over_cdp.side_effect = RuntimeError("cdp unavailable")
+        fake_module = types.ModuleType("playwright.sync_api")
+        fake_module.sync_playwright = lambda: FakeSyncPlaywright(playwright_handle)
+
+        config = BrowserBrainConfig(
+            connection_mode="existing_session",
+            existing_session_cdp_url="http://127.0.0.1:9555",
+        )
+        service = BrowserBrainService(config)
+
+        with mock.patch.dict(sys.modules, {"playwright.sync_api": fake_module}):
+            with self.assertRaises(BrowserBrainError) as ctx:
+                service.start({})
+
+        self.assertEqual(ctx.exception.code, "existing_session_unavailable")
+        self.assertIsNone(service._playwright)
+        self.assertIsNone(service._browser)
+        self.assertIsNone(service._browser_connection)
+        playwright_handle.stop.assert_called_once()
+
     def test_act_upload_sets_input_files_on_resolved_element(self) -> None:
         config = BrowserBrainConfig()
         service = BrowserBrainService(config)

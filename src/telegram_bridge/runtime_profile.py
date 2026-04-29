@@ -15,6 +15,7 @@ except ImportError:
 
 
 HELP_COMMAND_ALIASES = ("/help", "/h")
+CANCEL_COMMAND_ALIASES = ("/cancel", "/c")
 RETRY_WITH_NEW_SESSION_PHASE = "Execution failed. Retrying once with a new session."
 HA_KEYWORD_HELP_MESSAGE = (
     "HA mode needs an action. Example: `HA turn on masters AC to dry mode at 9:25am`."
@@ -100,6 +101,38 @@ def build_sro_routing_script_allowlist() -> List[str]:
 def assistant_label(config) -> str:
     value = getattr(config, "assistant_name", "").strip()
     return value or "Architect"
+
+
+def build_engine_progress_context_label(config, engine_name: Optional[str] = None) -> str:
+    selected = str(engine_name or getattr(config, "engine_plugin", "codex") or "codex").strip().lower()
+    if not selected:
+        return ""
+    if selected == "pi":
+        provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip().lower()
+        model = str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip()
+        parts = ["pi", provider]
+        if model:
+            parts.append(model)
+        return f"({' | '.join(parts)})"
+    if selected == "venice":
+        model = str(getattr(config, "venice_model", "mistral-31-24b") or "mistral-31-24b").strip()
+        parts = ["venice"]
+        if model:
+            parts.append(model)
+        return f"({' | '.join(parts)})"
+    if selected == "gemma":
+        provider = str(getattr(config, "gemma_provider", "ollama_ssh") or "ollama_ssh").strip().lower()
+        model = str(getattr(config, "gemma_model", "gemma4:26b") or "gemma4:26b").strip()
+        parts = ["gemma"]
+        if provider and provider not in {"ollama", "ollama_ssh"}:
+            parts.append(provider)
+        if model:
+            parts.append(model)
+        return f"({' | '.join(parts)})"
+    if selected == "codex":
+        model = str(getattr(config, "codex_model", "") or "").strip()
+        return f"(codex | {model})" if model else "(codex)"
+    return f"({selected})"
 
 
 def start_command_message(config) -> str:

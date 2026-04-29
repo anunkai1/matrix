@@ -39,15 +39,23 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 ## Repository Structure
 
 - `src/` runtime code
-  - Telegram bridge modules now split into `main.py` (bootstrap/poll loop), `runtime_paths.py`, `runtime_config.py`, `runtime_profile.py`, `runtime_routing.py`, `handlers.py`, `transport.py`, `executor.py`, `state_store.py`, `session_manager.py`, `media.py`, `memory_engine.py`
+  - Shared bridge core: `src/telegram_bridge/` for bootstrap, routing, channel adapters, engine adapters, memory/session/state persistence, attachments/media, structured logging, and voice helpers
   - Shared-memory CLI wrapper: `src/architect_cli/main.py`
+  - Browser Brain service: `src/browser_brain/`
+  - Mavali ETH runtime and wallet/protocol engine: `src/mavali_eth/`
+  - Mavali ETH shared-memory CLI wrapper: `src/mavali_eth_cli/`
+  - SignalTube lab modules: `src/signaltube/`
+  - Kids World prototype: `src/kids_world/`
+  - Web3 substrate helpers: `src/web3_substrate/`
 - `infra/` source-of-truth mirrors for live server state (systemd units, env templates, managed shell profile content)
+  - `infra/contracts/` cross-runtime config contracts and drift guards
   - `infra/runtime_personas/` canonical runtime `AGENTS.md` personas for repo-backed runtimes
 - `ops/` apply/rollback/restart/status scripts for live rollout
   - `ops/runtime_overlays/sync_server3_runtime_overlays.py` installs thin per-runtime overlay shims over the shared bridge core
   - `ops/runtime_personas/check_runtime_repo_links.sh` verifies that live runtime doc links still point at the canonical repo copies
 - `docs/` operator runbooks
   - `docs/runtime_docs/` canonical companion runtime docs consumed from live runtime roots via symlinks
+  - `docs/specs/` design and capability-planning documents for larger subsystems
 - `logs/` repo-tracked execution/change records
 - `SERVER3_SUMMARY.md` summary-first session context log
 - `SERVER3_ARCHIVE.md` canonical long-term archive index

@@ -99,6 +99,15 @@ sudo -u tv env "${ENV_VARS[@]}" nohup "${BROWSER_BIN}" \
   --no-default-browser-check \
   --no-first-run \
   --start-maximized \
+  --no-sandbox \
+  --disable-setuid-sandbox \
+  --disable-gpu \
+  --disable-gpu-compositing \
+  --disable-software-rasterizer \
+  --in-process-gpu \
+  --no-zygote \
+  --single-process \
+  --use-angle=swiftshader \
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port="${REMOTE_DEBUG_PORT}" \
   --user-data-dir="${BRAVE_PROFILE_DIR}" \

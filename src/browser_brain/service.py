@@ -538,18 +538,12 @@ class BrowserBrainService:
             page = self._page_for_payload(payload)
             element = self._resolve_element(page, payload)
             try:
-                # Prefer keyboard-driven entry first because many modern React-style
-                # forms discard DOM-level fill() values on rerender or submit.
+                element.fill(text, timeout=self.config.action_timeout_ms)
+            except Exception:
                 element.click(timeout=self.config.action_timeout_ms)
                 page.keyboard.press("Control+A")
                 page.keyboard.press("Backspace")
-                page.keyboard.type(text, delay=20)
-            except Exception:
-                try:
-                    element.fill(text, timeout=self.config.action_timeout_ms)
-                except Exception:
-                    element.click(timeout=self.config.action_timeout_ms)
-                    element.type(text, timeout=self.config.action_timeout_ms)
+                page.keyboard.insert_text(text)
             self._log_action("act.type", {"tab_id": self._tab_id(page), "ref": payload.get("ref"), "text_length": len(text)})
             return {"tab": self._tab_payload(page), "ref": payload.get("ref"), "ok": True}
 
@@ -658,13 +652,17 @@ class BrowserBrainService:
             ) from exc
 
         self._playwright = sync_playwright().start()
-        if self.config.connection_mode == "existing_session":
-            self._attach_existing_session_browser()
-        else:
-            self._launch_managed_browser()
-        self._started_at = datetime.now(timezone.utc)
-        if not self._browser.pages:
-            self._create_page("about:blank")
+        try:
+            if self.config.connection_mode == "existing_session":
+                self._attach_existing_session_browser()
+            else:
+                self._launch_managed_browser()
+            self._started_at = datetime.now(timezone.utc)
+            if not self._browser.pages:
+                self._create_page("about:blank")
+        except Exception:
+            self._shutdown_browser()
+            raise
 
     def _launch_managed_browser(self) -> None:
         if not Path(self.config.browser_executable).exists():

@@ -256,6 +256,7 @@ def _archive_expired_chat_memory(state: State, config, client, scope_key: str) -
             target_key=archive_key,
             allow_existing_target=True,
             force_summarize_target=True,
+            min_message_score=0.75,
         )
         memory_engine.clear_session(live_key)
         emit_event(

@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import subprocess
 import threading
 import time
@@ -28,6 +29,17 @@ class ExecutorProgressEvent:
 
 class ExecutorCancelledError(Exception):
     """Raised when a running executor subprocess is canceled by user request."""
+
+
+def _build_executor_env(config) -> Dict[str, str]:
+    env = os.environ.copy()
+    model = str(getattr(config, "codex_model", "") or "").strip()
+    if model:
+        env["CODEX_MODEL"] = model
+    effort = str(getattr(config, "codex_reasoning_effort", "") or "").strip().lower()
+    if effort:
+        env["CODEX_REASONING_EFFORT"] = effort
+    return env
 
 
 def parse_stream_json_line(raw_line: str) -> Optional[Dict[str, object]]:
@@ -144,6 +156,7 @@ def run_executor(
         stderr=subprocess.PIPE,
         text=True,
         bufsize=1,
+        env=_build_executor_env(config),
     )
 
     stdout_buffer = BoundedTextBuffer(

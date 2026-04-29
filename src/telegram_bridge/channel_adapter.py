@@ -23,6 +23,7 @@ class ChannelAdapter(Protocol):
         text: str,
         reply_to_message_id: Optional[int] = None,
         message_thread_id: Optional[int] = None,
+        reply_markup: Optional[Dict[str, object]] = None,
     ) -> None:
         ...
 
@@ -32,6 +33,7 @@ class ChannelAdapter(Protocol):
         text: str,
         reply_to_message_id: Optional[int] = None,
         message_thread_id: Optional[int] = None,
+        reply_markup: Optional[Dict[str, object]] = None,
     ) -> Optional[int]:
         ...
 
@@ -75,7 +77,20 @@ class ChannelAdapter(Protocol):
     ) -> Dict[str, object]:
         ...
 
-    def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
+    def edit_message(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        reply_markup: Optional[Dict[str, object]] = None,
+    ) -> None:
+        ...
+
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        text: Optional[str] = None,
+    ) -> None:
         ...
 
     def send_chat_action(
@@ -123,12 +138,14 @@ class TelegramChannelAdapter:
         text: str,
         reply_to_message_id: Optional[int] = None,
         message_thread_id: Optional[int] = None,
+        reply_markup: Optional[Dict[str, object]] = None,
     ) -> None:
         self._client.send_message(
             chat_id=chat_id,
             text=text,
             reply_to_message_id=reply_to_message_id,
             message_thread_id=message_thread_id,
+            reply_markup=reply_markup,
         )
 
     def send_message_get_id(
@@ -137,12 +154,14 @@ class TelegramChannelAdapter:
         text: str,
         reply_to_message_id: Optional[int] = None,
         message_thread_id: Optional[int] = None,
+        reply_markup: Optional[Dict[str, object]] = None,
     ) -> Optional[int]:
         return self._client.send_message_get_id(
             chat_id=chat_id,
             text=text,
             reply_to_message_id=reply_to_message_id,
             message_thread_id=message_thread_id,
+            reply_markup=reply_markup,
         )
 
     def send_photo(
@@ -209,8 +228,23 @@ class TelegramChannelAdapter:
             message_thread_id=message_thread_id,
         )
 
-    def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
-        self._client.edit_message(chat_id, message_id, text)
+    def edit_message(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        reply_markup: Optional[Dict[str, object]] = None,
+    ) -> None:
+        self._client.edit_message(chat_id, message_id, text, reply_markup=reply_markup)
+
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        text: Optional[str] = None,
+    ) -> None:
+        answer_method = getattr(self._client, "answer_callback_query", None)
+        if callable(answer_method):
+            answer_method(callback_query_id, text=text)
 
     def send_chat_action(
         self,

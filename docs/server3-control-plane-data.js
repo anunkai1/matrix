@@ -1,5 +1,5 @@
 window.SERVER3_CONTROL_PLANE_DATA = {
-  "generatedAt": "2026-04-24T07:00:15.278883+10:00",
+  "generatedAt": "2026-04-27T15:31:02.385655+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
@@ -9,10 +9,10 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     "approvalCopy": "explicit human gates from live Server3 state",
     "jobValue": "12 tracked",
     "jobCopy": "timers, approvals, and operator playback in one surface",
-    "hostValue": "load 0.72 / ram 12%",
+    "hostValue": "load 8.62 / ram 6%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "24 Apr 2026 07:00 AEST",
+      "27 Apr 2026 15:31 AEST",
       "snapshot file server3-control-plane-data.js",
       "0 approval item(s)"
     ],
@@ -86,52 +86,52 @@ window.SERVER3_CONTROL_PLANE_DATA = {
   },
   "activity": [
     {
-      "time": "07:00:15",
+      "time": "15:31:58",
       "title": "Oracle recent service activity",
       "channel": "signal runtime",
       "statusClass": "danger",
       "statusText": "degraded",
-      "copy": "2026-04-24 07:00:15,792 WARNING Signal event stream failed: <urlopen error [Errno 111] Connection refused>"
+      "copy": "2026-04-27 15:31:58,163 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
     },
     {
-      "time": "07:00:15",
-      "title": "Architect recent service activity",
-      "channel": "telegram primary",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "bridge.interrupted_requests_processed"
-    },
-    {
-      "time": "07:00:15",
+      "time": "15:31:34",
       "title": "Diary recent service activity",
       "channel": "capture runtime",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "bridge.interrupted_requests_processed"
+      "copy": "bridge.started"
     },
     {
-      "time": "07:00:15",
-      "title": "Tank recent service activity",
-      "channel": "telegram sibling",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "bridge.interrupted_requests_processed"
-    },
-    {
-      "time": "07:00:15",
+      "time": "15:31:34",
       "title": "Mavali ETH recent service activity",
       "channel": "venue operations runtime",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "bridge.interrupted_requests_processed"
+      "copy": "bridge.started"
     },
     {
-      "time": "07:00:14",
-      "title": "Browser Brain recent service activity",
-      "channel": "browser control surface",
-      "statusClass": "busy",
-      "statusText": "attached",
-      "copy": "no live browser target | no explicit auth cue"
+      "time": "15:31:34",
+      "title": "Tank recent service activity",
+      "channel": "telegram sibling",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "15:31:34",
+      "title": "Architect recent service activity",
+      "channel": "telegram primary",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "15:30:56",
+      "title": "Govorun recent service activity",
+      "channel": "whatsapp runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
     }
   ],
   "playback": {
@@ -231,14 +231,14 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     {
       "title": "Observer summary",
       "tagClass": "busy",
-      "tagText": "24 Apr 08:05",
-      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 23 Apr 08:05."
+      "tagText": "28 Apr 08:05",
+      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 27 Apr 08:05."
     },
     {
       "title": "Routing drift check",
       "tagClass": "busy",
-      "tagText": "25 Apr 06:15",
-      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 24 Apr 06:15."
+      "tagText": "28 Apr 06:15",
+      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 27 Apr 06:15."
     },
     {
       "title": "State backup",
@@ -250,7 +250,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "title": "Receipt monitor",
       "tagClass": "busy",
       "tagText": "not scheduled",
-      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 24 Apr 06:54."
+      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: not scheduled."
     }
   ],
   "floor": [
@@ -258,15 +258,15 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "title": "Disk posture",
       "stateClass": "warn",
       "stateText": "watch",
-      "value": "32% used",
-      "body": "/srv/external/server3-arr | 1162 GiB free of 1833 GiB",
+      "value": "41% used",
+      "body": "/srv/external/server3-arr | 993 GiB free of 1833 GiB",
       "statusLine": "backup disk: 7% used"
     },
     {
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 0.72 / ram 12%",
+      "value": "load 8.62 / ram 6%",
       "body": "primary route nordlynx / 10.5.0.2",
       "statusLine": "host: server3"
     },
@@ -275,7 +275,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "stateClass": "busy",
       "stateText": "live",
       "value": "/data/downloads",
-      "body": "11% used | 405 GiB free of 480 GiB",
+      "body": "11% used | 403 GiB free of 480 GiB",
       "statusLine": "canonical media namespace is /data/downloads and /data/media/..."
     },
     {
@@ -284,7 +284,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "stateText": "queued",
       "value": "Observer summary, Routing drift check, State backup",
       "body": "Visible timers stay on the floor so continuity work is never hidden behind another tool.",
-      "statusLine": "next: 24 Apr 08:05"
+      "statusLine": "next: 28 Apr 08:05"
     }
   ],
   "runtimes": [
@@ -312,7 +312,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         },
         {
           "label": "owner",
-          "value": "sentinel"
+          "value": "architect"
         },
         {
           "label": "live state",
@@ -322,7 +322,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-architect-bridge.service",
-          "value": "07:00:15 bridge.interrupted_requests_processed"
+          "value": "15:31:34 bridge.started"
         }
       ],
       "watchouts": [
@@ -406,7 +406,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-tank-bridge.service",
-          "value": "07:00:15 bridge.interrupted_requests_processed"
+          "value": "15:31:34 bridge.started"
         }
       ],
       "watchouts": [
@@ -477,7 +477,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-diary-bridge.service",
-          "value": "07:00:15 bridge.interrupted_requests_processed"
+          "value": "15:31:34 bridge.started"
         }
       ],
       "watchouts": [
@@ -548,11 +548,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "whatsapp-govorun-bridge.service",
-          "value": "19:15:45 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
+          "value": "15:30:56 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
         },
         {
           "label": "govorun-whatsapp-bridge.service",
-          "value": "07:00:15 bridge.started"
+          "value": "15:31:43 bridge.poll_error"
         }
       ],
       "watchouts": [
@@ -618,23 +618,23 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         },
         {
           "label": "live state",
-          "value": "deactivating / activating"
+          "value": "active / activating"
         }
       ],
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "07:00:15 2026-04-24 07:00:15,792 WARNING Signal event stream failed: <urlopen error [Errno 111] Connection refused>"
+          "value": "15:31:58 2026-04-27 15:31:58,163 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
         },
         {
           "label": "oracle-signal-bridge.service",
-          "value": "07:00:14 Starting oracle-signal-bridge.service - Oracle Signal Bridge..."
+          "value": "15:31:58 bridge.started"
         }
       ],
       "watchouts": [
         {
           "label": "current issue",
-          "value": "expected active, got deactivating"
+          "value": "expected active, got activating"
         },
         {
           "label": "operator note",
@@ -700,11 +700,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-mavali-eth-bridge.service",
-          "value": "07:00:15 bridge.interrupted_requests_processed"
+          "value": "15:31:34 bridge.started"
         },
         {
           "label": "mavali-eth-receipt-monitor.timer",
-          "value": "19:15:42 Started mavali-eth-receipt-monitor.timer - Poll for confirmed inbound ETH for mavali_eth."
+          "value": "15:30:48 Started mavali-eth-receipt-monitor.timer - Poll for confirmed inbound ETH for mavali_eth."
         }
       ],
       "watchouts": [

@@ -115,6 +115,7 @@ def merge_conversation_keys(
     overwrite_target: bool = False,
     allow_existing_target: bool = False,
     force_summarize_target: bool = False,
+    min_message_score: Optional[float] = None,
 ) -> MergeResult:
     normalized_target = (target_key or '').strip()
     if not normalized_target:
@@ -157,6 +158,14 @@ def merge_conversation_keys(
         source_fact_keys = set()
 
         for row in _iter_source_messages(conn, normalized_sources):
+            if min_message_score is not None and not engine.should_keep_message_for_shared_archive(
+                text=str(row['text'] or ''),
+                sender_role=str(row['sender_role'] or 'user'),
+                token_estimate=int(row['token_estimate'] or 1),
+                is_bot=bool(int(row['is_bot'] or 0)),
+                min_score=float(min_message_score),
+            ):
+                continue
             signature = _message_signature(row)
             existing_message_id = existing_target_message_map.get(signature)
             if existing_message_id is not None:

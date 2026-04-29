@@ -114,6 +114,12 @@ if [[ -n "${ARCHITECT_EXEC_ARGS:-}" ]]; then
   # Optional override for operators, applied to both new and resumed sessions.
   read -r -a EXEC_COMMON_ARGS <<<"${ARCHITECT_EXEC_ARGS}"
 fi
+if [[ -n "${CODEX_MODEL:-}" ]]; then
+  EXEC_COMMON_ARGS+=(-m "${CODEX_MODEL}")
+fi
+if [[ -n "${CODEX_REASONING_EFFORT:-}" ]]; then
+  EXEC_COMMON_ARGS+=(-c "model_reasoning_effort=\"${CODEX_REASONING_EFFORT}\"")
+fi
 EXEC_NEW_ARGS=(--color never)
 
 if [[ "${mode}" == "resume" ]]; then

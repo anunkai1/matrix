@@ -8,12 +8,15 @@ SHARED_KEY="${TELEGRAM_SHARED_MEMORY_KEY:-}"
 
 usage() {
   cat <<'EOF'
-Usage: merge_shared_memory_archive.sh [--db <path>] [--shared-key <key>]
+Usage: merge_shared_memory_archive.sh [--db <path>] [--shared-key <key>] [--post-merge-live-policy <policy>]
 
 Merges all live shared-session conversation keys (<shared-key>:session:*)
-into the configured shared archive key without clearing the live sessions.
+into the configured shared archive key and optionally applies a post-merge
+policy to the live session keys.
 EOF
 }
+
+POST_MERGE_LIVE_POLICY="${TELEGRAM_SHARED_MEMORY_POST_MERGE_POLICY:-summarize_live_sessions}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,6 +26,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --shared-key)
       SHARED_KEY="${2:-}"
+      shift 2
+      ;;
+    --post-merge-live-policy)
+      POST_MERGE_LIVE_POLICY="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -56,4 +63,5 @@ fi
 
 python3 "${REPO_ROOT}/ops/telegram-bridge/merge_shared_memory_archive.py" \
   --db "${DB_PATH}" \
-  --shared-key "${SHARED_KEY}"
+  --shared-key "${SHARED_KEY}" \
+  --post-merge-live-policy "${POST_MERGE_LIVE_POLICY}"

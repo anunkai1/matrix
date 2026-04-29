@@ -17,7 +17,8 @@ ALLOWED_MODES = (MODE_FULL, MODE_SESSION_ONLY)
 
 SUMMARY_TRIGGER_MESSAGES = 100
 SUMMARY_TRIGGER_TOKENS = 12000
-RECENT_WINDOW = 30
+RECENT_WINDOW_MAX_MESSAGES = 120
+RECENT_WINDOW_TOKEN_BUDGET = 4000
 FACT_LIMIT = 20
 DEFAULT_MAX_MESSAGES_PER_KEY = 4000
 DEFAULT_MAX_SUMMARIES_PER_KEY = 80
@@ -77,6 +78,45 @@ API_TOKEN_PATTERN = re.compile(r"\b(sk-[A-Za-z0-9_-]{8,})\b")
 LONG_HEX_PATTERN = re.compile(r"\b([A-Fa-f0-9]{32,})\b")
 URL_PATTERN = re.compile(r"https?://\S+")
 MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+MESSAGE_IMPORTANCE_KEYWORDS = (
+    "decide",
+    "decision",
+    "prefer",
+    "remember",
+    "important",
+    "need",
+    "want",
+    "plan",
+    "fix",
+    "bug",
+    "error",
+    "issue",
+    "implement",
+    "status",
+    "summary",
+    "risk",
+    "blocked",
+    "use",
+    "set",
+    "configure",
+    "option",
+)
+LOW_VALUE_MESSAGE_TEXT = {
+    "ok",
+    "okay",
+    "thanks",
+    "thank you",
+    "thx",
+    "yes",
+    "yep",
+    "no",
+    "nope",
+    "cool",
+    "nice",
+    "sounds good",
+    "all good",
+    "great",
+}
 
 
 @dataclass
@@ -208,9 +248,11 @@ class MemoryEngine:
                     fact_value TEXT NOT NULL,
                     explicit INTEGER NOT NULL DEFAULT 0,
                     confidence REAL NOT NULL DEFAULT 0,
+                    evidence_count INTEGER NOT NULL DEFAULT 1,
                     source_msg_id INTEGER,
                     status TEXT NOT NULL DEFAULT 'active',
                     created_at REAL NOT NULL,
+                    last_observed_at REAL NOT NULL DEFAULT 0,
                     last_used_at REAL NOT NULL
                 );
 
@@ -249,6 +291,21 @@ class MemoryEngine:
                     ON chat_summaries (conversation_key, id);
                 """
             )
+            fact_columns = {
+                str(row["name"]): row
+                for row in conn.execute("PRAGMA table_info(memory_facts)").fetchall()
+            }
+            if "evidence_count" not in fact_columns:
+                conn.execute(
+                    "ALTER TABLE memory_facts ADD COLUMN evidence_count INTEGER NOT NULL DEFAULT 1"
+                )
+            if "last_observed_at" not in fact_columns:
+                conn.execute(
+                    "ALTER TABLE memory_facts ADD COLUMN last_observed_at REAL NOT NULL DEFAULT 0"
+                )
+                conn.execute(
+                    "UPDATE memory_facts SET last_observed_at = created_at WHERE last_observed_at = 0"
+                )
             # Normalize legacy mode label to the canonical mode name.
             conn.execute(
                 "UPDATE memory_config SET mode = ? WHERE mode = ?",
@@ -452,20 +509,31 @@ class MemoryEngine:
         self,
         conn: sqlite3.Connection,
         conversation_key: str,
-        limit: int = RECENT_WINDOW,
+        max_messages: int = RECENT_WINDOW_MAX_MESSAGES,
+        token_budget: int = RECENT_WINDOW_TOKEN_BUDGET,
     ) -> List[sqlite3.Row]:
         rows = conn.execute(
             """
-            SELECT sender_role, sender_name, text
+            SELECT sender_role, sender_name, text, token_estimate
             FROM messages
             WHERE conversation_key = ?
             ORDER BY id DESC
-            LIMIT ?
+            LIMIT 240
             """,
-            (conversation_key, limit),
+            (conversation_key,),
         ).fetchall()
-        rows.reverse()
-        return rows
+        selected: List[sqlite3.Row] = []
+        token_total = 0
+        for row in rows:
+            row_tokens = max(1, int(row["token_estimate"] or 1))
+            if selected and len(selected) >= max_messages:
+                break
+            if selected and token_total + row_tokens > token_budget:
+                break
+            selected.append(row)
+            token_total += row_tokens
+        selected.reverse()
+        return selected
 
     def _load_recent_messages_for_role(
         self,
@@ -512,10 +580,10 @@ class MemoryEngine:
     ) -> List[sqlite3.Row]:
         rows = conn.execute(
             """
-            SELECT id, fact_key, fact_value, confidence
+            SELECT id, fact_key, fact_value, confidence, explicit, evidence_count, last_observed_at
             FROM memory_facts
             WHERE conversation_key = ? AND status = 'active' AND confidence >= 0.7
-            ORDER BY confidence DESC, last_used_at DESC, id DESC
+            ORDER BY explicit DESC, evidence_count DESC, last_observed_at DESC, confidence DESC, last_used_at DESC, id DESC
             LIMIT ?
             """,
             (conversation_key, limit),
@@ -609,6 +677,60 @@ class MemoryEngine:
     @staticmethod
     def _format_timestamp(ts: float) -> str:
         return datetime.fromtimestamp(float(ts), tz=BRISBANE_TZ).strftime("%Y-%m-%d %H:%M:%S AEST")
+
+    @classmethod
+    def score_message_importance(
+        cls,
+        *,
+        text: str,
+        sender_role: str,
+        token_estimate: int,
+        is_bot: bool,
+    ) -> float:
+        normalized_text = " ".join((text or "").strip().lower().split())
+        if not normalized_text:
+            return -1.0
+
+        score = 0.0
+        if sender_role == "user":
+            score += 0.35
+        if not is_bot:
+            score += 0.15
+
+        score += min(1.5, max(1, int(token_estimate or 1)) / 40.0)
+
+        if "?" in normalized_text:
+            score += 0.5
+        if ":" in normalized_text:
+            score += 0.25
+        if any(keyword in normalized_text for keyword in MESSAGE_IMPORTANCE_KEYWORDS):
+            score += 1.2
+
+        word_count = len(normalized_text.split())
+        if word_count <= 2:
+            score -= 0.4
+        if normalized_text in LOW_VALUE_MESSAGE_TEXT:
+            score -= 1.5
+        elif word_count <= 4 and normalized_text.replace("!", "").replace(".", "") in LOW_VALUE_MESSAGE_TEXT:
+            score -= 1.0
+        return score
+
+    @classmethod
+    def should_keep_message_for_shared_archive(
+        cls,
+        *,
+        text: str,
+        sender_role: str,
+        token_estimate: int,
+        is_bot: bool,
+        min_score: float = 0.75,
+    ) -> bool:
+        return cls.score_message_importance(
+            text=text,
+            sender_role=sender_role,
+            token_estimate=token_estimate,
+            is_bot=is_bot,
+        ) >= min_score
 
     @staticmethod
     def _parse_count_token(token: str) -> Optional[int]:
@@ -912,23 +1034,50 @@ class MemoryEngine:
     def _prune_messages_for_key(self, conn: sqlite3.Connection, conversation_key: str) -> int:
         if self.max_messages_per_key <= 0:
             return 0
-        cutoff_row = conn.execute(
+        rows = conn.execute(
             """
-            SELECT id
+            SELECT id, sender_role, text, token_estimate, is_bot
             FROM messages
             WHERE conversation_key = ?
-            ORDER BY id DESC
-            LIMIT 1 OFFSET ?
+            ORDER BY id ASC
             """,
-            (conversation_key, self.max_messages_per_key - 1),
-        ).fetchone()
-        if not cutoff_row:
+            (conversation_key,),
+        ).fetchall()
+        if len(rows) <= self.max_messages_per_key:
             return 0
 
-        cutoff_id = int(cutoff_row["id"])
+        keep_target = self.max_messages_per_key
+        recent_floor = min(keep_target, max(4, keep_target // 2))
+        keep_ids = {
+            int(row["id"])
+            for row in rows[-recent_floor:]
+        }
+        remaining_slots = max(0, keep_target - len(keep_ids))
+        if remaining_slots > 0:
+            older_rows = rows[:-recent_floor] if recent_floor < len(rows) else []
+            ranked_older = sorted(
+                older_rows,
+                key=lambda row: (
+                    self.score_message_importance(
+                        text=str(row["text"] or ""),
+                        sender_role=str(row["sender_role"] or "user"),
+                        token_estimate=int(row["token_estimate"] or 1),
+                        is_bot=bool(int(row["is_bot"] or 0)),
+                    ),
+                    int(row["id"]),
+                ),
+                reverse=True,
+            )
+            for row in ranked_older[:remaining_slots]:
+                keep_ids.add(int(row["id"]))
+
+        delete_ids = [int(row["id"]) for row in rows if int(row["id"]) not in keep_ids]
+        if not delete_ids:
+            return 0
+        placeholders = ",".join("?" for _ in delete_ids)
         delete_row = conn.execute(
-            "DELETE FROM messages WHERE conversation_key = ? AND id < ?",
-            (conversation_key, cutoff_id),
+            f"DELETE FROM messages WHERE conversation_key = ? AND id IN ({placeholders})",
+            (conversation_key, *delete_ids),
         )
         return int(delete_row.rowcount or 0)
 
@@ -979,6 +1128,39 @@ class MemoryEngine:
         if deleted_messages > 0 or deleted_summaries > 0:
             self._reconcile_memory_state(conn, conversation_key)
         return deleted_messages, deleted_summaries
+
+    def _compact_summarized_messages_for_key(
+        self,
+        conn: sqlite3.Connection,
+        conversation_key: str,
+    ) -> int:
+        summary_row = conn.execute(
+            """
+            SELECT end_msg_id
+            FROM chat_summaries
+            WHERE conversation_key = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (conversation_key,),
+        ).fetchone()
+        if not summary_row or summary_row["end_msg_id"] is None:
+            return 0
+
+        cutoff_id = int(summary_row["end_msg_id"])
+        delete_row = conn.execute(
+            "DELETE FROM messages WHERE conversation_key = ? AND id <= ?",
+            (conversation_key, cutoff_id),
+        )
+        deleted_messages = int(delete_row.rowcount or 0)
+        if deleted_messages > 0:
+            self._reconcile_memory_state(conn, conversation_key)
+        return deleted_messages
+
+    def compact_summarized_messages(self, conversation_key: str) -> int:
+        with self._lock, self._connect() as conn:
+            self._ensure_memory_rows(conn, conversation_key)
+            return self._compact_summarized_messages_for_key(conn, conversation_key)
 
     def run_retention_prune(
         self,
@@ -1039,6 +1221,8 @@ class MemoryEngine:
                     """,
                     (row_key, start_id, end_id),
                 ).fetchall()
+                if not message_rows:
+                    continue
                 summary_text, key_points, open_loops = self._summarize_rows(message_rows)
                 conn.execute(
                     """
@@ -1070,6 +1254,7 @@ class MemoryEngine:
         stateless: bool = False,
         mode_override: Optional[str] = None,
         background_conversation_key: Optional[str] = None,
+        thread_id_override: Optional[str] = None,
     ) -> TurnContext:
         clean_input = (user_input or "").strip()
         if not clean_input:
@@ -1095,7 +1280,7 @@ class MemoryEngine:
                 ).fetchone()
                 mode = self._normalize_mode(str(mode_row["mode"] if mode_row else MODE_FULL))
 
-            recent_rows = self._load_recent_messages(conn, conversation_key, limit=RECENT_WINDOW)
+            recent_rows = self._load_recent_messages(conn, conversation_key)
             current_summary_row = self._load_latest_summary(conn, conversation_key) if mode == MODE_FULL else None
             current_fact_rows = self._load_active_facts(conn, conversation_key) if mode == MODE_FULL else []
             background_key = (background_conversation_key or "").strip()
@@ -1104,11 +1289,14 @@ class MemoryEngine:
             if mode == MODE_FULL and background_key and background_key != conversation_key:
                 background_summary_row = self._load_latest_summary(conn, background_key)
                 background_fact_rows = self._load_active_facts(conn, background_key)
-            thread_row = conn.execute(
-                "SELECT thread_id FROM sessions WHERE conversation_key = ?",
-                (conversation_key,),
-            ).fetchone()
-            thread_id = str(thread_row["thread_id"] if thread_row else "").strip() or None
+            if thread_id_override is not None:
+                thread_id = (thread_id_override or "").strip() or None
+            else:
+                thread_row = conn.execute(
+                    "SELECT thread_id FROM sessions WHERE conversation_key = ?",
+                    (conversation_key,),
+                ).fetchone()
+                thread_id = str(thread_row["thread_id"] if thread_row else "").strip() or None
             summary_sections = self._build_summary_sections(
                 current_summary_row,
                 background_summary_row,
@@ -1468,18 +1656,22 @@ class MemoryEngine:
                 fact_value,
                 explicit,
                 confidence,
+                evidence_count,
                 source_msg_id,
                 status,
                 created_at,
+                last_observed_at,
                 last_used_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
             ON CONFLICT(conversation_key, fact_key)
             DO UPDATE SET
                 fact_value = excluded.fact_value,
                 explicit = CASE WHEN memory_facts.explicit = 1 OR excluded.explicit = 1 THEN 1 ELSE 0 END,
-                confidence = excluded.confidence,
+                confidence = MAX(memory_facts.confidence, excluded.confidence),
+                evidence_count = memory_facts.evidence_count + 1,
                 source_msg_id = excluded.source_msg_id,
                 status = 'active',
+                last_observed_at = excluded.last_observed_at,
                 last_used_at = excluded.last_used_at
             """,
             (
@@ -1488,7 +1680,9 @@ class MemoryEngine:
                 fact_value,
                 1 if explicit else 0,
                 float(confidence),
+                1,
                 source_msg_id,
+                now,
                 now,
                 now,
             ),
@@ -1609,9 +1803,10 @@ class MemoryEngine:
             rows = conn.execute(
                 """
                 SELECT id, fact_key, fact_value, explicit, confidence, status
+                     , evidence_count, last_observed_at
                 FROM memory_facts
                 WHERE conversation_key = ?
-                ORDER BY status DESC, confidence DESC, id DESC
+                ORDER BY status DESC, explicit DESC, evidence_count DESC, last_observed_at DESC, confidence DESC, id DESC
                 """,
                 (conversation_key,),
             ).fetchall()
@@ -1626,6 +1821,7 @@ class MemoryEngine:
                     "fact_value": fact_value if include_sensitive else safe_value,
                     "explicit": int(row["explicit"]),
                     "confidence": float(row["confidence"]),
+                    "evidence_count": int(row["evidence_count"] or 1),
                     "status": str(row["status"]),
                     "sensitive": bool(changed or self._is_sensitive(fact_value)),
                 }

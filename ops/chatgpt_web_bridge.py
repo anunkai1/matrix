@@ -52,7 +52,11 @@ COPY_HINTS = (
 )
 NOISE_LINE_PATTERNS = (
     r"^\s*-?\s*(button|link|textbox|combobox|menuitem|navigation|banner|complementary)\b",
+    r"^\s*-?\s*(group|img|alert|status|tooltip)\b",
+    r"^\s*-?\s*heading\s+\"?chatgpt said",
+    r"^\s*ask anything\s*$",
     r"\b(copy|regenerate|thumbs up|thumbs down|read aloud|share|new chat|temporary chat)\b",
+    r"\b(use voice|control, alt)\b",
     r"\b(chatgpt can make mistakes|check important info)\b",
 )
 
@@ -79,6 +83,10 @@ class BrowserBrainClient:
         except HTTPError as exc:
             raw = exc.read().decode("utf-8", errors="ignore") if exc.fp is not None else ""
             raise ChatGPTWebBridgeError(f"Browser Brain HTTP {exc.code}: {raw}") from exc
+        except TimeoutError as exc:
+            raise ChatGPTWebBridgeError(
+                f"Browser Brain request timed out after {self.timeout_seconds}s: {method} {path}"
+            ) from exc
         except URLError as exc:
             raise ChatGPTWebBridgeError(f"Browser Brain unavailable at {self.base_url}: {exc.reason}") from exc
         parsed = json.loads(raw or "{}")
@@ -96,7 +104,18 @@ def ensure_browser_brain_service(service_name: str) -> None:
     )
     if status.returncode == 0:
         return
-    subprocess.run(["sudo", "systemctl", "start", service_name], check=True)
+    start = subprocess.run(
+        ["systemctl", "start", service_name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if start.returncode == 0:
+        return
+    detail = (start.stderr or start.stdout or "").strip() or f"exit {start.returncode}"
+    raise ChatGPTWebBridgeError(
+        f"failed to start {service_name} via systemctl: {detail}. Start it manually or disable --start-service."
+    )
 
 
 def snapshot_text(snapshot: dict[str, Any]) -> str:
@@ -198,21 +217,47 @@ def detect_blocked_state(snapshot: dict[str, Any]) -> str:
     for marker in BLOCKED_MARKERS:
         if marker in text:
             return marker
-    if any(marker in text for marker in LOGIN_MARKERS) and not any(hint in text for hint in PROMPT_HINTS):
+    if any(marker in text for marker in LOGIN_MARKERS):
+        if any(hint in text for hint in PROMPT_HINTS) or "stop streaming" in text or "chatgpt said" in text:
+            return "login_required"
         return "login_required"
     return ""
 
 
+def detect_network_blocked_state(client: BrowserBrainClient, tab_id: str) -> str:
+    try:
+        payload = client.request("POST", "/v1/network", {"tab_id": tab_id, "limit": 20})
+    except ChatGPTWebBridgeError:
+        return ""
+    events = payload.get("events")
+    if not isinstance(events, list):
+        return ""
+    for event in reversed(events):
+        if not isinstance(event, dict):
+            continue
+        url = str(event.get("url") or "")
+        status = event.get("status")
+        if status not in {401, 403}:
+            continue
+        if "chatgpt.com/backend-api/" in url or "chatgpt.com/ces/" in url or "chatgpt.com/backend-anon/" in url:
+            return f"network_{status}"
+    return ""
+
+
 def open_or_reuse_chatgpt_tab(client: BrowserBrainClient, *, url: str) -> str:
-    client.request("POST", "/v1/start", {})
+    status = client.request("GET", "/v1/status")
+    if not bool(status.get("running")):
+        client.request("POST", "/v1/start", {})
     tabs = client.request("GET", "/v1/tabs").get("tabs")
     if isinstance(tabs, list):
-        for tab in tabs:
-            if not isinstance(tab, dict):
-                continue
+        chatgpt_tabs = [tab for tab in tabs if isinstance(tab, dict) and "chatgpt.com" in str(tab.get("url") or "")]
+        chatgpt_tabs.sort(key=lambda tab: 0 if "/c/" not in str(tab.get("url") or "") else 1)
+        for tab in chatgpt_tabs:
             tab_url = str(tab.get("url") or "")
-            if "chatgpt.com" in tab_url and tab.get("tab_id"):
+            if tab.get("tab_id"):
                 tab_id = str(tab["tab_id"])
+                if "/c/" in tab_url:
+                    continue
                 client.request("POST", "/v1/tabs/focus", {"tab_id": tab_id})
                 return tab_id
     opened = client.request("POST", "/v1/tabs/open", {"url": url})
@@ -233,6 +278,9 @@ def wait_for_prompt_ready(
     last_error = ""
     while time.monotonic() < deadline:
         snapshot = client.request("POST", "/v1/snapshot", {"tab_id": tab_id})
+        blocked = detect_network_blocked_state(client, tab_id)
+        if blocked:
+            raise ChatGPTWebBridgeError(f"ChatGPT web is not ready: {blocked}")
         blocked = detect_blocked_state(snapshot)
         if blocked:
             raise ChatGPTWebBridgeError(f"ChatGPT web is not ready: {blocked}")
@@ -270,13 +318,14 @@ def submit_prompt(client: BrowserBrainClient, tab_id: str, snapshot: dict[str, A
             },
         )
         return
+    press_target = find_prompt_box(after_type)
     client.request(
         "POST",
         "/v1/act/press",
         {
             "tab_id": tab_id,
-            "snapshot_id": target["snapshot_id"],
-            "ref": target["ref"],
+            "snapshot_id": press_target["snapshot_id"],
+            "ref": press_target["ref"],
             "key": "Enter",
         },
     )
@@ -297,16 +346,22 @@ def is_noise_line(line: str) -> bool:
 
 def extract_response(snapshot: dict[str, Any], prompt: str) -> str:
     aria_snapshot = str(snapshot.get("aria_snapshot") or "")
-    lines = [normalize_line(line) for line in aria_snapshot.splitlines()]
-    lines = [line for line in lines if not is_noise_line(line)]
+    raw_lines = [normalize_line(line) for line in aria_snapshot.splitlines()]
     prompt_norm = " ".join(prompt.split()).lower()
-    start = 0
-    if prompt_norm:
-        for index, line in enumerate(lines):
+    chatgpt_heading_indexes = [
+        index for index, line in enumerate(raw_lines) if "chatgpt said" in " ".join(line.split()).lower()
+    ]
+    if chatgpt_heading_indexes:
+        start = chatgpt_heading_indexes[-1] + 1
+    else:
+        start = len(raw_lines)
+        for index, line in enumerate(raw_lines):
             if prompt_norm[:120] and prompt_norm[:120] in " ".join(line.split()).lower():
                 start = index + 1
-    tail = lines[start:]
-    while tail and any(hint in tail[-1].lower() for hint in PROMPT_HINTS):
+                break
+    tail = [line for line in raw_lines[start:] if not is_noise_line(line)]
+    prompt_tail_markers = {"ask anything", "message chatgpt", "send a message", "message", "prompt"}
+    while tail and tail[-1].lower().strip() in prompt_tail_markers:
         tail.pop()
     answer = "\n".join(tail).strip()
     return answer
@@ -326,6 +381,9 @@ def wait_for_response(
     last = ""
     while time.monotonic() < deadline:
         snapshot = client.request("POST", "/v1/snapshot", {"tab_id": tab_id})
+        blocked = detect_network_blocked_state(client, tab_id)
+        if blocked:
+            raise ChatGPTWebBridgeError(f"ChatGPT web became blocked: {blocked}")
         blocked = detect_blocked_state(snapshot)
         if blocked:
             raise ChatGPTWebBridgeError(f"ChatGPT web became blocked: {blocked}")

@@ -2,13 +2,13 @@ from typing import Callable, Dict, List
 
 try:
     from .channel_adapter import ChannelAdapter, TelegramChannelAdapter
-    from .engine_adapter import CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter, PiEngineAdapter
+    from .engine_adapter import ChatGPTWebEngineAdapter, CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter, PiEngineAdapter, VeniceEngineAdapter
     from .signal_channel import SignalChannelAdapter
     from .transport import TelegramClient
     from .whatsapp_channel import WhatsAppChannelAdapter
 except ImportError:
     from channel_adapter import ChannelAdapter, TelegramChannelAdapter
-    from engine_adapter import CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter, PiEngineAdapter
+    from engine_adapter import ChatGPTWebEngineAdapter, CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter, PiEngineAdapter, VeniceEngineAdapter
     from signal_channel import SignalChannelAdapter
     from transport import TelegramClient
     from whatsapp_channel import WhatsAppChannelAdapter
@@ -43,6 +43,8 @@ class PluginRegistry:
 
     def build_engine(self, name: str) -> EngineAdapter:
         key = name.strip().lower()
+        if key == "chatgpt_web":
+            key = "chatgptweb"
         factory = self._engine_factories.get(key)
         if factory is None:
             raise KeyError(f"Unknown engine plugin: {name}")
@@ -70,7 +72,9 @@ def build_default_plugin_registry() -> PluginRegistry:
         lambda config: SignalChannelAdapter(config),
     )
     registry.register_engine("codex", lambda: CodexEngineAdapter())
+    registry.register_engine("chatgptweb", lambda: ChatGPTWebEngineAdapter())
     registry.register_engine("gemma", lambda: GemmaEngineAdapter())
     registry.register_engine("mavali_eth", lambda: MavaliEthEngineAdapter())
     registry.register_engine("pi", lambda: PiEngineAdapter())
+    registry.register_engine("venice", lambda: VeniceEngineAdapter())
     return registry

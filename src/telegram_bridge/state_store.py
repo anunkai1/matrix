@@ -74,6 +74,14 @@ class State:
     chat_thread_path: str = ""
     chat_engines: Dict[ScopeKey, str] = field(default_factory=dict)
     chat_engine_path: str = ""
+    chat_codex_models: Dict[ScopeKey, str] = field(default_factory=dict)
+    chat_codex_model_path: str = ""
+    chat_codex_efforts: Dict[ScopeKey, str] = field(default_factory=dict)
+    chat_codex_effort_path: str = ""
+    chat_pi_providers: Dict[ScopeKey, str] = field(default_factory=dict)
+    chat_pi_provider_path: str = ""
+    chat_pi_models: Dict[ScopeKey, str] = field(default_factory=dict)
+    chat_pi_model_path: str = ""
     worker_sessions: Dict[ScopeKey, WorkerSession] = field(default_factory=dict)
     worker_sessions_path: str = ""
     in_flight_requests: Dict[ScopeKey, Dict[str, object]] = field(default_factory=dict)
@@ -150,6 +158,90 @@ def load_chat_engines(path: str) -> Dict[ScopeKey, str]:
         raise ValueError(f"Failed to parse chat engine state {path}: {exc}") from exc
     if not isinstance(raw, dict):
         raise ValueError(f"Invalid chat engine state {path}: root is not object")
+    parsed: Dict[ScopeKey, str] = {}
+    for key, value in raw.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+        scope_key = normalize_scope_storage_key(key)
+        if scope_key is None:
+            continue
+        parsed[scope_key] = value.strip().lower()
+    return parsed
+
+
+def load_chat_codex_models(path: str) -> Dict[ScopeKey, str]:
+    data_path = Path(path)
+    if not data_path.exists():
+        return {}
+    try:
+        raw = json.loads(data_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to parse chat Codex model state {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid chat Codex model state {path}: root is not object")
+    parsed: Dict[ScopeKey, str] = {}
+    for key, value in raw.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+        scope_key = normalize_scope_storage_key(key)
+        if scope_key is None:
+            continue
+        parsed[scope_key] = value.strip()
+    return parsed
+
+
+def load_chat_codex_efforts(path: str) -> Dict[ScopeKey, str]:
+    data_path = Path(path)
+    if not data_path.exists():
+        return {}
+    try:
+        raw = json.loads(data_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to parse chat Codex effort state {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid chat Codex effort state {path}: root is not object")
+    parsed: Dict[ScopeKey, str] = {}
+    for key, value in raw.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+        scope_key = normalize_scope_storage_key(key)
+        if scope_key is None:
+            continue
+        parsed[scope_key] = value.strip().lower()
+    return parsed
+
+
+def load_chat_pi_models(path: str) -> Dict[ScopeKey, str]:
+    data_path = Path(path)
+    if not data_path.exists():
+        return {}
+    try:
+        raw = json.loads(data_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to parse chat Pi model state {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid chat Pi model state {path}: root is not object")
+    parsed: Dict[ScopeKey, str] = {}
+    for key, value in raw.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+        scope_key = normalize_scope_storage_key(key)
+        if scope_key is None:
+            continue
+        parsed[scope_key] = value.strip()
+    return parsed
+
+
+def load_chat_pi_providers(path: str) -> Dict[ScopeKey, str]:
+    data_path = Path(path)
+    if not data_path.exists():
+        return {}
+    try:
+        raw = json.loads(data_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"Failed to parse chat Pi provider state {path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"Invalid chat Pi provider state {path}: root is not object")
     parsed: Dict[ScopeKey, str] = {}
     for key, value in raw.items():
         if not isinstance(value, str) or not value.strip():
@@ -628,6 +720,42 @@ def persist_chat_engines(state: State) -> None:
     persist_json_state_file(state.chat_engine_path, serialized)
 
 
+def persist_chat_codex_models(state: State) -> None:
+    with state.lock:
+        serialized = {
+            normalize_scope_key(scope_key): model_name
+            for scope_key, model_name in state.chat_codex_models.items()
+        }
+    persist_json_state_file(state.chat_codex_model_path, serialized)
+
+
+def persist_chat_codex_efforts(state: State) -> None:
+    with state.lock:
+        serialized = {
+            normalize_scope_key(scope_key): effort_name
+            for scope_key, effort_name in state.chat_codex_efforts.items()
+        }
+    persist_json_state_file(state.chat_codex_effort_path, serialized)
+
+
+def persist_chat_pi_models(state: State) -> None:
+    with state.lock:
+        serialized = {
+            normalize_scope_key(scope_key): model_name
+            for scope_key, model_name in state.chat_pi_models.items()
+        }
+    persist_json_state_file(state.chat_pi_model_path, serialized)
+
+
+def persist_chat_pi_providers(state: State) -> None:
+    with state.lock:
+        serialized = {
+            normalize_scope_key(scope_key): provider_name
+            for scope_key, provider_name in state.chat_pi_providers.items()
+        }
+    persist_json_state_file(state.chat_pi_provider_path, serialized)
+
+
 def get_chat_engine(state: State, scope_key: ScopeKey) -> Optional[str]:
     scope_key = normalize_scope_key(scope_key)
     with state.lock:
@@ -652,6 +780,114 @@ def clear_chat_engine(state: State, scope_key: ScopeKey) -> bool:
             removed = True
     if removed:
         persist_chat_engines(state)
+    return removed
+
+
+def get_chat_codex_model(state: State, scope_key: ScopeKey) -> Optional[str]:
+    scope_key = normalize_scope_key(scope_key)
+    with state.lock:
+        model_name = state.chat_codex_models.get(scope_key, "").strip()
+    return model_name or None
+
+
+def set_chat_codex_model(state: State, scope_key: ScopeKey, model_name: str) -> None:
+    scope_key = normalize_scope_key(scope_key)
+    normalized_model = model_name.strip()
+    with state.lock:
+        state.chat_codex_models[scope_key] = normalized_model
+    persist_chat_codex_models(state)
+
+
+def clear_chat_codex_model(state: State, scope_key: ScopeKey) -> bool:
+    scope_key = normalize_scope_key(scope_key)
+    removed = False
+    with state.lock:
+        if scope_key in state.chat_codex_models:
+            del state.chat_codex_models[scope_key]
+            removed = True
+    if removed:
+        persist_chat_codex_models(state)
+    return removed
+
+
+def get_chat_codex_effort(state: State, scope_key: ScopeKey) -> Optional[str]:
+    scope_key = normalize_scope_key(scope_key)
+    with state.lock:
+        effort_name = state.chat_codex_efforts.get(scope_key, "").strip().lower()
+    return effort_name or None
+
+
+def set_chat_codex_effort(state: State, scope_key: ScopeKey, effort_name: str) -> None:
+    scope_key = normalize_scope_key(scope_key)
+    normalized_effort = effort_name.strip().lower()
+    with state.lock:
+        state.chat_codex_efforts[scope_key] = normalized_effort
+    persist_chat_codex_efforts(state)
+
+
+def clear_chat_codex_effort(state: State, scope_key: ScopeKey) -> bool:
+    scope_key = normalize_scope_key(scope_key)
+    removed = False
+    with state.lock:
+        if scope_key in state.chat_codex_efforts:
+            del state.chat_codex_efforts[scope_key]
+            removed = True
+    if removed:
+        persist_chat_codex_efforts(state)
+    return removed
+
+
+def get_chat_pi_provider(state: State, scope_key: ScopeKey) -> Optional[str]:
+    scope_key = normalize_scope_key(scope_key)
+    with state.lock:
+        provider_name = state.chat_pi_providers.get(scope_key, "").strip().lower()
+    return provider_name or None
+
+
+def set_chat_pi_provider(state: State, scope_key: ScopeKey, provider_name: str) -> None:
+    scope_key = normalize_scope_key(scope_key)
+    normalized_provider = provider_name.strip().lower()
+    with state.lock:
+        state.chat_pi_providers[scope_key] = normalized_provider
+    persist_chat_pi_providers(state)
+
+
+def clear_chat_pi_provider(state: State, scope_key: ScopeKey) -> bool:
+    scope_key = normalize_scope_key(scope_key)
+    removed = False
+    with state.lock:
+        if scope_key in state.chat_pi_providers:
+            del state.chat_pi_providers[scope_key]
+            removed = True
+    if removed:
+        persist_chat_pi_providers(state)
+    return removed
+
+
+def get_chat_pi_model(state: State, scope_key: ScopeKey) -> Optional[str]:
+    scope_key = normalize_scope_key(scope_key)
+    with state.lock:
+        model_name = state.chat_pi_models.get(scope_key, "").strip()
+    return model_name or None
+
+
+def set_chat_pi_model(state: State, scope_key: ScopeKey, model_name: str) -> None:
+    scope_key = normalize_scope_key(scope_key)
+    normalized_model = model_name.strip()
+    with state.lock:
+        state.chat_pi_models[scope_key] = normalized_model
+    persist_chat_pi_models(state)
+
+
+def clear_chat_pi_model(state: State, scope_key: ScopeKey) -> bool:
+    scope_key = normalize_scope_key(scope_key)
+    removed = False
+    with state.lock:
+        if scope_key in state.chat_pi_models:
+            del state.chat_pi_models[scope_key]
+            removed = True
+    if removed:
+        persist_chat_pi_models(state)
     return removed
 
 
@@ -1031,6 +1267,42 @@ class StateRepository:
 
     def clear_chat_engine(self, scope_key: ScopeKey) -> bool:
         return clear_chat_engine(self.state, scope_key)
+
+    def get_chat_codex_model(self, scope_key: ScopeKey) -> Optional[str]:
+        return get_chat_codex_model(self.state, scope_key)
+
+    def set_chat_codex_model(self, scope_key: ScopeKey, model_name: str) -> None:
+        set_chat_codex_model(self.state, scope_key, model_name)
+
+    def clear_chat_codex_model(self, scope_key: ScopeKey) -> bool:
+        return clear_chat_codex_model(self.state, scope_key)
+
+    def get_chat_codex_effort(self, scope_key: ScopeKey) -> Optional[str]:
+        return get_chat_codex_effort(self.state, scope_key)
+
+    def set_chat_codex_effort(self, scope_key: ScopeKey, effort_name: str) -> None:
+        set_chat_codex_effort(self.state, scope_key, effort_name)
+
+    def clear_chat_codex_effort(self, scope_key: ScopeKey) -> bool:
+        return clear_chat_codex_effort(self.state, scope_key)
+
+    def get_chat_pi_provider(self, scope_key: ScopeKey) -> Optional[str]:
+        return get_chat_pi_provider(self.state, scope_key)
+
+    def set_chat_pi_provider(self, scope_key: ScopeKey, provider_name: str) -> None:
+        set_chat_pi_provider(self.state, scope_key, provider_name)
+
+    def clear_chat_pi_provider(self, scope_key: ScopeKey) -> bool:
+        return clear_chat_pi_provider(self.state, scope_key)
+
+    def get_chat_pi_model(self, scope_key: ScopeKey) -> Optional[str]:
+        return get_chat_pi_model(self.state, scope_key)
+
+    def set_chat_pi_model(self, scope_key: ScopeKey, model_name: str) -> None:
+        set_chat_pi_model(self.state, scope_key, model_name)
+
+    def clear_chat_pi_model(self, scope_key: ScopeKey) -> bool:
+        return clear_chat_pi_model(self.state, scope_key)
 
     def mark_in_flight_request(self, scope_key: ScopeKey, message_id: Optional[int]) -> None:
         mark_in_flight_request(self.state, scope_key, message_id)

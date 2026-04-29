@@ -95,12 +95,15 @@ class HttpBridgeChannelAdapter:
         text: str,
         reply_to_message_id: Optional[int] = None,
         message_thread_id: Optional[int] = None,
+        reply_markup: Optional[Dict[str, object]] = None,
     ) -> None:
         payload: Dict[str, object] = {"chat_id": str(chat_id), "text": text}
         if reply_to_message_id is not None:
             payload["reply_to_message_id"] = str(reply_to_message_id)
         if message_thread_id is not None:
             payload["message_thread_id"] = str(message_thread_id)
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
         self._request_json("POST", "/messages", payload)
 
     def send_message_get_id(
@@ -109,12 +112,15 @@ class HttpBridgeChannelAdapter:
         text: str,
         reply_to_message_id: Optional[int] = None,
         message_thread_id: Optional[int] = None,
+        reply_markup: Optional[Dict[str, object]] = None,
     ) -> Optional[int]:
         payload: Dict[str, object] = {"chat_id": str(chat_id), "text": text}
         if reply_to_message_id is not None:
             payload["reply_to_message_id"] = str(reply_to_message_id)
         if message_thread_id is not None:
             payload["message_thread_id"] = str(message_thread_id)
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
         response = self._request_json("POST", "/messages", payload)
         result = response.get("result")
         if isinstance(result, dict):
@@ -213,7 +219,13 @@ class HttpBridgeChannelAdapter:
             message_thread_id,
         )
 
-    def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
+    def edit_message(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        reply_markup: Optional[Dict[str, object]] = None,
+    ) -> None:
         if not self.supports_message_edits:
             raise RuntimeError(f"{self.display_name} bridge message editing is not supported")
         payload: Dict[str, object] = {
@@ -221,7 +233,17 @@ class HttpBridgeChannelAdapter:
             "message_id": str(message_id),
             "text": text,
         }
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
         self._request_json("POST", "/messages/edit", payload)
+
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        text: Optional[str] = None,
+    ) -> None:
+        del callback_query_id, text
+        return None
 
     def send_chat_action(
         self,

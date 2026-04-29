@@ -1,4 +1,6 @@
+import base64
 import json
+import mimetypes
 import hashlib
 import os
 import re
@@ -31,6 +33,72 @@ except ImportError:
     )
 
 ProgressCallback = Callable[[ExecutorProgressEvent], None]
+
+
+def _communicate_process_with_cancel(
+    process: subprocess.Popen[str],
+    *,
+    timeout: int,
+    cancel_event: Optional[threading.Event],
+    cancel_message: str,
+    input_text: Optional[str] = None,
+) -> tuple[str, str]:
+    result: dict[str, object] = {}
+    done = threading.Event()
+
+    def _worker() -> None:
+        try:
+            stdout, stderr = process.communicate(input=input_text, timeout=timeout)
+            result["stdout"] = stdout
+            result["stderr"] = stderr
+        except BaseException as exc:
+            result["exception"] = exc
+        finally:
+            done.set()
+
+    worker = threading.Thread(target=_worker, daemon=True)
+    worker.start()
+    while not done.wait(0.1):
+        if cancel_event is not None and cancel_event.is_set():
+            process.kill()
+            done.wait(5)
+            raise ExecutorCancelledError(cancel_message)
+
+    exc = result.get("exception")
+    if isinstance(exc, BaseException):
+        raise exc
+    stdout = result.get("stdout")
+    stderr = result.get("stderr")
+    return str(stdout or ""), str(stderr or "")
+
+
+def _run_blocking_with_cancel(
+    func: Callable[[], str],
+    *,
+    cancel_event: Optional[threading.Event],
+    cancel_message: str,
+) -> str:
+    result: dict[str, object] = {}
+    done = threading.Event()
+
+    def _worker() -> None:
+        try:
+            result["value"] = func()
+        except BaseException as exc:
+            result["exception"] = exc
+        finally:
+            done.set()
+
+    worker = threading.Thread(target=_worker, daemon=True)
+    worker.start()
+    while not done.wait(0.1):
+        if cancel_event is not None and cancel_event.is_set():
+            raise ExecutorCancelledError(cancel_message)
+
+    exc = result.get("exception")
+    if isinstance(exc, BaseException):
+        raise exc
+    return str(result.get("value") or "")
 
 
 class EngineAdapter(Protocol):
@@ -140,15 +208,13 @@ class GemmaEngineAdapter:
             stderr=subprocess.PIPE,
             text=True,
         )
-        try:
-            stdout, stderr = process.communicate(
-                input=self._payload(config, prompt),
-                timeout=timeout + 10,
-            )
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-            raise
+        stdout, stderr = _communicate_process_with_cancel(
+            process,
+            timeout=timeout + 10,
+            cancel_event=cancel_event,
+            cancel_message="Gemma request canceled by user.",
+            input_text=self._payload(config, prompt),
+        )
         if cancel_event is not None and cancel_event.is_set():
             raise ExecutorCancelledError("Gemma request canceled by user.")
         if process.returncode != 0:
@@ -192,7 +258,11 @@ class GemmaEngineAdapter:
             if cancel_event is not None and cancel_event.is_set():
                 raise ExecutorCancelledError("Gemma request canceled by user.")
             if provider in {"ollama_http", "http", "ollama"}:
-                output = self._run_ollama_http(config, prompt)
+                output = _run_blocking_with_cancel(
+                    lambda: self._run_ollama_http(config, prompt),
+                    cancel_event=cancel_event,
+                    cancel_message="Gemma request canceled by user.",
+                )
             elif provider in {"ollama_ssh", "ssh"}:
                 output = self._run_ollama_ssh(config, prompt, cancel_event)
             else:
@@ -204,6 +274,311 @@ class GemmaEngineAdapter:
             raise
         except (RuntimeError, OSError, urllib_error.URLError) as exc:
             return self._completed_process_with_output(f"Gemma request failed: {exc}")
+
+
+class VeniceEngineAdapter:
+    engine_name = "venice"
+
+    def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=["venice"],
+            returncode=0,
+            stdout=f"{OUTPUT_BEGIN_MARKER}\n{str(output or '').strip()}",
+            stderr="",
+        )
+
+    def _api_key(self, config) -> str:
+        api_key = str(getattr(config, "venice_api_key", "") or "").strip()
+        if not api_key:
+            raise RuntimeError("VENICE_API_KEY is required")
+        return api_key
+
+    def _base_url(self, config) -> str:
+        base_url = str(getattr(config, "venice_base_url", "https://api.venice.ai/api/v1") or "").strip()
+        if not base_url:
+            raise RuntimeError("VENICE_BASE_URL is required")
+        return base_url.rstrip("/")
+
+    def _request_headers(self, config) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._api_key(config)}",
+            "Content-Type": "application/json",
+        }
+
+    def _image_data_url(self, image_path: str) -> str:
+        path = Path(image_path)
+        if not path.is_file():
+            raise RuntimeError(f"Venice image file not found: {image_path}")
+        mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:{mime_type};base64,{encoded}"
+
+    def _build_messages(
+        self,
+        prompt: str,
+        *,
+        image_path: Optional[str] = None,
+        image_paths: Optional[list[str]] = None,
+    ) -> list[dict[str, object]]:
+        normalized_image_paths: list[str] = []
+        for candidate in image_paths or []:
+            if candidate and candidate not in normalized_image_paths:
+                normalized_image_paths.append(candidate)
+        if image_path and image_path not in normalized_image_paths:
+            normalized_image_paths.insert(0, image_path)
+
+        if not normalized_image_paths:
+            return [{"role": "user", "content": prompt}]
+
+        content_parts: list[dict[str, object]] = []
+        text_prompt = prompt.strip() or "Describe the attached image(s)."
+        content_parts.append({"type": "text", "text": text_prompt})
+        for candidate in normalized_image_paths:
+            content_parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": self._image_data_url(candidate)},
+                }
+            )
+        return [{"role": "user", "content": content_parts}]
+
+    def _payload(
+        self,
+        config,
+        prompt: str,
+        *,
+        image_path: Optional[str] = None,
+        image_paths: Optional[list[str]] = None,
+    ) -> str:
+        payload = {
+            "model": getattr(config, "venice_model", "mistral-31-24b"),
+            "stream": False,
+            "temperature": float(getattr(config, "venice_temperature", 0.2)),
+            "messages": self._build_messages(
+                prompt,
+                image_path=image_path,
+                image_paths=image_paths,
+            ),
+        }
+        return json.dumps(payload)
+
+    def _extract_venice_content(self, raw: str) -> str:
+        try:
+            payload = json.loads(raw or "{}")
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Venice returned invalid JSON: {exc}") from exc
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise RuntimeError("Venice response did not contain choices.")
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            raise RuntimeError("Venice response choice was not an object.")
+        message = first_choice.get("message")
+        if not isinstance(message, dict):
+            raise RuntimeError("Venice response did not contain an assistant message.")
+        content = message.get("content")
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            text_parts: list[str] = []
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") != "text":
+                    continue
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    text_parts.append(text.strip())
+            if text_parts:
+                return "\n".join(text_parts).strip()
+        tool_calls = message.get("tool_calls")
+        if tool_calls:
+            return json.dumps(tool_calls, ensure_ascii=False)
+        raise RuntimeError("Venice response did not contain text content.")
+
+    def _run_venice_http(
+        self,
+        config,
+        prompt: str,
+        *,
+        image_path: Optional[str] = None,
+        image_paths: Optional[list[str]] = None,
+    ) -> str:
+        base_url = self._base_url(config)
+        timeout = int(getattr(config, "venice_request_timeout_seconds", 180))
+        req = urllib_request.Request(
+            f"{base_url}/chat/completions",
+            data=self._payload(
+                config,
+                prompt,
+                image_path=image_path,
+                image_paths=image_paths,
+            ).encode("utf-8"),
+            headers=self._request_headers(config),
+            method="POST",
+        )
+        with urllib_request.urlopen(req, timeout=timeout) as response:
+            raw = response.read().decode("utf-8")
+        return self._extract_venice_content(raw)
+
+    def run(
+        self,
+        config,
+        prompt: str,
+        thread_id: Optional[str],
+        session_key: Optional[str] = None,
+        channel_name: Optional[str] = None,
+        actor_chat_id: Optional[int] = None,
+        actor_user_id: Optional[int] = None,
+        image_path: Optional[str] = None,
+        image_paths: Optional[list[str]] = None,
+        progress_callback: Optional[ProgressCallback] = None,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> subprocess.CompletedProcess[str]:
+        del thread_id, session_key, channel_name, actor_chat_id, actor_user_id, progress_callback
+        try:
+            if cancel_event is not None and cancel_event.is_set():
+                raise ExecutorCancelledError("Venice request canceled by user.")
+            output = _run_blocking_with_cancel(
+                lambda: self._run_venice_http(
+                    config,
+                    prompt,
+                    image_path=image_path,
+                    image_paths=image_paths,
+                ),
+                cancel_event=cancel_event,
+                cancel_message="Venice request canceled by user.",
+            )
+            return self._completed_process_with_output(output)
+        except ExecutorCancelledError:
+            raise
+        except subprocess.TimeoutExpired:
+            raise
+        except (RuntimeError, OSError, urllib_error.URLError) as exc:
+            return self._completed_process_with_output(f"Venice request failed: {exc}")
+
+
+class ChatGPTWebEngineAdapter:
+    engine_name = "chatgptweb"
+
+    def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=["chatgptweb"],
+            returncode=0,
+            stdout=f"{OUTPUT_BEGIN_MARKER}\n{str(output or '').strip()}",
+            stderr="",
+        )
+
+    def _bridge_script(self, config) -> str:
+        configured = str(getattr(config, "chatgpt_web_bridge_script", "") or "").strip()
+        if configured:
+            return configured
+        return str(Path(__file__).resolve().parents[2] / "ops" / "chatgpt_web_bridge.py")
+
+    def _build_command(self, config) -> list[str]:
+        cmd = [
+            str(getattr(config, "chatgpt_web_python_bin", sys.executable) or sys.executable),
+            self._bridge_script(config),
+            "--base-url",
+            str(getattr(config, "chatgpt_web_browser_brain_url", "http://127.0.0.1:47831") or "http://127.0.0.1:47831"),
+            "--service-name",
+            str(getattr(config, "chatgpt_web_browser_brain_service", "server3-browser-brain.service") or "server3-browser-brain.service"),
+            "--request-timeout",
+            str(int(getattr(config, "chatgpt_web_request_timeout_seconds", 30) or 30)),
+            "ask",
+            "--url",
+            str(getattr(config, "chatgpt_web_url", "https://chatgpt.com/") or "https://chatgpt.com/"),
+            "--ready-timeout",
+            str(int(getattr(config, "chatgpt_web_ready_timeout_seconds", 45) or 45)),
+            "--response-timeout",
+            str(int(getattr(config, "chatgpt_web_response_timeout_seconds", 180) or 180)),
+            "--poll-seconds",
+            str(float(getattr(config, "chatgpt_web_poll_seconds", 3.0) or 3.0)),
+            "--json",
+        ]
+        if bool(getattr(config, "chatgpt_web_start_service", False)):
+            cmd.append("--start-service")
+        return cmd
+
+    def _parse_answer(self, stdout: str) -> str:
+        raw = str(stdout or "").strip()
+        if not raw:
+            return ""
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return raw
+        if isinstance(payload, dict):
+            answer = payload.get("answer")
+            if isinstance(answer, str):
+                return answer.strip()
+        return raw
+
+    def _run_bridge(
+        self,
+        config,
+        prompt: str,
+        cancel_event: Optional[threading.Event],
+    ) -> str:
+        timeout = (
+            int(getattr(config, "chatgpt_web_ready_timeout_seconds", 45) or 45)
+            + int(getattr(config, "chatgpt_web_response_timeout_seconds", 180) or 180)
+            + int(getattr(config, "chatgpt_web_request_timeout_seconds", 30) or 30)
+            + 20
+        )
+        process = subprocess.Popen(
+            self._build_command(config),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        stdout, stderr = _communicate_process_with_cancel(
+            process,
+            timeout=timeout,
+            cancel_event=cancel_event,
+            cancel_message="ChatGPT web request canceled by user.",
+            input_text=prompt,
+        )
+        if cancel_event is not None and cancel_event.is_set():
+            raise ExecutorCancelledError("ChatGPT web request canceled by user.")
+        if process.returncode != 0:
+            raise RuntimeError((stderr or stdout or "ChatGPT web bridge failed.").strip())
+        answer = self._parse_answer(stdout)
+        if not answer:
+            raise RuntimeError("ChatGPT web bridge returned an empty response.")
+        return answer
+
+    def run(
+        self,
+        config,
+        prompt: str,
+        thread_id: Optional[str],
+        session_key: Optional[str] = None,
+        channel_name: Optional[str] = None,
+        actor_chat_id: Optional[int] = None,
+        actor_user_id: Optional[int] = None,
+        image_path: Optional[str] = None,
+        image_paths: Optional[list[str]] = None,
+        progress_callback: Optional[ProgressCallback] = None,
+        cancel_event: Optional[threading.Event] = None,
+    ) -> subprocess.CompletedProcess[str]:
+        del thread_id, session_key, channel_name, actor_chat_id, actor_user_id, progress_callback
+        if image_path or image_paths:
+            return self._completed_process_with_output(
+                "ChatGPT web is configured for text-only requests right now. Use `/engine codex` for image or file-heavy work."
+            )
+        try:
+            if cancel_event is not None and cancel_event.is_set():
+                raise ExecutorCancelledError("ChatGPT web request canceled by user.")
+            output = self._run_bridge(config, prompt, cancel_event)
+            return self._completed_process_with_output(output)
+        except ExecutorCancelledError:
+            raise
+        except subprocess.TimeoutExpired:
+            raise
+        except (RuntimeError, OSError, ValueError) as exc:
+            return self._completed_process_with_output(f"ChatGPT web request failed: {exc}")
 
 
 class PiEngineAdapter:
@@ -270,6 +645,59 @@ class PiEngineAdapter:
             label = "telegram_scope"
         return f"{label[:80]}-{digest}.jsonl"
 
+    def _provider_scoped_session_key(self, config, session_key: str) -> str:
+        provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip().lower() or "ollama"
+        model = str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip() or "qwen3-coder:30b"
+        return f"{session_key}|provider:{provider}|model:{model}"
+
+    def _session_archive_dir(self, config, base_dir: Path) -> Path:
+        configured_dir = str(getattr(config, "pi_session_archive_dir", "") or "").strip()
+        if configured_dir:
+            return Path(configured_dir).expanduser()
+        return base_dir / ".archive"
+
+    def _cleanup_session_archive_dir(self, archive_dir: Path, retention_seconds: int) -> None:
+        if retention_seconds <= 0 or not archive_dir.exists():
+            return
+        cutoff = time.time() - retention_seconds
+        for archive_path in archive_dir.glob("*.rotated.*.jsonl"):
+            try:
+                stat = archive_path.stat()
+            except OSError:
+                continue
+            if stat.st_mtime < cutoff:
+                try:
+                    archive_path.unlink()
+                except OSError:
+                    continue
+
+    def _rotate_session_file_if_needed(self, config, base_dir: Path, session_path: Path) -> None:
+        max_bytes = int(getattr(config, "pi_session_max_bytes", 0) or 0)
+        max_age_seconds = int(getattr(config, "pi_session_max_age_seconds", 0) or 0)
+        retention_seconds = int(getattr(config, "pi_session_archive_retention_seconds", 0) or 0)
+        archive_dir = self._session_archive_dir(config, base_dir)
+        if not session_path.exists():
+            self._cleanup_session_archive_dir(archive_dir, retention_seconds)
+            return
+        try:
+            stat = session_path.stat()
+        except OSError:
+            return
+        should_rotate = False
+        if max_bytes > 0 and stat.st_size >= max_bytes:
+            should_rotate = True
+        if max_age_seconds > 0 and (time.time() - stat.st_mtime) >= max_age_seconds:
+            should_rotate = True
+        if should_rotate:
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+            archive_path = archive_dir / f"{session_path.stem}.rotated.{timestamp}{session_path.suffix}"
+            try:
+                session_path.replace(archive_path)
+            except OSError:
+                pass
+        self._cleanup_session_archive_dir(archive_dir, retention_seconds)
+
     def _build_session_args(self, config, session_key: Optional[str]) -> list[str]:
         mode = str(getattr(config, "pi_session_mode", "none") or "none").strip().lower()
         if mode in {"", "none", "off", "disabled", "no_session"}:
@@ -280,7 +708,9 @@ class PiEngineAdapter:
             return ["--no-session"]
         configured_dir = str(getattr(config, "pi_session_dir", "") or "").strip()
         base_dir = Path(configured_dir).expanduser() if configured_dir else Path.home() / ".pi" / "agent" / "telegram-sessions"
-        session_path = base_dir / self._safe_session_filename(session_key)
+        scoped_session_key = self._provider_scoped_session_key(config, session_key)
+        session_path = base_dir / self._safe_session_filename(scoped_session_key)
+        self._rotate_session_file_if_needed(config, base_dir, session_path)
         return ["--session-dir", str(base_dir), "--session", str(session_path)]
 
     def _build_remote_command(self, config, prompt: str) -> str:
@@ -318,12 +748,12 @@ class PiEngineAdapter:
             stderr=subprocess.PIPE,
             text=True,
         )
-        try:
-            stdout, stderr = process.communicate(timeout=timeout + 10)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-            raise
+        stdout, stderr = _communicate_process_with_cancel(
+            process,
+            timeout=timeout + 10,
+            cancel_event=cancel_event,
+            cancel_message="Pi request canceled by user.",
+        )
         if cancel_event is not None and cancel_event.is_set():
             raise ExecutorCancelledError("Pi request canceled by user.")
         if process.returncode != 0:
@@ -377,6 +807,14 @@ class PiEngineAdapter:
             time.sleep(0.1)
         raise RuntimeError(f"Pi Ollama tunnel did not become ready on port {port}")
 
+    def _pi_provider_uses_ollama_tunnel(self, config) -> bool:
+        provider = (
+            str(getattr(config, "pi_provider", "ollama") or "ollama")
+            .strip()
+            .lower()
+        )
+        return provider in {"ollama", "ollama_ssh", "ssh"}
+
     def _run_pi_local(
         self,
         config,
@@ -385,7 +823,8 @@ class PiEngineAdapter:
         cancel_event: Optional[threading.Event],
     ) -> str:
         timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
-        self._ensure_local_ollama_tunnel(config)
+        if self._pi_provider_uses_ollama_tunnel(config):
+            self._ensure_local_ollama_tunnel(config)
         cwd = str(getattr(config, "pi_local_cwd", "") or "").strip() or None
         cmd = self._build_pi_args(
             config,
@@ -404,12 +843,12 @@ class PiEngineAdapter:
             text=True,
             env=env,
         )
-        try:
-            stdout, stderr = process.communicate(timeout=timeout + 10)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-            raise
+        stdout, stderr = _communicate_process_with_cancel(
+            process,
+            timeout=timeout + 10,
+            cancel_event=cancel_event,
+            cancel_message="Pi request canceled by user.",
+        )
         if cancel_event is not None and cancel_event.is_set():
             raise ExecutorCancelledError("Pi request canceled by user.")
         if process.returncode != 0:

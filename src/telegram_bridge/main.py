@@ -62,7 +62,11 @@ try:
         ensure_state_dir,
         load_canonical_sessions,
         load_canonical_sessions_sqlite,
+        load_chat_codex_models,
+        load_chat_codex_efforts,
         load_chat_engines,
+        load_chat_pi_models,
+        load_chat_pi_providers,
         load_chat_threads,
         load_in_flight_requests,
         load_or_import_canonical_sessions_sqlite,
@@ -131,7 +135,11 @@ except ImportError:
         ensure_state_dir,
         load_canonical_sessions,
         load_canonical_sessions_sqlite,
+        load_chat_codex_models,
+        load_chat_codex_efforts,
         load_chat_engines,
+        load_chat_pi_models,
+        load_chat_pi_providers,
         load_chat_threads,
         load_in_flight_requests,
         load_or_import_canonical_sessions_sqlite,
@@ -594,6 +602,10 @@ def run_bridge(config: Config) -> int:
     affective_runtime = build_affective_runtime(config)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
     chat_engine_path = os.path.join(config.state_dir, "chat_engines.json")
+    chat_codex_model_path = os.path.join(config.state_dir, "chat_codex_models.json")
+    chat_codex_effort_path = os.path.join(config.state_dir, "chat_codex_efforts.json")
+    chat_pi_provider_path = os.path.join(config.state_dir, "chat_pi_providers.json")
+    chat_pi_model_path = os.path.join(config.state_dir, "chat_pi_models.json")
     worker_sessions_path = os.path.join(config.state_dir, "worker_sessions.json")
     in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
     chat_sessions_path = os.path.join(config.state_dir, "chat_sessions.json")
@@ -630,6 +642,74 @@ def run_bridge(config: Config) -> int:
             fields={"state_file": chat_engine_path},
         )
         loaded_engines = {}
+
+    try:
+        loaded_codex_models = load_chat_codex_models(chat_codex_model_path)
+    except Exception:
+        logging.exception(
+            "Failed to load chat Codex model mappings from %s; starting with empty mappings.",
+            chat_codex_model_path,
+        )
+        moved = quarantine_corrupt_state_file(chat_codex_model_path)
+        if moved:
+            logging.error("Quarantined corrupt chat Codex model state file to %s", moved)
+        emit_event(
+            "bridge.state_load_failed",
+            level=logging.WARNING,
+            fields={"state_file": chat_codex_model_path},
+        )
+        loaded_codex_models = {}
+
+    try:
+        loaded_codex_efforts = load_chat_codex_efforts(chat_codex_effort_path)
+    except Exception:
+        logging.exception(
+            "Failed to load chat Codex effort mappings from %s; starting with empty mappings.",
+            chat_codex_effort_path,
+        )
+        moved = quarantine_corrupt_state_file(chat_codex_effort_path)
+        if moved:
+            logging.error("Quarantined corrupt chat Codex effort state file to %s", moved)
+        emit_event(
+            "bridge.state_load_failed",
+            level=logging.WARNING,
+            fields={"state_file": chat_codex_effort_path},
+        )
+        loaded_codex_efforts = {}
+
+    try:
+        loaded_pi_models = load_chat_pi_models(chat_pi_model_path)
+    except Exception:
+        logging.exception(
+            "Failed to load chat Pi model mappings from %s; starting with empty mappings.",
+            chat_pi_model_path,
+        )
+        moved = quarantine_corrupt_state_file(chat_pi_model_path)
+        if moved:
+            logging.error("Quarantined corrupt chat Pi model state file to %s", moved)
+        emit_event(
+            "bridge.state_load_failed",
+            level=logging.WARNING,
+            fields={"state_file": chat_pi_model_path},
+        )
+        loaded_pi_models = {}
+
+    try:
+        loaded_pi_providers = load_chat_pi_providers(chat_pi_provider_path)
+    except Exception:
+        logging.exception(
+            "Failed to load chat Pi provider mappings from %s; starting with empty mappings.",
+            chat_pi_provider_path,
+        )
+        moved = quarantine_corrupt_state_file(chat_pi_provider_path)
+        if moved:
+            logging.error("Quarantined corrupt chat Pi provider state file to %s", moved)
+        emit_event(
+            "bridge.state_load_failed",
+            level=logging.WARNING,
+            fields={"state_file": chat_pi_provider_path},
+        )
+        loaded_pi_providers = {}
 
     try:
         loaded_worker_sessions = load_worker_sessions(worker_sessions_path)
@@ -911,6 +991,14 @@ def run_bridge(config: Config) -> int:
         chat_thread_path=chat_thread_path,
         chat_engines=loaded_engines,
         chat_engine_path=chat_engine_path,
+        chat_codex_models=loaded_codex_models,
+        chat_codex_model_path=chat_codex_model_path,
+        chat_codex_efforts=loaded_codex_efforts,
+        chat_codex_effort_path=chat_codex_effort_path,
+        chat_pi_providers=loaded_pi_providers,
+        chat_pi_provider_path=chat_pi_provider_path,
+        chat_pi_models=loaded_pi_models,
+        chat_pi_model_path=chat_pi_model_path,
         worker_sessions=loaded_worker_sessions,
         worker_sessions_path=worker_sessions_path,
         in_flight_requests=loaded_in_flight,

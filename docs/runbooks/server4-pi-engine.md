@@ -23,7 +23,7 @@ command -v pi || sudo npm install -g @mariozechner/pi-coding-agent@0.70.2
 pi --version
 ```
 
-Each runtime user needs a Pi model config. For Tank, Pi uses `/home/tank/.pi/agent/models.json` with an OpenAI-compatible Ollama endpoint:
+Each runtime user needs a Pi model config. Tank and AgentSmith now also carry a local `venice` provider in their Pi homes when they should preserve their own `AGENTS.md`; the Ollama endpoint example below remains the fallback/tunnel pattern:
 
 ```json
 {
@@ -71,22 +71,58 @@ Generic defaults:
 
 ```bash
 TELEGRAM_ENGINE_PLUGIN=codex
-TELEGRAM_SELECTABLE_ENGINE_PLUGINS=codex,gemma,pi
+TELEGRAM_SELECTABLE_ENGINE_PLUGINS=codex,gemma,pi,venice
 PI_PROVIDER=ollama
 PI_MODEL=qwen3-coder:30b
 PI_RUNNER=ssh
 PI_SSH_HOST=server4-beast
-PI_SESSION_MODE=none
+PI_SESSION_MODE=telegram_scope
 PI_TOOLS_MODE=default
 PI_REQUEST_TIMEOUT_SECONDS=180
+VENICE_API_KEY=replace_me
+VENICE_BASE_URL=https://api.venice.ai/api/v1
+VENICE_MODEL=deepseek-v4-flash
+VENICE_TEMPERATURE=0.2
+VENICE_REQUEST_TIMEOUT_SECONDS=180
 ```
+
+To point Pi at Venice instead of Ollama, register a `venice` provider in the Pi agent config on the SSH target:
+
+```json
+{
+  "providers": {
+    "venice": {
+      "baseUrl": "https://api.venice.ai/api/v1",
+      "api": "openai-completions",
+      "authHeader": true,
+      "models": [
+        { "id": "deepseek-v4-flash", "reasoning": true, "input": ["text"] },
+        { "id": "venice-uncensored", "input": ["text"] },
+        { "id": "venice-uncensored-1-2", "input": ["text"] },
+        { "id": "venice-uncensored-role-play", "input": ["text"] },
+        { "id": "e2ee-venice-uncensored-24b-p", "input": ["text"] }
+      ]
+    }
+  }
+}
+```
+
+Store the Venice key in the SSH target's `~/.pi/agent/auth.json` under the `venice` provider, then switch the bridge env to:
+
+```bash
+PI_PROVIDER=venice
+PI_MODEL=deepseek-v4-flash
+PI_OLLAMA_TUNNEL_ENABLED=false
+```
+
+For Architect's live bridge, the same Venice provider is used with `PI_RUNNER=local` and `PI_LOCAL_CWD=/home/architect/matrix` so Pi loads the runtime root and its `AGENTS.md`.
 
 True engine-swap mode for Tank:
 
 ```bash
 PI_RUNNER=local
 PI_LOCAL_CWD=/home/tank/tankbot
-PI_SESSION_MODE=none
+PI_SESSION_MODE=telegram_scope
 PI_OLLAMA_TUNNEL_LOCAL_PORT=11435
 PI_OLLAMA_TUNNEL_REMOTE_HOST=127.0.0.1
 PI_OLLAMA_TUNNEL_REMOTE_PORT=11434
@@ -103,6 +139,7 @@ PI_OLLAMA_TUNNEL_REMOTE_PORT=11434
 
 - `none`: pass `--no-session`; bridge memory owns chat continuity.
 - `telegram_scope`: use native Pi sessions keyed by Telegram scope under `PI_SESSION_DIR` or `~/.pi/agent/telegram-sessions`.
+- Session pruning policy: rotate a session when it exceeds `PI_SESSION_MAX_BYTES` or `PI_SESSION_MAX_AGE_SECONDS`, archive it under `PI_SESSION_ARCHIVE_DIR` or `.../.archive`, and delete rotated archives after `PI_SESSION_ARCHIVE_RETENTION_SECONDS`.
 
 ## Verify Local Tank Pi
 
@@ -163,4 +200,5 @@ Per chat/topic:
 - Chat memory is still owned by the bridge memory layer.
 - Pi runs with `--no-session` by default; Server3 bridge memory provides conversation context.
 - Optional native Pi sessions are available with `PI_SESSION_MODE=telegram_scope`; this maps each Telegram scope key to a stable JSONL file under `PI_SESSION_DIR` or `~/.pi/agent/telegram-sessions`.
+- Pi session files are rotated on size/age thresholds so the active JSONL stays short-lived while `memory.sqlite3` keeps durable memory.
 - Image and document-heavy turns should stay on Codex for now.

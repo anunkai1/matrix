@@ -121,3 +121,47 @@ class MemoryMergeTests(unittest.TestCase):
             self.assertGreaterEqual(status.summary_count, 1)
             facts = engine.export_facts('shared:architect:main')
             self.assertEqual(len([row for row in facts if row['status'] == 'active']), 1)
+
+    def test_merge_can_filter_low_value_messages_for_shared_archive(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / 'memory.sqlite3')
+            engine = MemoryEngine(db_path)
+            key = 'shared:architect:main:session:tg:9'
+
+            for user_text, assistant_text in (
+                ('ok', 'thanks'),
+                ('Decision: switch to option B.', 'I will use option B.'),
+            ):
+                turn = engine.begin_turn(
+                    conversation_key=key,
+                    channel='telegram',
+                    sender_name='User',
+                    user_input=user_text,
+                )
+                engine.finish_turn(
+                    turn,
+                    channel='telegram',
+                    assistant_text=assistant_text,
+                    new_thread_id='thread-9',
+                )
+
+            result = module.merge_conversation_keys(
+                db_path=db_path,
+                source_keys=[key],
+                target_key='shared:architect:main',
+                min_message_score=0.75,
+            )
+
+            self.assertEqual(result.messages_copied, 2)
+            with engine._lock, engine._connect() as conn:
+                texts = [
+                    str(row['text'])
+                    for row in conn.execute(
+                        "SELECT text FROM messages WHERE conversation_key = ? ORDER BY id",
+                        ('shared:architect:main',),
+                    ).fetchall()
+                ]
+            self.assertIn('Decision: switch to option B.', texts)
+            self.assertIn('I will use option B.', texts)
+            self.assertNotIn('ok', texts)
+            self.assertNotIn('thanks', texts)

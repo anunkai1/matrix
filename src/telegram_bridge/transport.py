@@ -321,7 +321,7 @@ class TelegramClient:
         payload: Dict[str, object] = {
             "offset": offset,
             "timeout": timeout,
-            "allowed_updates": json.dumps(["message"]),
+            "allowed_updates": json.dumps(["message", "callback_query"]),
         }
         response = self._request("getUpdates", payload)
         result = response.get("result", [])
@@ -335,6 +335,7 @@ class TelegramClient:
         text: str,
         reply_to_message_id: Optional[int] = None,
         message_thread_id: Optional[int] = None,
+        reply_markup: Optional[Dict[str, object]] = None,
     ) -> None:
         for chunk in to_telegram_chunks(text):
             payload: Dict[str, object] = {
@@ -346,6 +347,8 @@ class TelegramClient:
                 payload["reply_to_message_id"] = str(reply_to_message_id)
             if message_thread_id is not None:
                 payload["message_thread_id"] = str(message_thread_id)
+            if reply_markup:
+                payload["reply_markup"] = json.dumps(reply_markup)
             self._request("sendMessage", payload)
 
     def send_message_get_id(
@@ -354,6 +357,7 @@ class TelegramClient:
         text: str,
         reply_to_message_id: Optional[int] = None,
         message_thread_id: Optional[int] = None,
+        reply_markup: Optional[Dict[str, object]] = None,
     ) -> Optional[int]:
         payload: Dict[str, object] = {
             "chat_id": str(chat_id),
@@ -364,6 +368,8 @@ class TelegramClient:
             payload["reply_to_message_id"] = str(reply_to_message_id)
         if message_thread_id is not None:
             payload["message_thread_id"] = str(message_thread_id)
+        if reply_markup:
+            payload["reply_markup"] = json.dumps(reply_markup)
         response = self._request("sendMessage", payload)
         result = response.get("result")
         if isinstance(result, dict):
@@ -482,14 +488,32 @@ class TelegramClient:
             message_thread_id,
         )
 
-    def edit_message(self, chat_id: int, message_id: int, text: str) -> None:
+    def edit_message(
+        self,
+        chat_id: int,
+        message_id: int,
+        text: str,
+        reply_markup: Optional[Dict[str, object]] = None,
+    ) -> None:
         payload: Dict[str, object] = {
             "chat_id": str(chat_id),
             "message_id": str(message_id),
             "text": text,
             "disable_web_page_preview": "true",
         }
+        if reply_markup:
+            payload["reply_markup"] = json.dumps(reply_markup)
         self._request("editMessageText", payload)
+
+    def answer_callback_query(
+        self,
+        callback_query_id: str,
+        text: Optional[str] = None,
+    ) -> None:
+        payload: Dict[str, object] = {"callback_query_id": callback_query_id}
+        if text:
+            payload["text"] = text
+        self._request("answerCallbackQuery", payload)
 
     def send_chat_action(
         self,

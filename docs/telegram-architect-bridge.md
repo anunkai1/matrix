@@ -11,22 +11,48 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 
 ## Files
 
-- Bridge bootstrap/poll loop: `src/telegram_bridge/main.py`
-- Runtime config loader: `src/telegram_bridge/runtime_config.py`
-- Runtime profile/routing helpers: `src/telegram_bridge/runtime_profile.py`
-- Runtime routing flow helpers: `src/telegram_bridge/runtime_routing.py`
-- Message/command routing: `src/telegram_bridge/handlers.py`
-- Telegram API transport: `src/telegram_bridge/transport.py`
-- Executor invocation + stream handling: `src/telegram_bridge/executor.py`
-- State persistence and canonical session model: `src/telegram_bridge/state_store.py`
-- Worker lifecycle/session policy: `src/telegram_bridge/session_manager.py`
-- Media helpers: `src/telegram_bridge/media.py`
-- Safe executor wrapper: `src/telegram_bridge/executor.sh`
-- Voice transcription runner: `src/telegram_bridge/voice_transcribe.py`
-- Voice transcription service (warm model + idle timeout): `src/telegram_bridge/voice_transcribe_service.py`
-- YouTube transcript-first analyzer: `ops/youtube/analyze_youtube.py`
-- Voice alias learning store (suggestions + approvals): `src/telegram_bridge/voice_alias_learning.py`
-- Local smoke test: `src/telegram_bridge/smoke_test.sh`
+- Bootstrap and runtime wiring:
+  - `src/telegram_bridge/main.py`
+  - `src/telegram_bridge/runtime_paths.py`
+  - `src/telegram_bridge/runtime_config.py`
+  - `src/telegram_bridge/runtime_profile.py`
+  - `src/telegram_bridge/runtime_routing.py`
+- Message handling and execution:
+  - `src/telegram_bridge/handlers.py`
+  - `src/telegram_bridge/executor.py`
+  - `src/telegram_bridge/executor.sh`
+  - `src/telegram_bridge/stream_buffer.py`
+- Channel and transport adapters:
+  - `src/telegram_bridge/transport.py`
+  - `src/telegram_bridge/channel_adapter.py`
+  - `src/telegram_bridge/http_channel.py`
+  - `src/telegram_bridge/signal_channel.py`
+  - `src/telegram_bridge/whatsapp_channel.py`
+  - `src/telegram_bridge/wait_for_signal_transport.py`
+- Engine and plugin selection:
+  - `src/telegram_bridge/engine_adapter.py`
+  - `src/telegram_bridge/plugin_registry.py`
+- Memory, state, and scope:
+  - `src/telegram_bridge/memory_engine.py`
+  - `src/telegram_bridge/memory_scope.py`
+  - `src/telegram_bridge/memory_merge.py`
+  - `src/telegram_bridge/conversation_scope.py`
+  - `src/telegram_bridge/state_store.py`
+  - `src/telegram_bridge/session_manager.py`
+  - `src/telegram_bridge/diary_store.py`
+  - `src/telegram_bridge/auth_state.py`
+- Media, attachments, and runtime support:
+  - `src/telegram_bridge/media.py`
+  - `src/telegram_bridge/attachment_store.py`
+  - `src/telegram_bridge/structured_logging.py`
+  - `src/telegram_bridge/affective_runtime.py`
+- Voice pipeline:
+  - `src/telegram_bridge/voice_transcribe.py`
+  - `src/telegram_bridge/voice_transcribe_service.py`
+  - `src/telegram_bridge/voice_alias_learning.py`
+- Local verification and related analyzers:
+  - `src/telegram_bridge/smoke_test.sh`
+  - `ops/youtube/analyze_youtube.py`
 - Systemd source-of-truth unit: `infra/systemd/telegram-architect-bridge.service`
 - Tank profile unit: `infra/systemd/telegram-tank-bridge.service`
 - Tank env template: `infra/env/telegram-tank-bridge.env.example`
@@ -135,6 +161,17 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 ENV
 ```
 
+## Progress Display
+
+When `TELEGRAM_PROGRESS_LABEL` is left blank, the bridge shows the active engine provenance in the in-flight progress line. For example:
+
+```text
+Architect (pi | venice | deepseek-v4-flash) is working... 26s elapsed.
+Finalizing response.
+```
+
+Use `/engine status` for the full engine and health breakdown.
+
 ## Install and Start
 
 ```bash
@@ -196,10 +233,20 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/help` command list
 - `/h` short help alias
 - `/status` bridge health and uptime
-- `/engine status|codex|gemma|pi|reset` show or select this chat/topic's engine
+- `/engine status|codex|gemma|pi|venice|chatgptweb|reset` show or select this chat/topic's engine
+- `/model` show this chat/topic's current model for the active engine
+- `/model list` list model choices/help for the active engine
+- `/model <name>` set this chat/topic's model for the active engine
+- `/model reset` clear this chat/topic's model override for the active engine
+- `/pi` show Pi model status for this chat/topic
+- `/pi providers` list available Pi providers
+- `/pi provider <name>` set this chat/topic's Pi provider
+- `/pi reset` clear this chat/topic's Pi provider and model overrides
+- `/pi model <name>` deprecated compatibility alias for `/model <name>`
+- `/pi models` deprecated compatibility alias for `/model list`
 - `/cancel` cancel the current in-flight request for this chat
 - `/restart` safe bridge restart (queues until current work finishes)
-- `/reset` clear this chat's saved context/thread
+- `/reset` archive this chat's live memory into the shared archive when configured, then clear this chat's saved context/thread
 - `/voice-alias list` show pending learned voice corrections
 - `/voice-alias approve <id>` approve one learned correction
 - `/voice-alias reject <id>` reject one learned correction
@@ -220,7 +267,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 The bridge can use Server4 Beast's Ollama-hosted `gemma4:26b` model as a selectable engine while keeping Server3 as the bot host.
 
 - Default engine remains `codex`.
-- Selectable engines default to `codex,gemma,pi`.
+- Selectable engines default to `codex,gemma,pi`; Venice is available when `VENICE_API_KEY` is configured and `venice` is added to the selectable engine list.
 - Gemma defaults to the SSH-backed Ollama transport (`GEMMA_PROVIDER=ollama_ssh`) via SSH alias `server4-beast`, so Ollama does not need to listen on the LAN.
 - Per chat/topic, use `/engine gemma`, `/engine codex`, `/engine reset`, or `/engine status`.
 - When Gemma is the effective engine, `/engine status` performs a bounded live Ollama health check and reports health, response time, model availability, and current check error.
@@ -234,13 +281,54 @@ The bridge can also select the `pi` coding agent as an engine through the same `
 
 - Correct engine-swap mode runs Pi locally on Server3 inside the chatbot runtime root, while Server4 Beast supplies the Ollama model through an SSH tunnel.
 - Defaults: `PI_PROVIDER=ollama`, `PI_MODEL=qwen3-coder:30b`, `PI_RUNNER=ssh`, `PI_SSH_HOST=server4-beast`, `PI_TOOLS_MODE=default`.
+- Pi can also be pointed at Venice by registering a custom `venice` provider in `~/.pi/agent/models.json` on the Pi host and storing the Venice API key in that host's `~/.pi/agent/auth.json`; in that mode use `PI_PROVIDER=venice` and a Venice model id such as `deepseek-v4-flash`.
+- Use `/pi` to inspect Pi status for the current chat/topic.
 - For true runtime-root preservation, set `PI_RUNNER=local` and `PI_LOCAL_CWD` to the bot runtime root, for example `/home/tank/tankbot`.
-- By default Pi runs with `PI_SESSION_MODE=none`; optional `PI_SESSION_MODE=telegram_scope` maps native Pi sessions to Telegram scope keys instead of the shared working directory.
+- Live Server3 Pi/Venice bridges now run with `PI_SESSION_MODE=telegram_scope`; that maps native Pi sessions to Telegram scope keys instead of the shared working directory.
+- Pi session retention is intentionally short-horizon: rotate a scope file when it crosses the configured size or age threshold, archive it, and keep durable memory in `memory.sqlite3`.
 - Per chat/topic, use `/engine pi`, `/engine codex`, `/engine reset`, or `/engine status`.
 - When Pi is the effective engine, `/engine status` reports Pi runner/config details and checks model availability.
 - Pi bridge requests are text-only for now; use Codex for image/file-heavy turns.
 
 See [`docs/runbooks/server4-pi-engine.md`](runbooks/server4-pi-engine.md).
+
+## Mavali ETH Engine
+
+The shared bridge can also select a dedicated deterministic wallet engine used by the Mavali ETH runtime.
+
+- Service-default use is configured with `TELEGRAM_ENGINE_PLUGIN=mavali_eth`.
+- The engine calls the local `mavali_eth` service/runtime code directly instead of shelling out to Codex first.
+- Supported wallet/protocol prompts execute inside the deterministic Mavali ETH service path.
+- Unsupported prompts can fall through to Codex so the runtime still behaves like a general assistant where appropriate.
+- Image or file-heavy turns also fall back to Codex.
+- Confirmation prompts are guarded so the bridge does not advertise `confirm` for actions that were not actually staged in the Mavali ETH store.
+
+See [`docs/runbooks/mavali-eth-engine.md`](runbooks/mavali-eth-engine.md).
+
+## Venice Engine
+
+The bridge can also select a Venice API-backed engine through the same `/engine` override path.
+
+- Provider: `VENICE_BASE_URL=https://api.venice.ai/api/v1`
+- API key: `VENICE_API_KEY`
+- Default model: `deepseek-v4-flash`
+- Optional temperature override: `VENICE_TEMPERATURE=0.2`
+- Optional request timeout: `VENICE_REQUEST_TIMEOUT_SECONDS=180`
+- Supports text and image prompts through Venice's OpenAI-compatible chat completions API.
+- Per chat/topic, use `/engine venice`, `/engine codex`, `/engine reset`, or `/engine status`.
+- When Venice is the effective engine, `/engine status` performs a short live Venice API health check and reports health, response time, model availability, and current check error.
+- Venice does not yet have the Codex tool/action harness. Use Codex for server operations, repo edits, image handling, and high-risk actions until the harness is added.
+
+### Experimental ChatGPT Web Engine
+
+The bridge can select `chatgptweb` as a brittle text-only experimental engine. This uses `ops/chatgpt_web_bridge.py`, Browser Brain, and a manually logged-in visible `chatgpt.com` session instead of an API provider.
+
+- Per chat/topic, use `/engine chatgptweb`, `/engine codex`, `/engine reset`, or `/engine status`.
+- `chatgptweb` is for lab use only. It can break on UI changes, logout, CAPTCHA, rate limits, or browser state drift.
+- When `chatgptweb` is effective, `/engine status` checks Browser Brain reachability and whether a ChatGPT tab is visible.
+
+## Memory Commands
+
 - `/forget-all` disable all facts for this key
 - `/reset-session` clear session continuity only
 - `/hard-reset-memory` clear session + facts + summaries + stored messages for this key
@@ -307,11 +395,15 @@ Message handling:
   - override with `TELEGRAM_MEMORY_SQLITE_PATH`
 - Conversation key model:
   - default Telegram chat key: `tg:<chat_id>`
-  - default CLI key: `cli:architect:<profile_name>`
+  - default CLI key: `shared:architect:main`
   - optional bridge-wide Telegram override: `TELEGRAM_SHARED_MEMORY_KEY=<shared_key>`
   - optional CLI override: `CLI_CONVERSATION_KEY=<shared_key>`
+  - CLI profile names still exist, but they only affect the key when an explicit conversation-key override is used in a way that bypasses the built-in shared default
   - when `TELEGRAM_SHARED_MEMORY_KEY` is set, each Telegram chat writes to its own live session key under that shared namespace and reads the configured shared key as archive/background context
-  - Server3 now also runs a daily shared-archive merge at `04:10` local time via `telegram-architect-memory-archive-merge.timer`, which folds `shared:architect:main:session:*` keys back into the shared archive without clearing the live sessions
+  - Server3 now also runs a daily shared-archive merge at `04:10` local time via `telegram-architect-memory-archive-merge.timer`, which folds `shared:architect:main:session:*` keys back into the shared archive
+  - current post-merge live-session policy is `summarize_live_sessions`, so the merge preserves the live keys, forces summarization on them after the archive merge, and then compacts raw messages already covered by summaries
+  - the shared archive key is also compacted after merge-time summarization, so long-term raw storage does not grow forever once that history is covered by summaries
+  - `/reset` now performs an explicit live-key archive merge before clearing the chat-local key, which prevents unmerged chat memory from being lost on reset when shared memory is configured
   - CLI can still point directly at the shared archive key, so it sees merged memory after the daily archive merge or any future explicit merge flow
   - current Server3 Architect rollout uses `shared:architect:main`
 - Memory modes:
@@ -370,7 +462,7 @@ Message handling:
 
 - Managed shell launcher (`architect`) now routes normal prompt usage through shared-memory CLI:
   - script: `src/architect_cli/main.py`
-  - default key: `cli:architect:default`
+  - default key: `shared:architect:main`
   - named profile example: `architect --profile work \"...\"`
 - CLI and Telegram use the same memory engine + command syntax (`/memory`, `/remember`, `/forget`, `/ask`, etc.).
 
