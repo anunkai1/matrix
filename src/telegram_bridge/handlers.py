@@ -367,6 +367,33 @@ class UpdateDispatchRequest:
     handle_update_started_at: Optional[float] = None
 
 
+@dataclass(frozen=True)
+class IncomingUpdateContext:
+    update: Dict[str, object]
+    message: Dict[str, object]
+    chat_id: int
+    message_thread_id: Optional[int]
+    scope_key: str
+    message_id: Optional[int]
+    actor_user_id: Optional[int]
+    is_private_chat: bool
+    update_id: Optional[int]
+
+
+@dataclass(frozen=True)
+class PreparedUpdateRequest:
+    ctx: IncomingUpdateContext
+    prompt_input: Optional[str]
+    photo_file_ids: List[str]
+    voice_file_id: Optional[str]
+    document: Optional[DocumentPayload]
+    reply_context_prompt: str
+    telegram_context_prompt: str
+    enforce_voice_prefix_from_transcript: bool
+    sender_name: str
+    command: Optional[str]
+
+
 def build_youtube_request(
     state: State,
     config,
@@ -7250,6 +7277,165 @@ def start_standard_dispatch(request: UpdateDispatchRequest) -> bool:
     return True
 
 
+def extract_incoming_update_context(update: Dict[str, object]) -> Optional[IncomingUpdateContext]:
+    message, conversation_scope, message_id = extract_chat_context(update)
+    if message is None or conversation_scope is None:
+        return None
+    chat_id = conversation_scope.chat_id
+    message_thread_id = conversation_scope.message_thread_id
+    scope_key = conversation_scope.scope_key
+    from_obj = message.get("from")
+    actor_user_id = (
+        from_obj.get("id")
+        if isinstance(from_obj, dict) and isinstance(from_obj.get("id"), int)
+        else None
+    )
+    update_id = update.get("update_id")
+    update_id_int = update_id if isinstance(update_id, int) else None
+    chat_obj = message.get("chat")
+    chat_type = chat_obj.get("type") if isinstance(chat_obj, dict) else None
+    is_private_chat = isinstance(chat_type, str) and chat_type == "private"
+    return IncomingUpdateContext(
+        update=update,
+        message=message,
+        chat_id=chat_id,
+        message_thread_id=message_thread_id,
+        scope_key=scope_key,
+        message_id=message_id,
+        actor_user_id=actor_user_id,
+        is_private_chat=is_private_chat,
+        update_id=update_id_int,
+    )
+
+
+def allow_update_chat(
+    ctx: IncomingUpdateContext,
+    config,
+    client: ChannelAdapter,
+) -> bool:
+    allow_private_unlisted = bool(getattr(config, "allow_private_chats_unlisted", False))
+    allow_group_unlisted = bool(getattr(config, "allow_group_chats_unlisted", False))
+    if ctx.chat_id in config.allowed_chat_ids:
+        return True
+    if allow_private_unlisted and ctx.is_private_chat:
+        return True
+    if allow_group_unlisted and not ctx.is_private_chat:
+        return True
+
+    logging.warning("Denied non-allowlisted chat_id=%s", ctx.chat_id)
+    emit_event(
+        "bridge.request_denied",
+        level=logging.WARNING,
+        fields={
+            "chat_id": ctx.chat_id,
+            "message_id": ctx.message_id,
+            "reason": "chat_not_allowlisted",
+        },
+    )
+    if config.channel_plugin != "whatsapp":
+        client.send_message(
+            ctx.chat_id,
+            config.denied_message,
+            reply_to_message_id=ctx.message_id,
+        )
+    return False
+
+
+def prepare_update_request(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    ctx: IncomingUpdateContext,
+) -> Optional[PreparedUpdateRequest]:
+    prompt_input, photo_file_ids, voice_file_id, document = extract_prompt_and_media(ctx.message)
+    if prompt_input is None and not photo_file_ids and voice_file_id is None and document is None:
+        return None
+
+    explicit_photo_file_ids = extract_message_photo_file_ids(ctx.message)
+    if explicit_photo_file_ids:
+        remember_recent_scope_photos(
+            state=state,
+            scope_key=ctx.scope_key,
+            message_id=ctx.message_id,
+            photo_file_ids=explicit_photo_file_ids,
+        )
+
+    prewarm_attachment_archive_for_message(
+        state=state,
+        config=config,
+        client=client,
+        chat_id=ctx.chat_id,
+        message=ctx.message,
+    )
+
+    reply_context_prompt = build_reply_context_prompt(ctx.message)
+    telegram_context_prompt = ""
+    if should_include_telegram_context_prompt(
+        prompt_input,
+        reply_context_prompt,
+        getattr(client, "channel_name", "telegram"),
+    ):
+        telegram_context_prompt = build_telegram_context_prompt(
+            chat_id=ctx.chat_id,
+            message_thread_id=ctx.message_thread_id,
+            scope_key=ctx.scope_key,
+            message_id=ctx.message_id,
+            message=ctx.message,
+        )
+
+    prefix_result = apply_required_prefix_gate(
+        client=client,
+        config=config,
+        prompt_input=prompt_input,
+        has_reply_context=bool(reply_context_prompt),
+        voice_file_id=voice_file_id,
+        document=document,
+        is_private_chat=ctx.is_private_chat,
+        normalize_command=normalize_command,
+        strip_required_prefix=strip_required_prefix,
+    )
+    prompt_input = prefix_result.prompt_input
+    if prefix_result.ignored:
+        emit_event(
+            "bridge.request_ignored",
+            fields={
+                "chat_id": ctx.chat_id,
+                "message_id": ctx.message_id,
+                "reason": prefix_result.rejection_reason,
+            },
+        )
+        return None
+    if prefix_result.rejection_reason:
+        emit_event(
+            "bridge.request_rejected",
+            level=logging.WARNING,
+            fields={
+                "chat_id": ctx.chat_id,
+                "message_id": ctx.message_id,
+                "reason": prefix_result.rejection_reason,
+            },
+        )
+        client.send_message(
+            ctx.chat_id,
+            prefix_result.rejection_message or PREFIX_HELP_MESSAGE,
+            reply_to_message_id=ctx.message_id,
+        )
+        return None
+
+    return PreparedUpdateRequest(
+        ctx=ctx,
+        prompt_input=prompt_input,
+        photo_file_ids=list(photo_file_ids),
+        voice_file_id=voice_file_id,
+        document=document,
+        reply_context_prompt=reply_context_prompt,
+        telegram_context_prompt=telegram_context_prompt,
+        enforce_voice_prefix_from_transcript=prefix_result.enforce_voice_prefix_from_transcript,
+        sender_name=extract_sender_name(ctx.message),
+        command=normalize_command(prompt_input or ""),
+    )
+
+
 def handle_update(
     state: State,
     config,
@@ -7260,118 +7446,40 @@ def handle_update(
     handle_update_started_at = time.monotonic()
     if handle_callback_query(state, config, client, update):
         return
-    message, conversation_scope, message_id = extract_chat_context(update)
-    if message is None or conversation_scope is None:
+    ctx = extract_incoming_update_context(update)
+    if ctx is None:
         return
-    chat_id = conversation_scope.chat_id
-    message_thread_id = conversation_scope.message_thread_id
-    scope_key = conversation_scope.scope_key
-    from_obj = message.get("from")
-    actor_user_id = from_obj.get("id") if isinstance(from_obj, dict) and isinstance(from_obj.get("id"), int) else None
-    update_id = update.get("update_id")
-    update_id_int = update_id if isinstance(update_id, int) else None
     emit_event(
         "bridge.update_received",
         fields={
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "scope_key": scope_key,
-            "update_id": update_id_int,
+            "chat_id": ctx.chat_id,
+            "message_id": ctx.message_id,
+            "scope_key": ctx.scope_key,
+            "update_id": ctx.update_id,
         },
     )
 
-    chat_obj = message.get("chat")
-    chat_type = chat_obj.get("type") if isinstance(chat_obj, dict) else None
-    is_private_chat = isinstance(chat_type, str) and chat_type == "private"
-    allow_private_unlisted = bool(getattr(config, "allow_private_chats_unlisted", False))
-    allow_group_unlisted = bool(getattr(config, "allow_group_chats_unlisted", False))
-
-    if chat_id not in config.allowed_chat_ids and not (
-        (allow_private_unlisted and is_private_chat) or (allow_group_unlisted and not is_private_chat)
-    ):
-        logging.warning("Denied non-allowlisted chat_id=%s", chat_id)
-        emit_event(
-            "bridge.request_denied",
-            level=logging.WARNING,
-            fields={"chat_id": chat_id, "message_id": message_id, "reason": "chat_not_allowlisted"},
-        )
-        # For WhatsApp-plugin ingress, silent-deny avoids leaking policy to
-        # unrelated groups while preserving denial telemetry.
-        if config.channel_plugin != "whatsapp":
-            client.send_message(chat_id, config.denied_message, reply_to_message_id=message_id)
+    if not allow_update_chat(ctx, config, client):
         return
 
-    prompt_input, photo_file_ids, voice_file_id, document = extract_prompt_and_media(message)
-    if prompt_input is None and not photo_file_ids and voice_file_id is None and document is None:
+    prepared = prepare_update_request(state, config, client, ctx)
+    if prepared is None:
         return
-
-    explicit_photo_file_ids = extract_message_photo_file_ids(message)
-    if explicit_photo_file_ids:
-        remember_recent_scope_photos(
-            state=state,
-            scope_key=scope_key,
-            message_id=message_id,
-            photo_file_ids=explicit_photo_file_ids,
-        )
-
-    prewarm_attachment_archive_for_message(
-        state=state,
-        config=config,
-        client=client,
-        chat_id=chat_id,
-        message=message,
-    )
-
-    reply_context_prompt = build_reply_context_prompt(message)
-    telegram_context_prompt = ""
-    if should_include_telegram_context_prompt(
-        prompt_input,
-        reply_context_prompt,
-        getattr(client, "channel_name", "telegram"),
-    ):
-        telegram_context_prompt = build_telegram_context_prompt(
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            scope_key=scope_key,
-            message_id=message_id,
-            message=message,
-        )
-
-    prefix_result = apply_required_prefix_gate(
-        client=client,
-        config=config,
-        prompt_input=prompt_input,
-        has_reply_context=bool(reply_context_prompt),
-        voice_file_id=voice_file_id,
-        document=document,
-        is_private_chat=is_private_chat,
-        normalize_command=normalize_command,
-        strip_required_prefix=strip_required_prefix,
-    )
-    enforce_voice_prefix_from_transcript = prefix_result.enforce_voice_prefix_from_transcript
-    prompt_input = prefix_result.prompt_input
-    if prefix_result.ignored:
-        emit_event(
-            "bridge.request_ignored",
-            fields={"chat_id": chat_id, "message_id": message_id, "reason": prefix_result.rejection_reason},
-        )
-        return
-    if prefix_result.rejection_reason:
-        emit_event(
-            "bridge.request_rejected",
-            level=logging.WARNING,
-            fields={"chat_id": chat_id, "message_id": message_id, "reason": prefix_result.rejection_reason},
-        )
-        client.send_message(
-            chat_id,
-            prefix_result.rejection_message or PREFIX_HELP_MESSAGE,
-            reply_to_message_id=message_id,
-        )
-        return
-
-    sender_name = extract_sender_name(message)
+    chat_id = ctx.chat_id
+    message_id = ctx.message_id
+    message_thread_id = ctx.message_thread_id
+    scope_key = ctx.scope_key
+    actor_user_id = ctx.actor_user_id
+    prompt_input = prepared.prompt_input
+    photo_file_ids = list(prepared.photo_file_ids)
+    voice_file_id = prepared.voice_file_id
+    document = prepared.document
+    reply_context_prompt = prepared.reply_context_prompt
+    telegram_context_prompt = prepared.telegram_context_prompt
+    enforce_voice_prefix_from_transcript = prepared.enforce_voice_prefix_from_transcript
+    sender_name = prepared.sender_name
     stateless = False
-    command = normalize_command(prompt_input or "")
+    command = prepared.command
 
     if diary_mode_enabled(config):
         if handle_known_command(
@@ -7400,7 +7508,7 @@ def handle_update(
             message_id=message_id,
             sender_name=sender_name,
             actor_user_id=actor_user_id,
-            message=message,
+            message=ctx.message,
         )
         return
 
