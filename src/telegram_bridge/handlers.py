@@ -741,6 +741,35 @@ def send_input_too_long(
     )
 
 
+def send_canceled_response(
+    client: ChannelAdapter,
+    chat_id: int,
+    message_id: Optional[int],
+    message_thread_id: Optional[int] = None,
+) -> None:
+    client.send_message(
+        chat_id,
+        REQUEST_CANCELED_MESSAGE,
+        reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
+    )
+
+
+def send_generic_worker_error_response(
+    client: ChannelAdapter,
+    config,
+    chat_id: int,
+    message_id: Optional[int],
+    message_thread_id: Optional[int] = None,
+) -> None:
+    client.send_message(
+        chat_id,
+        config.generic_error_message,
+        reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
+    )
+
+
 EXECUTOR_USAGE_LIMIT_RE = re.compile(r"\bhit your usage limit\b", re.IGNORECASE)
 EXECUTOR_RETRY_AT_RE = re.compile(r"\btry again at ([0-9]{1,2}:\d{2}\s*[AP]M)\b", re.IGNORECASE)
 
@@ -843,6 +872,44 @@ def clear_cancel_event(
         if expected_event is not None and current is not expected_event:
             return
         del state.cancel_events[scope_key]
+
+
+def cleanup_temp_files(paths: List[str]) -> None:
+    for cleanup_path in paths:
+        try:
+            os.remove(cleanup_path)
+        except OSError:
+            logging.warning("Failed to remove temp file: %s", cleanup_path)
+
+
+def cleanup_temp_dirs(paths: List[str]) -> None:
+    for cleanup_dir in paths:
+        shutil.rmtree(cleanup_dir, ignore_errors=True)
+
+
+def finalize_request_progress(
+    *,
+    progress: "ProgressReporter",
+    state: State,
+    client: ChannelAdapter,
+    scope_key: str,
+    chat_id: int,
+    message_id: Optional[int],
+    cancel_event: Optional[threading.Event],
+    cleanup_paths: Optional[List[str]] = None,
+    cleanup_dirs: Optional[List[str]] = None,
+    finish_event_name: str = "bridge.request_processing_finished",
+    finish_event_fields: Optional[Dict[str, object]] = None,
+) -> None:
+    progress.close()
+    clear_cancel_event(state, scope_key, expected_event=cancel_event)
+    cleanup_temp_files(list(cleanup_paths or []))
+    cleanup_temp_dirs(list(cleanup_dirs or []))
+    finalize_chat_work(state, client, chat_id=chat_id, scope_key=scope_key)
+    fields: Dict[str, object] = {"chat_id": chat_id, "message_id": message_id}
+    if finish_event_fields:
+        fields.update(finish_event_fields)
+    emit_event(finish_event_name, fields=fields)
 
 
 def request_chat_cancel(state: State, scope_key: str) -> str:
@@ -2740,12 +2807,7 @@ def execute_prompt_with_retry(
                 },
             )
             progress.mark_failure("Execution canceled.")
-            client.send_message(
-                chat_id,
-                REQUEST_CANCELED_MESSAGE,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
+            send_canceled_response(client, chat_id, message_id, message_thread_id)
             return None
 
         attempt += 1
@@ -2830,12 +2892,7 @@ def execute_prompt_with_retry(
                 fields={"chat_id": chat_id, "message_id": message_id, "attempt": attempt},
             )
             progress.mark_failure("Execution canceled.")
-            client.send_message(
-                chat_id,
-                REQUEST_CANCELED_MESSAGE,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
+            send_canceled_response(client, chat_id, message_id, message_thread_id)
             return None
         except subprocess.TimeoutExpired:
             emit_phase_timing(
@@ -3049,6 +3106,25 @@ def finalize_prompt_success(
     if not output_contains_control_directive(output):
         output = trim_output(output, config.max_output_chars)
     progress.mark_success()
+    delivered_output = deliver_output_and_emit_success(
+        client=client,
+        chat_id=chat_id,
+        message_id=message_id,
+        output=output,
+        message_thread_id=message_thread_id,
+        new_thread_id=bool(new_thread_id),
+    )
+    return new_thread_id, delivered_output
+
+
+def deliver_output_and_emit_success(
+    client: ChannelAdapter,
+    chat_id: int,
+    message_id: Optional[int],
+    output: str,
+    message_thread_id: Optional[int] = None,
+    new_thread_id: bool = False,
+) -> str:
     delivered_output = send_executor_output(
         client=client,
         chat_id=chat_id,
@@ -3065,7 +3141,7 @@ def finalize_prompt_success(
             "output_chars": len(delivered_output),
         },
     )
-    return new_thread_id, delivered_output
+    return delivered_output
 
 
 def begin_memory_turn(
@@ -3466,23 +3542,21 @@ def _process_prompt_request(request: PromptRequest) -> None:
                     "Affective runtime finish_turn(success=False) failed for chat_id=%s",
                     chat_id,
                 )
-        progress.close()
-        clear_cancel_event(state, scope_key, expected_event=cancel_event)
-        for cleanup_path in cleanup_paths:
-            try:
-                os.remove(cleanup_path)
-            except OSError:
-                logging.warning("Failed to remove temp file: %s", cleanup_path)
-        finalize_chat_work(state, client, chat_id=chat_id, scope_key=scope_key)
+        finalize_request_progress(
+            progress=progress,
+            state=state,
+            client=client,
+            scope_key=scope_key,
+            chat_id=chat_id,
+            message_id=message_id,
+            cancel_event=cancel_event,
+            cleanup_paths=cleanup_paths,
+        )
         emit_phase_timing(
             chat_id=chat_id,
             message_id=message_id,
             phase="process_prompt_total",
             started_at_monotonic=total_started_at,
-        )
-        emit_event(
-            "bridge.request_processing_finished",
-            fields={"chat_id": chat_id, "message_id": message_id},
         )
 
 
@@ -3541,10 +3615,12 @@ def _process_message_worker_request(request: PromptRequest) -> None:
             fields={"chat_id": request.chat_id, "message_id": request.message_id},
         )
         try:
-            request.client.send_message(
+            send_generic_worker_error_response(
+                request.client,
+                request.config,
                 request.chat_id,
-                request.config.generic_error_message,
-                reply_to_message_id=request.message_id,
+                request.message_id,
+                request.message_thread_id,
             )
         except Exception:
             logging.exception(
@@ -3628,12 +3704,7 @@ def process_youtube_request(
         progress.start()
         if cancel_event is not None and cancel_event.is_set():
             progress.mark_failure("Execution canceled.")
-            client.send_message(
-                chat_id,
-                REQUEST_CANCELED_MESSAGE,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
+            send_canceled_response(client, chat_id, message_id, message_thread_id)
             return
 
         progress.set_phase("Fetching YouTube metadata and transcript.")
@@ -3641,12 +3712,7 @@ def process_youtube_request(
 
         if cancel_event is not None and cancel_event.is_set():
             progress.mark_failure("Execution canceled.")
-            client.send_message(
-                chat_id,
-                REQUEST_CANCELED_MESSAGE,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
+            send_canceled_response(client, chat_id, message_id, message_thread_id)
             return
 
         request_mode = str(analysis.get("request_mode") or "summary").strip().lower()
@@ -3655,42 +3721,24 @@ def process_youtube_request(
         if request_mode == "transcript" and transcript_text:
             output = build_youtube_transcript_output(config, analysis, cleanup_paths)
             progress.mark_success()
-            delivered_output = send_executor_output(
+            deliver_output_and_emit_success(
                 client=client,
                 chat_id=chat_id,
                 message_id=message_id,
                 output=output,
                 message_thread_id=message_thread_id,
-            )
-            emit_event(
-                "bridge.request_succeeded",
-                fields={
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "new_thread_id": False,
-                    "output_chars": len(delivered_output),
-                },
             )
             return
 
         if not transcript_text:
             output = build_youtube_unavailable_message(analysis)
             progress.mark_success()
-            delivered_output = send_executor_output(
+            deliver_output_and_emit_success(
                 client=client,
                 chat_id=chat_id,
                 message_id=message_id,
                 output=output,
                 message_thread_id=message_thread_id,
-            )
-            emit_event(
-                "bridge.request_succeeded",
-                fields={
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "new_thread_id": False,
-                    "output_chars": len(delivered_output),
-                },
             )
             return
 
@@ -3725,17 +3773,15 @@ def process_youtube_request(
             progress=progress,
         )
     finally:
-        progress.close()
-        clear_cancel_event(state, scope_key, expected_event=cancel_event)
-        for cleanup_path in cleanup_paths:
-            try:
-                os.remove(cleanup_path)
-            except OSError:
-                logging.warning("Failed to remove temp file: %s", cleanup_path)
-        finalize_chat_work(state, client, chat_id=chat_id, scope_key=scope_key)
-        emit_event(
-            "bridge.request_processing_finished",
-            fields={"chat_id": chat_id, "message_id": message_id},
+        finalize_request_progress(
+            progress=progress,
+            state=state,
+            client=client,
+            scope_key=scope_key,
+            chat_id=chat_id,
+            message_id=message_id,
+            cancel_event=cancel_event,
+            cleanup_paths=cleanup_paths,
         )
 
 
@@ -3792,11 +3838,12 @@ def process_youtube_worker(
             fields={"chat_id": chat_id, "message_id": message_id, "phase": "youtube_analysis"},
         )
         try:
-            client.send_message(
+            send_generic_worker_error_response(
+                client,
+                config,
                 chat_id,
-                config.generic_error_message,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
+                message_id,
+                message_thread_id,
             )
         except Exception:
             logging.exception("Failed to send YouTube worker error response for chat_id=%s", chat_id)
@@ -3996,19 +4043,17 @@ def process_dishframed_request(
             )
         progress.mark_success()
     finally:
-        progress.close()
-        clear_cancel_event(state, scope_key, expected_event=cancel_event)
-        for cleanup_path in cleanup_paths:
-            try:
-                os.remove(cleanup_path)
-            except OSError:
-                logging.warning("Failed to remove temp file: %s", cleanup_path)
-        for cleanup_dir in cleanup_dirs:
-            shutil.rmtree(cleanup_dir, ignore_errors=True)
-        finalize_chat_work(state, client, chat_id=chat_id, scope_key=scope_key)
-        emit_event(
-            "bridge.request_processing_finished",
-            fields={"chat_id": chat_id, "message_id": message_id, "phase": "dishframed"},
+        finalize_request_progress(
+            progress=progress,
+            state=state,
+            client=client,
+            scope_key=scope_key,
+            chat_id=chat_id,
+            message_id=message_id,
+            cancel_event=cancel_event,
+            cleanup_paths=cleanup_paths,
+            cleanup_dirs=cleanup_dirs,
+            finish_event_fields={"phase": "dishframed"},
         )
 
 
@@ -4048,22 +4093,18 @@ def process_dishframed_worker(
             logging.exception("Failed to send DishFramed timeout response for chat_id=%s", chat_id)
     except ExecutorCancelledError:
         try:
-            client.send_message(
-                chat_id,
-                REQUEST_CANCELED_MESSAGE,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
+            send_canceled_response(client, chat_id, message_id, message_thread_id)
         except Exception:
             logging.exception("Failed to send DishFramed cancel response for chat_id=%s", chat_id)
     except Exception:
         logging.exception("Unexpected DishFramed worker error for chat_id=%s", chat_id)
         try:
-            client.send_message(
+            send_generic_worker_error_response(
+                client,
+                config,
                 chat_id,
-                config.generic_error_message,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
+                message_id,
+                message_thread_id,
             )
         except Exception:
             logging.exception("Failed to send DishFramed worker error response for chat_id=%s", chat_id)
@@ -6373,23 +6414,23 @@ def process_diary_batch(
     except Exception:
         logging.exception("Diary batch save failed for chat_id=%s", pending.chat_id)
         progress.mark_failure("Diary save failed.")
-        client.send_message(
+        send_generic_worker_error_response(
+            client,
+            config,
             pending.chat_id,
-            config.generic_error_message,
-            reply_to_message_id=pending.latest_message_id,
+            pending.latest_message_id,
         )
     finally:
-        progress.close()
-        clear_cancel_event(state, scope_key, expected_event=cancel_event)
-        for cleanup_path in cleanup_paths:
-            try:
-                os.remove(cleanup_path)
-            except OSError:
-                logging.warning("Failed to remove temp file: %s", cleanup_path)
-        finalize_chat_work(state, client, chat_id=pending.chat_id, scope_key=scope_key)
-        emit_event(
-            "bridge.diary_batch_finished",
-            fields={"chat_id": pending.chat_id, "message_id": pending.latest_message_id},
+        finalize_request_progress(
+            progress=progress,
+            state=state,
+            client=client,
+            scope_key=scope_key,
+            chat_id=pending.chat_id,
+            message_id=pending.latest_message_id,
+            cancel_event=cancel_event,
+            cleanup_paths=cleanup_paths,
+            finish_event_name="bridge.diary_batch_finished",
         )
 
 
