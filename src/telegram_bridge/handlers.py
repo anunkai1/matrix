@@ -2318,20 +2318,21 @@ def build_status_text(
     return "\n".join(lines)
 
 
-def prepare_prompt_input(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    chat_id: int,
-    message_id: Optional[int],
-    prompt: str,
-    photo_file_id: Optional[str],
-    voice_file_id: Optional[str],
-    document: Optional[DocumentPayload],
+def _prepare_prompt_input_request(
+    request: PromptRequest,
     progress: ProgressReporter,
-    photo_file_ids: Optional[List[str]] = None,
-    enforce_voice_prefix_from_transcript: bool = False,
 ) -> Optional[PreparedPromptInput]:
+    state = request.state
+    config = request.config
+    client = request.client
+    chat_id = request.chat_id
+    message_id = request.message_id
+    prompt = request.prompt
+    photo_file_id = request.photo_file_id
+    voice_file_id = request.voice_file_id
+    document = request.document
+    photo_file_ids = request.photo_file_ids
+    enforce_voice_prefix_from_transcript = request.enforce_voice_prefix_from_transcript
     channel_name = getattr(client, "channel_name", "telegram")
     attachment_store = getattr(state, "attachment_store", None)
     prompt_text = prompt.strip()
@@ -2590,6 +2591,41 @@ def prepare_prompt_input(
         document_path=document_path,
         cleanup_paths=cleanup_paths,
         attachment_file_ids=attachment_file_ids,
+    )
+
+
+def prepare_prompt_input(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    chat_id: int,
+    message_id: Optional[int],
+    prompt: str,
+    photo_file_id: Optional[str],
+    voice_file_id: Optional[str],
+    document: Optional[DocumentPayload],
+    progress: ProgressReporter,
+    photo_file_ids: Optional[List[str]] = None,
+    enforce_voice_prefix_from_transcript: bool = False,
+) -> Optional[PreparedPromptInput]:
+    return _prepare_prompt_input_request(
+        PromptRequest(
+            state=state,
+            config=config,
+            client=client,
+            engine=None,
+            scope_key="",
+            chat_id=chat_id,
+            message_thread_id=None,
+            message_id=message_id,
+            prompt=prompt,
+            photo_file_id=photo_file_id,
+            voice_file_id=voice_file_id,
+            document=document,
+            photo_file_ids=photo_file_ids,
+            enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
+        ),
+        progress,
     )
 
 
@@ -3163,6 +3199,32 @@ def emit_phase_timing(
     emit_event("bridge.request_phase_timing", fields=fields)
 
 
+def _build_prompt_progress_reporter(
+    request: PromptRequest,
+    active_engine: EngineAdapter,
+) -> ProgressReporter:
+    engine_config = build_engine_runtime_config(
+        request.state,
+        request.config,
+        request.scope_key,
+        getattr(active_engine, "engine_name", ""),
+    )
+    return ProgressReporter(
+        request.client,
+        request.chat_id,
+        request.message_id,
+        request.message_thread_id,
+        assistant_label(request.config),
+        getattr(request.config, "progress_label", ""),
+        build_engine_progress_context_label(
+            engine_config,
+            getattr(active_engine, "engine_name", ""),
+        ),
+        getattr(request.config, "progress_elapsed_prefix", "Already"),
+        getattr(request.config, "progress_elapsed_suffix", "s"),
+    )
+
+
 def _process_prompt_request(request: PromptRequest) -> None:
     state = request.state
     config = request.config
@@ -3205,20 +3267,7 @@ def _process_prompt_request(request: PromptRequest) -> None:
     affective_runtime = getattr(state, "affective_runtime", None)
     affective_turn_started = False
     affective_turn_finished = False
-    progress = ProgressReporter(
-        client,
-        chat_id,
-        message_id,
-        message_thread_id,
-        assistant_name_label,
-        getattr(config, "progress_label", ""),
-        build_engine_progress_context_label(
-            engine_config,
-            getattr(active_engine, "engine_name", ""),
-        ),
-        getattr(config, "progress_elapsed_prefix", "Already"),
-        getattr(config, "progress_elapsed_suffix", "s"),
-    )
+    progress = _build_prompt_progress_reporter(request, active_engine)
     try:
         progress.start()
         auth_reset_result = refresh_runtime_auth_fingerprint(state)
@@ -3246,20 +3295,7 @@ def _process_prompt_request(request: PromptRequest) -> None:
                 },
             )
         prepare_started_at = time.monotonic()
-        prepared = prepare_prompt_input(
-            state=state,
-            config=config,
-            client=client,
-            chat_id=chat_id,
-            message_id=message_id,
-            prompt=prompt,
-            photo_file_id=photo_file_id,
-            photo_file_ids=photo_file_ids,
-            voice_file_id=voice_file_id,
-            document=document,
-            progress=progress,
-            enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
-        )
+        prepared = _prepare_prompt_input_request(request, progress)
         emit_phase_timing(
             chat_id=chat_id,
             message_id=message_id,
