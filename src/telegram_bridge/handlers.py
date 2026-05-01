@@ -394,6 +394,27 @@ class PreparedUpdateRequest:
     command: Optional[str]
 
 
+@dataclass
+class UpdateFlowState:
+    state: State
+    config: Any
+    client: ChannelAdapter
+    engine: Optional[EngineAdapter]
+    ctx: IncomingUpdateContext
+    prompt_input: Optional[str]
+    photo_file_ids: List[str]
+    voice_file_id: Optional[str]
+    document: Optional[DocumentPayload]
+    reply_context_prompt: str
+    telegram_context_prompt: str
+    enforce_voice_prefix_from_transcript: bool
+    sender_name: str
+    command: Optional[str]
+    stateless: bool = False
+    priority_keyword_mode: bool = False
+    youtube_route_url: Optional[str] = None
+
+
 def build_youtube_request(
     state: State,
     config,
@@ -7436,6 +7457,308 @@ def prepare_update_request(
     )
 
 
+def build_update_flow_state(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    engine: Optional[EngineAdapter],
+    prepared: PreparedUpdateRequest,
+) -> UpdateFlowState:
+    return UpdateFlowState(
+        state=state,
+        config=config,
+        client=client,
+        engine=engine,
+        ctx=prepared.ctx,
+        prompt_input=prepared.prompt_input,
+        photo_file_ids=list(prepared.photo_file_ids),
+        voice_file_id=prepared.voice_file_id,
+        document=prepared.document,
+        reply_context_prompt=prepared.reply_context_prompt,
+        telegram_context_prompt=prepared.telegram_context_prompt,
+        enforce_voice_prefix_from_transcript=prepared.enforce_voice_prefix_from_transcript,
+        sender_name=prepared.sender_name,
+        command=prepared.command,
+    )
+
+
+def maybe_handle_diary_update_flow(flow: UpdateFlowState) -> bool:
+    if not diary_mode_enabled(flow.config):
+        return False
+    if handle_known_command(
+        flow.state,
+        flow.config,
+        flow.client,
+        flow.ctx.scope_key,
+        flow.ctx.chat_id,
+        flow.ctx.message_thread_id,
+        flow.ctx.message_id,
+        flow.command,
+        flow.prompt_input or "",
+    ):
+        emit_event(
+            "bridge.command_handled",
+            fields={
+                "chat_id": flow.ctx.chat_id,
+                "message_id": flow.ctx.message_id,
+                "command": flow.command or "",
+            },
+        )
+        return True
+    queue_diary_capture(
+        state=flow.state,
+        config=flow.config,
+        client=flow.client,
+        scope_key=flow.ctx.scope_key,
+        chat_id=flow.ctx.chat_id,
+        message_thread_id=flow.ctx.message_thread_id,
+        message_id=flow.ctx.message_id,
+        sender_name=flow.sender_name,
+        actor_user_id=flow.ctx.actor_user_id,
+        message=flow.ctx.message,
+    )
+    return True
+
+
+def prepare_update_dispatch_request(
+    flow: UpdateFlowState,
+    handle_update_started_at: float,
+) -> Optional[UpdateDispatchRequest]:
+    keyword_result = apply_priority_keyword_routing(
+        config=flow.config,
+        prompt_input=flow.prompt_input,
+        command=flow.command,
+        chat_id=flow.ctx.chat_id,
+    )
+    if keyword_result.rejection_reason:
+        emit_event(
+            "bridge.request_rejected",
+            level=logging.WARNING,
+            fields={
+                "chat_id": flow.ctx.chat_id,
+                "message_id": flow.ctx.message_id,
+                "reason": keyword_result.rejection_reason,
+            },
+        )
+        flow.client.send_message(
+            flow.ctx.chat_id,
+            keyword_result.rejection_message or PREFIX_HELP_MESSAGE,
+            reply_to_message_id=flow.ctx.message_id,
+        )
+        return None
+    flow.prompt_input = keyword_result.prompt_input
+    flow.command = keyword_result.command
+    if keyword_result.priority_keyword_mode:
+        flow.stateless = keyword_result.stateless
+        flow.priority_keyword_mode = True
+        if keyword_result.route_kind == "youtube_link":
+            flow.youtube_route_url = keyword_result.route_value
+        emit_event(
+            keyword_result.routed_event or "bridge.keyword_routed",
+            fields={"chat_id": flow.ctx.chat_id, "message_id": flow.ctx.message_id},
+        )
+
+    if flow.prompt_input:
+        maybe_process_voice_alias_learning_confirmation(
+            state=flow.state,
+            config=flow.config,
+            client=flow.client,
+            chat_id=flow.ctx.chat_id,
+            message_id=flow.ctx.message_id,
+            prompt_input=flow.prompt_input,
+            command=flow.command,
+            priority_keyword_mode=flow.priority_keyword_mode,
+            photo_file_id=flow.photo_file_ids[0] if flow.photo_file_ids else None,
+            photo_file_ids=flow.photo_file_ids,
+            voice_file_id=flow.voice_file_id,
+            document=flow.document,
+        )
+
+    memory_engine = flow.state.memory_engine if isinstance(flow.state.memory_engine, MemoryEngine) else None
+    memory_channel = getattr(flow.client, "channel_name", "telegram")
+    if memory_engine is not None and flow.prompt_input and not flow.priority_keyword_mode:
+        cmd_result = handle_memory_command(
+            engine=memory_engine,
+            conversation_key=resolve_memory_conversation_key(
+                flow.config,
+                memory_channel,
+                flow.ctx.scope_key,
+            ),
+            text=flow.prompt_input,
+        )
+        if cmd_result.handled:
+            if cmd_result.response:
+                flow.client.send_message(
+                    flow.ctx.chat_id,
+                    cmd_result.response,
+                    reply_to_message_id=flow.ctx.message_id,
+                )
+            if cmd_result.run_prompt is None:
+                emit_event(
+                    "bridge.command_handled",
+                    fields={
+                        "chat_id": flow.ctx.chat_id,
+                        "message_id": flow.ctx.message_id,
+                        "command": flow.command or "",
+                    },
+                )
+                return None
+            flow.prompt_input = cmd_result.run_prompt
+            flow.stateless = cmd_result.stateless
+            flow.command = None
+
+    if handle_known_command(
+        flow.state,
+        flow.config,
+        flow.client,
+        flow.ctx.scope_key,
+        flow.ctx.chat_id,
+        flow.ctx.message_thread_id,
+        flow.ctx.message_id,
+        flow.command,
+        flow.prompt_input or "",
+    ):
+        emit_event(
+            "bridge.command_handled",
+            fields={
+                "chat_id": flow.ctx.chat_id,
+                "message_id": flow.ctx.message_id,
+                "command": flow.command or "",
+            },
+        )
+        return None
+
+    if memory_engine is not None and flow.prompt_input and not flow.priority_keyword_mode and not flow.stateless:
+        recall_response = handle_natural_language_memory_query(
+            memory_engine,
+            resolve_memory_conversation_key(flow.config, memory_channel, flow.ctx.scope_key),
+            flow.prompt_input,
+        )
+        if recall_response:
+            flow.client.send_message(
+                flow.ctx.chat_id,
+                recall_response,
+                reply_to_message_id=flow.ctx.message_id,
+            )
+            emit_event(
+                "bridge.command_handled",
+                fields={
+                    "chat_id": flow.ctx.chat_id,
+                    "message_id": flow.ctx.message_id,
+                    "command": "natural_language_memory_recall",
+                },
+            )
+            return None
+
+    prompt = (flow.prompt_input or "").strip()
+    raw_prompt = prompt
+    prompt_context_parts: List[str] = []
+    if flow.telegram_context_prompt:
+        prompt_context_parts.append(flow.telegram_context_prompt)
+    if flow.reply_context_prompt:
+        prompt_context_parts.append(flow.reply_context_prompt)
+    if prompt_context_parts:
+        if prompt:
+            prompt_context_parts.append("Current User Message:\n" f"{prompt}")
+        prompt = "\n\n".join(prompt_context_parts)
+    if not prompt and not flow.voice_file_id and flow.document is None:
+        return None
+
+    if prompt and len(prompt) > flow.config.max_input_chars:
+        if prompt_context_parts and raw_prompt and len(raw_prompt) <= flow.config.max_input_chars:
+            emit_event(
+                "bridge.telegram_context_omitted",
+                level=logging.WARNING,
+                fields={
+                    "chat_id": flow.ctx.chat_id,
+                    "message_id": flow.ctx.message_id,
+                    "reason": "max_input_chars",
+                },
+            )
+            prompt = raw_prompt
+        else:
+            actual_length = (
+                len(raw_prompt)
+                if raw_prompt and len(raw_prompt) > flow.config.max_input_chars
+                else len(prompt)
+            )
+            emit_event(
+                "bridge.request_rejected",
+                level=logging.WARNING,
+                fields={
+                    "chat_id": flow.ctx.chat_id,
+                    "message_id": flow.ctx.message_id,
+                    "reason": "input_too_long",
+                },
+            )
+            send_input_too_long(
+                client=flow.client,
+                chat_id=flow.ctx.chat_id,
+                message_id=flow.ctx.message_id,
+                actual_length=actual_length,
+                max_input_chars=flow.config.max_input_chars,
+            )
+            return None
+
+    if prompt and len(prompt) > flow.config.max_input_chars:
+        emit_event(
+            "bridge.request_rejected",
+            level=logging.WARNING,
+            fields={
+                "chat_id": flow.ctx.chat_id,
+                "message_id": flow.ctx.message_id,
+                "reason": "input_too_long",
+            },
+        )
+        send_input_too_long(
+            client=flow.client,
+            chat_id=flow.ctx.chat_id,
+            message_id=flow.ctx.message_id,
+            actual_length=len(prompt),
+            max_input_chars=flow.config.max_input_chars,
+        )
+        return None
+
+    if is_rate_limited(flow.state, flow.config, flow.ctx.scope_key):
+        emit_event(
+            "bridge.request_rejected",
+            level=logging.WARNING,
+            fields={
+                "chat_id": flow.ctx.chat_id,
+                "message_id": flow.ctx.message_id,
+                "reason": "rate_limited",
+            },
+        )
+        flow.client.send_message(
+            flow.ctx.chat_id,
+            RATE_LIMIT_MESSAGE,
+            reply_to_message_id=flow.ctx.message_id,
+        )
+        return None
+
+    return UpdateDispatchRequest(
+        state=flow.state,
+        config=flow.config,
+        client=flow.client,
+        engine=flow.engine,
+        scope_key=flow.ctx.scope_key,
+        chat_id=flow.ctx.chat_id,
+        message_thread_id=flow.ctx.message_thread_id,
+        message_id=flow.ctx.message_id,
+        prompt=prompt,
+        raw_prompt=raw_prompt,
+        photo_file_ids=list(flow.photo_file_ids),
+        voice_file_id=flow.voice_file_id,
+        document=flow.document,
+        actor_user_id=flow.ctx.actor_user_id,
+        sender_name=flow.sender_name,
+        stateless=flow.stateless,
+        enforce_voice_prefix_from_transcript=flow.enforce_voice_prefix_from_transcript,
+        youtube_route_url=flow.youtube_route_url,
+        handle_update_started_at=handle_update_started_at,
+    )
+
+
 def handle_update(
     state: State,
     config,
@@ -7469,257 +7792,15 @@ def handle_update(
     message_id = ctx.message_id
     message_thread_id = ctx.message_thread_id
     scope_key = ctx.scope_key
-    actor_user_id = ctx.actor_user_id
-    prompt_input = prepared.prompt_input
-    photo_file_ids = list(prepared.photo_file_ids)
-    voice_file_id = prepared.voice_file_id
-    document = prepared.document
-    reply_context_prompt = prepared.reply_context_prompt
-    telegram_context_prompt = prepared.telegram_context_prompt
-    enforce_voice_prefix_from_transcript = prepared.enforce_voice_prefix_from_transcript
-    sender_name = prepared.sender_name
-    stateless = False
-    command = prepared.command
+    flow = build_update_flow_state(state, config, client, engine, prepared)
 
-    if diary_mode_enabled(config):
-        if handle_known_command(
-            state,
-            config,
-            client,
-            scope_key,
-            chat_id,
-            message_thread_id,
-            message_id,
-            command,
-            prompt_input or "",
-        ):
-            emit_event(
-                "bridge.command_handled",
-                fields={"chat_id": chat_id, "message_id": message_id, "command": command or ""},
-            )
-            return
-        queue_diary_capture(
-            state=state,
-            config=config,
-            client=client,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            sender_name=sender_name,
-            actor_user_id=actor_user_id,
-            message=ctx.message,
-        )
+    if maybe_handle_diary_update_flow(flow):
+        return
+    dispatch_request = prepare_update_dispatch_request(flow, handle_update_started_at)
+    if dispatch_request is None:
         return
 
-    priority_keyword_mode = False
-    youtube_route_url: Optional[str] = None
-    keyword_result = apply_priority_keyword_routing(
-        config=config,
-        prompt_input=prompt_input,
-        command=command,
-        chat_id=chat_id,
-    )
-    if keyword_result.rejection_reason:
-        emit_event(
-            "bridge.request_rejected",
-            level=logging.WARNING,
-            fields={"chat_id": chat_id, "message_id": message_id, "reason": keyword_result.rejection_reason},
-        )
-        client.send_message(
-            chat_id,
-            keyword_result.rejection_message or PREFIX_HELP_MESSAGE,
-            reply_to_message_id=message_id,
-        )
-        return
-    prompt_input = keyword_result.prompt_input
-    command = keyword_result.command
-    if keyword_result.priority_keyword_mode:
-        stateless = keyword_result.stateless
-        priority_keyword_mode = True
-        if keyword_result.route_kind == "youtube_link":
-            youtube_route_url = keyword_result.route_value
-        emit_event(
-            keyword_result.routed_event or "bridge.keyword_routed",
-            fields={"chat_id": chat_id, "message_id": message_id},
-        )
-
-    if prompt_input:
-        maybe_process_voice_alias_learning_confirmation(
-            state=state,
-            config=config,
-            client=client,
-            chat_id=chat_id,
-            message_id=message_id,
-            prompt_input=prompt_input,
-            command=command,
-            priority_keyword_mode=priority_keyword_mode,
-            photo_file_id=photo_file_ids[0] if photo_file_ids else None,
-            photo_file_ids=photo_file_ids,
-            voice_file_id=voice_file_id,
-            document=document,
-        )
-
-    memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
-    if memory_engine is not None and prompt_input and not priority_keyword_mode:
-        memory_channel = getattr(client, "channel_name", "telegram")
-        cmd_result = handle_memory_command(
-            engine=memory_engine,
-            conversation_key=resolve_memory_conversation_key(config, memory_channel, scope_key),
-            text=prompt_input,
-        )
-        if cmd_result.handled:
-            if cmd_result.response:
-                client.send_message(
-                    chat_id,
-                    cmd_result.response,
-                    reply_to_message_id=message_id,
-                )
-            if cmd_result.run_prompt is None:
-                emit_event(
-                    "bridge.command_handled",
-                    fields={"chat_id": chat_id, "message_id": message_id, "command": command or ""},
-                )
-                return
-            prompt_input = cmd_result.run_prompt
-            stateless = cmd_result.stateless
-            command = None
-
-    if handle_known_command(
-        state,
-        config,
-        client,
-        scope_key,
-        chat_id,
-        message_thread_id,
-        message_id,
-        command,
-        prompt_input or "",
-    ):
-        emit_event(
-            "bridge.command_handled",
-            fields={"chat_id": chat_id, "message_id": message_id, "command": command or ""},
-        )
-        return
-
-    if memory_engine is not None and prompt_input and not priority_keyword_mode and not stateless:
-        recall_response = handle_natural_language_memory_query(
-            memory_engine,
-            resolve_memory_conversation_key(config, memory_channel, scope_key),
-            prompt_input,
-        )
-        if recall_response:
-            client.send_message(
-                chat_id,
-                recall_response,
-                reply_to_message_id=message_id,
-            )
-            emit_event(
-                "bridge.command_handled",
-                fields={
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "command": "natural_language_memory_recall",
-                },
-            )
-            return
-
-    prompt = (prompt_input or "").strip()
-    raw_prompt = prompt
-    prompt_context_parts: List[str] = []
-    if telegram_context_prompt:
-        prompt_context_parts.append(telegram_context_prompt)
-    if reply_context_prompt:
-        prompt_context_parts.append(reply_context_prompt)
-    if prompt_context_parts:
-        if prompt:
-            prompt_context_parts.append(
-                "Current User Message:\n"
-                f"{prompt}"
-            )
-        prompt = "\n\n".join(prompt_context_parts)
-    if not prompt and not voice_file_id and document is None:
-        return
-
-    if prompt and len(prompt) > config.max_input_chars:
-        if prompt_context_parts and raw_prompt and len(raw_prompt) <= config.max_input_chars:
-            emit_event(
-                "bridge.telegram_context_omitted",
-                level=logging.WARNING,
-                fields={
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "reason": "max_input_chars",
-                },
-            )
-            prompt = raw_prompt
-        else:
-            actual_length = len(raw_prompt) if raw_prompt and len(raw_prompt) > config.max_input_chars else len(prompt)
-            emit_event(
-                "bridge.request_rejected",
-                level=logging.WARNING,
-                fields={"chat_id": chat_id, "message_id": message_id, "reason": "input_too_long"},
-            )
-            send_input_too_long(
-                client=client,
-                chat_id=chat_id,
-                message_id=message_id,
-                actual_length=actual_length,
-                max_input_chars=config.max_input_chars,
-            )
-            return
-
-    if prompt and len(prompt) > config.max_input_chars:
-        emit_event(
-            "bridge.request_rejected",
-            level=logging.WARNING,
-            fields={"chat_id": chat_id, "message_id": message_id, "reason": "input_too_long"},
-        )
-        send_input_too_long(
-            client=client,
-            chat_id=chat_id,
-            message_id=message_id,
-            actual_length=len(prompt),
-            max_input_chars=config.max_input_chars,
-        )
-        return
-
-    if is_rate_limited(state, config, scope_key):
-        emit_event(
-            "bridge.request_rejected",
-            level=logging.WARNING,
-            fields={"chat_id": chat_id, "message_id": message_id, "reason": "rate_limited"},
-        )
-        client.send_message(
-            chat_id,
-            RATE_LIMIT_MESSAGE,
-            reply_to_message_id=message_id,
-        )
-        return
-
-    dispatch_request = UpdateDispatchRequest(
-        state=state,
-        config=config,
-        client=client,
-        engine=engine,
-        scope_key=scope_key,
-        chat_id=chat_id,
-        message_thread_id=message_thread_id,
-        message_id=message_id,
-        prompt=prompt,
-        raw_prompt=raw_prompt,
-        photo_file_ids=list(photo_file_ids),
-        voice_file_id=voice_file_id,
-        document=document,
-        actor_user_id=actor_user_id,
-        sender_name=sender_name,
-        stateless=stateless,
-        enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
-        youtube_route_url=youtube_route_url,
-        handle_update_started_at=handle_update_started_at,
-    )
-
-    if command == "/dishframed":
+    if flow.command == "/dishframed":
         start_dishframed_dispatch(dispatch_request)
         return
     start_standard_dispatch(dispatch_request)
