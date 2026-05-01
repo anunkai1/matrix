@@ -415,6 +415,48 @@ class UpdateFlowState:
     youtube_route_url: Optional[str] = None
 
 
+def build_prompt_request(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    engine: Optional[EngineAdapter],
+    scope_key: str,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+    prompt: str,
+    photo_file_id: Optional[str],
+    voice_file_id: Optional[str],
+    document: Optional[DocumentPayload],
+    cancel_event: Optional[threading.Event] = None,
+    stateless: bool = False,
+    sender_name: str = "Telegram User",
+    photo_file_ids: Optional[List[str]] = None,
+    actor_user_id: Optional[int] = None,
+    enforce_voice_prefix_from_transcript: bool = False,
+) -> PromptRequest:
+    return PromptRequest(
+        state=state,
+        config=config,
+        client=client,
+        engine=engine,
+        scope_key=scope_key,
+        chat_id=chat_id,
+        message_thread_id=message_thread_id,
+        message_id=message_id,
+        prompt=prompt,
+        photo_file_id=photo_file_id,
+        voice_file_id=voice_file_id,
+        document=document,
+        cancel_event=cancel_event,
+        stateless=stateless,
+        sender_name=sender_name,
+        photo_file_ids=photo_file_ids,
+        actor_user_id=actor_user_id,
+        enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
+    )
+
+
 def build_youtube_request(
     state: State,
     config,
@@ -2883,7 +2925,7 @@ def prepare_prompt_input(
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> Optional[PreparedPromptInput]:
     return _prepare_prompt_input_request(
-        PromptRequest(
+        build_prompt_request(
             state=state,
             config=config,
             client=client,
@@ -3788,7 +3830,7 @@ def process_prompt(
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     _process_prompt_request(
-        PromptRequest(
+        build_prompt_request(
             state=state,
             config=config,
             client=client,
@@ -3848,7 +3890,7 @@ def process_message_worker(
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
     _process_message_worker_request(
-        PromptRequest(
+        build_prompt_request(
             state=state,
             config=config,
             client=client,
@@ -7090,7 +7132,7 @@ def start_message_worker(
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
-    request = PromptRequest(
+    request = build_prompt_request(
         state=state,
         config=config,
         client=client,
