@@ -293,6 +293,28 @@ class CallbackActionResult:
 CallbackActionHandler = Callable[[CallbackActionContext], CallbackActionResult]
 
 
+@dataclass(frozen=True)
+class PromptRequest:
+    state: State
+    config: Any
+    client: ChannelAdapter
+    engine: Optional[EngineAdapter]
+    scope_key: str
+    chat_id: int
+    message_thread_id: Optional[int]
+    message_id: Optional[int]
+    prompt: str
+    photo_file_id: Optional[str]
+    voice_file_id: Optional[str]
+    document: Optional[DocumentPayload]
+    cancel_event: Optional[threading.Event] = None
+    stateless: bool = False
+    sender_name: str = "Telegram User"
+    photo_file_ids: Optional[List[str]] = None
+    actor_user_id: Optional[int] = None
+    enforce_voice_prefix_from_transcript: bool = False
+
+
 def normalize_command(text: str) -> Optional[str]:
     stripped = text.strip()
     head: Optional[str] = None
@@ -3141,26 +3163,25 @@ def emit_phase_timing(
     emit_event("bridge.request_phase_timing", fields=fields)
 
 
-def process_prompt(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    engine: Optional[EngineAdapter],
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    prompt: str,
-    photo_file_id: Optional[str],
-    voice_file_id: Optional[str],
-    document: Optional[DocumentPayload],
-    cancel_event: Optional[threading.Event] = None,
-    stateless: bool = False,
-    sender_name: str = "Telegram User",
-    photo_file_ids: Optional[List[str]] = None,
-    actor_user_id: Optional[int] = None,
-    enforce_voice_prefix_from_transcript: bool = False,
-) -> None:
+def _process_prompt_request(request: PromptRequest) -> None:
+    state = request.state
+    config = request.config
+    client = request.client
+    engine = request.engine
+    scope_key = request.scope_key
+    chat_id = request.chat_id
+    message_thread_id = request.message_thread_id
+    message_id = request.message_id
+    prompt = request.prompt
+    photo_file_id = request.photo_file_id
+    voice_file_id = request.voice_file_id
+    document = request.document
+    cancel_event = request.cancel_event
+    stateless = request.stateless
+    sender_name = request.sender_name
+    photo_file_ids = request.photo_file_ids
+    actor_user_id = request.actor_user_id
+    enforce_voice_prefix_from_transcript = request.enforce_voice_prefix_from_transcript
     total_started_at = time.monotonic()
     channel_name = getattr(client, "channel_name", "telegram")
     active_engine = engine or CodexEngineAdapter()
@@ -3411,6 +3432,73 @@ def process_prompt(
         )
 
 
+def process_prompt(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    engine: Optional[EngineAdapter],
+    scope_key: str,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+    prompt: str,
+    photo_file_id: Optional[str],
+    voice_file_id: Optional[str],
+    document: Optional[DocumentPayload],
+    cancel_event: Optional[threading.Event] = None,
+    stateless: bool = False,
+    sender_name: str = "Telegram User",
+    photo_file_ids: Optional[List[str]] = None,
+    actor_user_id: Optional[int] = None,
+    enforce_voice_prefix_from_transcript: bool = False,
+) -> None:
+    _process_prompt_request(
+        PromptRequest(
+            state=state,
+            config=config,
+            client=client,
+            engine=engine,
+            scope_key=scope_key,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            message_id=message_id,
+            prompt=prompt,
+            photo_file_id=photo_file_id,
+            voice_file_id=voice_file_id,
+            document=document,
+            cancel_event=cancel_event,
+            stateless=stateless,
+            sender_name=sender_name,
+            photo_file_ids=photo_file_ids,
+            actor_user_id=actor_user_id,
+            enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
+        )
+    )
+
+
+def _process_message_worker_request(request: PromptRequest) -> None:
+    try:
+        _process_prompt_request(request)
+    except Exception:
+        logging.exception("Unexpected message worker error for chat_id=%s", request.chat_id)
+        emit_event(
+            "bridge.request_worker_exception",
+            level=logging.ERROR,
+            fields={"chat_id": request.chat_id, "message_id": request.message_id},
+        )
+        try:
+            request.client.send_message(
+                request.chat_id,
+                request.config.generic_error_message,
+                reply_to_message_id=request.message_id,
+            )
+        except Exception:
+            logging.exception(
+                "Failed to send worker error response for chat_id=%s",
+                request.chat_id,
+            )
+
+
 def process_message_worker(
     state: State,
     config,
@@ -3431,42 +3519,28 @@ def process_message_worker(
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
-    try:
-        process_prompt(
-            state,
-            config,
-            client,
-            engine,
-            scope_key,
-            chat_id,
-            message_thread_id,
-            message_id,
-            prompt,
-            photo_file_id,
-            voice_file_id,
-            document,
-            cancel_event,
+    _process_message_worker_request(
+        PromptRequest(
+            state=state,
+            config=config,
+            client=client,
+            engine=engine,
+            scope_key=scope_key,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            message_id=message_id,
+            prompt=prompt,
+            photo_file_id=photo_file_id,
+            voice_file_id=voice_file_id,
+            document=document,
+            cancel_event=cancel_event,
             stateless=stateless,
             sender_name=sender_name,
             photo_file_ids=photo_file_ids,
             actor_user_id=actor_user_id,
             enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
         )
-    except Exception:
-        logging.exception("Unexpected message worker error for chat_id=%s", chat_id)
-        emit_event(
-            "bridge.request_worker_exception",
-            level=logging.ERROR,
-            fields={"chat_id": chat_id, "message_id": message_id},
-        )
-        try:
-            client.send_message(
-                chat_id,
-                config.generic_error_message,
-                reply_to_message_id=message_id,
-            )
-        except Exception:
-            logging.exception("Failed to send worker error response for chat_id=%s", chat_id)
+    )
 
 
 def process_youtube_request(
@@ -6655,28 +6729,29 @@ def start_message_worker(
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
+    request = PromptRequest(
+        state=state,
+        config=config,
+        client=client,
+        engine=engine,
+        scope_key=scope_key,
+        chat_id=chat_id,
+        message_thread_id=message_thread_id,
+        message_id=message_id,
+        prompt=prompt,
+        photo_file_id=photo_file_id,
+        voice_file_id=voice_file_id,
+        document=document,
+        cancel_event=cancel_event,
+        stateless=stateless,
+        sender_name=sender_name,
+        photo_file_ids=photo_file_ids,
+        actor_user_id=actor_user_id,
+        enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
+    )
     worker = threading.Thread(
-        target=process_message_worker,
-        args=(
-            state,
-            config,
-            client,
-            engine,
-            scope_key,
-            chat_id,
-            message_thread_id,
-            message_id,
-            prompt,
-            photo_file_id,
-            voice_file_id,
-            document,
-            cancel_event,
-            stateless,
-            sender_name,
-            photo_file_ids,
-            actor_user_id,
-            enforce_voice_prefix_from_transcript,
-        ),
+        target=_process_message_worker_request,
+        args=(request,),
         daemon=True,
     )
     worker.start()
