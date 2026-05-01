@@ -172,7 +172,7 @@ def _handle_diary_today_known_command(ctx: KnownCommandContext) -> bool:
 
 
 def _handle_diary_queue_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _handlers_module()
+    handlers = _bridge_handlers()
     ctx.client.send_message(
         ctx.chat_id,
         handlers.build_diary_queue_status(ctx.state, ctx.scope_key),
