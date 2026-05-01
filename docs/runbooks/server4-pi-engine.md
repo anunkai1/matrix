@@ -71,7 +71,7 @@ Generic defaults:
 
 ```bash
 TELEGRAM_ENGINE_PLUGIN=codex
-TELEGRAM_SELECTABLE_ENGINE_PLUGINS=codex,gemma,pi,venice
+TELEGRAM_SELECTABLE_ENGINE_PLUGINS=codex,gemma,pi
 PI_PROVIDER=ollama
 PI_MODEL=qwen3-coder:30b
 PI_RUNNER=ssh

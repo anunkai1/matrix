@@ -26,7 +26,7 @@ require_cmd python3
 load_nextcloud_ops_env
 
 REMOTE_PATH="$(normalize_remote_path "${1:-/}")"
-DAV_URL="${NEXTCLOUD_BASE_URL}/remote.php/dav/files/${NEXTCLOUD_USERNAME}${REMOTE_PATH}"
+DAV_URL="${NEXTCLOUD_BASE_URL}/remote.php/dav/files/${NEXTCLOUD_USERNAME}$(encode_remote_path "$REMOTE_PATH")"
 TMP_XML="$(mktemp)"
 trap 'rm -f "$TMP_XML"' EXIT
 
@@ -67,9 +67,10 @@ for response in responses[1:]:
     size = prop.findtext('d:getcontentlength', default='', namespaces=ns) or '-'
     path = unquote(urlparse(href).path)
     name = display or path.rstrip('/').split('/')[-1]
-    items.append((name, 'dir' if is_dir else 'file', size))
+    lastmod = prop.findtext('d:getlastmodified', default='', namespaces=ns) or '-'
+    items.append((name, 'dir' if is_dir else 'file', size, lastmod))
 
 print(f"items={len(items)}")
-for name, kind, size in sorted(items):
-    print(f"{kind}\t{size}\t{name}")
+for name, kind, size, lastmod in sorted(items):
+    print(f"{kind}\t{size}\t{lastmod}\t{name}")
 PY

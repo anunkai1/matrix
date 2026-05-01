@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Server3</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --ok:#3fb950; --busy:#58a6ff; --warn:#d2991d; --danger:#f85149; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; padding:16px; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--border); }
+  h1 { font-size:20px; font-weight:600; }
+  .ts { color:var(--muted); font-size:12px; }
+  .grid { display:grid; grid-template-columns:220px 1fr; gap:16px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:12px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:10px; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:6px 0; font-size:13px; border-bottom:1px solid rgba(48,54,61,0.4); }
+  td:last-child { text-align:right; }
+  .rt { cursor:pointer; }
+  .rt:hover { background:rgba(88,166,255,0.06); }
+  .rt.selected { background:rgba(88,166,255,0.1); }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; }
+  .dot.ok { background:var(--ok); box-shadow:0 0 6px var(--ok); }
+  .dot.busy { background:var(--busy); box-shadow:0 0 6px var(--busy); }
+  .dot.warn { background:var(--warn); box-shadow:0 0 6px var(--warn); }
+  .dot.danger { background:var(--danger); box-shadow:0 0 6px var(--danger); }
+  .tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
+  .tag.ok { background:rgba(63,185,80,0.15); color:var(--ok); }
+  .tag.busy { background:rgba(88,166,255,0.15); color:var(--busy); }
+  .tag.warn { background:rgba(210,153,29,0.15); color:var(--warn); }
+  .tag.danger { background:rgba(248,81,73,0.15); color:var(--danger); }
+  .bar { height:6px; background:var(--border); border-radius:3px; margin-top:4px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:3px; }
+  .bar-fill.warn { background:var(--warn); }
+  .bar-fill.danger { background:var(--danger); }
+  .bar-fill.ok { background:var(--ok); }
+  .stat { display:flex; justify-content:space-between; margin-bottom:8px; font-size:13px; }
+  .stat .val { font-weight:600; }
+  button { padding:6px 14px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); cursor:pointer; font-size:12px; margin-right:6px; margin-top:8px; }
+  button:hover { border-color:var(--muted); }
+  button.primary { border-color:var(--ok); color:var(--ok); }
+  button.warn { border-color:var(--warn); color:var(--warn); }
+  button.danger { border-color:var(--danger); color:var(--danger); }
+  .detail { margin-top:6px; }
+  .detail .row { display:flex; justify-content:space-between; padding:4px 0; font-size:12px; border-bottom:1px solid rgba(48,54,61,0.3); }
+  .detail .row span:first-child { color:var(--muted); }
+  .mono { font-family:"SF Mono","Cascadia Code","Consolas",monospace; font-size:12px; }
+  @media(max-width:700px) { .grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Server3</h1><span class="ts" id="genTs"></span></div>
+  <button onclick="location.reload()">refresh</button>
+</header>
+
+<div class="grid">
+  <div>
+    <div class="card">
+      <h2>Runtimes</h2>
+      <table id="rtTable"></table>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Host</h2>
+      <div class="stat"><span>CPU Load</span><span class="val" id="hostLoad"></span></div>
+      <div class="stat"><span>RAM</span><span class="val" id="hostRam"></span></div>
+      <div style="margin-top:12px;"><h2 style="margin-bottom:6px;">Storage</h2></div>
+      <div id="storageBars"></div>
+    </div>
+
+    <div class="card">
+      <h2>Lanes</h2>
+      <div id="lanes"></div>
+    </div>
+
+    <div class="card" id="detailCard" style="display:none;">
+      <h2 id="detailTitle">Detail</h2>
+      <div id="detailBody"></div>
+    </div>
+  </div>
+</div>
+
+<script src="./server3-control-plane-data.js"></script>
+<script>
+const d = window.SERVER3_CONTROL_PLANE_DATA;
+let selected = null;
+const lookup = Object.fromEntries((d.runtimes||[]).map(r => [r.key,r]));
+
+document.getElementById('genTs').textContent = d.generatedAt;
+
+// Runtimes
+document.getElementById('rtTable').innerHTML = d.runtimes.map(r =>
+  '<tr class="rt" data-key="' + r.key + '" onclick="sel(\'' + r.key + '\')">' +
+    '<td><span class="dot ' + r.stateClass + '"></span>' + r.name + '</td>' +
+    '<td><span class="tag ' + r.stateClass + '">' + r.stateText + '</span></td>' +
+  '</tr>'
+).join('');
+
+// Host
+document.getElementById('hostLoad').textContent = d.summary.hostValue.split('/')[0].replace('load ','');
+document.getElementById('hostRam').textContent = d.summary.hostValue.split('/')[1].replace('ram ','');
+
+// Storage bars
+let sb = '';
+(d.floor||[]).filter(function(f) { return f.title.toLowerCase().includes('disk')||f.title.toLowerCase().includes('path'); }).forEach(function(f) {
+  var pct = parseInt(f.value) || 0;
+  var cls = pct > 80 ? 'danger' : pct > 60 ? 'warn' : 'ok';
+  sb += '<div style="margin-bottom:8px;"><div class="stat"><span>' + f.title + '</span><span class="val">' + f.value + '</span></div>';
+  sb += '<div class="bar"><div class="bar-fill ' + cls + '" style="width:' + Math.min(pct,100) + '%"></div></div>';
+  sb += '<div style="font-size:11px;color:var(--muted);margin-top:2px;">' + f.body.slice(0,60) + '</div></div>';
+});
+document.getElementById('storageBars').innerHTML = sb;
+
+// Lanes
+document.getElementById('lanes').innerHTML = (d.overview.bands||[]).map(function(b) {
+  return '<div class="stat"><span>' + b.title + '</span><span class="tag ' + b.stateClass + '">' + b.stateText + '</span></div>';
+}).join('') + '<div style="margin-top:8px;font-size:12px;color:var(--muted);">Runtimes: ' + d.summary.runtimeValue + ' (' + d.summary.runtimeCopy + ') &middot; Approvals: ' + d.summary.approvalValue + '</div>';
+
+// Watchout chips
+var chips = (d.summary.chips||[]).filter(function(c) { return c.tone === 'danger' || c.tone === 'warn'; });
+if (chips.length) {
+  document.getElementById('lanes').innerHTML += '<div style="margin-top:10px;font-size:12px;">' +
+    chips.map(function(c) { return '<span class="tag ' + c.tone + '">' + c.label + '</span>'; }).join(' ') + '</div>';
+}
+
+function sel(key) {
+  selected = key;
+  document.querySelectorAll('.rt').forEach(function(el) { el.classList.toggle('selected', el.dataset.key === key); });
+  var r = lookup[key];
+  if (!r) return;
+  var card = document.getElementById('detailCard');
+  card.style.display = 'block';
+  document.getElementById('detailTitle').innerHTML =
+    r.name + ' <span class="tag ' + r.stateClass + '">' + r.stateText + '</span>';
+  var html = '<div style="margin-bottom:8px;font-size:13px;">' + (r.summary||'') + '</div>';
+  html += '<div class="detail">';
+  (r.serviceStats||[]).forEach(function(s) {
+    html += '<div class="row"><span>' + s.label + '</span><span class="mono">' + s.value + '</span></div>';
+  });
+  html += '</div>';
+  (r.actions||[]).forEach(function(a) {
+    var cls = a.includes('restart')?'danger':a.includes('logs')?'warn':'primary';
+    html += '<button class="' + cls + '" disabled>' + a + '</button>';
+  });
+  document.getElementById('detailBody').innerHTML = html;
+}
+</script>
+</body>
+</html>

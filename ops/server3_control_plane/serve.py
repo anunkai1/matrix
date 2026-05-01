@@ -438,7 +438,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             body = b""
             self.send_response(HTTPStatus.FOUND)
-            self.send_header("Location", "/docs/server3-control-plane-sketch.html")
+            self.send_header("Location", "/docs/server3-control.html")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             return

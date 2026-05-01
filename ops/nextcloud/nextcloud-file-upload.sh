@@ -32,13 +32,19 @@ require_cmd curl
 load_nextcloud_ops_env
 
 REMOTE_PATH="$(normalize_remote_path "$REMOTE_PATH_RAW")"
-DAV_URL="${NEXTCLOUD_BASE_URL}/remote.php/dav/files/${NEXTCLOUD_USERNAME}${REMOTE_PATH}"
+DAV_URL="${NEXTCLOUD_BASE_URL}/remote.php/dav/files/${NEXTCLOUD_USERNAME}$(encode_remote_path "$REMOTE_PATH")"
+UPLOAD_HEADERS=()
+
+if [[ -n "${NEXTCLOUD_UPLOAD_MTIME:-}" ]]; then
+  UPLOAD_HEADERS+=(-H "X-OC-MTime: ${NEXTCLOUD_UPLOAD_MTIME}")
+fi
 
 HTTP_CODE="$(
   nextcloud_auth_curl \
     -o /dev/null \
     -w '%{http_code}' \
     -X PUT \
+    "${UPLOAD_HEADERS[@]}" \
     --data-binary "@$LOCAL_FILE" \
     "$DAV_URL"
 )"

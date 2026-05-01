@@ -586,6 +586,11 @@ class BridgeCoreTests(unittest.TestCase):
     def test_help_text_includes_pi_provider_commands(self):
         cfg = make_config()
         text = bridge_handlers.build_help_text(cfg)
+        self.assertIn(
+            "/engine status|codex|gemma|pi|reset - show or select this chat's engine",
+            text,
+        )
+        self.assertNotIn("|venice|", text)
         self.assertIn("/model - show this chat's current model for the active engine", text)
         self.assertIn("/model list - list model choices/help for the active engine", text)
         self.assertIn("/model <name> - set this chat's model for the active engine", text)
@@ -598,6 +603,7 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("/pi providers - list available Pi providers", text)
         self.assertIn("/pi provider <name> - set this chat's Pi provider", text)
         self.assertIn("/pi reset - clear this chat's Pi provider and model overrides", text)
+        self.assertIn("/dishframed - turn a menu photo into a DishFramed preview", text)
 
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
@@ -1193,6 +1199,14 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn(
             "cfg|model|codex|menu",
             callback_values,
+        )
+
+    def test_help_text_includes_configured_chatgptweb_engine(self):
+        cfg = make_config(selectable_engine_plugins=["codex", "gemma", "pi", "chatgptweb"])
+        text = bridge_handlers.build_help_text(cfg)
+        self.assertIn(
+            "/engine status|codex|gemma|pi|chatgptweb|reset - show or select this chat's engine",
+            text,
         )
 
     def test_callback_query_updates_engine_menu(self):
@@ -4163,6 +4177,132 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(kwargs["request_text"], "https://www.youtube.com/watch?v=yD5DFL3xPmo\nsummarise this")
         self.assertEqual(kwargs["youtube_url"], "https://www.youtube.com/watch?v=yD5DFL3xPmo")
         self.assertEqual(client.messages, [])
+
+    @mock.patch.object(bridge_handlers, "start_dishframed_worker")
+    @mock.patch.object(bridge_handlers, "register_cancel_event", return_value=threading.Event())
+    @mock.patch.object(bridge_handlers, "mark_busy", return_value=True)
+    def test_handle_update_routes_dishframed_command_with_photo(
+        self,
+        mark_busy,
+        register_cancel_event,
+        start_dishframed_worker,
+    ):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 181,
+            "message": {
+                "message_id": 281,
+                "chat": {"id": 1, "type": "private"},
+                "caption": "/dishframed",
+                "photo": [{"file_id": "small"}, {"file_id": "large"}],
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_dishframed_worker.called)
+        kwargs = start_dishframed_worker.call_args.kwargs
+        self.assertEqual(kwargs["photo_file_ids"], ["large"])
+        mark_busy.assert_called_once()
+        register_cancel_event.assert_called_once()
+
+    def test_handle_update_rejects_dishframed_without_photo(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 182,
+            "message": {
+                "message_id": 282,
+                "chat": {"id": 1, "type": "private"},
+                "text": "/dishframed",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertEqual(
+            client.messages[-1][:3],
+            (1, bridge_handlers.DISHFRAMED_USAGE_MESSAGE, 282),
+        )
+
+    @mock.patch.object(bridge_handlers, "start_dishframed_worker")
+    @mock.patch.object(bridge_handlers, "register_cancel_event", return_value=threading.Event())
+    @mock.patch.object(bridge_handlers, "mark_busy", return_value=True)
+    def test_handle_update_routes_dishframed_command_with_recent_scope_photo(
+        self,
+        mark_busy,
+        register_cancel_event,
+        start_dishframed_worker,
+    ):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+
+        bridge_handlers.remember_recent_scope_photos(
+            state=state,
+            scope_key="tg:1:topic:1712",
+            message_id=283,
+            photo_file_ids=["large"],
+        )
+
+        bridge.handle_update(
+            state,
+            config,
+            client,
+            {
+                "update_id": 184,
+                "message": {
+                    "message_id": 284,
+                    "chat": {"id": 1, "type": "supergroup"},
+                    "is_topic_message": True,
+                    "message_thread_id": 1712,
+                    "text": "/dishframed",
+                },
+            },
+        )
+
+        self.assertTrue(start_dishframed_worker.called)
+        kwargs = start_dishframed_worker.call_args.kwargs
+        self.assertEqual(kwargs["photo_file_ids"], ["large"])
+        mark_busy.assert_called_once()
+        register_cancel_event.assert_called_once()
+
+    @mock.patch.object(bridge_handlers, "finalize_chat_work")
+    @mock.patch.object(bridge_handlers, "run_dishframed_cli", return_value=("/tmp/menu_preview.png", "Rendered PNG preview"))
+    @mock.patch.object(bridge_handlers, "prepare_prompt_input")
+    def test_process_dishframed_request_sends_photo_when_png_output(
+        self,
+        prepare_prompt_input,
+        run_dishframed_cli,
+        finalize_chat_work,
+    ):
+        del finalize_chat_work
+        prepare_prompt_input.return_value = SimpleNamespace(
+            cleanup_paths=[],
+            image_paths=["/tmp/incoming.jpg"],
+        )
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+
+        bridge_handlers.process_dishframed_request(
+            state=state,
+            config=config,
+            client=client,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=99,
+            photo_file_ids=["photo-file-id"],
+            cancel_event=None,
+        )
+
+        self.assertEqual(client.photos[0][:3], (1, "/tmp/menu_preview.png", "Rendered PNG preview"))
+        self.assertEqual(client.documents, [])
+        run_dishframed_cli.assert_called_once()
 
     @mock.patch.object(bridge_handlers, "start_youtube_worker")
     @mock.patch.object(bridge_handlers, "start_message_worker")

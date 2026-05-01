@@ -717,7 +717,7 @@ def load_config() -> Config:
         ),
         pi_request_timeout_seconds=parse_int_env(
             "PI_REQUEST_TIMEOUT_SECONDS",
-            180,
+            1800,
             minimum=1,
         ),
         whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),

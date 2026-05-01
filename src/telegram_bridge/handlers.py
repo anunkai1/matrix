@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -103,7 +104,7 @@ try:
         request_safe_restart,
         trigger_restart_async,
     )
-    from .state_store import PendingDiaryBatch, State, StateRepository
+    from .state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
     from .structured_logging import emit_event
     from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 except ImportError:
@@ -191,7 +192,7 @@ except ImportError:
         request_safe_restart,
         trigger_restart_async,
     )
-    from state_store import PendingDiaryBatch, State, StateRepository
+    from state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
     from structured_logging import emit_event
     from transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 
@@ -217,6 +218,15 @@ YOUTUBE_ANALYZER_TIMEOUT_SECONDS = 1800
 YOUTUBE_INLINE_TRANSCRIPT_LIMIT = 12000
 GEMMA_HEALTH_TIMEOUT_SECONDS = 6
 GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = 5
+DISHFRAMED_REPO_ROOT = Path(
+    os.getenv("DISHFRAMED_REPO_ROOT", "/home/architect/dishframed")
+).expanduser()
+DISHFRAMED_PYTHON_BIN = Path(
+    os.getenv("DISHFRAMED_PYTHON_BIN", str(DISHFRAMED_REPO_ROOT / ".venv/bin/python"))
+).expanduser()
+DISHFRAMED_USAGE_MESSAGE = (
+    "Send `/dishframed` with a menu photo, or reply `/dishframed` to a menu photo."
+)
 
 
 @dataclass
@@ -1356,6 +1366,65 @@ def extract_message_photo_file_ids(message: Dict[str, object]) -> List[str]:
     return photo_file_ids
 
 
+RECENT_SCOPE_PHOTO_TTL_SECONDS = 600
+
+
+def remember_recent_scope_photos(
+    state: State,
+    scope_key: str,
+    message_id: int,
+    photo_file_ids: List[str],
+) -> None:
+    if not photo_file_ids:
+        return
+    now = time.time()
+    scope_candidates = {scope_key}
+    try:
+        conversation_scope = parse_telegram_scope_key(scope_key)
+    except ValueError:
+        conversation_scope = None
+    if conversation_scope is not None:
+        scope_candidates.add(build_telegram_scope_key(conversation_scope.chat_id))
+    selection = RecentPhotoSelection(
+        photo_file_ids=list(photo_file_ids),
+        message_id=message_id,
+        captured_at=now,
+    )
+    with state.lock:
+        for candidate in scope_candidates:
+            state.recent_scope_photos[candidate] = selection
+        expired_scope_keys = [
+            candidate
+            for candidate, candidate_selection in state.recent_scope_photos.items()
+            if now - candidate_selection.captured_at > RECENT_SCOPE_PHOTO_TTL_SECONDS
+        ]
+        for candidate in expired_scope_keys:
+            state.recent_scope_photos.pop(candidate, None)
+
+
+def get_recent_scope_photos(state: State, scope_key: str) -> List[str]:
+    now = time.time()
+    scope_candidates = [scope_key]
+    try:
+        conversation_scope = parse_telegram_scope_key(scope_key)
+    except ValueError:
+        conversation_scope = None
+    if conversation_scope is not None:
+        base_scope_key = build_telegram_scope_key(conversation_scope.chat_id)
+        if base_scope_key not in scope_candidates:
+            scope_candidates.append(base_scope_key)
+    with state.lock:
+        for candidate in scope_candidates:
+            selection = state.recent_scope_photos.get(candidate)
+            if selection is None:
+                continue
+            if now - selection.captured_at > RECENT_SCOPE_PHOTO_TTL_SECONDS:
+                state.recent_scope_photos.pop(candidate, None)
+                continue
+            return list(selection.photo_file_ids)
+    return []
+
+
 def describe_message_media(message: Dict[str, object]) -> str:
     photo_file_ids = extract_message_photo_file_ids(message)
     _, voice_file_id, document = extract_message_media_payload(message)
@@ -2049,12 +2118,14 @@ def build_youtube_transcript_output(
 
 
 def build_help_text(config) -> str:
+    selectable = selectable_engine_plugins(config)
+    engine_help_choices = ["status", *selectable, "reset"]
     minimal = (
         "Available commands:\n"
         "/start - verify bridge connectivity\n"
         "/help or /h - show this message\n"
         "/status - show bridge status and context\n"
-        "/engine status|codex|gemma|pi|venice|chatgptweb|reset - show or select this chat's engine\n"
+        f"/engine {'|'.join(engine_help_choices)} - show or select this chat's engine\n"
         "/model - show this chat's current model for the active engine\n"
         "/model list - list model choices/help for the active engine\n"
         "/model <name> - set this chat's model for the active engine\n"
@@ -2067,6 +2138,7 @@ def build_help_text(config) -> str:
         "/pi providers - list available Pi providers\n"
         "/pi provider <name> - set this chat's Pi provider\n"
         "/pi reset - clear this chat's Pi provider and model overrides\n"
+        "/dishframed - turn a menu photo into a DishFramed preview\n"
         "/reset - clear saved context for this chat\n"
         "/cancel or /c - cancel current in-flight request for this chat\n"
         "/restart - queue a safe bridge restart\n"
@@ -2910,6 +2982,17 @@ def begin_memory_turn(
         return prompt_text, (None if stateless else state_repo.get_thread_id(scope_key)), None
     conversation_key = resolve_memory_conversation_key(config, channel_name, scope_key)
     persisted_thread_id = None if stateless else state_repo.get_thread_id(scope_key)
+    if not stateless:
+        try:
+            if persisted_thread_id:
+                memory_engine.set_session_thread_id(conversation_key, persisted_thread_id)
+            else:
+                memory_engine.clear_session_thread_id(conversation_key)
+        except Exception:
+            logging.exception(
+                "Failed to sync shared memory thread state for chat_id=%s",
+                chat_id,
+            )
     try:
         turn_context = memory_engine.begin_turn(
             conversation_key=conversation_key,
@@ -3579,6 +3662,270 @@ def start_youtube_worker(
             request_text,
             youtube_url,
             actor_user_id,
+            cancel_event,
+        ),
+        daemon=True,
+    )
+    worker.start()
+
+
+def build_dishframed_command(image_paths: List[str], output_dir: str) -> List[str]:
+    cmd = [
+        str(DISHFRAMED_PYTHON_BIN),
+        "-m",
+        "dishframed",
+        "frame",
+        "--extractor",
+        "auto",
+        "--output-dir",
+        output_dir,
+    ]
+    for image_path in image_paths:
+        cmd.extend(["--image", image_path])
+    return cmd
+
+
+def parse_dishframed_cli_output(stdout: str) -> tuple[Optional[str], str]:
+    output_path: Optional[str] = None
+    preview_text = ""
+    for raw_line in (stdout or "").splitlines():
+        line = raw_line.strip()
+        if line.startswith("Output:"):
+            candidate = line.split(":", 1)[1].strip()
+            if candidate:
+                output_path = candidate
+            continue
+        if line:
+            preview_text = line
+    return output_path, preview_text
+
+
+def run_dishframed_cli(
+    *,
+    image_paths: List[str],
+    output_dir: str,
+    timeout_seconds: int,
+    cancel_event: Optional[threading.Event] = None,
+) -> tuple[str, str]:
+    if not DISHFRAMED_REPO_ROOT.is_dir():
+        raise RuntimeError(f"DishFramed repo not found: {DISHFRAMED_REPO_ROOT}")
+    if not DISHFRAMED_PYTHON_BIN.is_file():
+        raise RuntimeError(f"DishFramed Python not found: {DISHFRAMED_PYTHON_BIN}")
+
+    cmd = build_dishframed_command(image_paths, output_dir)
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(DISHFRAMED_REPO_ROOT),
+    )
+    stdout = ""
+    stderr = ""
+    started_at = time.monotonic()
+    while True:
+        if cancel_event is not None and cancel_event.is_set():
+            process.kill()
+            process.wait(timeout=5)
+            raise ExecutorCancelledError("DishFramed request canceled by user.")
+        if (time.monotonic() - started_at) >= float(timeout_seconds):
+            process.kill()
+            process.wait(timeout=5)
+            raise subprocess.TimeoutExpired(cmd, timeout_seconds)
+        try:
+            stdout, stderr = process.communicate(timeout=0.2)
+            break
+        except subprocess.TimeoutExpired:
+            continue
+
+    if process.returncode != 0:
+        raise RuntimeError((stderr or stdout or "DishFramed command failed.").strip())
+
+    output_path, preview_text = parse_dishframed_cli_output(stdout)
+    if not output_path:
+        raise RuntimeError("DishFramed command did not report an output path.")
+    return output_path, preview_text
+
+
+def process_dishframed_request(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+    photo_file_ids: List[str],
+    cancel_event: Optional[threading.Event] = None,
+) -> None:
+    cleanup_paths: List[str] = []
+    cleanup_dirs: List[str] = []
+    progress = ProgressReporter(
+        client,
+        chat_id,
+        message_id,
+        message_thread_id,
+        assistant_label(config),
+        getattr(config, "progress_label", ""),
+        "DishFramed",
+        getattr(config, "progress_elapsed_prefix", "Already"),
+        getattr(config, "progress_elapsed_suffix", "s"),
+    )
+    try:
+        progress.start()
+        prepared = prepare_prompt_input(
+            state=state,
+            config=config,
+            client=client,
+            chat_id=chat_id,
+            message_id=message_id,
+            prompt="Render a DishFramed preview from these menu images.",
+            photo_file_id=photo_file_ids[0] if photo_file_ids else None,
+            photo_file_ids=photo_file_ids,
+            voice_file_id=None,
+            document=None,
+            progress=progress,
+        )
+        if prepared is None:
+            return
+        cleanup_paths = list(prepared.cleanup_paths)
+        image_paths = list(prepared.image_paths)
+        if not image_paths:
+            client.send_message(
+                chat_id,
+                DISHFRAMED_USAGE_MESSAGE,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
+            return
+
+        output_dir = tempfile.mkdtemp(prefix="dishframed-telegram-")
+        cleanup_dirs.append(output_dir)
+        progress.set_phase("Rendering DishFramed preview.")
+        output_path, preview_text = run_dishframed_cli(
+            image_paths=image_paths,
+            output_dir=output_dir,
+            timeout_seconds=config.exec_timeout_seconds,
+            cancel_event=cancel_event,
+        )
+        caption = (preview_text or "DishFramed preview attached.").strip()
+        if len(caption) > TELEGRAM_CAPTION_LIMIT:
+            caption = caption[: TELEGRAM_CAPTION_LIMIT - 1].rstrip() + "…"
+        if infer_media_kind(output_path) == "photo":
+            send_chat_action_safe(client, chat_id, "upload_photo", message_thread_id)
+            client.send_photo(
+                chat_id=chat_id,
+                photo=output_path,
+                caption=caption,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
+        else:
+            send_chat_action_safe(client, chat_id, "upload_document", message_thread_id)
+            client.send_document(
+                chat_id=chat_id,
+                document=output_path,
+                caption=caption,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
+        progress.mark_success()
+    finally:
+        progress.close()
+        clear_cancel_event(state, scope_key, expected_event=cancel_event)
+        for cleanup_path in cleanup_paths:
+            try:
+                os.remove(cleanup_path)
+            except OSError:
+                logging.warning("Failed to remove temp file: %s", cleanup_path)
+        for cleanup_dir in cleanup_dirs:
+            shutil.rmtree(cleanup_dir, ignore_errors=True)
+        finalize_chat_work(state, client, chat_id=chat_id, scope_key=scope_key)
+        emit_event(
+            "bridge.request_processing_finished",
+            fields={"chat_id": chat_id, "message_id": message_id, "phase": "dishframed"},
+        )
+
+
+def process_dishframed_worker(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+    photo_file_ids: List[str],
+    cancel_event: Optional[threading.Event] = None,
+) -> None:
+    try:
+        process_dishframed_request(
+            state=state,
+            config=config,
+            client=client,
+            scope_key=scope_key,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            message_id=message_id,
+            photo_file_ids=photo_file_ids,
+            cancel_event=cancel_event,
+        )
+    except subprocess.TimeoutExpired:
+        logging.warning("DishFramed timed out for chat_id=%s", chat_id)
+        try:
+            client.send_message(
+                chat_id,
+                config.timeout_message,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
+        except Exception:
+            logging.exception("Failed to send DishFramed timeout response for chat_id=%s", chat_id)
+    except ExecutorCancelledError:
+        try:
+            client.send_message(
+                chat_id,
+                REQUEST_CANCELED_MESSAGE,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
+        except Exception:
+            logging.exception("Failed to send DishFramed cancel response for chat_id=%s", chat_id)
+    except Exception:
+        logging.exception("Unexpected DishFramed worker error for chat_id=%s", chat_id)
+        try:
+            client.send_message(
+                chat_id,
+                config.generic_error_message,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
+        except Exception:
+            logging.exception("Failed to send DishFramed worker error response for chat_id=%s", chat_id)
+
+
+def start_dishframed_worker(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+    photo_file_ids: List[str],
+    cancel_event: Optional[threading.Event] = None,
+) -> None:
+    worker = threading.Thread(
+        target=process_dishframed_worker,
+        args=(
+            state,
+            config,
+            client,
+            scope_key,
+            chat_id,
+            message_thread_id,
+            message_id,
+            photo_file_ids,
             cancel_event,
         ),
         daemon=True,
@@ -6208,6 +6555,15 @@ def handle_update(
     if prompt_input is None and not photo_file_ids and voice_file_id is None and document is None:
         return
 
+    explicit_photo_file_ids = extract_message_photo_file_ids(message)
+    if explicit_photo_file_ids:
+        remember_recent_scope_photos(
+            state=state,
+            scope_key=scope_key,
+            message_id=message_id,
+            photo_file_ids=explicit_photo_file_ids,
+        )
+
     prewarm_attachment_archive_for_message(
         state=state,
         config=config,
@@ -6480,6 +6836,62 @@ def handle_update(
             chat_id,
             RATE_LIMIT_MESSAGE,
             reply_to_message_id=message_id,
+        )
+        return
+
+    if command == "/dishframed":
+        if not photo_file_ids:
+            photo_file_ids = get_recent_scope_photos(state, scope_key)
+        if not photo_file_ids:
+            client.send_message(
+                chat_id,
+                DISHFRAMED_USAGE_MESSAGE,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
+            return
+        if not mark_busy(state, scope_key):
+            emit_event(
+                "bridge.request_rejected",
+                level=logging.WARNING,
+                fields={"chat_id": chat_id, "message_id": message_id, "reason": "chat_busy"},
+            )
+            client.send_message(
+                chat_id,
+                config.busy_message,
+                reply_to_message_id=message_id,
+                message_thread_id=message_thread_id,
+            )
+            return
+        cancel_event = register_cancel_event(state, scope_key)
+        StateRepository(state).mark_in_flight_request(scope_key, message_id)
+        emit_event(
+            "bridge.request_accepted",
+            fields={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "scope_key": scope_key,
+                "has_photo": True,
+                "has_voice": False,
+                "has_document": False,
+                "stateless": True,
+                "route": "dishframed",
+            },
+        )
+        start_dishframed_worker(
+            state=state,
+            config=config,
+            client=client,
+            scope_key=scope_key,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            message_id=message_id,
+            photo_file_ids=photo_file_ids,
+            cancel_event=cancel_event,
+        )
+        emit_event(
+            "bridge.worker_started",
+            fields={"chat_id": chat_id, "message_id": message_id, "route": "dishframed"},
         )
         return
 

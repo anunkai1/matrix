@@ -41,6 +41,16 @@ normalize_remote_path() {
   printf '%s' "$input"
 }
 
+encode_remote_path() {
+  python3 - "$1" <<'PY'
+from urllib.parse import quote
+import sys
+
+path = sys.argv[1] if len(sys.argv) > 1 else "/"
+print(quote(path, safe="/"))
+PY
+}
+
 nextcloud_auth_curl() {
   curl -k -sS -u "${NEXTCLOUD_USERNAME}:${NEXTCLOUD_APP_PASSWORD}" "$@"
 }

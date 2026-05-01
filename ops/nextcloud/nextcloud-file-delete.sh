@@ -24,7 +24,7 @@ require_cmd curl
 load_nextcloud_ops_env
 
 REMOTE_PATH="$(normalize_remote_path "$1")"
-DAV_URL="${NEXTCLOUD_BASE_URL}/remote.php/dav/files/${NEXTCLOUD_USERNAME}${REMOTE_PATH}"
+DAV_URL="${NEXTCLOUD_BASE_URL}/remote.php/dav/files/${NEXTCLOUD_USERNAME}$(encode_remote_path "$REMOTE_PATH")"
 
 HTTP_CODE="$(
   nextcloud_auth_curl \

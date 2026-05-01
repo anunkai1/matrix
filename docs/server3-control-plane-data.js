@@ -1,18 +1,18 @@
 window.SERVER3_CONTROL_PLANE_DATA = {
-  "generatedAt": "2026-04-27T15:31:02.385655+10:00",
+  "generatedAt": "2026-04-30T20:53:51.331633+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
     "runtimeValue": "7 live",
-    "runtimeCopy": "6 healthy, 1 degraded, 0 waiting, 0 offline",
+    "runtimeCopy": "7 healthy, 0 degraded, 0 waiting, 0 offline",
     "approvalValue": "0 pending",
     "approvalCopy": "explicit human gates from live Server3 state",
     "jobValue": "12 tracked",
     "jobCopy": "timers, approvals, and operator playback in one surface",
-    "hostValue": "load 8.62 / ram 6%",
+    "hostValue": "load 0.89 / ram 11%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "27 Apr 2026 15:31 AEST",
+      "30 Apr 2026 20:53 AEST",
       "snapshot file server3-control-plane-data.js",
       "0 approval item(s)"
     ],
@@ -50,7 +50,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         "title": "Nominal lane",
         "stateClass": "ok",
         "stateText": "healthy",
-        "body": "6 selected runtimes match expected live posture."
+        "body": "7 selected runtimes match expected live posture."
       },
       {
         "title": "Approval lane",
@@ -86,44 +86,44 @@ window.SERVER3_CONTROL_PLANE_DATA = {
   },
   "activity": [
     {
-      "time": "15:31:58",
+      "time": "20:53:32",
       "title": "Oracle recent service activity",
       "channel": "signal runtime",
-      "statusClass": "danger",
-      "statusText": "degraded",
-      "copy": "2026-04-27 15:31:58,163 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
-    },
-    {
-      "time": "15:31:34",
-      "title": "Diary recent service activity",
-      "channel": "capture runtime",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "bridge.started"
+      "copy": "2026-04-30 20:53:32,185 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
     },
     {
-      "time": "15:31:34",
+      "time": "20:17:35",
       "title": "Mavali ETH recent service activity",
       "channel": "venue operations runtime",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "bridge.started"
+      "copy": "bridge.request_processing_finished"
     },
     {
-      "time": "15:31:34",
+      "time": "13:15:34",
+      "title": "Diary recent service activity",
+      "channel": "capture runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.diary_batch_finished"
+    },
+    {
+      "time": "09:21:28",
       "title": "Tank recent service activity",
       "channel": "telegram sibling",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "bridge.started"
+      "copy": "bridge.telegram_api_retry_succeeded | getUpdates"
     },
     {
-      "time": "15:31:34",
-      "title": "Architect recent service activity",
-      "channel": "telegram primary",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "bridge.started"
+      "time": "17:55:06",
+      "title": "Browser Brain recent service activity",
+      "channel": "browser control surface",
+      "statusClass": "busy",
+      "statusText": "attached",
+      "copy": "no live browser target | no explicit auth cue"
     },
     {
       "time": "15:30:56",
@@ -136,6 +136,22 @@ window.SERVER3_CONTROL_PLANE_DATA = {
   ],
   "playback": {
     "items": [
+      {
+        "time": "20:53:41",
+        "title": "refreshed control-plane snapshot",
+        "channel": "snapshot",
+        "statusClass": "ok",
+        "statusText": "ok",
+        "copy": "snapshot refresh via local. /home/architect/matrix/docs/server3-control-plane-data.json"
+      },
+      {
+        "time": "20:25:29",
+        "title": "refreshed control-plane snapshot",
+        "channel": "snapshot",
+        "statusClass": "ok",
+        "statusText": "ok",
+        "copy": "snapshot refresh via local. /home/architect/matrix/docs/server3-control-plane-data.json"
+      },
       {
         "time": "21:42:58",
         "title": "SignalTube rescan started",
@@ -183,22 +199,6 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         "statusClass": "ok",
         "statusText": "ok",
         "copy": "signaltube ask via token. I want to see videos about AI news, but not from MSM"
-      },
-      {
-        "time": "19:27:59",
-        "title": "Ask SignalTube scan started",
-        "channel": "signaltube",
-        "statusClass": "ok",
-        "statusText": "ok",
-        "copy": "signaltube ask via token. I want to see videos about AI news, but not from MSM"
-      },
-      {
-        "time": "19:12:56",
-        "title": "Ask SignalTube scan started",
-        "channel": "signaltube",
-        "statusClass": "ok",
-        "statusText": "ok",
-        "copy": "signaltube ask via local. That is a bit too much mainstream news, can you remove mainstream news"
       }
     ],
     "meta": [
@@ -208,11 +208,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       },
       {
         "label": "last actor path",
-        "value": "token"
+        "value": "local"
       },
       {
         "label": "last action",
-        "value": "signaltube rescan"
+        "value": "snapshot refresh"
       },
       {
         "label": "captured bundles",
@@ -231,14 +231,14 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     {
       "title": "Observer summary",
       "tagClass": "busy",
-      "tagText": "28 Apr 08:05",
-      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 27 Apr 08:05."
+      "tagText": "01 May 08:05",
+      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 30 Apr 08:05."
     },
     {
       "title": "Routing drift check",
       "tagClass": "busy",
-      "tagText": "28 Apr 06:15",
-      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 27 Apr 06:15."
+      "tagText": "01 May 06:15",
+      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 30 Apr 06:15."
     },
     {
       "title": "State backup",
@@ -250,23 +250,31 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "title": "Receipt monitor",
       "tagClass": "busy",
       "tagText": "not scheduled",
-      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: not scheduled."
+      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 30 Apr 20:31."
     }
   ],
   "floor": [
     {
-      "title": "Disk posture",
+      "title": "Internal disk",
+      "stateClass": "ok",
+      "stateText": "nominal",
+      "value": "11% used",
+      "body": "/ | 403 GiB free of 480 GiB",
+      "statusLine": "system root filesystem"
+    },
+    {
+      "title": "External disk",
       "stateClass": "warn",
       "stateText": "watch",
-      "value": "41% used",
-      "body": "/srv/external/server3-arr | 993 GiB free of 1833 GiB",
+      "value": "40% used",
+      "body": "/srv/external/server3-arr | 1005 GiB free of 1833 GiB",
       "statusLine": "backup disk: 7% used"
     },
     {
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 8.62 / ram 6%",
+      "value": "load 0.89 / ram 11%",
       "body": "primary route nordlynx / 10.5.0.2",
       "statusLine": "host: server3"
     },
@@ -284,7 +292,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "stateText": "queued",
       "value": "Observer summary, Routing drift check, State backup",
       "body": "Visible timers stay on the floor so continuity work is never hidden behind another tool.",
-      "statusLine": "next: 28 Apr 08:05"
+      "statusLine": "next: 01 May 08:05"
     }
   ],
   "runtimes": [
@@ -322,7 +330,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-architect-bridge.service",
-          "value": "15:31:34 bridge.started"
+          "value": "--:--:-- no recent log line"
         }
       ],
       "watchouts": [
@@ -406,7 +414,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-tank-bridge.service",
-          "value": "15:31:34 bridge.started"
+          "value": "09:21:28 bridge.telegram_api_retry_succeeded | getUpdates"
         }
       ],
       "watchouts": [
@@ -477,7 +485,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-diary-bridge.service",
-          "value": "15:31:34 bridge.started"
+          "value": "13:15:34 bridge.diary_batch_finished"
         }
       ],
       "watchouts": [
@@ -552,7 +560,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         },
         {
           "label": "govorun-whatsapp-bridge.service",
-          "value": "15:31:43 bridge.poll_error"
+          "value": "12:38:21 bridge.request_processing_finished"
         }
       ],
       "watchouts": [
@@ -593,8 +601,8 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     {
       "key": "oracle",
       "name": "Oracle",
-      "stateClass": "danger",
-      "stateText": "degraded",
+      "stateClass": "ok",
+      "stateText": "healthy",
       "role": "Signal runtime",
       "operatorNote": "transport + bridge",
       "summary": "Signal transport sidecar used by the Oracle bridge.",
@@ -618,13 +626,13 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         },
         {
           "label": "live state",
-          "value": "active / activating"
+          "value": "active / active"
         }
       ],
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "15:31:58 2026-04-27 15:31:58,163 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
+          "value": "20:53:32 2026-04-30 20:53:32,185 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
         },
         {
           "label": "oracle-signal-bridge.service",
@@ -634,7 +642,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "watchouts": [
         {
           "label": "current issue",
-          "value": "expected active, got activating"
+          "value": "no active unit mismatch detected"
         },
         {
           "label": "operator note",
@@ -700,7 +708,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-mavali-eth-bridge.service",
-          "value": "15:31:34 bridge.started"
+          "value": "20:17:35 bridge.request_processing_finished"
         },
         {
           "label": "mavali-eth-receipt-monitor.timer",
@@ -771,16 +779,16 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       ],
       "recentJobs": [
         {
-          "label": "07:45:46 snapshot",
-          "value": "169 elements | snap-1c09f1fc"
+          "label": "17:55:06 snapshot",
+          "value": "22 elements | snap-e999074c"
         },
         {
-          "label": "07:45:42 tabs.open",
-          "value": "x.com/search"
+          "label": "17:55:06 tabs.focus",
+          "value": "browser event"
         },
         {
-          "label": "07:45:33 snapshot",
-          "value": "146 elements | snap-4f59332a"
+          "label": "17:54:34 snapshot",
+          "value": "22 elements | snap-963b3315"
         }
       ],
       "watchouts": [
@@ -824,7 +832,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         "state": [
           {
             "label": "connection",
-            "value": "existing_session / stopped"
+            "value": "managed / running"
           },
           {
             "label": "auth posture",
@@ -853,20 +861,20 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         ],
         "activity": [
           {
-            "label": "07:45:46 snapshot",
-            "value": "169 elements | snap-1c09f1fc"
+            "label": "17:55:06 snapshot",
+            "value": "22 elements | snap-e999074c"
           },
           {
-            "label": "07:45:42 tabs.open",
-            "value": "x.com/search"
-          },
-          {
-            "label": "07:45:33 snapshot",
-            "value": "146 elements | snap-4f59332a"
-          },
-          {
-            "label": "07:45:29 start",
+            "label": "17:55:06 tabs.focus",
             "value": "browser event"
+          },
+          {
+            "label": "17:54:34 snapshot",
+            "value": "22 elements | snap-963b3315"
+          },
+          {
+            "label": "17:54:29 snapshot",
+            "value": "snap-bf0eb101"
           }
         ],
         "summary": {
@@ -875,7 +883,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
           "auth_posture": "no explicit auth cue",
           "manual_takeover": "tv helper not visible",
           "capture_dir": "/var/lib/server3-browser-brain/captures",
-          "started_at": ""
+          "started_at": "2026-04-28T07:53:34.308306+00:00"
         }
       }
     }

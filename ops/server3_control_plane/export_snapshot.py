@@ -936,13 +936,22 @@ def build_overview(summary_counts: Dict[str, int], approvals: List[Dict[str, str
 
 
 def build_floor(timers: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    root_disk = path_disk_summary(Path("/"))
     arr_disk = path_disk_summary(Path("/srv/external/server3-arr"))
     backup_disk = path_disk_summary(Path("/srv/external/server3-backups"))
     data_disk = path_disk_summary(Path("/data/downloads"))
     host_state = f"{load_avg_summary()} / {memory_summary()}"
     return [
         {
-            "title": "Disk posture",
+            "title": "Internal disk",
+            "stateClass": "ok",
+            "stateText": "nominal",
+            "value": root_disk.get("usage", "unknown"),
+            "body": f"{root_disk['path']} | {root_disk.get('detail', 'path unavailable')}",
+            "statusLine": "system root filesystem",
+        },
+        {
+            "title": "External disk",
             "stateClass": "warn",
             "stateText": "watch",
             "value": arr_disk.get("usage", "unknown"),

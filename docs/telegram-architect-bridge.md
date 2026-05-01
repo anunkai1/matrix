@@ -233,7 +233,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/help` command list
 - `/h` short help alias
 - `/status` bridge health and uptime
-- `/engine status|codex|gemma|pi|venice|chatgptweb|reset` show or select this chat/topic's engine
+- `/engine status|codex|gemma|pi|chatgptweb|reset` show or select this chat/topic's engine
 - `/model` show this chat/topic's current model for the active engine
 - `/model list` list model choices/help for the active engine
 - `/model <name>` set this chat/topic's model for the active engine
@@ -267,7 +267,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 The bridge can use Server4 Beast's Ollama-hosted `gemma4:26b` model as a selectable engine while keeping Server3 as the bot host.
 
 - Default engine remains `codex`.
-- Selectable engines default to `codex,gemma,pi`; Venice is available when `VENICE_API_KEY` is configured and `venice` is added to the selectable engine list.
+- Selectable engines default to `codex,gemma,pi`.
 - Gemma defaults to the SSH-backed Ollama transport (`GEMMA_PROVIDER=ollama_ssh`) via SSH alias `server4-beast`, so Ollama does not need to listen on the LAN.
 - Per chat/topic, use `/engine gemma`, `/engine codex`, `/engine reset`, or `/engine status`.
 - When Gemma is the effective engine, `/engine status` performs a bounded live Ollama health check and reports health, response time, model availability, and current check error.
@@ -305,19 +305,18 @@ The shared bridge can also select a dedicated deterministic wallet engine used b
 
 See [`docs/runbooks/mavali-eth-engine.md`](runbooks/mavali-eth-engine.md).
 
-## Venice Engine
+## Venice via Pi
 
-The bridge can also select a Venice API-backed engine through the same `/engine` override path.
+Venice remains supported as a Pi provider, but it is intentionally not exposed as a first-class `/engine venice` option anymore.
 
 - Provider: `VENICE_BASE_URL=https://api.venice.ai/api/v1`
 - API key: `VENICE_API_KEY`
-- Default model: `deepseek-v4-flash`
+- Typical Pi model: `deepseek-v4-flash`
 - Optional temperature override: `VENICE_TEMPERATURE=0.2`
 - Optional request timeout: `VENICE_REQUEST_TIMEOUT_SECONDS=180`
-- Supports text and image prompts through Venice's OpenAI-compatible chat completions API.
-- Per chat/topic, use `/engine venice`, `/engine codex`, `/engine reset`, or `/engine status`.
-- When Venice is the effective engine, `/engine status` performs a short live Venice API health check and reports health, response time, model availability, and current check error.
-- Venice does not yet have the Codex tool/action harness. Use Codex for server operations, repo edits, image handling, and high-risk actions until the harness is added.
+- To use Venice in chat, keep `/engine pi` selected and set `PI_PROVIDER=venice`.
+- Use `/pi` and `/engine status` to inspect the active Pi provider/model for the current chat/topic.
+- This keeps the user-facing engine list simpler while preserving Venice-backed Pi workflows.
 
 ### Experimental ChatGPT Web Engine
 
