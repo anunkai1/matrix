@@ -764,139 +764,198 @@ def persist_chat_pi_providers(state: State) -> None:
     persist_json_state_file(state.chat_pi_provider_path, serialized)
 
 
-def get_chat_engine(state: State, scope_key: ScopeKey) -> Optional[str]:
+def _get_string_override(
+    state: State,
+    scope_key: ScopeKey,
+    values: Dict[ScopeKey, str],
+    *,
+    normalize=str.strip,
+) -> Optional[str]:
     scope_key = normalize_scope_key(scope_key)
     with state.lock:
-        engine_name = state.chat_engines.get(scope_key, "").strip().lower()
-    return engine_name or None
+        value = normalize(values.get(scope_key, ""))
+    return value or None
+
+
+def _set_string_override(
+    state: State,
+    scope_key: ScopeKey,
+    values: Dict[ScopeKey, str],
+    raw_value: str,
+    persist_fn,
+    *,
+    normalize=str.strip,
+) -> None:
+    scope_key = normalize_scope_key(scope_key)
+    normalized_value = normalize(raw_value)
+    with state.lock:
+        values[scope_key] = normalized_value
+    persist_fn(state)
+
+
+def _clear_string_override(
+    state: State,
+    scope_key: ScopeKey,
+    values: Dict[ScopeKey, str],
+    persist_fn,
+) -> bool:
+    scope_key = normalize_scope_key(scope_key)
+    removed = False
+    with state.lock:
+        if scope_key in values:
+            del values[scope_key]
+            removed = True
+    if removed:
+        persist_fn(state)
+    return removed
+
+
+def _persist_legacy_state(
+    state: State,
+    *,
+    chat_threads: bool = False,
+    worker_sessions: bool = False,
+    in_flight_requests: bool = False,
+) -> None:
+    if chat_threads:
+        persist_chat_threads(state)
+    if worker_sessions:
+        persist_worker_sessions(state)
+    if in_flight_requests:
+        persist_in_flight_requests(state)
+
+
+def get_chat_engine(state: State, scope_key: ScopeKey) -> Optional[str]:
+    return _get_string_override(
+        state,
+        scope_key,
+        state.chat_engines,
+        normalize=lambda value: value.strip().lower(),
+    )
 
 
 def set_chat_engine(state: State, scope_key: ScopeKey, engine_name: str) -> None:
-    scope_key = normalize_scope_key(scope_key)
-    normalized_engine = engine_name.strip().lower()
-    with state.lock:
-        state.chat_engines[scope_key] = normalized_engine
-    persist_chat_engines(state)
+    _set_string_override(
+        state,
+        scope_key,
+        state.chat_engines,
+        engine_name,
+        persist_chat_engines,
+        normalize=lambda value: value.strip().lower(),
+    )
 
 
 def clear_chat_engine(state: State, scope_key: ScopeKey) -> bool:
-    scope_key = normalize_scope_key(scope_key)
-    removed = False
-    with state.lock:
-        if scope_key in state.chat_engines:
-            del state.chat_engines[scope_key]
-            removed = True
-    if removed:
-        persist_chat_engines(state)
-    return removed
+    return _clear_string_override(
+        state,
+        scope_key,
+        state.chat_engines,
+        persist_chat_engines,
+    )
 
 
 def get_chat_codex_model(state: State, scope_key: ScopeKey) -> Optional[str]:
-    scope_key = normalize_scope_key(scope_key)
-    with state.lock:
-        model_name = state.chat_codex_models.get(scope_key, "").strip()
-    return model_name or None
+    return _get_string_override(state, scope_key, state.chat_codex_models)
 
 
 def set_chat_codex_model(state: State, scope_key: ScopeKey, model_name: str) -> None:
-    scope_key = normalize_scope_key(scope_key)
-    normalized_model = model_name.strip()
-    with state.lock:
-        state.chat_codex_models[scope_key] = normalized_model
-    persist_chat_codex_models(state)
+    _set_string_override(
+        state,
+        scope_key,
+        state.chat_codex_models,
+        model_name,
+        persist_chat_codex_models,
+    )
 
 
 def clear_chat_codex_model(state: State, scope_key: ScopeKey) -> bool:
-    scope_key = normalize_scope_key(scope_key)
-    removed = False
-    with state.lock:
-        if scope_key in state.chat_codex_models:
-            del state.chat_codex_models[scope_key]
-            removed = True
-    if removed:
-        persist_chat_codex_models(state)
-    return removed
+    return _clear_string_override(
+        state,
+        scope_key,
+        state.chat_codex_models,
+        persist_chat_codex_models,
+    )
 
 
 def get_chat_codex_effort(state: State, scope_key: ScopeKey) -> Optional[str]:
-    scope_key = normalize_scope_key(scope_key)
-    with state.lock:
-        effort_name = state.chat_codex_efforts.get(scope_key, "").strip().lower()
-    return effort_name or None
+    return _get_string_override(
+        state,
+        scope_key,
+        state.chat_codex_efforts,
+        normalize=lambda value: value.strip().lower(),
+    )
 
 
 def set_chat_codex_effort(state: State, scope_key: ScopeKey, effort_name: str) -> None:
-    scope_key = normalize_scope_key(scope_key)
-    normalized_effort = effort_name.strip().lower()
-    with state.lock:
-        state.chat_codex_efforts[scope_key] = normalized_effort
-    persist_chat_codex_efforts(state)
+    _set_string_override(
+        state,
+        scope_key,
+        state.chat_codex_efforts,
+        effort_name,
+        persist_chat_codex_efforts,
+        normalize=lambda value: value.strip().lower(),
+    )
 
 
 def clear_chat_codex_effort(state: State, scope_key: ScopeKey) -> bool:
-    scope_key = normalize_scope_key(scope_key)
-    removed = False
-    with state.lock:
-        if scope_key in state.chat_codex_efforts:
-            del state.chat_codex_efforts[scope_key]
-            removed = True
-    if removed:
-        persist_chat_codex_efforts(state)
-    return removed
+    return _clear_string_override(
+        state,
+        scope_key,
+        state.chat_codex_efforts,
+        persist_chat_codex_efforts,
+    )
 
 
 def get_chat_pi_provider(state: State, scope_key: ScopeKey) -> Optional[str]:
-    scope_key = normalize_scope_key(scope_key)
-    with state.lock:
-        provider_name = state.chat_pi_providers.get(scope_key, "").strip().lower()
-    return provider_name or None
+    return _get_string_override(
+        state,
+        scope_key,
+        state.chat_pi_providers,
+        normalize=lambda value: value.strip().lower(),
+    )
 
 
 def set_chat_pi_provider(state: State, scope_key: ScopeKey, provider_name: str) -> None:
-    scope_key = normalize_scope_key(scope_key)
-    normalized_provider = provider_name.strip().lower()
-    with state.lock:
-        state.chat_pi_providers[scope_key] = normalized_provider
-    persist_chat_pi_providers(state)
+    _set_string_override(
+        state,
+        scope_key,
+        state.chat_pi_providers,
+        provider_name,
+        persist_chat_pi_providers,
+        normalize=lambda value: value.strip().lower(),
+    )
 
 
 def clear_chat_pi_provider(state: State, scope_key: ScopeKey) -> bool:
-    scope_key = normalize_scope_key(scope_key)
-    removed = False
-    with state.lock:
-        if scope_key in state.chat_pi_providers:
-            del state.chat_pi_providers[scope_key]
-            removed = True
-    if removed:
-        persist_chat_pi_providers(state)
-    return removed
+    return _clear_string_override(
+        state,
+        scope_key,
+        state.chat_pi_providers,
+        persist_chat_pi_providers,
+    )
 
 
 def get_chat_pi_model(state: State, scope_key: ScopeKey) -> Optional[str]:
-    scope_key = normalize_scope_key(scope_key)
-    with state.lock:
-        model_name = state.chat_pi_models.get(scope_key, "").strip()
-    return model_name or None
+    return _get_string_override(state, scope_key, state.chat_pi_models)
 
 
 def set_chat_pi_model(state: State, scope_key: ScopeKey, model_name: str) -> None:
-    scope_key = normalize_scope_key(scope_key)
-    normalized_model = model_name.strip()
-    with state.lock:
-        state.chat_pi_models[scope_key] = normalized_model
-    persist_chat_pi_models(state)
+    _set_string_override(
+        state,
+        scope_key,
+        state.chat_pi_models,
+        model_name,
+        persist_chat_pi_models,
+    )
 
 
 def clear_chat_pi_model(state: State, scope_key: ScopeKey) -> bool:
-    scope_key = normalize_scope_key(scope_key)
-    removed = False
-    with state.lock:
-        if scope_key in state.chat_pi_models:
-            del state.chat_pi_models[scope_key]
-            removed = True
-    if removed:
-        persist_chat_pi_models(state)
-    return removed
+    return _clear_string_override(
+        state,
+        scope_key,
+        state.chat_pi_models,
+        persist_chat_pi_models,
+    )
 
 
 def persist_worker_sessions(state: State) -> None:
@@ -968,9 +1027,12 @@ def mirror_legacy_from_canonical(state: State, persist: bool = True) -> None:
         state.worker_sessions = worker_sessions
         state.in_flight_requests = in_flight_requests
     if persist_enabled:
-        persist_chat_threads(state)
-        persist_worker_sessions(state)
-        persist_in_flight_requests(state)
+        _persist_legacy_state(
+            state,
+            chat_threads=True,
+            worker_sessions=True,
+            in_flight_requests=True,
+        )
 
 
 def persist_canonical_and_mirror_legacy(state: State) -> None:
@@ -1097,9 +1159,9 @@ def set_thread_id(state: State, scope_key: ScopeKey, thread_id: str) -> None:
             session.last_used_at = time.time()
             persist_sessions = True
     if persist_threads:
-        persist_chat_threads(state)
+        _persist_legacy_state(state, chat_threads=True)
     if persist_sessions:
-        persist_worker_sessions(state)
+        _persist_legacy_state(state, worker_sessions=True)
     if persist_threads or persist_sessions:
         sync_canonical_session(state, scope_key)
 
@@ -1136,9 +1198,9 @@ def clear_thread_id(state: State, scope_key: ScopeKey) -> bool:
             session.last_used_at = time.time()
             persist_sessions = True
     if removed:
-        persist_chat_threads(state)
+        _persist_legacy_state(state, chat_threads=True)
     if persist_sessions:
-        persist_worker_sessions(state)
+        _persist_legacy_state(state, worker_sessions=True)
     if removed or persist_sessions:
         sync_canonical_session(state, scope_key)
     return removed

@@ -406,6 +406,53 @@ def load_codex_reasoning_effort() -> str:
     return str(effort).strip().lower() if isinstance(effort, str) else ""
 
 
+def resolve_state_paths(state_dir: str) -> tuple[str, str, str]:
+    canonical_sqlite_path = os.getenv("TELEGRAM_CANONICAL_SQLITE_PATH", "").strip()
+    if not canonical_sqlite_path:
+        canonical_sqlite_path = os.path.join(state_dir, "chat_sessions.sqlite3")
+
+    memory_sqlite_path = os.getenv("TELEGRAM_MEMORY_SQLITE_PATH", "").strip()
+    if not memory_sqlite_path:
+        memory_sqlite_path = os.path.join(state_dir, "memory.sqlite3")
+
+    affective_runtime_db_path = os.getenv(
+        "TELEGRAM_AFFECTIVE_RUNTIME_DB_PATH",
+        os.path.join(state_dir, "affective_state.sqlite3"),
+    ).strip() or os.path.join(state_dir, "affective_state.sqlite3")
+
+    return canonical_sqlite_path, memory_sqlite_path, affective_runtime_db_path
+
+
+def resolve_runtime_identity() -> tuple[str, str, str, str, str, str]:
+    assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
+    shared_memory_key = os.getenv("TELEGRAM_SHARED_MEMORY_KEY", "").strip()
+    progress_label = os.getenv("TELEGRAM_PROGRESS_LABEL", "").strip()
+
+    raw_progress_elapsed_prefix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_PREFIX")
+    progress_elapsed_prefix = (
+        "Already" if raw_progress_elapsed_prefix is None else raw_progress_elapsed_prefix.strip()
+    )
+
+    raw_progress_elapsed_suffix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_SUFFIX")
+    progress_elapsed_suffix = "s" if raw_progress_elapsed_suffix is None else raw_progress_elapsed_suffix
+
+    busy_message = (
+        os.getenv(
+            "TELEGRAM_BUSY_MESSAGE",
+            "Another request is still running. Please wait.",
+        ).strip()
+        or "Another request is still running. Please wait."
+    )
+    return (
+        assistant_name,
+        shared_memory_key,
+        progress_label,
+        progress_elapsed_prefix,
+        progress_elapsed_suffix,
+        busy_message,
+    )
+
+
 def load_config() -> Config:
     channel_plugin = parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram")
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -421,42 +468,23 @@ def load_config() -> Config:
     ).strip()
     if not state_dir:
         raise ValueError("TELEGRAM_BRIDGE_STATE_DIR cannot be empty")
-    canonical_sqlite_path = os.getenv("TELEGRAM_CANONICAL_SQLITE_PATH", "").strip()
-    if not canonical_sqlite_path:
-        canonical_sqlite_path = os.path.join(state_dir, "chat_sessions.sqlite3")
-    memory_sqlite_path = os.getenv("TELEGRAM_MEMORY_SQLITE_PATH", "").strip()
-    if not memory_sqlite_path:
-        memory_sqlite_path = os.path.join(state_dir, "memory.sqlite3")
-    affective_runtime_db_path = os.getenv(
-        "TELEGRAM_AFFECTIVE_RUNTIME_DB_PATH",
-        os.path.join(state_dir, "affective_state.sqlite3"),
-    ).strip() or os.path.join(state_dir, "affective_state.sqlite3")
+    canonical_sqlite_path, memory_sqlite_path, affective_runtime_db_path = resolve_state_paths(
+        state_dir
+    )
     affective_runtime_ping_target = os.getenv(
         "TELEGRAM_AFFECTIVE_RUNTIME_PING_TARGET",
         "1.1.1.1",
     )
 
     allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids) if raw_chat_ids else set()
-    assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
-    shared_memory_key = os.getenv("TELEGRAM_SHARED_MEMORY_KEY", "").strip()
-    progress_label = os.getenv("TELEGRAM_PROGRESS_LABEL", "").strip()
-    raw_progress_elapsed_prefix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_PREFIX")
-    if raw_progress_elapsed_prefix is None:
-        progress_elapsed_prefix = "Already"
-    else:
-        progress_elapsed_prefix = raw_progress_elapsed_prefix.strip()
-    raw_progress_elapsed_suffix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_SUFFIX")
-    if raw_progress_elapsed_suffix is None:
-        progress_elapsed_suffix = "s"
-    else:
-        progress_elapsed_suffix = raw_progress_elapsed_suffix
-    busy_message = (
-        os.getenv(
-            "TELEGRAM_BUSY_MESSAGE",
-            "Another request is still running. Please wait.",
-        ).strip()
-        or "Another request is still running. Please wait."
-    )
+    (
+        assistant_name,
+        shared_memory_key,
+        progress_label,
+        progress_elapsed_prefix,
+        progress_elapsed_suffix,
+        busy_message,
+    ) = resolve_runtime_identity()
     exec_timeout_seconds = parse_int_env("TELEGRAM_EXEC_TIMEOUT_SECONDS", 36000)
     return Config(
         token=token,
