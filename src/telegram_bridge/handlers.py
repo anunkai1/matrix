@@ -286,12 +286,6 @@ DISHFRAMED_USAGE_MESSAGE = (
 )
 
 
-KnownCommandHandler = Callable[[KnownCommandContext], bool]
-
-
-CallbackActionHandler = Callable[[CallbackActionContext], CallbackActionResult]
-
-
 def normalize_command(text: str) -> Optional[str]:
     stripped = text.strip()
     head: Optional[str] = None
