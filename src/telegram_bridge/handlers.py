@@ -770,6 +770,50 @@ def send_generic_worker_error_response(
     )
 
 
+def send_timeout_response(
+    client: ChannelAdapter,
+    config,
+    chat_id: int,
+    message_id: Optional[int],
+    message_thread_id: Optional[int] = None,
+) -> None:
+    client.send_message(
+        chat_id,
+        config.timeout_message,
+        reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
+    )
+
+
+def emit_worker_exception_and_reply(
+    *,
+    log_message: str,
+    failure_log_message: str,
+    event_fields: Dict[str, object],
+    client: ChannelAdapter,
+    config,
+    chat_id: int,
+    message_id: Optional[int],
+    message_thread_id: Optional[int] = None,
+) -> None:
+    logging.exception(log_message, chat_id)
+    emit_event(
+        "bridge.request_worker_exception",
+        level=logging.ERROR,
+        fields=event_fields,
+    )
+    try:
+        send_generic_worker_error_response(
+            client,
+            config,
+            chat_id,
+            message_id,
+            message_thread_id,
+        )
+    except Exception:
+        logging.exception(failure_log_message, chat_id)
+
+
 EXECUTOR_USAGE_LIMIT_RE = re.compile(r"\bhit your usage limit\b", re.IGNORECASE)
 EXECUTOR_RETRY_AT_RE = re.compile(r"\btry again at ([0-9]{1,2}:\d{2}\s*[AP]M)\b", re.IGNORECASE)
 
@@ -910,6 +954,15 @@ def finalize_request_progress(
     if finish_event_fields:
         fields.update(finish_event_fields)
     emit_event(finish_event_name, fields=fields)
+
+
+def start_background_worker(target: Callable[..., None], *args: object) -> None:
+    worker = threading.Thread(
+        target=target,
+        args=args,
+        daemon=True,
+    )
+    worker.start()
 
 
 def request_chat_cancel(state: State, scope_key: str) -> str:
@@ -3608,25 +3661,16 @@ def _process_message_worker_request(request: PromptRequest) -> None:
     try:
         _process_prompt_request(request)
     except Exception:
-        logging.exception("Unexpected message worker error for chat_id=%s", request.chat_id)
-        emit_event(
-            "bridge.request_worker_exception",
-            level=logging.ERROR,
-            fields={"chat_id": request.chat_id, "message_id": request.message_id},
+        emit_worker_exception_and_reply(
+            log_message="Unexpected message worker error for chat_id=%s",
+            failure_log_message="Failed to send worker error response for chat_id=%s",
+            event_fields={"chat_id": request.chat_id, "message_id": request.message_id},
+            client=request.client,
+            config=request.config,
+            chat_id=request.chat_id,
+            message_id=request.message_id,
+            message_thread_id=request.message_thread_id,
         )
-        try:
-            send_generic_worker_error_response(
-                request.client,
-                request.config,
-                request.chat_id,
-                request.message_id,
-                request.message_thread_id,
-            )
-        except Exception:
-            logging.exception(
-                "Failed to send worker error response for chat_id=%s",
-                request.chat_id,
-            )
 
 
 def process_message_worker(
@@ -3822,31 +3866,20 @@ def process_youtube_worker(
             fields={"chat_id": chat_id, "message_id": message_id, "phase": "youtube_analysis"},
         )
         try:
-            client.send_message(
-                chat_id,
-                config.timeout_message,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
+            send_timeout_response(client, config, chat_id, message_id, message_thread_id)
         except Exception:
             logging.exception("Failed to send YouTube timeout response for chat_id=%s", chat_id)
     except Exception:
-        logging.exception("Unexpected YouTube worker error for chat_id=%s", chat_id)
-        emit_event(
-            "bridge.request_worker_exception",
-            level=logging.ERROR,
-            fields={"chat_id": chat_id, "message_id": message_id, "phase": "youtube_analysis"},
+        emit_worker_exception_and_reply(
+            log_message="Unexpected YouTube worker error for chat_id=%s",
+            failure_log_message="Failed to send YouTube worker error response for chat_id=%s",
+            event_fields={"chat_id": chat_id, "message_id": message_id, "phase": "youtube_analysis"},
+            client=client,
+            config=config,
+            chat_id=chat_id,
+            message_id=message_id,
+            message_thread_id=message_thread_id,
         )
-        try:
-            send_generic_worker_error_response(
-                client,
-                config,
-                chat_id,
-                message_id,
-                message_thread_id,
-            )
-        except Exception:
-            logging.exception("Failed to send YouTube worker error response for chat_id=%s", chat_id)
 
 
 def start_youtube_worker(
@@ -3863,25 +3896,21 @@ def start_youtube_worker(
     actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
-    worker = threading.Thread(
-        target=process_youtube_worker,
-        args=(
-            state,
-            config,
-            client,
-            engine,
-            scope_key,
-            chat_id,
-            message_thread_id,
-            message_id,
-            request_text,
-            youtube_url,
-            actor_user_id,
-            cancel_event,
-        ),
-        daemon=True,
+    start_background_worker(
+        process_youtube_worker,
+        state,
+        config,
+        client,
+        engine,
+        scope_key,
+        chat_id,
+        message_thread_id,
+        message_id,
+        request_text,
+        youtube_url,
+        actor_user_id,
+        cancel_event,
     )
-    worker.start()
 
 
 def build_dishframed_command(image_paths: List[str], output_dir: str) -> List[str]:
@@ -4083,12 +4112,7 @@ def process_dishframed_worker(
     except subprocess.TimeoutExpired:
         logging.warning("DishFramed timed out for chat_id=%s", chat_id)
         try:
-            client.send_message(
-                chat_id,
-                config.timeout_message,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
+            send_timeout_response(client, config, chat_id, message_id, message_thread_id)
         except Exception:
             logging.exception("Failed to send DishFramed timeout response for chat_id=%s", chat_id)
     except ExecutorCancelledError:
@@ -4097,17 +4121,16 @@ def process_dishframed_worker(
         except Exception:
             logging.exception("Failed to send DishFramed cancel response for chat_id=%s", chat_id)
     except Exception:
-        logging.exception("Unexpected DishFramed worker error for chat_id=%s", chat_id)
-        try:
-            send_generic_worker_error_response(
-                client,
-                config,
-                chat_id,
-                message_id,
-                message_thread_id,
-            )
-        except Exception:
-            logging.exception("Failed to send DishFramed worker error response for chat_id=%s", chat_id)
+        emit_worker_exception_and_reply(
+            log_message="Unexpected DishFramed worker error for chat_id=%s",
+            failure_log_message="Failed to send DishFramed worker error response for chat_id=%s",
+            event_fields={"chat_id": chat_id, "message_id": message_id, "phase": "dishframed"},
+            client=client,
+            config=config,
+            chat_id=chat_id,
+            message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
 
 
 def start_dishframed_worker(
@@ -4121,22 +4144,18 @@ def start_dishframed_worker(
     photo_file_ids: List[str],
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
-    worker = threading.Thread(
-        target=process_dishframed_worker,
-        args=(
-            state,
-            config,
-            client,
-            scope_key,
-            chat_id,
-            message_thread_id,
-            message_id,
-            photo_file_ids,
-            cancel_event,
-        ),
-        daemon=True,
+    start_background_worker(
+        process_dishframed_worker,
+        state,
+        config,
+        client,
+        scope_key,
+        chat_id,
+        message_thread_id,
+        message_id,
+        photo_file_ids,
+        cancel_event,
     )
-    worker.start()
 
 
 def handle_reset_command(
@@ -6447,12 +6466,7 @@ def ensure_diary_queue_processor(
             should_start_worker = True
     if not should_start_worker:
         return
-    worker = threading.Thread(
-        target=diary_queue_worker,
-        args=(state, config, client, scope_key),
-        daemon=True,
-    )
-    worker.start()
+    start_background_worker(diary_queue_worker, state, config, client, scope_key)
 
 
 def diary_capture_batch_worker(
@@ -6582,12 +6596,7 @@ def queue_diary_capture(
         },
     )
     if should_start_capture_worker:
-        worker = threading.Thread(
-            target=diary_capture_batch_worker,
-            args=(state, config, client, scope_key),
-            daemon=True,
-        )
-        worker.start()
+        start_background_worker(diary_capture_batch_worker, state, config, client, scope_key)
 
 
 def _handle_start_known_command(ctx: KnownCommandContext) -> bool:
@@ -6835,12 +6844,7 @@ def start_message_worker(
         actor_user_id=actor_user_id,
         enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
     )
-    worker = threading.Thread(
-        target=_process_message_worker_request,
-        args=(request,),
-        daemon=True,
-    )
-    worker.start()
+    start_background_worker(_process_message_worker_request, request)
 
 
 def handle_update(
