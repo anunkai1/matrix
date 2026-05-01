@@ -344,6 +344,29 @@ class DishframedRequest:
     cancel_event: Optional[threading.Event] = None
 
 
+@dataclass(frozen=True)
+class UpdateDispatchRequest:
+    state: State
+    config: Any
+    client: ChannelAdapter
+    engine: Optional[EngineAdapter]
+    scope_key: str
+    chat_id: int
+    message_thread_id: Optional[int]
+    message_id: Optional[int]
+    prompt: str
+    raw_prompt: str
+    photo_file_ids: List[str]
+    voice_file_id: Optional[str]
+    document: Optional[DocumentPayload]
+    actor_user_id: Optional[int]
+    sender_name: str
+    stateless: bool
+    enforce_voice_prefix_from_transcript: bool
+    youtube_route_url: Optional[str] = None
+    handle_update_started_at: Optional[float] = None
+
+
 def build_youtube_request(
     state: State,
     config,
@@ -7042,6 +7065,191 @@ def start_message_worker(
     start_background_worker(_process_message_worker_request, request)
 
 
+def start_dishframed_dispatch(request: UpdateDispatchRequest) -> bool:
+    photo_file_ids = list(request.photo_file_ids)
+    if not photo_file_ids:
+        photo_file_ids = get_recent_scope_photos(request.state, request.scope_key)
+    if not photo_file_ids:
+        request.client.send_message(
+            request.chat_id,
+            DISHFRAMED_USAGE_MESSAGE,
+            reply_to_message_id=request.message_id,
+            message_thread_id=request.message_thread_id,
+        )
+        return False
+    if not mark_busy(request.state, request.scope_key):
+        emit_event(
+            "bridge.request_rejected",
+            level=logging.WARNING,
+            fields={
+                "chat_id": request.chat_id,
+                "message_id": request.message_id,
+                "reason": "chat_busy",
+            },
+        )
+        request.client.send_message(
+            request.chat_id,
+            request.config.busy_message,
+            reply_to_message_id=request.message_id,
+            message_thread_id=request.message_thread_id,
+        )
+        return False
+    cancel_event = register_cancel_event(request.state, request.scope_key)
+    StateRepository(request.state).mark_in_flight_request(request.scope_key, request.message_id)
+    emit_event(
+        "bridge.request_accepted",
+        fields={
+            "chat_id": request.chat_id,
+            "message_id": request.message_id,
+            "scope_key": request.scope_key,
+            "has_photo": True,
+            "has_voice": False,
+            "has_document": False,
+            "stateless": True,
+            "route": "dishframed",
+        },
+    )
+    start_dishframed_worker(
+        state=request.state,
+        config=request.config,
+        client=request.client,
+        scope_key=request.scope_key,
+        chat_id=request.chat_id,
+        message_thread_id=request.message_thread_id,
+        message_id=request.message_id,
+        photo_file_ids=photo_file_ids,
+        cancel_event=cancel_event,
+    )
+    emit_event(
+        "bridge.worker_started",
+        fields={"chat_id": request.chat_id, "message_id": request.message_id, "route": "dishframed"},
+    )
+    return True
+
+
+def start_standard_dispatch(request: UpdateDispatchRequest) -> bool:
+    try:
+        active_engine = resolve_engine_for_scope(
+            request.state,
+            request.config,
+            request.scope_key,
+            request.engine,
+        )
+    except Exception as exc:
+        logging.exception("Failed to resolve engine for scope=%s", request.scope_key)
+        request.client.send_message(
+            request.chat_id,
+            f"Engine selection failed: {exc}",
+            reply_to_message_id=request.message_id,
+            message_thread_id=request.message_thread_id,
+        )
+        return False
+
+    if not request.stateless:
+        if not ensure_chat_worker_session(
+            request.state,
+            request.config,
+            request.client,
+            request.scope_key,
+            request.chat_id,
+            request.message_thread_id,
+            request.message_id,
+        ):
+            emit_event(
+                "bridge.request_rejected",
+                level=logging.WARNING,
+                fields={
+                    "chat_id": request.chat_id,
+                    "message_id": request.message_id,
+                    "reason": "worker_capacity",
+                },
+            )
+            return False
+
+    if not mark_busy(request.state, request.scope_key):
+        emit_event(
+            "bridge.request_rejected",
+            level=logging.WARNING,
+            fields={
+                "chat_id": request.chat_id,
+                "message_id": request.message_id,
+                "reason": "chat_busy",
+            },
+        )
+        request.client.send_message(
+            request.chat_id,
+            request.config.busy_message,
+            reply_to_message_id=request.message_id,
+        )
+        return False
+
+    cancel_event = register_cancel_event(request.state, request.scope_key)
+    state_repo = StateRepository(request.state)
+    state_repo.mark_in_flight_request(request.scope_key, request.message_id)
+    emit_event(
+        "bridge.request_accepted",
+        fields={
+            "chat_id": request.chat_id,
+            "message_id": request.message_id,
+            "scope_key": request.scope_key,
+            "has_photo": bool(request.photo_file_ids),
+            "has_voice": bool(request.voice_file_id),
+            "has_document": request.document is not None,
+            "stateless": request.stateless,
+        },
+    )
+    if request.youtube_route_url:
+        start_youtube_worker(
+            state=request.state,
+            config=request.config,
+            client=request.client,
+            engine=active_engine,
+            scope_key=request.scope_key,
+            chat_id=request.chat_id,
+            message_thread_id=request.message_thread_id,
+            message_id=request.message_id,
+            request_text=request.raw_prompt,
+            youtube_url=request.youtube_route_url,
+            actor_user_id=request.actor_user_id,
+            cancel_event=cancel_event,
+        )
+    else:
+        start_message_worker(
+            state=request.state,
+            config=request.config,
+            client=request.client,
+            engine=active_engine,
+            scope_key=request.scope_key,
+            chat_id=request.chat_id,
+            message_thread_id=request.message_thread_id,
+            message_id=request.message_id,
+            prompt=request.prompt,
+            photo_file_id=request.photo_file_ids[0] if request.photo_file_ids else None,
+            photo_file_ids=request.photo_file_ids,
+            voice_file_id=request.voice_file_id,
+            document=request.document,
+            cancel_event=cancel_event,
+            stateless=request.stateless,
+            sender_name=request.sender_name,
+            enforce_voice_prefix_from_transcript=request.enforce_voice_prefix_from_transcript,
+            actor_user_id=request.actor_user_id,
+        )
+    emit_event(
+        "bridge.worker_started",
+        fields={"chat_id": request.chat_id, "message_id": request.message_id},
+    )
+    if request.handle_update_started_at is not None:
+        emit_phase_timing(
+            chat_id=request.chat_id,
+            message_id=request.message_id,
+            phase="handle_update_pre_worker",
+            started_at_monotonic=request.handle_update_started_at,
+            routed_youtube=bool(request.youtube_route_url),
+            stateless=request.stateless,
+        )
+    return True
+
+
 def handle_update(
     state: State,
     config,
@@ -7381,164 +7589,30 @@ def handle_update(
         )
         return
 
-    if command == "/dishframed":
-        if not photo_file_ids:
-            photo_file_ids = get_recent_scope_photos(state, scope_key)
-        if not photo_file_ids:
-            client.send_message(
-                chat_id,
-                DISHFRAMED_USAGE_MESSAGE,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
-            return
-        if not mark_busy(state, scope_key):
-            emit_event(
-                "bridge.request_rejected",
-                level=logging.WARNING,
-                fields={"chat_id": chat_id, "message_id": message_id, "reason": "chat_busy"},
-            )
-            client.send_message(
-                chat_id,
-                config.busy_message,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
-            return
-        cancel_event = register_cancel_event(state, scope_key)
-        StateRepository(state).mark_in_flight_request(scope_key, message_id)
-        emit_event(
-            "bridge.request_accepted",
-            fields={
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "scope_key": scope_key,
-                "has_photo": True,
-                "has_voice": False,
-                "has_document": False,
-                "stateless": True,
-                "route": "dishframed",
-            },
-        )
-        start_dishframed_worker(
-            state=state,
-            config=config,
-            client=client,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            photo_file_ids=photo_file_ids,
-            cancel_event=cancel_event,
-        )
-        emit_event(
-            "bridge.worker_started",
-            fields={"chat_id": chat_id, "message_id": message_id, "route": "dishframed"},
-        )
-        return
-
-    try:
-        active_engine = resolve_engine_for_scope(state, config, scope_key, engine)
-    except Exception as exc:
-        logging.exception("Failed to resolve engine for scope=%s", scope_key)
-        client.send_message(
-            chat_id,
-            f"Engine selection failed: {exc}",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return
-
-    if not stateless:
-        if not ensure_chat_worker_session(
-            state,
-            config,
-            client,
-            scope_key,
-            chat_id,
-            message_thread_id,
-            message_id,
-        ):
-            emit_event(
-                "bridge.request_rejected",
-                level=logging.WARNING,
-                fields={"chat_id": chat_id, "message_id": message_id, "reason": "worker_capacity"},
-            )
-            return
-
-    if not mark_busy(state, scope_key):
-        emit_event(
-            "bridge.request_rejected",
-            level=logging.WARNING,
-            fields={"chat_id": chat_id, "message_id": message_id, "reason": "chat_busy"},
-        )
-        client.send_message(
-            chat_id,
-            config.busy_message,
-            reply_to_message_id=message_id,
-        )
-        return
-    cancel_event = register_cancel_event(state, scope_key)
-    state_repo = StateRepository(state)
-    state_repo.mark_in_flight_request(scope_key, message_id)
-    emit_event(
-        "bridge.request_accepted",
-        fields={
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "scope_key": scope_key,
-            "has_photo": bool(photo_file_ids),
-            "has_voice": bool(voice_file_id),
-            "has_document": document is not None,
-            "stateless": stateless,
-        },
-    )
-    if youtube_route_url:
-        start_youtube_worker(
-            state=state,
-            config=config,
-            client=client,
-            engine=active_engine,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            request_text=raw_prompt,
-            youtube_url=youtube_route_url,
-            actor_user_id=actor_user_id,
-            cancel_event=cancel_event,
-        )
-    else:
-        start_message_worker(
-            state=state,
-            config=config,
-            client=client,
-            engine=active_engine,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            prompt=prompt,
-            photo_file_id=photo_file_ids[0] if photo_file_ids else None,
-            photo_file_ids=photo_file_ids,
-            voice_file_id=voice_file_id,
-            document=document,
-            cancel_event=cancel_event,
-            stateless=stateless,
-            sender_name=sender_name,
-            enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
-            actor_user_id=actor_user_id,
-        )
-    emit_event(
-        "bridge.worker_started",
-        fields={"chat_id": chat_id, "message_id": message_id},
-    )
-    emit_phase_timing(
+    dispatch_request = UpdateDispatchRequest(
+        state=state,
+        config=config,
+        client=client,
+        engine=engine,
+        scope_key=scope_key,
         chat_id=chat_id,
+        message_thread_id=message_thread_id,
         message_id=message_id,
-        phase="handle_update_pre_worker",
-        started_at_monotonic=handle_update_started_at,
-        routed_youtube=bool(youtube_route_url),
+        prompt=prompt,
+        raw_prompt=raw_prompt,
+        photo_file_ids=list(photo_file_ids),
+        voice_file_id=voice_file_id,
+        document=document,
+        actor_user_id=actor_user_id,
+        sender_name=sender_name,
         stateless=stateless,
+        enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
+        youtube_route_url=youtube_route_url,
+        handle_update_started_at=handle_update_started_at,
     )
+
+    if command == "/dishframed":
+        start_dishframed_dispatch(dispatch_request)
+        return
+    start_standard_dispatch(dispatch_request)
     return
