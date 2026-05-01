@@ -267,6 +267,32 @@ class KnownCommandContext:
 KnownCommandHandler = Callable[[KnownCommandContext], bool]
 
 
+@dataclass(frozen=True)
+class CallbackActionContext:
+    state: State
+    config: Any
+    client: ChannelAdapter
+    scope_key: str
+    chat_id: int
+    message_thread_id: Optional[int]
+    message_id: Optional[int]
+    callback_query_id: str
+    kind: str
+    engine_name: str
+    action: str
+    value: str
+
+
+@dataclass(frozen=True)
+class CallbackActionResult:
+    text: str
+    reply_markup: Optional[Dict[str, object]] = None
+    toast_text: str = "Updated."
+
+
+CallbackActionHandler = Callable[[CallbackActionContext], CallbackActionResult]
+
+
 def normalize_command(text: str) -> Optional[str]:
     stripped = text.strip()
     head: Optional[str] = None
@@ -5601,6 +5627,81 @@ def handle_effort_command(
     return True
 
 
+def _handle_engine_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
+    if ctx.action == "reset":
+        text = _reset_engine_for_scope(ctx.state, ctx.config, ctx.scope_key)
+    elif ctx.action == "set":
+        text = _set_engine_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.engine_name)
+    else:
+        text = build_engine_status_text(ctx.state, ctx.config, ctx.scope_key)
+    return CallbackActionResult(
+        text=text,
+        reply_markup=_build_engine_picker_markup(ctx.state, ctx.config, ctx.scope_key),
+    )
+
+
+def _handle_pi_provider_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
+    if ctx.action == "set":
+        text = _set_pi_provider_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
+        reply_markup = _build_engine_picker_markup(ctx.state, ctx.config, ctx.scope_key)
+    else:
+        text = build_pi_providers_text(ctx.state, ctx.config, ctx.scope_key)
+        reply_markup = _build_provider_picker_markup(ctx.state, ctx.config, ctx.scope_key)
+    return CallbackActionResult(text=text, reply_markup=reply_markup)
+
+
+def _handle_model_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
+    requested_page = _parse_page_index(ctx.value)
+    if ctx.action == "reset":
+        text = _reset_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.engine_name)
+    elif ctx.action == "set":
+        if ctx.engine_name == "codex":
+            text = _set_codex_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
+        elif ctx.engine_name == "pi":
+            text = _set_pi_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
+        else:
+            text = build_model_status_text(ctx.state, ctx.config, ctx.scope_key)
+    else:
+        text = build_model_status_text(ctx.state, ctx.config, ctx.scope_key)
+    return CallbackActionResult(
+        text=text,
+        reply_markup=_build_model_picker_markup(
+            ctx.state,
+            ctx.config,
+            ctx.scope_key,
+            page_index=requested_page,
+        ),
+    )
+
+
+def _handle_codex_effort_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
+    if ctx.action == "reset":
+        text = _reset_codex_effort_for_scope(ctx.state, ctx.config, ctx.scope_key)
+    elif ctx.action == "set":
+        text = _set_codex_effort_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
+    else:
+        text = build_effort_status_text(ctx.state, ctx.config, ctx.scope_key)
+    return CallbackActionResult(
+        text=text,
+        reply_markup=_build_effort_picker_markup(ctx.state, ctx.config, ctx.scope_key),
+    )
+
+
+CALLBACK_ACTION_HANDLERS: Dict[Tuple[str, Optional[str]], CallbackActionHandler] = {
+    ("engine", None): _handle_engine_callback_action,
+    ("provider", "pi"): _handle_pi_provider_callback_action,
+    ("model", None): _handle_model_callback_action,
+    ("effort", "codex"): _handle_codex_effort_callback_action,
+}
+
+
+def _resolve_callback_action_handler(
+    kind: str,
+    engine_name: str,
+) -> Optional[CallbackActionHandler]:
+    return CALLBACK_ACTION_HANDLERS.get((kind, engine_name)) or CALLBACK_ACTION_HANDLERS.get((kind, None))
+
+
 def handle_callback_query(
     state: State,
     config,
@@ -5632,78 +5733,49 @@ def handle_callback_query(
     engine_name = parts[2]
     action = parts[3]
     value = parts[4] if len(parts) > 4 else ""
-
-    text = ""
-    reply_markup: Optional[Dict[str, object]] = None
-    toast_text = "Updated."
+    ctx = CallbackActionContext(
+        state=state,
+        config=config,
+        client=client,
+        scope_key=scope_key,
+        chat_id=chat_id,
+        message_thread_id=message_thread_id,
+        message_id=message_id,
+        callback_query_id=callback_query_id,
+        kind=kind,
+        engine_name=engine_name,
+        action=action,
+        value=value,
+    )
+    handler = _resolve_callback_action_handler(kind, engine_name)
 
     try:
-        if kind == "engine":
-            if action == "reset":
-                text = _reset_engine_for_scope(state, config, scope_key)
-            elif action == "set":
-                text = _set_engine_for_scope(state, config, scope_key, engine_name)
-            else:
-                text = build_engine_status_text(state, config, scope_key)
-            reply_markup = _build_engine_picker_markup(state, config, scope_key)
-        elif kind == "provider" and engine_name == "pi":
-            if action == "menu":
-                text = build_pi_providers_text(state, config, scope_key)
-                reply_markup = _build_provider_picker_markup(state, config, scope_key)
-            elif action == "set":
-                text = _set_pi_provider_for_scope(state, config, scope_key, value)
-                reply_markup = _build_engine_picker_markup(state, config, scope_key)
-            else:
-                text = build_pi_providers_text(state, config, scope_key)
-                reply_markup = _build_provider_picker_markup(state, config, scope_key)
-        elif kind == "model":
-            requested_page = _parse_page_index(value)
-            if action == "menu":
-                text = build_model_status_text(state, config, scope_key)
-            elif action == "page":
-                text = build_model_status_text(state, config, scope_key)
-            elif action == "reset":
-                text = _reset_model_for_scope(state, config, scope_key, engine_name)
-            elif action == "set":
-                if engine_name == "codex":
-                    text = _set_codex_model_for_scope(state, config, scope_key, value)
-                elif engine_name == "pi":
-                    text = _set_pi_model_for_scope(state, config, scope_key, value)
-                else:
-                    text = build_model_status_text(state, config, scope_key)
-            else:
-                text = build_model_status_text(state, config, scope_key)
-            reply_markup = _build_model_picker_markup(state, config, scope_key, page_index=requested_page)
-        elif kind == "effort" and engine_name == "codex":
-            if action == "menu":
-                text = build_effort_status_text(state, config, scope_key)
-            elif action == "reset":
-                text = _reset_codex_effort_for_scope(state, config, scope_key)
-            elif action == "set":
-                text = _set_codex_effort_for_scope(state, config, scope_key, value)
-            else:
-                text = build_effort_status_text(state, config, scope_key)
-            reply_markup = _build_effort_picker_markup(state, config, scope_key)
+        if handler is not None:
+            result = handler(ctx)
         else:
-            text = "Unsupported action."
-            toast_text = "Unsupported action."
+            result = CallbackActionResult(
+                text="Unsupported action.",
+                toast_text="Unsupported action.",
+            )
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-        text = f"Action failed.\nError: {_brief_health_error(exc)}"
-        toast_text = "Action failed."
+        result = CallbackActionResult(
+            text=f"Action failed.\nError: {_brief_health_error(exc)}",
+            toast_text="Action failed.",
+        )
 
-    client.answer_callback_query(callback_query_id, text=toast_text)
+    client.answer_callback_query(callback_query_id, text=result.toast_text)
     if isinstance(message_id, int):
         try:
-            client.edit_message(chat_id, message_id, text, reply_markup=reply_markup)
+            client.edit_message(chat_id, message_id, result.text, reply_markup=result.reply_markup)
             return True
         except Exception:
             logging.exception("Failed to edit callback menu message for chat_id=%s", chat_id)
     client.send_message(
         chat_id,
-        text,
+        result.text,
         reply_to_message_id=message_id,
         message_thread_id=message_thread_id,
-        reply_markup=reply_markup,
+        reply_markup=result.reply_markup,
     )
     return True
 
