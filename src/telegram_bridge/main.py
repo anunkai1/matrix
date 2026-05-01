@@ -353,6 +353,31 @@ def run_self_test() -> int:
     return 0
 
 
+def load_state_mapping_or_empty(
+    path: str,
+    loader,
+    *,
+    description: str,
+) -> Dict[object, object]:
+    try:
+        return loader(path)
+    except Exception:
+        logging.exception(
+            "Failed to load %s from %s; starting with empty state.",
+            description,
+            path,
+        )
+        moved = quarantine_corrupt_state_file(path)
+        if moved:
+            logging.error("Quarantined corrupt %s to %s", description, moved)
+        emit_event(
+            "bridge.state_load_failed",
+            level=logging.WARNING,
+            fields={"state_file": path},
+        )
+        return {}
+
+
 def drop_pending_updates(client: ChannelAdapter) -> int:
     offset = 0
     dropped = 0
@@ -609,141 +634,46 @@ def run_bridge(config: Config) -> int:
     worker_sessions_path = os.path.join(config.state_dir, "worker_sessions.json")
     in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
     chat_sessions_path = os.path.join(config.state_dir, "chat_sessions.json")
-    try:
-        loaded_threads = load_chat_threads(chat_thread_path)
-    except Exception:
-        logging.exception(
-            "Failed to load chat thread mappings from %s; starting with empty mappings.",
-            chat_thread_path,
-        )
-        moved = quarantine_corrupt_state_file(chat_thread_path)
-        if moved:
-            logging.error("Quarantined corrupt chat thread state file to %s", moved)
-        emit_event(
-            "bridge.state_load_failed",
-            level=logging.WARNING,
-            fields={"state_file": chat_thread_path},
-        )
-        loaded_threads = {}
-
-    try:
-        loaded_engines = load_chat_engines(chat_engine_path)
-    except Exception:
-        logging.exception(
-            "Failed to load chat engine mappings from %s; starting with empty mappings.",
-            chat_engine_path,
-        )
-        moved = quarantine_corrupt_state_file(chat_engine_path)
-        if moved:
-            logging.error("Quarantined corrupt chat engine state file to %s", moved)
-        emit_event(
-            "bridge.state_load_failed",
-            level=logging.WARNING,
-            fields={"state_file": chat_engine_path},
-        )
-        loaded_engines = {}
-
-    try:
-        loaded_codex_models = load_chat_codex_models(chat_codex_model_path)
-    except Exception:
-        logging.exception(
-            "Failed to load chat Codex model mappings from %s; starting with empty mappings.",
-            chat_codex_model_path,
-        )
-        moved = quarantine_corrupt_state_file(chat_codex_model_path)
-        if moved:
-            logging.error("Quarantined corrupt chat Codex model state file to %s", moved)
-        emit_event(
-            "bridge.state_load_failed",
-            level=logging.WARNING,
-            fields={"state_file": chat_codex_model_path},
-        )
-        loaded_codex_models = {}
-
-    try:
-        loaded_codex_efforts = load_chat_codex_efforts(chat_codex_effort_path)
-    except Exception:
-        logging.exception(
-            "Failed to load chat Codex effort mappings from %s; starting with empty mappings.",
-            chat_codex_effort_path,
-        )
-        moved = quarantine_corrupt_state_file(chat_codex_effort_path)
-        if moved:
-            logging.error("Quarantined corrupt chat Codex effort state file to %s", moved)
-        emit_event(
-            "bridge.state_load_failed",
-            level=logging.WARNING,
-            fields={"state_file": chat_codex_effort_path},
-        )
-        loaded_codex_efforts = {}
-
-    try:
-        loaded_pi_models = load_chat_pi_models(chat_pi_model_path)
-    except Exception:
-        logging.exception(
-            "Failed to load chat Pi model mappings from %s; starting with empty mappings.",
-            chat_pi_model_path,
-        )
-        moved = quarantine_corrupt_state_file(chat_pi_model_path)
-        if moved:
-            logging.error("Quarantined corrupt chat Pi model state file to %s", moved)
-        emit_event(
-            "bridge.state_load_failed",
-            level=logging.WARNING,
-            fields={"state_file": chat_pi_model_path},
-        )
-        loaded_pi_models = {}
-
-    try:
-        loaded_pi_providers = load_chat_pi_providers(chat_pi_provider_path)
-    except Exception:
-        logging.exception(
-            "Failed to load chat Pi provider mappings from %s; starting with empty mappings.",
-            chat_pi_provider_path,
-        )
-        moved = quarantine_corrupt_state_file(chat_pi_provider_path)
-        if moved:
-            logging.error("Quarantined corrupt chat Pi provider state file to %s", moved)
-        emit_event(
-            "bridge.state_load_failed",
-            level=logging.WARNING,
-            fields={"state_file": chat_pi_provider_path},
-        )
-        loaded_pi_providers = {}
-
-    try:
-        loaded_worker_sessions = load_worker_sessions(worker_sessions_path)
-    except Exception:
-        logging.exception(
-            "Failed to load worker session state from %s; starting with empty worker sessions.",
-            worker_sessions_path,
-        )
-        moved = quarantine_corrupt_state_file(worker_sessions_path)
-        if moved:
-            logging.error("Quarantined corrupt worker session state file to %s", moved)
-        emit_event(
-            "bridge.state_load_failed",
-            level=logging.WARNING,
-            fields={"state_file": worker_sessions_path},
-        )
-        loaded_worker_sessions = {}
-
-    try:
-        loaded_in_flight = load_in_flight_requests(in_flight_path)
-    except Exception:
-        logging.exception(
-            "Failed to load in-flight request state from %s; starting with empty in-flight state.",
-            in_flight_path,
-        )
-        moved = quarantine_corrupt_state_file(in_flight_path)
-        if moved:
-            logging.error("Quarantined corrupt in-flight state file to %s", moved)
-        emit_event(
-            "bridge.state_load_failed",
-            level=logging.WARNING,
-            fields={"state_file": in_flight_path},
-        )
-        loaded_in_flight = {}
+    loaded_threads = load_state_mapping_or_empty(
+        chat_thread_path,
+        load_chat_threads,
+        description="chat thread mappings",
+    )
+    loaded_engines = load_state_mapping_or_empty(
+        chat_engine_path,
+        load_chat_engines,
+        description="chat engine mappings",
+    )
+    loaded_codex_models = load_state_mapping_or_empty(
+        chat_codex_model_path,
+        load_chat_codex_models,
+        description="chat Codex model mappings",
+    )
+    loaded_codex_efforts = load_state_mapping_or_empty(
+        chat_codex_effort_path,
+        load_chat_codex_efforts,
+        description="chat Codex effort mappings",
+    )
+    loaded_pi_models = load_state_mapping_or_empty(
+        chat_pi_model_path,
+        load_chat_pi_models,
+        description="chat Pi model mappings",
+    )
+    loaded_pi_providers = load_state_mapping_or_empty(
+        chat_pi_provider_path,
+        load_chat_pi_providers,
+        description="chat Pi provider mappings",
+    )
+    loaded_worker_sessions = load_state_mapping_or_empty(
+        worker_sessions_path,
+        load_worker_sessions,
+        description="worker session state",
+    )
+    loaded_in_flight = load_state_mapping_or_empty(
+        in_flight_path,
+        load_in_flight_requests,
+        description="in-flight request state",
+    )
 
     loaded_canonical_sessions: Dict[int, CanonicalSession] = {}
     canonical_bootstrap_source = "disabled"

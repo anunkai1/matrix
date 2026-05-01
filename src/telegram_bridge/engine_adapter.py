@@ -35,6 +35,18 @@ except ImportError:
 ProgressCallback = Callable[[ExecutorProgressEvent], None]
 
 
+def _completed_process_with_output(
+    engine_name: str,
+    output: str,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        args=[engine_name],
+        returncode=0,
+        stdout=f"{OUTPUT_BEGIN_MARKER}\n{str(output or '').strip()}",
+        stderr="",
+    )
+
+
 def _communicate_process_with_cancel(
     process: subprocess.Popen[str],
     *,
@@ -157,12 +169,7 @@ class GemmaEngineAdapter:
     engine_name = "gemma"
 
     def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(
-            args=["gemma"],
-            returncode=0,
-            stdout=f"{OUTPUT_BEGIN_MARKER}\n{str(output or '').strip()}",
-            stderr="",
-        )
+        return _completed_process_with_output(self.engine_name, output)
 
     def _payload(self, config, prompt: str) -> str:
         payload = {
@@ -280,12 +287,7 @@ class VeniceEngineAdapter:
     engine_name = "venice"
 
     def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(
-            args=["venice"],
-            returncode=0,
-            stdout=f"{OUTPUT_BEGIN_MARKER}\n{str(output or '').strip()}",
-            stderr="",
-        )
+        return _completed_process_with_output(self.engine_name, output)
 
     def _api_key(self, config) -> str:
         api_key = str(getattr(config, "venice_api_key", "") or "").strip()
@@ -462,12 +464,7 @@ class ChatGPTWebEngineAdapter:
     engine_name = "chatgptweb"
 
     def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(
-            args=["chatgptweb"],
-            returncode=0,
-            stdout=f"{OUTPUT_BEGIN_MARKER}\n{str(output or '').strip()}",
-            stderr="",
-        )
+        return _completed_process_with_output(self.engine_name, output)
 
     def _bridge_script(self, config) -> str:
         configured = str(getattr(config, "chatgpt_web_bridge_script", "") or "").strip()
@@ -633,12 +630,7 @@ class PiEngineAdapter:
         return True
 
     def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(
-            args=["pi"],
-            returncode=0,
-            stdout=f"{OUTPUT_BEGIN_MARKER}\n{str(output or '').strip()}",
-            stderr="",
-        )
+        return _completed_process_with_output(self.engine_name, output)
 
     def _image_data_url(self, image_path: str) -> dict[str, str]:
         path = Path(image_path)

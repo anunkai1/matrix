@@ -15,6 +15,7 @@ except ImportError:
 
 ChannelFactory = Callable[[object], ChannelAdapter]
 EngineFactory = Callable[[], EngineAdapter]
+_DEFAULT_PLUGIN_REGISTRY: "PluginRegistry | None" = None
 
 
 class PluginRegistry:
@@ -58,6 +59,10 @@ class PluginRegistry:
 
 
 def build_default_plugin_registry() -> PluginRegistry:
+    global _DEFAULT_PLUGIN_REGISTRY
+    if _DEFAULT_PLUGIN_REGISTRY is not None:
+        return _DEFAULT_PLUGIN_REGISTRY
+
     registry = PluginRegistry()
     registry.register_channel(
         "telegram",
@@ -77,4 +82,5 @@ def build_default_plugin_registry() -> PluginRegistry:
     registry.register_engine("mavali_eth", lambda: MavaliEthEngineAdapter())
     registry.register_engine("pi", lambda: PiEngineAdapter())
     registry.register_engine("venice", lambda: VeniceEngineAdapter())
+    _DEFAULT_PLUGIN_REGISTRY = registry
     return registry
