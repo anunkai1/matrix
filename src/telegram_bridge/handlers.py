@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 try:
     from .auth_state import refresh_runtime_auth_fingerprint
+    from .background_tasks import start_daemon_thread
     from .conversation_scope import (
         ConversationScope,
         build_telegram_scope_key,
@@ -151,6 +152,7 @@ try:
     )
 except ImportError:
     from auth_state import refresh_runtime_auth_fingerprint
+    from background_tasks import start_daemon_thread
     from conversation_scope import (
         ConversationScope,
         build_telegram_scope_key,
@@ -956,12 +958,7 @@ def finalize_request_progress(
 
 
 def start_background_worker(target: Callable[..., None], *args: object) -> None:
-    worker = threading.Thread(
-        target=target,
-        args=args,
-        daemon=True,
-    )
-    worker.start()
+    start_daemon_thread(target, *args)
 
 
 def request_chat_cancel(state: State, scope_key: str) -> str:
@@ -1099,8 +1096,7 @@ class ProgressReporter:
 
         self.last_rendered_text = text
         self.last_edit_at = time.time()
-        self._worker = threading.Thread(target=self._heartbeat_loop, daemon=True)
-        self._worker.start()
+        self._worker = start_daemon_thread(self._heartbeat_loop)
 
     def close(self) -> None:
         self._stop_event.set()

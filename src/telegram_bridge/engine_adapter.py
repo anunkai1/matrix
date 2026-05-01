@@ -16,6 +16,7 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 try:
+    from .background_tasks import start_daemon_thread
     from .executor import (
         ExecutorCancelledError,
         ExecutorProgressEvent,
@@ -24,6 +25,7 @@ try:
         run_executor,
     )
 except ImportError:
+    from background_tasks import start_daemon_thread
     from executor import (
         ExecutorCancelledError,
         ExecutorProgressEvent,
@@ -68,8 +70,7 @@ def _communicate_process_with_cancel(
         finally:
             done.set()
 
-    worker = threading.Thread(target=_worker, daemon=True)
-    worker.start()
+    start_daemon_thread(_worker)
     while not done.wait(0.1):
         if cancel_event is not None and cancel_event.is_set():
             process.kill()
@@ -101,8 +102,7 @@ def _run_blocking_with_cancel(
         finally:
             done.set()
 
-    worker = threading.Thread(target=_worker, daemon=True)
-    worker.start()
+    start_daemon_thread(_worker)
     while not done.wait(0.1):
         if cancel_event is not None and cancel_event.is_set():
             raise ExecutorCancelledError(cancel_message)

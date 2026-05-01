@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 try:
+    from .background_tasks import start_daemon_thread
     from .conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
     from .memory_engine import MemoryEngine
     from .memory_merge import merge_conversation_keys
@@ -27,6 +28,7 @@ try:
     )
     from .structured_logging import emit_event
 except ImportError:
+    from background_tasks import start_daemon_thread
     from conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
     from memory_engine import MemoryEngine
     from memory_merge import merge_conversation_keys
@@ -715,12 +717,10 @@ def trigger_restart_async(
     message_thread_id: Optional[int],
     reply_to_message_id: Optional[int],
 ) -> None:
-    worker = threading.Thread(
+    start_daemon_thread(
         target=run_restart_script,
-        args=(state, client, chat_id, message_thread_id, reply_to_message_id),
-        daemon=True,
+        *(state, client, chat_id, message_thread_id, reply_to_message_id),
     )
-    worker.start()
 
 
 def finalize_chat_work(
