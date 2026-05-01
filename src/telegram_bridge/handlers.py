@@ -3199,6 +3199,27 @@ def emit_phase_timing(
     emit_event("bridge.request_phase_timing", fields=fields)
 
 
+def build_progress_reporter(
+    client: ChannelAdapter,
+    config,
+    chat_id: int,
+    message_id: Optional[int],
+    message_thread_id: Optional[int],
+    progress_context_label: str,
+) -> ProgressReporter:
+    return ProgressReporter(
+        client,
+        chat_id,
+        message_id,
+        message_thread_id,
+        assistant_label(config),
+        getattr(config, "progress_label", ""),
+        progress_context_label,
+        getattr(config, "progress_elapsed_prefix", "Already"),
+        getattr(config, "progress_elapsed_suffix", "s"),
+    )
+
+
 def _build_prompt_progress_reporter(
     request: PromptRequest,
     active_engine: EngineAdapter,
@@ -3209,19 +3230,16 @@ def _build_prompt_progress_reporter(
         request.scope_key,
         getattr(active_engine, "engine_name", ""),
     )
-    return ProgressReporter(
+    return build_progress_reporter(
         request.client,
+        request.config,
         request.chat_id,
         request.message_id,
         request.message_thread_id,
-        assistant_label(request.config),
-        getattr(request.config, "progress_label", ""),
         build_engine_progress_context_label(
             engine_config,
             getattr(active_engine, "engine_name", ""),
         ),
-        getattr(request.config, "progress_elapsed_prefix", "Already"),
-        getattr(request.config, "progress_elapsed_suffix", "s"),
     )
 
 
@@ -3598,16 +3616,13 @@ def process_youtube_request(
     active_engine = engine or CodexEngineAdapter()
     state_repo = StateRepository(state)
     cleanup_paths: List[str] = []
-    progress = ProgressReporter(
+    progress = build_progress_reporter(
         client,
+        config,
         chat_id,
         message_id,
         message_thread_id,
-        assistant_label(config),
-        getattr(config, "progress_label", ""),
         build_engine_progress_context_label(config, getattr(active_engine, "engine_name", "")),
-        getattr(config, "progress_elapsed_prefix", "Already"),
-        getattr(config, "progress_elapsed_suffix", "s"),
     )
     try:
         progress.start()
@@ -3913,16 +3928,13 @@ def process_dishframed_request(
 ) -> None:
     cleanup_paths: List[str] = []
     cleanup_dirs: List[str] = []
-    progress = ProgressReporter(
+    progress = build_progress_reporter(
         client,
+        config,
         chat_id,
         message_id,
         message_thread_id,
-        assistant_label(config),
-        getattr(config, "progress_label", ""),
         "DishFramed",
-        getattr(config, "progress_elapsed_prefix", "Already"),
-        getattr(config, "progress_elapsed_suffix", "s"),
     )
     try:
         progress.start()
@@ -6210,16 +6222,13 @@ def process_diary_batch(
     scope_key: str,
     pending: PendingDiaryBatch,
 ) -> None:
-    progress = ProgressReporter(
+    progress = build_progress_reporter(
         client,
+        config,
         pending.chat_id,
         pending.latest_message_id,
         pending.message_thread_id,
-        assistant_label(config),
-        getattr(config, "progress_label", ""),
         build_diary_progress_context_label(state, config, scope_key),
-        getattr(config, "progress_elapsed_prefix", "Already"),
-        getattr(config, "progress_elapsed_suffix", "s"),
     )
     cleanup_paths: List[str] = []
     state_repo = StateRepository(state)
