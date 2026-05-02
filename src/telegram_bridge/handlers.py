@@ -145,6 +145,7 @@ try:
     )
     from .state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
     from .structured_logging import emit_event
+    from . import request_starts
     from . import special_request_processing
     from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
     from .update_flow import (
@@ -286,6 +287,7 @@ except ImportError:
     )
     from state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
     from structured_logging import emit_event
+    import request_starts
     import special_request_processing
     from transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
     from update_flow import (
@@ -450,6 +452,16 @@ handle_voice_alias_command = voice_alias_commands.handle_voice_alias_command
 maybe_process_voice_alias_learning_confirmation = (
     voice_alias_commands.maybe_process_voice_alias_learning_confirmation
 )
+resolve_engine_for_scope = request_starts.resolve_engine_for_scope
+process_prompt = request_starts.process_prompt
+process_message_worker = request_starts.process_message_worker
+start_message_worker = request_starts.start_message_worker
+process_youtube_request = request_starts.process_youtube_request
+process_youtube_worker = request_starts.process_youtube_worker
+start_youtube_worker = request_starts.start_youtube_worker
+process_dishframed_request = request_starts.process_dishframed_request
+process_dishframed_worker = request_starts.process_dishframed_worker
+start_dishframed_worker = request_starts.start_dishframed_worker
 
 
 def extract_chat_context(
@@ -1568,50 +1580,6 @@ def _process_prompt_request(request: PromptRequest) -> None:
     )
 
 
-def process_prompt(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    engine: Optional[EngineAdapter],
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    prompt: str,
-    photo_file_id: Optional[str],
-    voice_file_id: Optional[str],
-    document: Optional[DocumentPayload],
-    cancel_event: Optional[threading.Event] = None,
-    stateless: bool = False,
-    sender_name: str = "Telegram User",
-    photo_file_ids: Optional[List[str]] = None,
-    actor_user_id: Optional[int] = None,
-    enforce_voice_prefix_from_transcript: bool = False,
-) -> None:
-    _process_prompt_request(
-        build_prompt_request(
-            state=state,
-            config=config,
-            client=client,
-            engine=engine,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            prompt=prompt,
-            photo_file_id=photo_file_id,
-            voice_file_id=voice_file_id,
-            document=document,
-            cancel_event=cancel_event,
-            stateless=stateless,
-            sender_name=sender_name,
-            photo_file_ids=photo_file_ids,
-            actor_user_id=actor_user_id,
-            enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
-        )
-    )
-
-
 def _process_message_worker_request(request: PromptRequest) -> None:
     try:
         _process_prompt_request(request)
@@ -1626,50 +1594,6 @@ def _process_message_worker_request(request: PromptRequest) -> None:
             message_id=request.message_id,
             message_thread_id=request.message_thread_id,
         )
-
-
-def process_message_worker(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    engine: Optional[EngineAdapter],
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    prompt: str,
-    photo_file_id: Optional[str],
-    voice_file_id: Optional[str],
-    document: Optional[DocumentPayload],
-    cancel_event: Optional[threading.Event] = None,
-    stateless: bool = False,
-    sender_name: str = "Telegram User",
-    photo_file_ids: Optional[List[str]] = None,
-    actor_user_id: Optional[int] = None,
-    enforce_voice_prefix_from_transcript: bool = False,
-) -> None:
-    _process_message_worker_request(
-        build_prompt_request(
-            state=state,
-            config=config,
-            client=client,
-            engine=engine,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            prompt=prompt,
-            photo_file_id=photo_file_id,
-            voice_file_id=voice_file_id,
-            document=document,
-            cancel_event=cancel_event,
-            stateless=stateless,
-            sender_name=sender_name,
-            photo_file_ids=photo_file_ids,
-            actor_user_id=actor_user_id,
-            enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
-        )
-    )
 
 
 def _process_youtube_request(request: YoutubeRequest) -> None:
@@ -1691,40 +1615,6 @@ def _process_youtube_request(request: YoutubeRequest) -> None:
     )
 
 
-def process_youtube_request(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    engine: Optional[EngineAdapter],
-    chat_id: int,
-    request_text: str,
-    youtube_url: str,
-    message_thread_id: Optional[int] = None,
-    message_id: Optional[int] = None,
-    scope_key: Optional[str] = None,
-    actor_user_id: Optional[int] = None,
-    cancel_event: Optional[threading.Event] = None,
-) -> None:
-    if scope_key is None:
-        scope_key = build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
-    _process_youtube_request(
-        build_youtube_request(
-            state=state,
-            config=config,
-            client=client,
-            engine=engine,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            request_text=request_text,
-            youtube_url=youtube_url,
-            actor_user_id=actor_user_id,
-            cancel_event=cancel_event,
-        )
-    )
-
-
 def _process_youtube_worker_request(request: YoutubeRequest) -> None:
     special_request_processing.process_youtube_worker_request(
         request,
@@ -1732,71 +1622,6 @@ def _process_youtube_worker_request(request: YoutubeRequest) -> None:
         emit_event_fn=emit_event,
         send_timeout_response_fn=send_timeout_response,
         emit_worker_exception_and_reply_fn=emit_worker_exception_and_reply,
-    )
-
-
-def process_youtube_worker(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    engine: Optional[EngineAdapter],
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    request_text: str,
-    youtube_url: str,
-    actor_user_id: Optional[int] = None,
-    cancel_event: Optional[threading.Event] = None,
-) -> None:
-    _process_youtube_worker_request(
-        build_youtube_request(
-            state=state,
-            config=config,
-            client=client,
-            engine=engine,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            request_text=request_text,
-            youtube_url=youtube_url,
-            actor_user_id=actor_user_id,
-            cancel_event=cancel_event,
-        )
-    )
-
-
-def start_youtube_worker(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    engine: Optional[EngineAdapter],
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    request_text: str,
-    youtube_url: str,
-    actor_user_id: Optional[int] = None,
-    cancel_event: Optional[threading.Event] = None,
-) -> None:
-    start_background_worker(
-        _process_youtube_worker_request,
-        build_youtube_request(
-            state=state,
-            config=config,
-            client=client,
-            engine=engine,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            request_text=request_text,
-            youtube_url=youtube_url,
-            actor_user_id=actor_user_id,
-            cancel_event=cancel_event,
-        ),
     )
 
 
@@ -1814,32 +1639,6 @@ def _process_dishframed_request(request: DishframedRequest) -> None:
     )
 
 
-def process_dishframed_request(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    photo_file_ids: List[str],
-    cancel_event: Optional[threading.Event] = None,
-) -> None:
-    _process_dishframed_request(
-        build_dishframed_request(
-            state=state,
-            config=config,
-            client=client,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            photo_file_ids=photo_file_ids,
-            cancel_event=cancel_event,
-        )
-    )
-
-
 def _process_dishframed_worker_request(request: DishframedRequest) -> None:
     special_request_processing.process_dishframed_worker_request(
         request,
@@ -1847,59 +1646,6 @@ def _process_dishframed_worker_request(request: DishframedRequest) -> None:
         send_timeout_response_fn=send_timeout_response,
         send_canceled_response_fn=send_canceled_response,
         emit_worker_exception_and_reply_fn=emit_worker_exception_and_reply,
-    )
-
-
-def process_dishframed_worker(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    photo_file_ids: List[str],
-    cancel_event: Optional[threading.Event] = None,
-) -> None:
-    _process_dishframed_worker_request(
-        build_dishframed_request(
-            state=state,
-            config=config,
-            client=client,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            photo_file_ids=photo_file_ids,
-            cancel_event=cancel_event,
-        )
-    )
-
-
-def start_dishframed_worker(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    photo_file_ids: List[str],
-    cancel_event: Optional[threading.Event] = None,
-) -> None:
-    start_background_worker(
-        _process_dishframed_worker_request,
-        build_dishframed_request(
-            state=state,
-            config=config,
-            client=client,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=message_id,
-            photo_file_ids=photo_file_ids,
-            cancel_event=cancel_event,
-        ),
     )
 
 
@@ -1957,67 +1703,6 @@ _reset_codex_effort_for_scope = engine_controls._reset_codex_effort_for_scope
 _parse_page_index = engine_controls._parse_page_index
 handle_model_command = engine_controls.handle_model_command
 handle_effort_command = engine_controls.handle_effort_command
-
-
-def resolve_engine_for_scope(
-    state: State,
-    config,
-    scope_key: str,
-    default_engine: Optional[EngineAdapter],
-) -> EngineAdapter:
-    selected = StateRepository(state).get_chat_engine(scope_key)
-    if not selected:
-        if default_engine is not None:
-            return default_engine
-        return build_default_plugin_registry().build_engine(configured_default_engine(config))
-    engine_name = normalize_engine_name(selected)
-    if default_engine is not None and getattr(default_engine, "engine_name", "") == engine_name:
-        return default_engine
-    registry = build_default_plugin_registry()
-    return registry.build_engine(engine_name)
-
-
-def start_message_worker(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    engine: Optional[EngineAdapter],
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    prompt: str,
-    photo_file_id: Optional[str],
-    voice_file_id: Optional[str],
-    document: Optional[DocumentPayload],
-    cancel_event: Optional[threading.Event] = None,
-    stateless: bool = False,
-    sender_name: str = "Telegram User",
-    photo_file_ids: Optional[List[str]] = None,
-    actor_user_id: Optional[int] = None,
-    enforce_voice_prefix_from_transcript: bool = False,
-) -> None:
-    request = build_prompt_request(
-        state=state,
-        config=config,
-        client=client,
-        engine=engine,
-        scope_key=scope_key,
-        chat_id=chat_id,
-        message_thread_id=message_thread_id,
-        message_id=message_id,
-        prompt=prompt,
-        photo_file_id=photo_file_id,
-        voice_file_id=voice_file_id,
-        document=document,
-        cancel_event=cancel_event,
-        stateless=stateless,
-        sender_name=sender_name,
-        photo_file_ids=photo_file_ids,
-        actor_user_id=actor_user_id,
-        enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
-    )
-    start_background_worker(_process_message_worker_request, request)
 
 
 def handle_update(
