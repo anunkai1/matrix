@@ -144,6 +144,7 @@ try:
     )
     from .state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
     from .structured_logging import emit_event
+    from . import special_request_processing
     from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
     from .update_flow import (
         allow_update_chat,
@@ -282,6 +283,7 @@ except ImportError:
     )
     from state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
     from structured_logging import emit_event
+    import special_request_processing
     from transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
     from update_flow import (
         allow_update_chat,
@@ -1665,113 +1667,22 @@ def process_message_worker(
 
 
 def _process_youtube_request(request: YoutubeRequest) -> None:
-    active_engine = request.engine or CodexEngineAdapter()
-    state_repo = StateRepository(request.state)
-    cleanup_paths: List[str] = []
-    progress = build_progress_reporter(
-        request.client,
-        request.config,
-        request.chat_id,
-        request.message_id,
-        request.message_thread_id,
-        build_engine_progress_context_label(
-            request.config,
-            getattr(active_engine, "engine_name", ""),
-        ),
+    special_request_processing.process_youtube_request(
+        request,
+        build_progress_reporter_fn=build_progress_reporter,
+        build_engine_progress_context_label_fn=build_engine_progress_context_label,
+        state_repository_cls=StateRepository,
+        codex_engine_adapter_factory=CodexEngineAdapter,
+        send_canceled_response_fn=send_canceled_response,
+        run_youtube_analyzer_fn=run_youtube_analyzer,
+        build_youtube_transcript_output_fn=build_youtube_transcript_output,
+        deliver_output_and_emit_success_fn=deliver_output_and_emit_success,
+        build_youtube_unavailable_message_fn=build_youtube_unavailable_message,
+        execute_prompt_with_retry_fn=execute_prompt_with_retry,
+        build_youtube_summary_prompt_fn=build_youtube_summary_prompt,
+        finalize_prompt_success_fn=finalize_prompt_success,
+        finalize_request_progress_fn=finalize_request_progress,
     )
-    try:
-        progress.start()
-        if request.cancel_event is not None and request.cancel_event.is_set():
-            progress.mark_failure("Execution canceled.")
-            send_canceled_response(
-                request.client,
-                request.chat_id,
-                request.message_id,
-                request.message_thread_id,
-            )
-            return
-
-        progress.set_phase("Fetching YouTube metadata and transcript.")
-        analysis = run_youtube_analyzer(request.youtube_url, request.request_text)
-
-        if request.cancel_event is not None and request.cancel_event.is_set():
-            progress.mark_failure("Execution canceled.")
-            send_canceled_response(
-                request.client,
-                request.chat_id,
-                request.message_id,
-                request.message_thread_id,
-            )
-            return
-
-        request_mode = str(analysis.get("request_mode") or "summary").strip().lower()
-        transcript_text = str(analysis.get("transcript_text") or "").strip()
-
-        if request_mode == "transcript" and transcript_text:
-            output = build_youtube_transcript_output(request.config, analysis, cleanup_paths)
-            progress.mark_success()
-            deliver_output_and_emit_success(
-                client=request.client,
-                chat_id=request.chat_id,
-                message_id=request.message_id,
-                output=output,
-                message_thread_id=request.message_thread_id,
-            )
-            return
-
-        if not transcript_text:
-            output = build_youtube_unavailable_message(analysis)
-            progress.mark_success()
-            deliver_output_and_emit_success(
-                client=request.client,
-                chat_id=request.chat_id,
-                message_id=request.message_id,
-                output=output,
-                message_thread_id=request.message_thread_id,
-            )
-            return
-
-        progress.set_phase("Summarizing the YouTube transcript.")
-        result = execute_prompt_with_retry(
-            state_repo=state_repo,
-            config=request.config,
-            client=request.client,
-            engine=active_engine,
-            scope_key=request.scope_key,
-            chat_id=request.chat_id,
-            message_thread_id=request.message_thread_id,
-            message_id=request.message_id,
-            prompt_text=build_youtube_summary_prompt(request.request_text, analysis),
-            previous_thread_id=None,
-            image_path=None,
-            actor_user_id=request.actor_user_id,
-            progress=progress,
-            cancel_event=request.cancel_event,
-            session_continuity_enabled=False,
-        )
-        if result is None:
-            return
-        finalize_prompt_success(
-            state_repo=state_repo,
-            config=request.config,
-            client=request.client,
-            scope_key=request.scope_key,
-            chat_id=request.chat_id,
-            message_id=request.message_id,
-            result=result,
-            progress=progress,
-        )
-    finally:
-        finalize_request_progress(
-            progress=progress,
-            state=request.state,
-            client=request.client,
-            scope_key=request.scope_key,
-            chat_id=request.chat_id,
-            message_id=request.message_id,
-            cancel_event=request.cancel_event,
-            cleanup_paths=cleanup_paths,
-        )
 
 
 def process_youtube_request(
@@ -1809,47 +1720,13 @@ def process_youtube_request(
 
 
 def _process_youtube_worker_request(request: YoutubeRequest) -> None:
-    try:
-        _process_youtube_request(request)
-    except subprocess.TimeoutExpired:
-        logging.warning("YouTube analysis timed out for chat_id=%s", request.chat_id)
-        emit_event(
-            "bridge.request_timeout",
-            level=logging.WARNING,
-            fields={
-                "chat_id": request.chat_id,
-                "message_id": request.message_id,
-                "phase": "youtube_analysis",
-            },
-        )
-        try:
-            send_timeout_response(
-                request.client,
-                request.config,
-                request.chat_id,
-                request.message_id,
-                request.message_thread_id,
-            )
-        except Exception:
-            logging.exception(
-                "Failed to send YouTube timeout response for chat_id=%s",
-                request.chat_id,
-            )
-    except Exception:
-        emit_worker_exception_and_reply(
-            log_message="Unexpected YouTube worker error for chat_id=%s",
-            failure_log_message="Failed to send YouTube worker error response for chat_id=%s",
-            event_fields={
-                "chat_id": request.chat_id,
-                "message_id": request.message_id,
-                "phase": "youtube_analysis",
-            },
-            client=request.client,
-            config=request.config,
-            chat_id=request.chat_id,
-            message_id=request.message_id,
-            message_thread_id=request.message_thread_id,
-        )
+    special_request_processing.process_youtube_worker_request(
+        request,
+        process_youtube_request_fn=_process_youtube_request,
+        emit_event_fn=emit_event,
+        send_timeout_response_fn=send_timeout_response,
+        emit_worker_exception_and_reply_fn=emit_worker_exception_and_reply,
+    )
 
 
 def process_youtube_worker(
@@ -1918,98 +1795,17 @@ def start_youtube_worker(
 
 
 def _process_dishframed_request(request: DishframedRequest) -> None:
-    cleanup_paths: List[str] = []
-    cleanup_dirs: List[str] = []
-    progress = build_progress_reporter(
-        request.client,
-        request.config,
-        request.chat_id,
-        request.message_id,
-        request.message_thread_id,
-        "DishFramed",
+    special_request_processing.process_dishframed_request(
+        request,
+        build_progress_reporter_fn=build_progress_reporter,
+        prepare_prompt_input_fn=prepare_prompt_input,
+        dishframed_usage_message=DISHFRAMED_USAGE_MESSAGE,
+        run_dishframed_cli_fn=run_dishframed_cli,
+        telegram_caption_limit=TELEGRAM_CAPTION_LIMIT,
+        infer_media_kind_fn=infer_media_kind,
+        send_chat_action_safe_fn=send_chat_action_safe,
+        finalize_request_progress_fn=finalize_request_progress,
     )
-    try:
-        progress.start()
-        prepared = prepare_prompt_input(
-            state=request.state,
-            config=request.config,
-            client=request.client,
-            chat_id=request.chat_id,
-            message_id=request.message_id,
-            prompt="Render a DishFramed preview from these menu images.",
-            photo_file_id=request.photo_file_ids[0] if request.photo_file_ids else None,
-            photo_file_ids=request.photo_file_ids,
-            voice_file_id=None,
-            document=None,
-            progress=progress,
-        )
-        if prepared is None:
-            return
-        cleanup_paths = list(prepared.cleanup_paths)
-        image_paths = list(prepared.image_paths)
-        if not image_paths:
-            request.client.send_message(
-                request.chat_id,
-                DISHFRAMED_USAGE_MESSAGE,
-                reply_to_message_id=request.message_id,
-                message_thread_id=request.message_thread_id,
-            )
-            return
-
-        output_dir = tempfile.mkdtemp(prefix="dishframed-telegram-")
-        cleanup_dirs.append(output_dir)
-        progress.set_phase("Rendering DishFramed preview.")
-        output_path, preview_text = run_dishframed_cli(
-            image_paths=image_paths,
-            output_dir=output_dir,
-            timeout_seconds=request.config.exec_timeout_seconds,
-            cancel_event=request.cancel_event,
-        )
-        caption = (preview_text or "DishFramed preview attached.").strip()
-        if len(caption) > TELEGRAM_CAPTION_LIMIT:
-            caption = caption[: TELEGRAM_CAPTION_LIMIT - 1].rstrip() + "…"
-        if infer_media_kind(output_path) == "photo":
-            send_chat_action_safe(
-                request.client,
-                request.chat_id,
-                "upload_photo",
-                request.message_thread_id,
-            )
-            request.client.send_photo(
-                chat_id=request.chat_id,
-                photo=output_path,
-                caption=caption,
-                reply_to_message_id=request.message_id,
-                message_thread_id=request.message_thread_id,
-            )
-        else:
-            send_chat_action_safe(
-                request.client,
-                request.chat_id,
-                "upload_document",
-                request.message_thread_id,
-            )
-            request.client.send_document(
-                chat_id=request.chat_id,
-                document=output_path,
-                caption=caption,
-                reply_to_message_id=request.message_id,
-                message_thread_id=request.message_thread_id,
-            )
-        progress.mark_success()
-    finally:
-        finalize_request_progress(
-            progress=progress,
-            state=request.state,
-            client=request.client,
-            scope_key=request.scope_key,
-            chat_id=request.chat_id,
-            message_id=request.message_id,
-            cancel_event=request.cancel_event,
-            cleanup_paths=cleanup_paths,
-            cleanup_dirs=cleanup_dirs,
-            finish_event_fields={"phase": "dishframed"},
-        )
 
 
 def process_dishframed_request(
@@ -2039,51 +1835,13 @@ def process_dishframed_request(
 
 
 def _process_dishframed_worker_request(request: DishframedRequest) -> None:
-    try:
-        _process_dishframed_request(request)
-    except subprocess.TimeoutExpired:
-        logging.warning("DishFramed timed out for chat_id=%s", request.chat_id)
-        try:
-            send_timeout_response(
-                request.client,
-                request.config,
-                request.chat_id,
-                request.message_id,
-                request.message_thread_id,
-            )
-        except Exception:
-            logging.exception(
-                "Failed to send DishFramed timeout response for chat_id=%s",
-                request.chat_id,
-            )
-    except ExecutorCancelledError:
-        try:
-            send_canceled_response(
-                request.client,
-                request.chat_id,
-                request.message_id,
-                request.message_thread_id,
-            )
-        except Exception:
-            logging.exception(
-                "Failed to send DishFramed cancel response for chat_id=%s",
-                request.chat_id,
-            )
-    except Exception:
-        emit_worker_exception_and_reply(
-            log_message="Unexpected DishFramed worker error for chat_id=%s",
-            failure_log_message="Failed to send DishFramed worker error response for chat_id=%s",
-            event_fields={
-                "chat_id": request.chat_id,
-                "message_id": request.message_id,
-                "phase": "dishframed",
-            },
-            client=request.client,
-            config=request.config,
-            chat_id=request.chat_id,
-            message_id=request.message_id,
-            message_thread_id=request.message_thread_id,
-        )
+    special_request_processing.process_dishframed_worker_request(
+        request,
+        process_dishframed_request_fn=_process_dishframed_request,
+        send_timeout_response_fn=send_timeout_response,
+        send_canceled_response_fn=send_canceled_response,
+        emit_worker_exception_and_reply_fn=emit_worker_exception_and_reply,
+    )
 
 
 def process_dishframed_worker(

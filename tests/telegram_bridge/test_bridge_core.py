@@ -27,6 +27,7 @@ spec.loader.exec_module(bridge)
 import executor as bridge_executor
 import handlers as bridge_handlers
 import prompt_execution as bridge_prompt_execution
+import special_request_processing as bridge_special_request_processing
 import auth_state as bridge_auth_state
 import channel_adapter as bridge_channel_adapter
 import engine_adapter as bridge_engine_adapter
@@ -4400,6 +4401,66 @@ class BridgeCoreTests(unittest.TestCase):
         sent_output = send_executor_output.call_args.kwargs["output"]
         self.assertIn("could not obtain captions or a usable transcription", sent_output)
         self.assertIn("Example Video", sent_output)
+
+    def test_process_youtube_request_delegates_to_special_request_processing_module(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        request = bridge_handlers.build_youtube_request(
+            state=state,
+            config=config,
+            client=client,
+            engine=None,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=401,
+            request_text="summarize this",
+            youtube_url="https://www.youtube.com/watch?v=abc",
+        )
+
+        with mock.patch.object(
+            bridge_special_request_processing,
+            "process_youtube_request",
+        ) as process_youtube_request:
+            bridge_handlers._process_youtube_request(request)
+
+        process_youtube_request.assert_called_once()
+        args, kwargs = process_youtube_request.call_args
+        self.assertIs(args[0], request)
+        self.assertIs(kwargs["build_progress_reporter_fn"], bridge_handlers.build_progress_reporter)
+        self.assertIs(kwargs["execute_prompt_with_retry_fn"], bridge_handlers.execute_prompt_with_retry)
+        self.assertIs(kwargs["finalize_prompt_success_fn"], bridge_handlers.finalize_prompt_success)
+        self.assertIs(kwargs["finalize_request_progress_fn"], bridge_handlers.finalize_request_progress)
+
+    def test_process_dishframed_request_delegates_to_special_request_processing_module(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        request = bridge_handlers.build_dishframed_request(
+            state=state,
+            config=config,
+            client=client,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=402,
+            photo_file_ids=["photo-1"],
+        )
+
+        with mock.patch.object(
+            bridge_special_request_processing,
+            "process_dishframed_request",
+        ) as process_dishframed_request:
+            bridge_handlers._process_dishframed_request(request)
+
+        process_dishframed_request.assert_called_once()
+        args, kwargs = process_dishframed_request.call_args
+        self.assertIs(args[0], request)
+        self.assertIs(kwargs["build_progress_reporter_fn"], bridge_handlers.build_progress_reporter)
+        self.assertIs(kwargs["prepare_prompt_input_fn"], bridge_handlers.prepare_prompt_input)
+        self.assertIs(kwargs["run_dishframed_cli_fn"], bridge_handlers.run_dishframed_cli)
+        self.assertIs(kwargs["finalize_request_progress_fn"], bridge_handlers.finalize_request_progress)
 
     def test_build_youtube_summary_prompt_includes_basic_video_fields(self):
         prompt = bridge_handlers.build_youtube_summary_prompt(
