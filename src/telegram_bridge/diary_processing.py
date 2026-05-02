@@ -9,10 +9,12 @@ from typing import Dict, List, Optional
 
 try:
     from .channel_adapter import ChannelAdapter
+    from .engine_controls import build_engine_runtime_config, configured_default_engine
     from .handler_models import DocumentPayload
     from .state_store import PendingDiaryBatch, State, StateRepository
 except ImportError:
     from channel_adapter import ChannelAdapter
+    from engine_controls import build_engine_runtime_config, configured_default_engine
     from handler_models import DocumentPayload
     from state_store import PendingDiaryBatch, State, StateRepository
 
@@ -96,8 +98,8 @@ def build_diary_today_status(state: State, config, scope_key: str) -> str:
 def build_diary_progress_context_label(state: State, config, scope_key: str) -> str:
     handlers = _bridge_handlers()
     selected_engine = StateRepository(state).get_chat_engine(scope_key)
-    engine_name = selected_engine or handlers.configured_default_engine(config)
-    display_config = handlers.build_engine_runtime_config(state, config, scope_key, engine_name)
+    engine_name = selected_engine or configured_default_engine(config)
+    display_config = build_engine_runtime_config(state, config, scope_key, engine_name)
     return handlers.build_engine_progress_context_label(display_config, selected_engine)
 
 

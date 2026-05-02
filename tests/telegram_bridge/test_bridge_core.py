@@ -1269,7 +1269,7 @@ class BridgeCoreTests(unittest.TestCase):
         }
 
         with mock.patch.object(
-            bridge_handlers,
+            bridge_handlers.engine_controls,
             "_load_codex_model_choices",
             return_value=[("gpt-5.5", "GPT-5.5"), ("gpt-5.4", "gpt-5.4")],
         ):
@@ -1313,7 +1313,7 @@ class BridgeCoreTests(unittest.TestCase):
         }
 
         with mock.patch.object(
-            bridge_handlers,
+            bridge_handlers.engine_controls,
             "_pi_available_provider_names",
             return_value=["venice", "deepseek"],
         ):
@@ -1357,7 +1357,7 @@ class BridgeCoreTests(unittest.TestCase):
             return ["deepseek-v4-flash"]
 
         with mock.patch.object(
-            bridge_handlers,
+            bridge_handlers.engine_controls,
             "_pi_provider_model_names",
             side_effect=fake_pi_provider_model_names,
         ):
@@ -1398,7 +1398,7 @@ class BridgeCoreTests(unittest.TestCase):
         }
 
         with mock.patch.object(
-            bridge_handlers,
+            bridge_handlers.engine_controls,
             "_load_codex_model_catalog",
             return_value=[
                 {
@@ -1424,7 +1424,7 @@ class BridgeCoreTests(unittest.TestCase):
         client = FakeTelegramClient()
 
         with mock.patch.object(
-            bridge_handlers,
+            bridge_handlers.engine_controls,
             "_load_codex_model_choices",
             return_value=[("gpt-5.5", "GPT-5.5"), ("gpt-5.4", "gpt-5.4")],
         ):
@@ -1476,7 +1476,7 @@ class BridgeCoreTests(unittest.TestCase):
         client = FakeTelegramClient()
 
         with mock.patch.object(
-            bridge_handlers,
+            bridge_handlers.engine_controls,
             "_load_codex_model_catalog",
             return_value=[
                 {
@@ -1546,7 +1546,7 @@ class BridgeCoreTests(unittest.TestCase):
         }
 
         with mock.patch.object(
-            bridge_handlers,
+            bridge_handlers.engine_controls,
             "_load_codex_model_catalog",
             return_value=[
                 {
@@ -1598,7 +1598,7 @@ class BridgeCoreTests(unittest.TestCase):
         client = FakeTelegramClient()
         model_names = [f"model-{index:02d}" for index in range(1, 31)]
 
-        with mock.patch.object(bridge_handlers, "_pi_provider_model_names", return_value=model_names):
+        with mock.patch.object(bridge_handlers.engine_controls, "_pi_provider_model_names", return_value=model_names):
             handled = bridge_handlers.handle_model_command(
                 state=state,
                 config=config,
@@ -1641,7 +1641,7 @@ class BridgeCoreTests(unittest.TestCase):
             },
         }
 
-        with mock.patch.object(bridge_handlers, "_pi_provider_model_names", return_value=model_names):
+        with mock.patch.object(bridge_handlers.engine_controls, "_pi_provider_model_names", return_value=model_names):
             bridge_handlers.handle_update(state, config, client, update, engine=None)
 
         self.assertEqual(client.callback_answers[0], ("cb-model-page-1", "Updated."))
@@ -1725,7 +1725,7 @@ class BridgeCoreTests(unittest.TestCase):
         config = make_config(engine_plugin="codex", codex_model="gpt-5.4")
 
         with mock.patch.object(
-            bridge_handlers,
+            bridge_handlers.engine_controls,
             "_load_codex_model_choices",
             return_value=[
                 ("gpt-5.5", "GPT-5.5"),

@@ -5,10 +5,12 @@ from typing import Callable, Dict, Optional, Tuple
 
 try:
     from .channel_adapter import ChannelAdapter
+    from . import engine_controls
     from .handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
     from .state_store import State
 except ImportError:
     from channel_adapter import ChannelAdapter
+    import engine_controls
     from handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
     from state_store import State
 
@@ -80,8 +82,7 @@ def _handle_cancel_known_command(ctx: KnownCommandContext) -> bool:
 
 
 def _handle_engine_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
-    return handlers.handle_engine_command(
+    return engine_controls.handle_engine_command(
         state=ctx.state,
         config=ctx.config,
         client=ctx.client,
@@ -94,8 +95,7 @@ def _handle_engine_known_command(ctx: KnownCommandContext) -> bool:
 
 
 def _handle_model_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
-    return handlers.handle_model_command(
+    return engine_controls.handle_model_command(
         state=ctx.state,
         config=ctx.config,
         client=ctx.client,
@@ -108,8 +108,7 @@ def _handle_model_known_command(ctx: KnownCommandContext) -> bool:
 
 
 def _handle_effort_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
-    return handlers.handle_effort_command(
+    return engine_controls.handle_effort_command(
         state=ctx.state,
         config=ctx.config,
         client=ctx.client,
@@ -122,8 +121,7 @@ def _handle_effort_known_command(ctx: KnownCommandContext) -> bool:
 
 
 def _handle_pi_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
-    return handlers.handle_pi_command(
+    return engine_controls.handle_pi_command(
         state=ctx.state,
         config=ctx.config,
         client=ctx.client,
@@ -243,47 +241,44 @@ def handle_known_command(
 
 
 def _handle_engine_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
-    handlers = _bridge_handlers()
     if ctx.action == "reset":
-        text = handlers._reset_engine_for_scope(ctx.state, ctx.config, ctx.scope_key)
+        text = engine_controls._reset_engine_for_scope(ctx.state, ctx.config, ctx.scope_key)
     elif ctx.action == "set":
-        text = handlers._set_engine_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.engine_name)
+        text = engine_controls._set_engine_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.engine_name)
     else:
-        text = handlers.build_engine_status_text(ctx.state, ctx.config, ctx.scope_key)
+        text = engine_controls.build_engine_status_text(ctx.state, ctx.config, ctx.scope_key)
     return CallbackActionResult(
         text=text,
-        reply_markup=handlers._build_engine_picker_markup(ctx.state, ctx.config, ctx.scope_key),
+        reply_markup=engine_controls._build_engine_picker_markup(ctx.state, ctx.config, ctx.scope_key),
     )
 
 
 def _handle_pi_provider_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
-    handlers = _bridge_handlers()
     if ctx.action == "set":
-        text = handlers._set_pi_provider_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
-        reply_markup = handlers._build_engine_picker_markup(ctx.state, ctx.config, ctx.scope_key)
+        text = engine_controls._set_pi_provider_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
+        reply_markup = engine_controls._build_engine_picker_markup(ctx.state, ctx.config, ctx.scope_key)
     else:
-        text = handlers.build_pi_providers_text(ctx.state, ctx.config, ctx.scope_key)
-        reply_markup = handlers._build_provider_picker_markup(ctx.state, ctx.config, ctx.scope_key)
+        text = engine_controls.build_pi_providers_text(ctx.state, ctx.config, ctx.scope_key)
+        reply_markup = engine_controls._build_provider_picker_markup(ctx.state, ctx.config, ctx.scope_key)
     return CallbackActionResult(text=text, reply_markup=reply_markup)
 
 
 def _handle_model_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
-    handlers = _bridge_handlers()
-    requested_page = handlers._parse_page_index(ctx.value)
+    requested_page = engine_controls._parse_page_index(ctx.value)
     if ctx.action == "reset":
-        text = handlers._reset_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.engine_name)
+        text = engine_controls._reset_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.engine_name)
     elif ctx.action == "set":
         if ctx.engine_name == "codex":
-            text = handlers._set_codex_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
+            text = engine_controls._set_codex_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
         elif ctx.engine_name == "pi":
-            text = handlers._set_pi_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
+            text = engine_controls._set_pi_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
         else:
-            text = handlers.build_model_status_text(ctx.state, ctx.config, ctx.scope_key)
+            text = engine_controls.build_model_status_text(ctx.state, ctx.config, ctx.scope_key)
     else:
-        text = handlers.build_model_status_text(ctx.state, ctx.config, ctx.scope_key)
+        text = engine_controls.build_model_status_text(ctx.state, ctx.config, ctx.scope_key)
     return CallbackActionResult(
         text=text,
-        reply_markup=handlers._build_model_picker_markup(
+        reply_markup=engine_controls._build_model_picker_markup(
             ctx.state,
             ctx.config,
             ctx.scope_key,
@@ -293,16 +288,15 @@ def _handle_model_callback_action(ctx: CallbackActionContext) -> CallbackActionR
 
 
 def _handle_codex_effort_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
-    handlers = _bridge_handlers()
     if ctx.action == "reset":
-        text = handlers._reset_codex_effort_for_scope(ctx.state, ctx.config, ctx.scope_key)
+        text = engine_controls._reset_codex_effort_for_scope(ctx.state, ctx.config, ctx.scope_key)
     elif ctx.action == "set":
-        text = handlers._set_codex_effort_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
+        text = engine_controls._set_codex_effort_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
     else:
-        text = handlers.build_effort_status_text(ctx.state, ctx.config, ctx.scope_key)
+        text = engine_controls.build_effort_status_text(ctx.state, ctx.config, ctx.scope_key)
     return CallbackActionResult(
         text=text,
-        reply_markup=handlers._build_effort_picker_markup(ctx.state, ctx.config, ctx.scope_key),
+        reply_markup=engine_controls._build_effort_picker_markup(ctx.state, ctx.config, ctx.scope_key),
     )
 
 
@@ -379,7 +373,7 @@ def handle_callback_query(
             )
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
         result = CallbackActionResult(
-            text=f"Action failed.\nError: {handlers._brief_health_error(exc)}",
+            text=f"Action failed.\nError: {engine_controls._brief_health_error(exc)}",
             toast_text="Action failed.",
         )
 
