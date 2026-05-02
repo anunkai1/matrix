@@ -2185,7 +2185,7 @@ class BridgeCoreTests(unittest.TestCase):
         client.raise_on_voice = RuntimeError(
             "Telegram API sendVoice failed: 400 Bad Request: VOICE_MESSAGES_FORBIDDEN"
         )
-        with mock.patch.object(bridge_handlers, "emit_event") as emit_mock:
+        with mock.patch.object(bridge_handlers.response_delivery, "emit_event") as emit_mock:
             bridge_handlers.send_executor_output(
                 client=client,
                 chat_id=1,
@@ -2201,7 +2201,7 @@ class BridgeCoreTests(unittest.TestCase):
     def test_send_executor_output_emits_failed_event_when_media_send_crashes(self):
         client = FakeTelegramClient()
         client.send_document = mock.Mock(side_effect=RuntimeError("disk gone"))
-        with mock.patch.object(bridge_handlers, "emit_event") as emit_mock:
+        with mock.patch.object(bridge_handlers.response_delivery, "emit_event") as emit_mock:
             rendered = bridge_handlers.send_executor_output(
                 client=client,
                 chat_id=1,
