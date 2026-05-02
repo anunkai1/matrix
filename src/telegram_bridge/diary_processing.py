@@ -1,28 +1,69 @@
 import copy
 import datetime as dt
-import importlib
 import logging
 import os
 import subprocess
 import time
 from typing import Dict, List, Optional
 
-try:
+if __package__:
+    from .attachment_processing import download_photo_to_temp, download_voice_to_temp, transcribe_voice
     from .channel_adapter import ChannelAdapter
     from .engine_controls import build_engine_runtime_config, configured_default_engine
+    from .diary_store import (
+        DiaryEntry,
+        DiaryPhoto,
+        append_day_entry,
+        copy_photo_to_day_assets,
+        diary_day_docx_path,
+        diary_day_remote_docx_path,
+        diary_nextcloud_enabled,
+        diary_timezone,
+        read_day_entries,
+        upload_to_nextcloud,
+    )
+    from .message_inputs import extract_message_media_payload, extract_message_photo_file_ids, normalize_optional_text
+    from .request_processing import build_progress_reporter
+    from .response_delivery import (
+        finalize_request_progress,
+        register_cancel_event,
+        send_generic_worker_error_response,
+        start_background_worker,
+    )
+    from .runtime_profile import build_engine_progress_context_label
+    from .session_manager import finalize_chat_work, mark_busy
     from .handler_models import DocumentPayload
     from .state_store import PendingDiaryBatch, State, StateRepository
-except ImportError:
+    from .structured_logging import emit_event
+else:
+    from attachment_processing import download_photo_to_temp, download_voice_to_temp, transcribe_voice
     from channel_adapter import ChannelAdapter
     from engine_controls import build_engine_runtime_config, configured_default_engine
+    from diary_store import (
+        DiaryEntry,
+        DiaryPhoto,
+        append_day_entry,
+        copy_photo_to_day_assets,
+        diary_day_docx_path,
+        diary_day_remote_docx_path,
+        diary_nextcloud_enabled,
+        diary_timezone,
+        read_day_entries,
+        upload_to_nextcloud,
+    )
+    from message_inputs import extract_message_media_payload, extract_message_photo_file_ids, normalize_optional_text
+    from request_processing import build_progress_reporter
+    from response_delivery import (
+        finalize_request_progress,
+        register_cancel_event,
+        send_generic_worker_error_response,
+        start_background_worker,
+    )
+    from runtime_profile import build_engine_progress_context_label
+    from session_manager import finalize_chat_work, mark_busy
     from handler_models import DocumentPayload
     from state_store import PendingDiaryBatch, State, StateRepository
-
-
-def _bridge_handlers():
-    if __package__:
-        return importlib.import_module(".handlers", __package__)
-    return importlib.import_module("handlers")
+    from structured_logging import emit_event
 
 
 def diary_control_command(command: Optional[str]) -> bool:
@@ -50,8 +91,7 @@ def build_diary_entry_title(
 
 
 def build_diary_photo_caption(message: Dict[str, object], photo_index: int) -> str:
-    handlers = _bridge_handlers()
-    caption = handlers.normalize_optional_text(message.get("caption"))
+    caption = normalize_optional_text(message.get("caption"))
     if caption:
         return caption
     return f"Photo {photo_index}"
@@ -76,17 +116,16 @@ def build_diary_queue_status(state: State, scope_key: str) -> str:
 
 
 def build_diary_today_status(state: State, config, scope_key: str) -> str:
-    handlers = _bridge_handlers()
-    now = dt.datetime.now(handlers.diary_timezone(config))
-    entries = handlers.read_day_entries(config, now.date())
-    docx_path = handlers.diary_day_docx_path(config, now.date())
-    remote_path = handlers.diary_day_remote_docx_path(config, now.date()) or ""
+    now = dt.datetime.now(diary_timezone(config))
+    entries = read_day_entries(config, now.date())
+    docx_path = diary_day_docx_path(config, now.date())
+    remote_path = diary_day_remote_docx_path(config, now.date()) or ""
     lines = [
         f"Today: {now.date().isoformat()}",
         f"Entries saved: {len(entries)}",
         f"Local document: {docx_path}",
     ]
-    if handlers.diary_nextcloud_enabled(config):
+    if diary_nextcloud_enabled(config):
         lines.append(f"Nextcloud document: {remote_path}")
     if entries:
         latest = entries[-1]
@@ -96,11 +135,10 @@ def build_diary_today_status(state: State, config, scope_key: str) -> str:
 
 
 def build_diary_progress_context_label(state: State, config, scope_key: str) -> str:
-    handlers = _bridge_handlers()
     selected_engine = StateRepository(state).get_chat_engine(scope_key)
     engine_name = selected_engine or configured_default_engine(config)
     display_config = build_engine_runtime_config(state, config, scope_key, engine_name)
-    return handlers.build_engine_progress_context_label(display_config, selected_engine)
+    return build_engine_progress_context_label(display_config, selected_engine)
 
 
 def transcribe_voice_for_diary_batch(
@@ -108,11 +146,10 @@ def transcribe_voice_for_diary_batch(
     client: ChannelAdapter,
     voice_file_id: str,
 ) -> tuple[Optional[str], Optional[str]]:
-    handlers = _bridge_handlers()
     voice_path: Optional[str] = None
     try:
-        voice_path = handlers.download_voice_to_temp(client, config, voice_file_id)
-        transcript, _ = handlers.transcribe_voice(config, voice_path)
+        voice_path = download_voice_to_temp(client, config, voice_file_id)
+        transcript, _ = transcribe_voice(config, voice_path)
         return transcript, None
     except ValueError:
         return None, config.voice_transcribe_empty_message
@@ -135,8 +172,7 @@ def process_diary_batch(
     scope_key: str,
     pending: PendingDiaryBatch,
 ) -> None:
-    handlers = _bridge_handlers()
-    progress = handlers.build_progress_reporter(
+    progress = build_progress_reporter(
         client,
         config,
         pending.chat_id,
@@ -146,7 +182,7 @@ def process_diary_batch(
     )
     cleanup_paths: List[str] = []
     state_repo = StateRepository(state)
-    cancel_event = handlers.register_cancel_event(state, scope_key)
+    cancel_event = register_cancel_event(state, scope_key)
     state_repo.mark_in_flight_request(scope_key, pending.latest_message_id)
     try:
         progress.start()
@@ -158,7 +194,7 @@ def process_diary_batch(
                 item.get("message_id") if isinstance(item.get("message_id"), int) else 0,
             ),
         )
-        tz = handlers.diary_timezone(config)
+        tz = diary_timezone(config)
         timestamp_value = messages[-1].get("date") if messages else None
         if not isinstance(timestamp_value, int):
             timestamp_value = int(time.time())
@@ -171,14 +207,14 @@ def process_diary_batch(
         photo_index = 0
 
         for message in messages:
-            text = handlers.normalize_optional_text(message.get("text"))
-            caption = handlers.normalize_optional_text(message.get("caption"))
+            text = normalize_optional_text(message.get("text"))
+            caption = normalize_optional_text(message.get("caption"))
             if text:
                 text_blocks.append(text)
-            elif caption and not handlers.extract_message_photo_file_ids(message):
+            elif caption and not extract_message_photo_file_ids(message):
                 text_blocks.append(caption)
 
-            photo_file_ids = handlers.extract_message_photo_file_ids(message)
+            photo_file_ids = extract_message_photo_file_ids(message)
             if photo_file_ids:
                 progress.set_phase(
                     "Saving diary photos." if len(photo_file_ids) > 1 else "Saving diary photo."
@@ -187,8 +223,8 @@ def process_diary_batch(
                 photo_index += 1
                 downloaded_photo_path: Optional[str] = None
                 try:
-                    downloaded_photo_path = handlers.download_photo_to_temp(client, config, photo_file_id)
-                    relative_path = handlers.copy_photo_to_day_assets(
+                    downloaded_photo_path = download_photo_to_temp(client, config, photo_file_id)
+                    relative_path = copy_photo_to_day_assets(
                         config=config,
                         day=entry_dt.date(),
                         source_path=downloaded_photo_path,
@@ -196,7 +232,7 @@ def process_diary_batch(
                         index=photo_index,
                     )
                     photos.append(
-                        handlers.DiaryPhoto(
+                        DiaryPhoto(
                             relative_path=relative_path,
                             caption=build_diary_photo_caption(message, photo_index),
                         )
@@ -211,10 +247,10 @@ def process_diary_batch(
                                 downloaded_photo_path,
                             )
 
-            _, voice_file_id, _ = handlers.extract_message_media_payload(message)
+            _, voice_file_id, _ = extract_message_media_payload(message)
             if voice_file_id:
                 progress.set_phase("Transcribing diary voice note.")
-                transcript, error_message = handlers.transcribe_voice_for_diary_batch(
+                transcript, error_message = transcribe_voice_for_diary_batch(
                     config=config,
                     client=client,
                     voice_file_id=voice_file_id,
@@ -233,7 +269,7 @@ def process_diary_batch(
             )
             return
 
-        entry = handlers.DiaryEntry(
+        entry = DiaryEntry(
             entry_id=entry_id,
             created_at=entry_dt.isoformat(),
             time_label=entry_dt.strftime("%I:%M %p").lstrip("0"),
@@ -245,11 +281,11 @@ def process_diary_batch(
         )
 
         progress.set_phase("Writing diary document.")
-        docx_path = handlers.append_day_entry(config, entry_dt.date(), entry)
-        remote_path = handlers.diary_day_remote_docx_path(config, entry_dt.date()) or ""
-        if handlers.diary_nextcloud_enabled(config):
+        docx_path = append_day_entry(config, entry_dt.date(), entry)
+        remote_path = diary_day_remote_docx_path(config, entry_dt.date()) or ""
+        if diary_nextcloud_enabled(config):
             progress.set_phase("Uploading diary document to Nextcloud.")
-            handlers.upload_to_nextcloud(config, docx_path, remote_path)
+            upload_to_nextcloud(config, docx_path, remote_path)
 
         progress.mark_success()
         counts = []
@@ -265,14 +301,14 @@ def process_diary_batch(
             f"Included: {count_summary}.\n"
             f"Local file: {docx_path}"
         )
-        if handlers.diary_nextcloud_enabled(config):
+        if diary_nextcloud_enabled(config):
             message += f"\nNextcloud file: {remote_path}"
         client.send_message(
             pending.chat_id,
             message,
             reply_to_message_id=pending.latest_message_id,
         )
-        handlers.emit_event(
+        emit_event(
             "bridge.diary_batch_saved",
             fields={
                 "chat_id": pending.chat_id,
@@ -287,14 +323,14 @@ def process_diary_batch(
     except Exception:
         logging.exception("Diary batch save failed for chat_id=%s", pending.chat_id)
         progress.mark_failure("Diary save failed.")
-        handlers.send_generic_worker_error_response(
+        send_generic_worker_error_response(
             client,
             config,
             pending.chat_id,
             pending.latest_message_id,
         )
     finally:
-        handlers.finalize_request_progress(
+        finalize_request_progress(
             progress=progress,
             state=state,
             client=client,
@@ -313,7 +349,6 @@ def ensure_diary_queue_processor(
     client: ChannelAdapter,
     scope_key: str,
 ) -> None:
-    handlers = _bridge_handlers()
     should_start_worker = False
     with state.lock:
         if scope_key not in state.diary_queue_processing_scopes:
@@ -321,7 +356,7 @@ def ensure_diary_queue_processor(
             should_start_worker = True
     if not should_start_worker:
         return
-    handlers.start_background_worker(handlers.diary_queue_worker, state, config, client, scope_key)
+    start_background_worker(diary_queue_worker, state, config, client, scope_key)
 
 
 def diary_capture_batch_worker(
@@ -330,7 +365,6 @@ def diary_capture_batch_worker(
     client: ChannelAdapter,
     scope_key: str,
 ) -> None:
-    handlers = _bridge_handlers()
     while True:
         with state.lock:
             pending = state.pending_diary_batches.get(scope_key)
@@ -351,7 +385,7 @@ def diary_capture_batch_worker(
                 queue_depth = 0
         if pending is None:
             return
-        handlers.emit_event(
+        emit_event(
             "bridge.diary_batch_enqueued",
             fields={
                 "chat_id": pending.chat_id,
@@ -366,7 +400,7 @@ def diary_capture_batch_worker(
                 f"Queued. {queue_depth - 1} batch{'es' if queue_depth - 1 != 1 else ''} ahead.",
                 reply_to_message_id=pending.latest_message_id,
             )
-        handlers.ensure_diary_queue_processor(state, config, client, scope_key)
+        ensure_diary_queue_processor(state, config, client, scope_key)
         return
 
 
@@ -376,7 +410,6 @@ def diary_queue_worker(
     client: ChannelAdapter,
     scope_key: str,
 ) -> None:
-    handlers = _bridge_handlers()
     try:
         while True:
             with state.lock:
@@ -384,7 +417,7 @@ def diary_queue_worker(
                 pending = queue[0] if queue else None
             if pending is None:
                 return
-            if not handlers.mark_busy(state, scope_key):
+            if not mark_busy(state, scope_key):
                 time.sleep(0.5)
                 continue
             with state.lock:
@@ -393,9 +426,9 @@ def diary_queue_worker(
                 if not queue:
                     state.queued_diary_batches.pop(scope_key, None)
             if pending is None:
-                handlers.finalize_chat_work(state, client, chat_id=0, scope_key=scope_key)
+                finalize_chat_work(state, client, chat_id=0, scope_key=scope_key)
                 continue
-            handlers.process_diary_batch(
+            process_diary_batch(
                 state=state,
                 config=config,
                 client=client,
@@ -407,7 +440,7 @@ def diary_queue_worker(
             state.diary_queue_processing_scopes.discard(scope_key)
             has_more = bool(state.queued_diary_batches.get(scope_key))
         if has_more:
-            handlers.ensure_diary_queue_processor(state, config, client, scope_key)
+            ensure_diary_queue_processor(state, config, client, scope_key)
 
 
 def queue_diary_capture(
@@ -422,7 +455,6 @@ def queue_diary_capture(
     actor_user_id: Optional[int],
     message: Dict[str, object],
 ) -> None:
-    handlers = _bridge_handlers()
     should_start_capture_worker = False
     buffered_message_count = 0
     with state.lock:
@@ -444,7 +476,7 @@ def queue_diary_capture(
         if not pending.worker_started:
             pending.worker_started = True
             should_start_capture_worker = True
-    handlers.emit_event(
+    emit_event(
         "bridge.diary_batch_buffered",
         fields={
             "chat_id": chat_id,
@@ -454,4 +486,4 @@ def queue_diary_capture(
         },
     )
     if should_start_capture_worker:
-        handlers.start_background_worker(handlers.diary_capture_batch_worker, state, config, client, scope_key)
+        start_background_worker(diary_capture_batch_worker, state, config, client, scope_key)

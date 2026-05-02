@@ -2,4 +2,4 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec python3 "${SCRIPT_DIR}/runtime_observer.py" "$@"
+exec "${SCRIPT_DIR}/../_lib/exec_python_from_dir.sh" "runtime_observer/runtime_observer.py" "$@"

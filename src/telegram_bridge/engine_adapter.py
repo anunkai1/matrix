@@ -129,8 +129,15 @@ class EngineAdapter(Protocol):
         image_paths: Optional[list[str]] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
-    ) -> subprocess.CompletedProcess[str]:
+        ) -> subprocess.CompletedProcess[str]:
         ...
+
+
+class CompletedProcessOutputMixin:
+    engine_name: str
+
+    def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
+        return _completed_process_with_output(self.engine_name, output)
 
 
 class CodexEngineAdapter:
@@ -165,11 +172,8 @@ class CodexEngineAdapter:
         )
 
 
-class GemmaEngineAdapter:
+class GemmaEngineAdapter(CompletedProcessOutputMixin):
     engine_name = "gemma"
-
-    def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
-        return _completed_process_with_output(self.engine_name, output)
 
     def _payload(self, config, prompt: str) -> str:
         payload = {
@@ -283,11 +287,8 @@ class GemmaEngineAdapter:
             return self._completed_process_with_output(f"Gemma request failed: {exc}")
 
 
-class VeniceEngineAdapter:
+class VeniceEngineAdapter(CompletedProcessOutputMixin):
     engine_name = "venice"
-
-    def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
-        return _completed_process_with_output(self.engine_name, output)
 
     def _api_key(self, config) -> str:
         api_key = str(getattr(config, "venice_api_key", "") or "").strip()
@@ -460,11 +461,8 @@ class VeniceEngineAdapter:
             return self._completed_process_with_output(f"Venice request failed: {exc}")
 
 
-class ChatGPTWebEngineAdapter:
+class ChatGPTWebEngineAdapter(CompletedProcessOutputMixin):
     engine_name = "chatgptweb"
-
-    def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
-        return _completed_process_with_output(self.engine_name, output)
 
     def _bridge_script(self, config) -> str:
         configured = str(getattr(config, "chatgpt_web_bridge_script", "") or "").strip()
@@ -578,7 +576,7 @@ class ChatGPTWebEngineAdapter:
             return self._completed_process_with_output(f"ChatGPT web request failed: {exc}")
 
 
-class PiEngineAdapter:
+class PiEngineAdapter(CompletedProcessOutputMixin):
     engine_name = "pi"
     _RPC_EMPTY_OUTPUT_MARKER = "Pi RPC did not produce any output"
     _IMAGE_URL_ERROR_MARKERS = ("unknown variant image_url", "image_url", "expected text")
@@ -628,9 +626,6 @@ class PiEngineAdapter:
                     return True
                 return False
         return True
-
-    def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
-        return _completed_process_with_output(self.engine_name, output)
 
     def _image_data_url(self, image_path: str) -> dict[str, str]:
         path = Path(image_path)

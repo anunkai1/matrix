@@ -2,14 +2,5 @@
 set -euo pipefail
 
 UNIT_NAME="${UNIT_NAME:-telegram-architect-bridge.service}"
-
-run_privileged() {
-  if [[ "$(id -u)" -eq 0 ]]; then
-    "$@"
-  else
-    sudo -n "$@"
-  fi
-}
-
-run_privileged systemctl restart "${UNIT_NAME}"
-run_privileged systemctl --no-pager --full status "${UNIT_NAME}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${SCRIPT_DIR}/../_lib/systemd_unit.sh" restart "${UNIT_NAME}"

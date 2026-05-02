@@ -1,20 +1,27 @@
-import importlib
 import logging
 import subprocess
 from typing import Callable, Dict, Optional, Tuple
 
-try:
+if __package__:
     from .channel_adapter import ChannelAdapter
     from . import control_commands
+    from .diary_processing import build_diary_queue_status, build_diary_today_status
+    from .diary_store import diary_mode_enabled
     from . import engine_controls
+    from .handler_common import build_help_text, build_status_text, extract_callback_query_context
     from .handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
+    from .runtime_profile import CANCEL_COMMAND_ALIASES, HELP_COMMAND_ALIASES, start_command_message
     from .state_store import State
     from . import voice_alias_commands
-except ImportError:
+else:
     from channel_adapter import ChannelAdapter
     import control_commands
+    from diary_processing import build_diary_queue_status, build_diary_today_status
+    from diary_store import diary_mode_enabled
     import engine_controls
+    from handler_common import build_help_text, build_status_text, extract_callback_query_context
     from handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
+    from runtime_profile import CANCEL_COMMAND_ALIASES, HELP_COMMAND_ALIASES, start_command_message
     from state_store import State
     import voice_alias_commands
 
@@ -23,37 +30,28 @@ KnownCommandFn = Callable[[KnownCommandContext], bool]
 CallbackActionFn = Callable[[CallbackActionContext], CallbackActionResult]
 
 
-def _bridge_handlers():
-    if __package__:
-        return importlib.import_module(".handlers", __package__)
-    return importlib.import_module("handlers")
-
-
 def _handle_start_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
     ctx.client.send_message(
         ctx.chat_id,
-        handlers.start_command_message(ctx.config),
+        start_command_message(ctx.config),
         reply_to_message_id=ctx.message_id,
     )
     return True
 
 
 def _handle_help_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
     ctx.client.send_message(
         ctx.chat_id,
-        handlers.build_help_text(ctx.config),
+        build_help_text(ctx.config),
         reply_to_message_id=ctx.message_id,
     )
     return True
 
 
 def _handle_status_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
     ctx.client.send_message(
         ctx.chat_id,
-        handlers.build_status_text(ctx.state, ctx.config, chat_id=ctx.chat_id, scope_key=ctx.scope_key),
+        build_status_text(ctx.state, ctx.config, chat_id=ctx.chat_id, scope_key=ctx.scope_key),
         reply_to_message_id=ctx.message_id,
         message_thread_id=ctx.message_thread_id,
     )
@@ -160,20 +158,18 @@ def _handle_voice_alias_known_command(ctx: KnownCommandContext) -> bool:
 
 
 def _handle_diary_today_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
     ctx.client.send_message(
         ctx.chat_id,
-        handlers.build_diary_today_status(ctx.state, ctx.config, ctx.scope_key),
+        build_diary_today_status(ctx.state, ctx.config, ctx.scope_key),
         reply_to_message_id=ctx.message_id,
     )
     return True
 
 
 def _handle_diary_queue_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
     ctx.client.send_message(
         ctx.chat_id,
-        handlers.build_diary_queue_status(ctx.state, ctx.scope_key),
+        build_diary_queue_status(ctx.state, ctx.scope_key),
         reply_to_message_id=ctx.message_id,
     )
     return True
@@ -208,7 +204,6 @@ def handle_known_command(
     command: Optional[str],
     raw_text: str,
 ) -> bool:
-    handlers = _bridge_handlers()
     if command is None:
         return False
 
@@ -223,16 +218,16 @@ def handle_known_command(
         raw_text=raw_text,
     )
 
-    if command in handlers.HELP_COMMAND_ALIASES:
+    if command in HELP_COMMAND_ALIASES:
         return _handle_help_known_command(ctx)
-    if command in handlers.CANCEL_COMMAND_ALIASES:
+    if command in CANCEL_COMMAND_ALIASES:
         return _handle_cancel_known_command(ctx)
 
     handler = KNOWN_COMMAND_HANDLERS.get(command)
     if handler is not None:
         return handler(ctx)
 
-    if handlers.diary_mode_enabled(config):
+    if diary_mode_enabled(config):
         diary_handler = DIARY_COMMAND_HANDLERS.get(command)
         if diary_handler is not None:
             return diary_handler(ctx)
@@ -321,8 +316,7 @@ def handle_callback_query(
     client: ChannelAdapter,
     update: Dict[str, object],
 ) -> bool:
-    handlers = _bridge_handlers()
-    message, conversation_scope, message_id, callback_query_id, callback_data = handlers.extract_callback_query_context(update)
+    message, conversation_scope, message_id, callback_query_id, callback_data = extract_callback_query_context(update)
     if message is None or conversation_scope is None or not callback_query_id or not callback_data:
         return False
     chat_id = conversation_scope.chat_id
