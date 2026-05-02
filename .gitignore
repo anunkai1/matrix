@@ -14,6 +14,9 @@ Thumbs.db
 *.tmp
 *.temp
 
+# Node install artifacts
+ops/whatsapp_govorun/bridge/node_modules/
+
 # Python cache
 __pycache__/
 *.pyc
