@@ -146,6 +146,7 @@ try:
     from .state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
     from .structured_logging import emit_event
     from . import request_starts
+    from . import request_processing
     from . import special_request_processing
     from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
     from .update_flow import (
@@ -288,6 +289,7 @@ except ImportError:
     from state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
     from structured_logging import emit_event
     import request_starts
+    import request_processing
     import special_request_processing
     from transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
     from update_flow import (
@@ -462,6 +464,19 @@ start_youtube_worker = request_starts.start_youtube_worker
 process_dishframed_request = request_starts.process_dishframed_request
 process_dishframed_worker = request_starts.process_dishframed_worker
 start_dishframed_worker = request_starts.start_dishframed_worker
+deliver_output_and_emit_success = request_processing.deliver_output_and_emit_success
+begin_memory_turn = request_processing.begin_memory_turn
+begin_affective_turn = request_processing.begin_affective_turn
+emit_request_processing_started = request_processing.emit_request_processing_started
+emit_phase_timing = request_processing.emit_phase_timing
+build_progress_reporter = request_processing.build_progress_reporter
+_build_prompt_progress_reporter = request_processing._build_prompt_progress_reporter
+_process_prompt_request = request_processing._process_prompt_request
+_process_message_worker_request = request_processing._process_message_worker_request
+_process_youtube_request = request_processing._process_youtube_request
+_process_youtube_worker_request = request_processing._process_youtube_worker_request
+_process_dishframed_request = request_processing._process_dishframed_request
+_process_dishframed_worker_request = request_processing._process_dishframed_worker_request
 
 
 def extract_chat_context(
@@ -1412,241 +1427,6 @@ def finalize_prompt_success(
         new_thread_id=bool(new_thread_id),
     )
     return new_thread_id, delivered_output
-
-
-def deliver_output_and_emit_success(
-    client: ChannelAdapter,
-    chat_id: int,
-    message_id: Optional[int],
-    output: str,
-    message_thread_id: Optional[int] = None,
-    new_thread_id: bool = False,
-) -> str:
-    delivered_output = send_executor_output(
-        client=client,
-        chat_id=chat_id,
-        message_id=message_id,
-        output=output,
-        message_thread_id=message_thread_id,
-    )
-    emit_event(
-        "bridge.request_succeeded",
-        fields={
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "new_thread_id": bool(new_thread_id),
-            "output_chars": len(delivered_output),
-        },
-    )
-    return delivered_output
-
-
-def begin_memory_turn(
-    memory_engine: Optional[MemoryEngine],
-    state_repo: StateRepository,
-    config,
-    channel_name: str,
-    scope_key: str,
-    prompt_text: str,
-    sender_name: str,
-    stateless: bool,
-    chat_id: int,
-) -> tuple[str, Optional[str], Optional[TurnContext]]:
-    return prompt_execution.begin_memory_turn(
-        memory_engine,
-        state_repo,
-        config,
-        channel_name,
-        scope_key,
-        prompt_text,
-        sender_name,
-        stateless,
-        chat_id,
-        resolve_memory_conversation_key_fn=resolve_memory_conversation_key,
-        resolve_shared_memory_archive_key_fn=resolve_shared_memory_archive_key,
-    )
-
-
-def begin_affective_turn(
-    affective_runtime,
-    prompt_text: str,
-    *,
-    chat_id: int,
-    message_id: Optional[int],
-) -> tuple[str, bool]:
-    return prompt_execution.begin_affective_turn(
-        affective_runtime,
-        prompt_text,
-        chat_id=chat_id,
-        message_id=message_id,
-        emit_event_fn=emit_event,
-    )
-
-
-def emit_request_processing_started(
-    *,
-    chat_id: int,
-    message_id: Optional[int],
-    prompt: str,
-    photo_file_ids: Optional[List[str]],
-    photo_file_id: Optional[str],
-    voice_file_id: Optional[str],
-    document: Optional[DocumentPayload],
-    previous_thread_id: Optional[str],
-) -> None:
-    prompt_execution.emit_request_processing_started(
-        chat_id=chat_id,
-        message_id=message_id,
-        prompt=prompt,
-        photo_file_ids=photo_file_ids,
-        photo_file_id=photo_file_id,
-        voice_file_id=voice_file_id,
-        document=document,
-        previous_thread_id=previous_thread_id,
-        emit_event_fn=emit_event,
-    )
-
-
-def emit_phase_timing(
-    *,
-    chat_id: int,
-    message_id: Optional[int],
-    phase: str,
-    started_at_monotonic: float,
-    **extra_fields,
-) -> None:
-    prompt_execution.emit_phase_timing(
-        chat_id=chat_id,
-        message_id=message_id,
-        phase=phase,
-        started_at_monotonic=started_at_monotonic,
-        emit_event_fn=emit_event,
-        **extra_fields,
-    )
-
-
-def build_progress_reporter(
-    client: ChannelAdapter,
-    config,
-    chat_id: int,
-    message_id: Optional[int],
-    message_thread_id: Optional[int],
-    progress_context_label: str,
-) -> ProgressReporter:
-    return prompt_execution.build_progress_reporter(
-        client,
-        config,
-        chat_id,
-        message_id,
-        message_thread_id,
-        progress_context_label,
-        progress_reporter_cls=ProgressReporter,
-        assistant_label_fn=assistant_label,
-    )
-
-
-def _build_prompt_progress_reporter(
-    request: PromptRequest,
-    active_engine: EngineAdapter,
-) -> ProgressReporter:
-    return prompt_execution.build_prompt_progress_reporter(
-        request,
-        active_engine,
-        build_engine_runtime_config_fn=build_engine_runtime_config,
-        build_engine_progress_context_label_fn=build_engine_progress_context_label,
-        progress_reporter_cls=ProgressReporter,
-        assistant_label_fn=assistant_label,
-    )
-
-
-def _process_prompt_request(request: PromptRequest) -> None:
-    prompt_execution.process_prompt_request(
-        request,
-        progress_reporter_cls=ProgressReporter,
-        state_repository_cls=StateRepository,
-        codex_engine_adapter_factory=CodexEngineAdapter,
-        memory_engine_cls=MemoryEngine,
-        assistant_label_fn=assistant_label,
-        build_engine_runtime_config_fn=build_engine_runtime_config,
-        build_engine_progress_context_label_fn=build_engine_progress_context_label,
-        refresh_runtime_auth_fingerprint_fn=refresh_runtime_auth_fingerprint,
-        prepare_prompt_input_request_fn=_prepare_prompt_input_request,
-        execute_prompt_with_retry_fn=execute_prompt_with_retry,
-        finalize_prompt_success_fn=finalize_prompt_success,
-        finalize_request_progress_fn=finalize_request_progress,
-        emit_event_fn=emit_event,
-        resolve_memory_conversation_key_fn=resolve_memory_conversation_key,
-        resolve_shared_memory_archive_key_fn=resolve_shared_memory_archive_key,
-    )
-
-
-def _process_message_worker_request(request: PromptRequest) -> None:
-    try:
-        _process_prompt_request(request)
-    except Exception:
-        emit_worker_exception_and_reply(
-            log_message="Unexpected message worker error for chat_id=%s",
-            failure_log_message="Failed to send worker error response for chat_id=%s",
-            event_fields={"chat_id": request.chat_id, "message_id": request.message_id},
-            client=request.client,
-            config=request.config,
-            chat_id=request.chat_id,
-            message_id=request.message_id,
-            message_thread_id=request.message_thread_id,
-        )
-
-
-def _process_youtube_request(request: YoutubeRequest) -> None:
-    special_request_processing.process_youtube_request(
-        request,
-        build_progress_reporter_fn=build_progress_reporter,
-        build_engine_progress_context_label_fn=build_engine_progress_context_label,
-        state_repository_cls=StateRepository,
-        codex_engine_adapter_factory=CodexEngineAdapter,
-        send_canceled_response_fn=send_canceled_response,
-        run_youtube_analyzer_fn=run_youtube_analyzer,
-        build_youtube_transcript_output_fn=build_youtube_transcript_output,
-        deliver_output_and_emit_success_fn=deliver_output_and_emit_success,
-        build_youtube_unavailable_message_fn=build_youtube_unavailable_message,
-        execute_prompt_with_retry_fn=execute_prompt_with_retry,
-        build_youtube_summary_prompt_fn=build_youtube_summary_prompt,
-        finalize_prompt_success_fn=finalize_prompt_success,
-        finalize_request_progress_fn=finalize_request_progress,
-    )
-
-
-def _process_youtube_worker_request(request: YoutubeRequest) -> None:
-    special_request_processing.process_youtube_worker_request(
-        request,
-        process_youtube_request_fn=_process_youtube_request,
-        emit_event_fn=emit_event,
-        send_timeout_response_fn=send_timeout_response,
-        emit_worker_exception_and_reply_fn=emit_worker_exception_and_reply,
-    )
-
-
-def _process_dishframed_request(request: DishframedRequest) -> None:
-    special_request_processing.process_dishframed_request(
-        request,
-        build_progress_reporter_fn=build_progress_reporter,
-        prepare_prompt_input_fn=prepare_prompt_input,
-        dishframed_usage_message=DISHFRAMED_USAGE_MESSAGE,
-        run_dishframed_cli_fn=run_dishframed_cli,
-        telegram_caption_limit=TELEGRAM_CAPTION_LIMIT,
-        infer_media_kind_fn=infer_media_kind,
-        send_chat_action_safe_fn=send_chat_action_safe,
-        finalize_request_progress_fn=finalize_request_progress,
-    )
-
-
-def _process_dishframed_worker_request(request: DishframedRequest) -> None:
-    special_request_processing.process_dishframed_worker_request(
-        request,
-        process_dishframed_request_fn=_process_dishframed_request,
-        send_timeout_response_fn=send_timeout_response,
-        send_canceled_response_fn=send_canceled_response,
-        emit_worker_exception_and_reply_fn=emit_worker_exception_and_reply,
-    )
 
 
 ENGINE_NAME_ALIASES = {
