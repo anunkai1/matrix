@@ -101,6 +101,7 @@ try:
     from .memory_merge import merge_conversation_keys
     from .plugin_registry import build_default_plugin_registry
     from . import prompt_execution
+    from . import prompt_inputs
     from . import prompt_runtime
     from . import prompt_preparation
     from .runtime_profile import (
@@ -245,6 +246,7 @@ except ImportError:
     from memory_merge import merge_conversation_keys
     from plugin_registry import build_default_plugin_registry
     import prompt_execution
+    import prompt_inputs
     import prompt_runtime
     import prompt_preparation
     from runtime_profile import (
@@ -481,6 +483,10 @@ _process_dishframed_request = request_processing._process_dishframed_request
 _process_dishframed_worker_request = request_processing._process_dishframed_worker_request
 execute_prompt_with_retry = prompt_runtime.execute_prompt_with_retry
 finalize_prompt_success = prompt_runtime.finalize_prompt_success
+transcribe_voice_for_chat = prompt_inputs.transcribe_voice_for_chat
+_prepare_prompt_input_request = prompt_inputs._prepare_prompt_input_request
+prepare_prompt_input = prompt_inputs.prepare_prompt_input
+prewarm_attachment_archive_for_message = prompt_inputs.prewarm_attachment_archive_for_message
 
 
 def extract_chat_context(
@@ -757,124 +763,6 @@ class ProgressReporter:
             self.pending_update = False
 
 
-def transcribe_voice_for_chat(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    chat_id: int,
-    message_id: Optional[int],
-    voice_file_id: str,
-    echo_transcript: bool = True,
-) -> Optional[str]:
-    if not config.voice_transcribe_cmd:
-        client.send_message(
-            chat_id,
-            config.voice_not_configured_message,
-            reply_to_message_id=message_id,
-        )
-        return None
-
-    voice_path: Optional[str] = None
-    try:
-        try:
-            voice_path = download_voice_to_temp(client, config, voice_file_id)
-        except ValueError as exc:
-            logging.warning("Voice rejected for chat_id=%s: %s", chat_id, exc)
-            client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
-            return None
-        except Exception:
-            logging.exception("Voice download failed for chat_id=%s", chat_id)
-            client.send_message(
-                chat_id,
-                config.voice_download_error_message,
-                reply_to_message_id=message_id,
-            )
-            return None
-
-        try:
-            transcript, confidence = transcribe_voice(config, voice_path)
-        except subprocess.TimeoutExpired:
-            logging.warning("Voice transcription timeout for chat_id=%s", chat_id)
-            client.send_message(
-                chat_id,
-                config.timeout_message,
-                reply_to_message_id=message_id,
-            )
-            return None
-        except ValueError:
-            logging.warning("Voice transcription was empty for chat_id=%s", chat_id)
-            client.send_message(
-                chat_id,
-                config.voice_transcribe_empty_message,
-                reply_to_message_id=message_id,
-            )
-            return None
-        except RuntimeError:
-            client.send_message(
-                chat_id,
-                config.voice_transcribe_error_message,
-                reply_to_message_id=message_id,
-            )
-            return None
-        except Exception:
-            logging.exception("Unexpected voice transcription error for chat_id=%s", chat_id)
-            client.send_message(
-                chat_id,
-                config.voice_transcribe_error_message,
-                reply_to_message_id=message_id,
-            )
-            return None
-
-        transcript, aliases_applied = apply_voice_alias_replacements(
-            transcript,
-            build_active_voice_alias_replacements(config, state),
-        )
-        if aliases_applied:
-            logging.info("Applied voice alias corrections chat_id=%s", chat_id)
-
-        if (
-            getattr(config, "voice_low_confidence_confirmation_enabled", False)
-            and confidence is not None
-            and confidence < float(getattr(config, "voice_low_confidence_threshold", 0.0))
-        ):
-            learning_store = getattr(state, "voice_alias_learning_store", None)
-            if learning_store is not None:
-                try:
-                    learning_store.register_low_confidence_transcript(
-                        chat_id=chat_id,
-                        transcript=transcript,
-                        confidence=confidence,
-                    )
-                except Exception:
-                    logging.exception("Failed to register low-confidence transcript for learning")
-            client.send_message(
-                chat_id,
-                build_low_confidence_voice_message(config, transcript, confidence),
-                reply_to_message_id=message_id,
-            )
-            return None
-
-        if echo_transcript:
-            try:
-                heading = "Voice transcript:"
-                if confidence is not None:
-                    heading = f"Voice transcript (confidence {confidence:.2f}):"
-                client.send_message(
-                    chat_id,
-                    f"{heading}\n{transcript}",
-                    reply_to_message_id=message_id,
-                )
-            except Exception:
-                logging.exception("Failed to send voice transcript echo for chat_id=%s", chat_id)
-        return transcript
-    finally:
-        if voice_path:
-            try:
-                os.remove(voice_path)
-            except OSError:
-                logging.warning("Failed to remove temp voice file: %s", voice_path)
-
-
 def build_help_text(config) -> str:
     selectable = selectable_engine_plugins(config)
     engine_help_choices = ["status", *selectable, "reset"]
@@ -1009,78 +897,6 @@ def build_status_text(
                 lines.append(f"Memory session active: {memory_status.session_active}")
 
     return "\n".join(lines)
-
-
-def _prepare_prompt_input_request(
-    request: PromptRequest,
-    progress: ProgressReporter,
-) -> Optional[PreparedPromptInput]:
-    return prompt_preparation.prepare_prompt_input_request(
-        request,
-        progress,
-        transcribe_voice_for_chat_fn=transcribe_voice_for_chat,
-        strip_required_prefix_fn=strip_required_prefix,
-        is_whatsapp_channel_fn=is_whatsapp_channel,
-        send_input_too_long_fn=send_input_too_long,
-        emit_event_fn=emit_event,
-        prefix_help_message=PREFIX_HELP_MESSAGE,
-    )
-
-
-def prepare_prompt_input(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    chat_id: int,
-    message_id: Optional[int],
-    prompt: str,
-    photo_file_id: Optional[str],
-    voice_file_id: Optional[str],
-    document: Optional[DocumentPayload],
-    progress: ProgressReporter,
-    photo_file_ids: Optional[List[str]] = None,
-    enforce_voice_prefix_from_transcript: bool = False,
-) -> Optional[PreparedPromptInput]:
-    return _prepare_prompt_input_request(
-        build_prompt_request(
-            state=state,
-            config=config,
-            client=client,
-            engine=None,
-            scope_key="",
-            chat_id=chat_id,
-            message_thread_id=None,
-            message_id=message_id,
-            prompt=prompt,
-            photo_file_id=photo_file_id,
-            voice_file_id=voice_file_id,
-            document=document,
-            photo_file_ids=photo_file_ids,
-            enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
-        ),
-        progress,
-    )
-
-
-def prewarm_attachment_archive_for_message(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    chat_id: int,
-    message: Dict[str, object],
-) -> None:
-    prompt_preparation.prewarm_attachment_archive_for_message(
-        state,
-        config,
-        client,
-        chat_id,
-        message,
-        extract_message_photo_file_ids_fn=extract_message_photo_file_ids,
-        extract_message_media_payload_fn=extract_message_media_payload,
-        download_photo_to_temp_fn=download_photo_to_temp,
-        download_document_to_temp_fn=download_document_to_temp,
-        archive_media_path_fn=archive_media_path,
-    )
 
 
 ENGINE_NAME_ALIASES = {
