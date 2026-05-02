@@ -26,6 +26,7 @@ if str(BRIDGE_DIR) not in sys.path:
 spec.loader.exec_module(bridge)
 import executor as bridge_executor
 import handlers as bridge_handlers
+import prompt_execution as bridge_prompt_execution
 import auth_state as bridge_auth_state
 import channel_adapter as bridge_channel_adapter
 import engine_adapter as bridge_engine_adapter
@@ -3211,6 +3212,37 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(prepared.prompt_text, "turn on the light")
         self.assertEqual(client.messages, [])
         transcribe_voice_for_chat.assert_called_once()
+
+    def test_process_prompt_request_delegates_to_prompt_execution_module(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        request = bridge_handlers.build_prompt_request(
+            state=state,
+            config=config,
+            client=client,
+            engine=None,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=55,
+            prompt="hello",
+            photo_file_id=None,
+            voice_file_id=None,
+            document=None,
+        )
+
+        with mock.patch.object(bridge_prompt_execution, "process_prompt_request") as process_prompt_request:
+            bridge_handlers._process_prompt_request(request)
+
+        process_prompt_request.assert_called_once()
+        args, kwargs = process_prompt_request.call_args
+        self.assertIs(args[0], request)
+        self.assertIs(kwargs["progress_reporter_cls"], bridge_handlers.ProgressReporter)
+        self.assertIs(kwargs["prepare_prompt_input_request_fn"], bridge_handlers._prepare_prompt_input_request)
+        self.assertIs(kwargs["execute_prompt_with_retry_fn"], bridge_handlers.execute_prompt_with_retry)
+        self.assertIs(kwargs["finalize_prompt_success_fn"], bridge_handlers.finalize_prompt_success)
+        self.assertIs(kwargs["finalize_request_progress_fn"], bridge_handlers.finalize_request_progress)
 
     def test_json_log_formatter_includes_event_and_fields(self):
         record = logging.LogRecord(
