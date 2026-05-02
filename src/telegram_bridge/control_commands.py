@@ -1,0 +1,179 @@
+import logging
+from typing import Optional
+
+try:
+    from .channel_adapter import ChannelAdapter
+    from .memory_engine import MemoryEngine
+    from .memory_merge import merge_conversation_keys
+    from .memory_scope import (
+        resolve_memory_conversation_key,
+        resolve_shared_memory_archive_key,
+    )
+    from .session_manager import request_safe_restart, trigger_restart_async
+    from .state_store import State, StateRepository
+    from .structured_logging import emit_event
+    from . import response_delivery
+except ImportError:
+    from channel_adapter import ChannelAdapter
+    from memory_engine import MemoryEngine
+    from memory_merge import merge_conversation_keys
+    from memory_scope import (
+        resolve_memory_conversation_key,
+        resolve_shared_memory_archive_key,
+    )
+    from session_manager import request_safe_restart, trigger_restart_async
+    from state_store import State, StateRepository
+    from structured_logging import emit_event
+    import response_delivery
+
+
+CANCEL_REQUESTED_MESSAGE = "Cancel requested. Stopping current request."
+CANCEL_ALREADY_REQUESTED_MESSAGE = (
+    "Cancel is already in progress. Waiting for current request to stop."
+)
+CANCEL_NO_ACTIVE_MESSAGE = "No active request to cancel."
+
+request_chat_cancel = response_delivery.request_chat_cancel
+
+
+def handle_reset_command(
+    state: State,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+) -> None:
+    state_repo = StateRepository(state)
+    removed_thread = state_repo.clear_thread_id(scope_key)
+    removed_worker = state_repo.clear_worker_session(scope_key) if config.persistent_workers_enabled else False
+    memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
+    if memory_engine is not None:
+        memory_channel = getattr(client, "channel_name", "telegram")
+        conversation_key = resolve_memory_conversation_key(config, memory_channel, scope_key)
+        shared_archive_key = resolve_shared_memory_archive_key(config, memory_channel)
+        try:
+            if shared_archive_key and shared_archive_key != conversation_key:
+                merge_conversation_keys(
+                    db_path=memory_engine.db_path,
+                    source_keys=[conversation_key],
+                    target_key=shared_archive_key,
+                    allow_existing_target=True,
+                    force_summarize_target=True,
+                    min_message_score=0.75,
+                )
+                memory_engine.compact_summarized_messages(shared_archive_key)
+            memory_engine.clear_session(conversation_key)
+        except Exception:
+            logging.exception("Failed to clear shared memory session for scope=%s", scope_key)
+    if removed_thread or removed_worker:
+        client.send_message(
+            chat_id,
+            "Context reset. Your next message starts a new conversation.",
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return
+    client.send_message(
+        chat_id,
+        "No saved context was found for this chat.",
+        reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
+    )
+
+
+def handle_restart_command(
+    state: State,
+    client: ChannelAdapter,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+) -> None:
+    status, busy_count = request_safe_restart(state, chat_id, message_thread_id, message_id)
+    emit_event(
+        "bridge.restart_requested",
+        fields={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "status": status,
+            "busy_count": busy_count,
+        },
+    )
+    if status == "in_progress":
+        client.send_message(
+            chat_id,
+            "Restart is already in progress.",
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return
+    if status == "already_queued":
+        client.send_message(
+            chat_id,
+            "Restart is already queued and will run after current work completes.",
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return
+    if status == "queued":
+        client.send_message(
+            chat_id,
+            f"Safe restart queued. Waiting for {busy_count} active request(s) to finish.",
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return
+
+    client.send_message(
+        chat_id,
+        "No active request. Restarting bridge now.",
+        reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
+    )
+    trigger_restart_async(state, client, chat_id, message_thread_id, message_id)
+
+
+def handle_cancel_command(
+    state: State,
+    client: ChannelAdapter,
+    scope_key: str,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+) -> None:
+    status = request_chat_cancel(state, scope_key)
+    emit_event(
+        "bridge.cancel_requested",
+        fields={"chat_id": chat_id, "message_id": message_id, "status": status},
+    )
+    if status == "requested":
+        client.send_message(
+            chat_id,
+            CANCEL_REQUESTED_MESSAGE,
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return
+    if status == "already_requested":
+        client.send_message(
+            chat_id,
+            CANCEL_ALREADY_REQUESTED_MESSAGE,
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return
+    if status == "unavailable":
+        client.send_message(
+            chat_id,
+            "Active request cannot be canceled at this stage. Please wait a few seconds and retry.",
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+        return
+    client.send_message(
+        chat_id,
+        CANCEL_NO_ACTIVE_MESSAGE,
+        reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
+    )

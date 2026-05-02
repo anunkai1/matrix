@@ -30,6 +30,8 @@ import prompt_execution as bridge_prompt_execution
 import special_request_processing as bridge_special_request_processing
 import auth_state as bridge_auth_state
 import channel_adapter as bridge_channel_adapter
+import command_routing as bridge_command_routing
+import control_commands as bridge_control_commands
 import engine_adapter as bridge_engine_adapter
 import http_channel as bridge_http_channel
 import plugin_registry as bridge_plugin_registry
@@ -38,6 +40,7 @@ import whatsapp_channel as bridge_whatsapp_channel
 import session_manager as bridge_session_manager
 import structured_logging as bridge_structured_logging
 import transport as bridge_transport
+import voice_alias_commands as bridge_voice_alias_commands
 
 
 class FakeTelegramClient:
@@ -3357,6 +3360,81 @@ class BridgeCoreTests(unittest.TestCase):
             self.assertEqual(archive_status.message_count, 0)
             self.assertEqual(len(client.messages), 1)
             self.assertIn("Context reset.", client.messages[0][1])
+
+    def test_handle_known_command_routes_reset_to_control_commands(self):
+        client = FakeTelegramClient()
+        state = bridge.State()
+        config = make_config()
+
+        with mock.patch.object(bridge_control_commands, "handle_reset_command") as handler:
+            handled = bridge_command_routing.handle_known_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=77,
+                message_id=88,
+                command="/reset",
+                raw_text="/reset",
+            )
+
+        self.assertTrue(handled)
+        handler.assert_called_once_with(state, config, client, "tg:1", 1, 77, 88)
+
+    def test_handle_known_command_routes_voice_alias_to_voice_alias_commands(self):
+        client = FakeTelegramClient()
+        state = bridge.State()
+        config = make_config()
+
+        with mock.patch.object(
+            bridge_voice_alias_commands,
+            "handle_voice_alias_command",
+            return_value=True,
+        ) as handler:
+            handled = bridge_command_routing.handle_known_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=89,
+                command="/voice-alias",
+                raw_text="/voice-alias list",
+            )
+
+        self.assertTrue(handled)
+        handler.assert_called_once_with(
+            state=state,
+            config=config,
+            client=client,
+            chat_id=1,
+            message_id=89,
+            raw_text="/voice-alias list",
+        )
+
+    def test_voice_alias_command_adds_manual_alias(self):
+        client = FakeTelegramClient()
+        learning_store = mock.Mock()
+        learning_store.add_manual.return_value = ("foo", "bar")
+        state = bridge.State(voice_alias_learning_store=learning_store)
+
+        handled = bridge_voice_alias_commands.handle_voice_alias_command(
+            state=state,
+            config=make_config(),
+            client=client,
+            chat_id=1,
+            message_id=90,
+            raw_text="/voice-alias add foo => bar",
+        )
+
+        self.assertTrue(handled)
+        learning_store.add_manual.assert_called_once_with("foo", "bar")
+        self.assertEqual(
+            client.messages[-1][:3],
+            (1, "Added manual voice alias: `foo` => `bar`", 90),
+        )
 
     def test_begin_memory_turn_uses_state_repo_thread_as_authority(self):
         with tempfile.TemporaryDirectory() as tmpdir:

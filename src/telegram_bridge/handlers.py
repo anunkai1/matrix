@@ -37,6 +37,7 @@ try:
     )
     from .channel_adapter import ChannelAdapter
     from .command_routing import handle_callback_query, handle_known_command
+    from . import control_commands
     from . import dishframed_processing
     from .diary_processing import (
         build_diary_entry_title,
@@ -156,6 +157,7 @@ try:
         start_dishframed_dispatch,
         start_standard_dispatch,
     )
+    from . import voice_alias_commands
 except ImportError:
     from auth_state import refresh_runtime_auth_fingerprint
     import attachment_processing
@@ -176,6 +178,7 @@ except ImportError:
     )
     from channel_adapter import ChannelAdapter
     from command_routing import handle_callback_query, handle_known_command
+    import control_commands
     import dishframed_processing
     from diary_processing import (
         build_diary_entry_title,
@@ -295,16 +298,12 @@ except ImportError:
         start_dishframed_dispatch,
         start_standard_dispatch,
     )
+    import voice_alias_commands
 
 PROGRESS_TYPING_INTERVAL_SECONDS = 4
 PROGRESS_EDIT_MIN_INTERVAL_SECONDS = 6
 PROGRESS_HEARTBEAT_EDIT_SECONDS = 30
 RATE_LIMIT_MESSAGE = "Rate limit exceeded. Please wait a minute and retry."
-CANCEL_REQUESTED_MESSAGE = "Cancel requested. Stopping current request."
-CANCEL_ALREADY_REQUESTED_MESSAGE = (
-    "Cancel is already in progress. Waiting for current request to stop."
-)
-CANCEL_NO_ACTIVE_MESSAGE = "No active request to cancel."
 GEMMA_HEALTH_TIMEOUT_SECONDS = 6
 GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = 5
 DISHFRAMED_REPO_ROOT = dishframed_processing.DISHFRAMED_REPO_ROOT
@@ -398,7 +397,6 @@ cleanup_temp_files = response_delivery.cleanup_temp_files
 cleanup_temp_dirs = response_delivery.cleanup_temp_dirs
 finalize_request_progress = response_delivery.finalize_request_progress
 start_background_worker = response_delivery.start_background_worker
-request_chat_cancel = response_delivery.request_chat_cancel
 pick_largest_photo_file_id = message_inputs.pick_largest_photo_file_id
 extract_discrete_photo_file_ids = message_inputs.extract_discrete_photo_file_ids
 normalize_optional_text = message_inputs.normalize_optional_text
@@ -430,7 +428,6 @@ parse_voice_confidence = attachment_processing.parse_voice_confidence
 apply_voice_alias_replacements = attachment_processing.apply_voice_alias_replacements
 build_active_voice_alias_replacements = attachment_processing.build_active_voice_alias_replacements
 build_low_confidence_voice_message = attachment_processing.build_low_confidence_voice_message
-build_voice_alias_suggestions_message = attachment_processing.build_voice_alias_suggestions_message
 suggest_required_prefix_alias_candidate = (
     attachment_processing.suggest_required_prefix_alias_candidate
 )
@@ -444,6 +441,15 @@ build_youtube_transcript_output = youtube_processing.build_youtube_transcript_ou
 build_dishframed_command = dishframed_processing.build_dishframed_command
 parse_dishframed_cli_output = dishframed_processing.parse_dishframed_cli_output
 run_dishframed_cli = dishframed_processing.run_dishframed_cli
+handle_reset_command = control_commands.handle_reset_command
+handle_restart_command = control_commands.handle_restart_command
+handle_cancel_command = control_commands.handle_cancel_command
+build_voice_alias_help_text = voice_alias_commands.build_voice_alias_help_text
+parse_voice_alias_suggestion_id = voice_alias_commands.parse_voice_alias_suggestion_id
+handle_voice_alias_command = voice_alias_commands.handle_voice_alias_command
+maybe_process_voice_alias_learning_confirmation = (
+    voice_alias_commands.maybe_process_voice_alias_learning_confirmation
+)
 
 
 def extract_chat_context(
@@ -1897,149 +1903,6 @@ def start_dishframed_worker(
     )
 
 
-def handle_reset_command(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-) -> None:
-    state_repo = StateRepository(state)
-    removed_thread = state_repo.clear_thread_id(scope_key)
-    removed_worker = state_repo.clear_worker_session(scope_key) if config.persistent_workers_enabled else False
-    memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
-    if memory_engine is not None:
-        memory_channel = getattr(client, "channel_name", "telegram")
-        conversation_key = resolve_memory_conversation_key(config, memory_channel, scope_key)
-        shared_archive_key = resolve_shared_memory_archive_key(config, memory_channel)
-        try:
-            if shared_archive_key and shared_archive_key != conversation_key:
-                merge_conversation_keys(
-                    db_path=memory_engine.db_path,
-                    source_keys=[conversation_key],
-                    target_key=shared_archive_key,
-                    allow_existing_target=True,
-                    force_summarize_target=True,
-                    min_message_score=0.75,
-                )
-                memory_engine.compact_summarized_messages(shared_archive_key)
-            memory_engine.clear_session(conversation_key)
-        except Exception:
-            logging.exception("Failed to clear shared memory session for scope=%s", scope_key)
-    if removed_thread or removed_worker:
-        client.send_message(
-            chat_id,
-            "Context reset. Your next message starts a new conversation.",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return
-    client.send_message(
-        chat_id,
-        "No saved context was found for this chat.",
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
-    )
-
-
-def handle_restart_command(
-    state: State,
-    client: ChannelAdapter,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-) -> None:
-    status, busy_count = request_safe_restart(state, chat_id, message_thread_id, message_id)
-    emit_event(
-        "bridge.restart_requested",
-        fields={
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "status": status,
-            "busy_count": busy_count,
-        },
-    )
-    if status == "in_progress":
-        client.send_message(
-            chat_id,
-            "Restart is already in progress.",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return
-    if status == "already_queued":
-        client.send_message(
-            chat_id,
-            "Restart is already queued and will run after current work completes.",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return
-    if status == "queued":
-        client.send_message(
-            chat_id,
-            f"Safe restart queued. Waiting for {busy_count} active request(s) to finish.",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return
-
-    client.send_message(
-        chat_id,
-        "No active request. Restarting bridge now.",
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
-    )
-    trigger_restart_async(state, client, chat_id, message_thread_id, message_id)
-
-
-def handle_cancel_command(
-    state: State,
-    client: ChannelAdapter,
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-) -> None:
-    status = request_chat_cancel(state, scope_key)
-    emit_event(
-        "bridge.cancel_requested",
-        fields={"chat_id": chat_id, "message_id": message_id, "status": status},
-    )
-    if status == "requested":
-        client.send_message(
-            chat_id,
-            CANCEL_REQUESTED_MESSAGE,
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return
-    if status == "already_requested":
-        client.send_message(
-            chat_id,
-            CANCEL_ALREADY_REQUESTED_MESSAGE,
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return
-    if status == "unavailable":
-        client.send_message(
-            chat_id,
-            "Active request cannot be canceled at this stage. Please wait a few seconds and retry.",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return
-    client.send_message(
-        chat_id,
-        CANCEL_NO_ACTIVE_MESSAGE,
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
-    )
-
-
 ENGINE_NAME_ALIASES = {
     "chatgpt_web": "chatgptweb",
 }
@@ -2112,202 +1975,6 @@ def resolve_engine_for_scope(
         return default_engine
     registry = build_default_plugin_registry()
     return registry.build_engine(engine_name)
-
-
-def build_voice_alias_help_text() -> str:
-    return (
-        "Voice alias learning commands:\n"
-        "/voice-alias list - show pending learned corrections\n"
-        "/voice-alias approve <id> - approve one suggestion\n"
-        "/voice-alias reject <id> - reject one suggestion\n"
-        "/voice-alias add <source> => <target> - add approved alias manually"
-    )
-
-
-def parse_voice_alias_suggestion_id(tail: str, action: str) -> Optional[int]:
-    prefix = f"{action} "
-    if not tail.lower().startswith(prefix):
-        return None
-    value = tail[len(prefix):].strip()
-    if not value:
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None
-
-
-def handle_voice_alias_command(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    chat_id: int,
-    message_id: Optional[int],
-    raw_text: str,
-) -> bool:
-    learning_store = getattr(state, "voice_alias_learning_store", None)
-    if learning_store is None:
-        client.send_message(
-            chat_id,
-            "Voice alias learning is disabled.",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    pieces = raw_text.strip().split(maxsplit=1)
-    tail = pieces[1].strip() if len(pieces) > 1 else ""
-    if not tail or tail.lower() == "help":
-        client.send_message(
-            chat_id,
-            build_voice_alias_help_text(),
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    if tail.lower() == "list":
-        pending = learning_store.list_pending()
-        if not pending:
-            client.send_message(
-                chat_id,
-                "No pending learned voice alias suggestions.",
-                reply_to_message_id=message_id,
-            )
-            return True
-        lines = ["Pending voice alias suggestions:"]
-        for suggestion in pending:
-            lines.append(
-                f"- #{suggestion.suggestion_id}: `{suggestion.source}` => `{suggestion.target}` (seen {suggestion.count}x)"
-            )
-        lines.append("Approve with: `/voice-alias approve <id>`")
-        lines.append("Reject with: `/voice-alias reject <id>`")
-        client.send_message(chat_id, "\n".join(lines), reply_to_message_id=message_id)
-        return True
-
-    approve_id = parse_voice_alias_suggestion_id(tail, "approve")
-    if approve_id is not None:
-        approved = learning_store.approve(approve_id)
-        if approved is None:
-            client.send_message(
-                chat_id,
-                f"No pending suggestion with id {approve_id}.",
-                reply_to_message_id=message_id,
-            )
-            return True
-        client.send_message(
-            chat_id,
-            f"Approved voice alias #{approve_id}: `{approved.source}` => `{approved.target}`",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    reject_id = parse_voice_alias_suggestion_id(tail, "reject")
-    if reject_id is not None:
-        rejected = learning_store.reject(reject_id)
-        if rejected is None:
-            client.send_message(
-                chat_id,
-                f"No pending suggestion with id {reject_id}.",
-                reply_to_message_id=message_id,
-            )
-            return True
-        client.send_message(
-            chat_id,
-            f"Rejected voice alias #{reject_id}: `{rejected.source}` => `{rejected.target}`",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    if tail.lower().startswith("add "):
-        payload = tail[4:].strip()
-        if "=>" not in payload:
-            client.send_message(
-                chat_id,
-                "Usage: /voice-alias add <source> => <target>",
-                reply_to_message_id=message_id,
-            )
-            return True
-        source, target = payload.split("=>", 1)
-        source = source.strip()
-        target = target.strip()
-        if not source or not target:
-            client.send_message(
-                chat_id,
-                "Usage: /voice-alias add <source> => <target>",
-                reply_to_message_id=message_id,
-            )
-            return True
-        try:
-            added_source, added_target = learning_store.add_manual(source, target)
-        except ValueError:
-            client.send_message(
-                chat_id,
-                "Usage: /voice-alias add <source> => <target>",
-                reply_to_message_id=message_id,
-            )
-            return True
-        client.send_message(
-            chat_id,
-            f"Added manual voice alias: `{added_source}` => `{added_target}`",
-            reply_to_message_id=message_id,
-        )
-        return True
-
-    client.send_message(
-        chat_id,
-        build_voice_alias_help_text(),
-        reply_to_message_id=message_id,
-    )
-    return True
-
-
-def maybe_process_voice_alias_learning_confirmation(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    chat_id: int,
-    message_id: Optional[int],
-    prompt_input: str,
-    command: Optional[str],
-    priority_keyword_mode: bool,
-    photo_file_id: Optional[str],
-    voice_file_id: Optional[str],
-    document: Optional[DocumentPayload],
-    photo_file_ids: Optional[List[str]] = None,
-) -> None:
-    if not prompt_input.strip():
-        return
-    if command is not None:
-        return
-    if priority_keyword_mode:
-        return
-    if photo_file_id or photo_file_ids or voice_file_id or document is not None:
-        return
-
-    learning_store = getattr(state, "voice_alias_learning_store", None)
-    if learning_store is None:
-        return
-
-    try:
-        result = learning_store.consume_confirmation(
-            chat_id=chat_id,
-            confirmed_text=prompt_input,
-            active_replacements=build_active_voice_alias_replacements(config, state),
-        )
-    except Exception:
-        logging.exception("Failed to process voice alias learning confirmation")
-        return
-
-    if not result.suggestion_created:
-        return
-
-    message = build_voice_alias_suggestions_message(result.suggestion_created)
-    if not message:
-        return
-    client.send_message(
-        chat_id,
-        message,
-        reply_to_message_id=message_id,
-    )
 
 
 def start_message_worker(

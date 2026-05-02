@@ -5,14 +5,18 @@ from typing import Callable, Dict, Optional, Tuple
 
 try:
     from .channel_adapter import ChannelAdapter
+    from . import control_commands
     from . import engine_controls
     from .handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
     from .state_store import State
+    from . import voice_alias_commands
 except ImportError:
     from channel_adapter import ChannelAdapter
+    import control_commands
     import engine_controls
     from handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
     from state_store import State
+    import voice_alias_commands
 
 
 KnownCommandFn = Callable[[KnownCommandContext], bool]
@@ -57,8 +61,7 @@ def _handle_status_known_command(ctx: KnownCommandContext) -> bool:
 
 
 def _handle_restart_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
-    handlers.handle_restart_command(
+    control_commands.handle_restart_command(
         ctx.state,
         ctx.client,
         ctx.chat_id,
@@ -69,8 +72,7 @@ def _handle_restart_known_command(ctx: KnownCommandContext) -> bool:
 
 
 def _handle_cancel_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
-    handlers.handle_cancel_command(
+    control_commands.handle_cancel_command(
         ctx.state,
         ctx.client,
         ctx.scope_key,
@@ -134,8 +136,7 @@ def _handle_pi_known_command(ctx: KnownCommandContext) -> bool:
 
 
 def _handle_reset_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
-    handlers.handle_reset_command(
+    control_commands.handle_reset_command(
         ctx.state,
         ctx.config,
         ctx.client,
@@ -148,8 +149,7 @@ def _handle_reset_known_command(ctx: KnownCommandContext) -> bool:
 
 
 def _handle_voice_alias_known_command(ctx: KnownCommandContext) -> bool:
-    handlers = _bridge_handlers()
-    return handlers.handle_voice_alias_command(
+    return voice_alias_commands.handle_voice_alias_command(
         state=ctx.state,
         config=ctx.config,
         client=ctx.client,
