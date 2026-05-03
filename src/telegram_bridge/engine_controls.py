@@ -312,7 +312,7 @@ def _run_pi_command(config, command: str) -> subprocess.CompletedProcess[str]:
         if pi_provider_uses_ollama_tunnel(config):
             tunnel_port = int(getattr(config, "pi_ollama_tunnel_local_port", 11435))
             env = os.environ.copy()
-            env.setdefault("OLLAMA_HOST", f"http://127.0.0.1:{tunnel_port}")
+            env["OLLAMA_HOST"] = f"http://127.0.0.1:{tunnel_port}"
         return subprocess.run(
             argv or [pi_bin],
             capture_output=True,
