@@ -26,3 +26,20 @@ __pycache__/
 private/*
 !private/.gitkeep
 !private/README.md
+
+# Mavali ETH — confidential crypto trading infrastructure
+# Must never be committed or pushed.
+src/mavali_eth/
+src/mavali_eth_cli/
+tests/mavali_eth/
+tests/telegram_bridge/test_mavali_eth*
+ops/mavali_eth/
+docs/runbooks/mavali-eth*
+docs/specs/mavali-eth*
+infra/contracts/mavali-eth*
+infra/runtime_personas/mavali_eth*
+infra/systemd/mavali-eth*
+infra/systemd/telegram-mavali-eth*
+infra/system/sudoers/mavali-eth*
+infra/env/telegram-mavali-eth*
+logs/changes/*mavali*
