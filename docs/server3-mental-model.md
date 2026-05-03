@@ -41,13 +41,16 @@ The main reusable runtime lives in [`src/telegram_bridge`](../src/telegram_bridg
 - [`executor.py`](../src/telegram_bridge/executor.py) and [`executor.sh`](../src/telegram_bridge/executor.sh): invoke local Codex safely and stream output back.
 - [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py): pluggable engine layer for Codex, Gemma, Pi, Venice, ChatGPT Web, and the Mavali ETH deterministic wallet engine.
 - [`memory_engine.py`](../src/telegram_bridge/memory_engine.py): durable chat memory and summaries.
-- [`memory_scope.py`](../src/telegram_bridge/memory_scope.py), [`memory_merge.py`](../src/telegram_bridge/memory_merge.py), and [`conversation_scope.py`](../src/telegram_bridge/conversation_scope.py): scope-key normalization and memory/session merge helpers.
+- [`memory_summary_utils.py`](../src/telegram_bridge/memory_summary_utils.py), [`memory_scope.py`](../src/telegram_bridge/memory_scope.py), [`memory_merge.py`](../src/telegram_bridge/memory_merge.py), and [`conversation_scope.py`](../src/telegram_bridge/conversation_scope.py): summary helpers, scope-key normalization, and memory/session merge helpers.
+- [`llm_summarizer.py`](../src/telegram_bridge/llm_summarizer.py): local gemma3:4b summarizer via Ollama (primary summary path).
 - [`session_manager.py`](../src/telegram_bridge/session_manager.py): worker/session lifecycle, busy state, and safe restart coordination.
 - [`state_store.py`](../src/telegram_bridge/state_store.py): persisted chat state, engine/model overrides, and canonical session backing stores.
+- [`state_models.py`](../src/telegram_bridge/state_models.py), [`session_state.py`](../src/telegram_bridge/session_state.py), [`request_state.py`](../src/telegram_bridge/request_state.py): state dataclasses and extracted session/request lifecycle logic.
 - [`attachment_store.py`](../src/telegram_bridge/attachment_store.py), [`media.py`](../src/telegram_bridge/media.py), and [`stream_buffer.py`](../src/telegram_bridge/stream_buffer.py): attachment staging, media handling, and streamed output buffering.
 - [`voice_transcribe.py`](../src/telegram_bridge/voice_transcribe.py), [`voice_transcribe_service.py`](../src/telegram_bridge/voice_transcribe_service.py), and [`voice_alias_learning.py`](../src/telegram_bridge/voice_alias_learning.py): voice-note transcription, warm-service management, and learned correction flow.
 - [`structured_logging.py`](../src/telegram_bridge/structured_logging.py), [`affective_runtime.py`](../src/telegram_bridge/affective_runtime.py), [`diary_store.py`](../src/telegram_bridge/diary_store.py), [`auth_state.py`](../src/telegram_bridge/auth_state.py), and [`wait_for_signal_transport.py`](../src/telegram_bridge/wait_for_signal_transport.py): support layers for runtime telemetry, diary state, auth prompts, and transport coordination.
 - [`plugin_registry.py`](../src/telegram_bridge/plugin_registry.py): lets the same core speak Telegram, WhatsApp, or Signal.
+- [`bridge_deps.py`](../src/telegram_bridge/bridge_deps.py): centralized lazy facade for cross-module dependencies, replacing per-module dynamic imports.
 
 Mental shortcut:
 - Telegram Architect and Tank are variations of the same bridge pattern.
@@ -72,8 +75,7 @@ Current live engine shape:
 | --- | --- | --- |
 | `codex` | Full local Codex execution with tool/action harness | [`executor.py`](../src/telegram_bridge/executor.py), [`executor.sh`](../src/telegram_bridge/executor.sh) |
 | `gemma` | Text-only Ollama-backed model path on Server4 | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/server4-gemma-engine.md`](./runbooks/server4-gemma-engine.md) |
-| `pi` | Pi agent path that preserves runtime identity while using local or Server4-backed models | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/server4-pi-engine.md`](./runbooks/server4-pi-engine.md) |
-| `venice` | Venice API-backed text/image chat path without the Codex tool harness | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py) |
+| `pi` | Pi agent path that preserves runtime identity while using local or Server4-backed models; can use Venice as a provider | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/server4-pi-engine.md`](./runbooks/server4-pi-engine.md) |
 | `chatgptweb` | Experimental Browser Brain-backed ChatGPT web bridge | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), `ops/chatgpt_web_bridge.py` |
 | `mavali_eth` | Deterministic wallet/protocol engine with Codex fallback for unsupported prompts | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/mavali-eth-engine.md`](./runbooks/mavali-eth-engine.md) |
 

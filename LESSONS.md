@@ -15,6 +15,16 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-05-03T20:00:00+10:00 - Document Design Rationale When Removing Thresholds
+- Mistake pattern: We removed the SUMMARY_TRIGGER_TOKENS=12000 gate from `_maybe_summarize` because the new LLM summarizer (local gemma3:4b) doesn't need a token threshold. Another LLM later re-added both the constants and the gate, undoing the architecture change, because the removal had no explanation in the code.
+- Prevention rule: When removing a historically important mechanism (threshold, gate, fallback), leave a comment block in the code explaining WHY the mechanism was designed that way and WHY the current architecture no longer needs it. Without that context, future contributors will treat the removal as a bug.
+- Where/when applied: Any architectural change that removes a gate, threshold, or fallback that was previously meaningful.
+
+### 2026-05-03T19:00:00+10:00 - Verify Data Access Patterns Against Actual Object Types
+- Mistake pattern: `llm_summarizer.py` used `getattr(row, "text", "")` to read message text from database rows. sqlite3.Row objects support key access (`row["text"]`) but NOT attribute access (`row.text`). `getattr` with a default silently returned empty strings. Every summary generated since the summarizer was written ran on empty input — zero useful summaries for weeks.
+- Prevention rule: When writing functions that receive data from external sources (database rows, API responses, config dicts), verify the access pattern against the actual type at the call site. sqlite3.Row is dict-style, not attribute-style. Add a type-assertion or explicit key/index access pattern when the source type is ambiguous.
+- Where/when applied: Any function in `llm_summarizer.py`, `memory_engine.py`, or similar modules that accept `Sequence[sqlite3.Row]` as input.
+
 ### 2026-04-25T09:10:02+10:00 - Verify Lovelace Frontend Rendering After Dashboard Card Changes
 - Mistake pattern: I reported a Home Assistant dashboard chart change as verified after checking only the saved Lovelace config and entity references, but the HA frontend still rendered a card-level `Configuration error`.
 - Prevention rule: After adding or changing custom Lovelace cards, card schema, chart config, resources, or `card_mod` styling, perform a real frontend render check in HA and scan for visible configuration/card errors before reporting success.
