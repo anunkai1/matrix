@@ -1388,7 +1388,10 @@ class MemoryEngine:
         if not rows:
             return False
 
-        summary_text, key_points, open_loops = self._summarize_via_llm(rows, force=force)
+        summary_result = self._summarize_via_llm(rows, force=force)
+        if summary_result is None:
+            return False
+        summary_text, key_points, open_loops = summary_result
         end_id = int(rows[-1]["id"])
         now = time.time()
         conn.execute(
@@ -1435,14 +1438,16 @@ class MemoryEngine:
 
     def _summarize_via_llm(
         self, rows: Sequence[sqlite3.Row], *, force: bool = False
-    ) -> Tuple[str, List[str], List[str]]:
+    ) -> Optional[Tuple[str, List[str], List[str]]]:
         try:
             result = llm_summarizer.summarize_via_ollama(rows)
         except Exception:
             result = None
         if result:
             return result, [], []
-        return self._summarize_rows(rows)
+        if force:
+            return self._summarize_rows(rows)
+        return None
 
     def _summarize_rows(self, rows: Sequence[sqlite3.Row]) -> Tuple[str, List[str], List[str]]:
         return memory_summary_utils.summarize_rows(rows)

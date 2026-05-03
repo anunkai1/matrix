@@ -121,21 +121,26 @@ class MemoryEngineTests(unittest.TestCase):
             key = memory.MemoryEngine.telegram_key(335)
             engine = memory.MemoryEngine(db_path)
 
-            for idx in range(60):
-                turn = engine.begin_turn(
-                    conversation_key=key,
-                    channel="telegram",
-                    sender_name="User",
-                    user_input=f"message {idx}",
-                )
-                engine.finish_turn(
-                    turn,
-                    channel="telegram",
-                    assistant_text=f"reply {idx}",
-                    new_thread_id="thread-335",
-                )
+            with mock.patch.object(
+                memory.llm_summarizer,
+                "summarize_via_ollama",
+                return_value=None,
+            ):
+                for idx in range(60):
+                    turn = engine.begin_turn(
+                        conversation_key=key,
+                        channel="telegram",
+                        sender_name="User",
+                        user_input=f"message {idx}",
+                    )
+                    engine.finish_turn(
+                        turn,
+                        channel="telegram",
+                        assistant_text=f"reply {idx}",
+                        new_thread_id="thread-335",
+                    )
 
-            summarized = engine.run_summarization_if_needed(key, force=True)
+                summarized = engine.run_summarization_if_needed(key, force=True)
             self.assertTrue(summarized)
 
             deleted = engine.compact_summarized_messages(key)
@@ -232,20 +237,25 @@ class MemoryEngineTests(unittest.TestCase):
             key = memory.MemoryEngine.telegram_key(446)
             engine = memory.MemoryEngine(db_path)
 
-            for idx in range(8):
-                user_text = f"Long message {idx}: " + ("detail " * 700)
-                turn = engine.begin_turn(
-                    conversation_key=key,
-                    channel="telegram",
-                    sender_name="User",
-                    user_input=user_text,
-                )
-                engine.finish_turn(
-                    turn,
-                    channel="telegram",
-                    assistant_text=f"reply {idx}",
-                    new_thread_id="thread-long",
-                )
+            with mock.patch.object(
+                memory.llm_summarizer,
+                "summarize_via_ollama",
+                return_value=None,
+            ):
+                for idx in range(8):
+                    user_text = f"Long message {idx}: " + ("detail " * 700)
+                    turn = engine.begin_turn(
+                        conversation_key=key,
+                        channel="telegram",
+                        sender_name="User",
+                        user_input=user_text,
+                    )
+                    engine.finish_turn(
+                        turn,
+                        channel="telegram",
+                        assistant_text=f"reply {idx}",
+                        new_thread_id="thread-long",
+                    )
 
             assembled = engine.begin_turn(
                 conversation_key=key,
@@ -297,12 +307,24 @@ class MemoryEngineTests(unittest.TestCase):
                 sender_name="User",
                 user_input="local context",
             )
-            engine.finish_turn(
-                prior_turn,
-                channel="telegram",
-                assistant_text="local reply",
-                new_thread_id="thread-live",
-            )
+            with mock.patch.object(
+                memory.llm_summarizer,
+                "summarize_via_ollama",
+                return_value=(
+                    "Objective:\n- local context\n\n"
+                    "Decisions Made:\n- No explicit decision captured.\n\n"
+                    "Current State:\n- local reply\n\n"
+                    "Open Items:\n- No open item detected.\n\n"
+                    "User Preferences:\n- No durable preference detected.\n\n"
+                    "Risks/Blockers:\n- No blocker detected."
+                ),
+            ):
+                engine.finish_turn(
+                    prior_turn,
+                    channel="telegram",
+                    assistant_text="local reply",
+                    new_thread_id="thread-live",
+                )
 
             turn = engine.begin_turn(
                 conversation_key=live_key,
@@ -440,19 +462,24 @@ class MemoryEngineTests(unittest.TestCase):
             key = memory.MemoryEngine.telegram_key(55)
             engine = memory.MemoryEngine(db_path)
 
-            for user_text in ("first note", "second note", "third note"):
-                turn = engine.begin_turn(
-                    conversation_key=key,
-                    channel="telegram",
-                    sender_name="User",
-                    user_input=user_text,
-                )
-                engine.finish_turn(
-                    turn,
-                    channel="telegram",
-                    assistant_text=f"reply to {user_text}",
-                    new_thread_id="thread-55",
-                )
+            with mock.patch.object(
+                memory.llm_summarizer,
+                "summarize_via_ollama",
+                return_value=None,
+            ):
+                for user_text in ("first note", "second note", "third note"):
+                    turn = engine.begin_turn(
+                        conversation_key=key,
+                        channel="telegram",
+                        sender_name="User",
+                        user_input=user_text,
+                    )
+                    engine.finish_turn(
+                        turn,
+                        channel="telegram",
+                        assistant_text=f"reply to {user_text}",
+                        new_thread_id="thread-55",
+                    )
 
             response = memory.handle_natural_language_memory_query(
                 engine,
@@ -611,16 +638,33 @@ class MemoryEngineTests(unittest.TestCase):
             engine = memory.MemoryEngine(db_path)
             engine.remember_explicit(key, "profile: Architect operator")
 
-            for i in range(55):
-                user_text = f"Message {i} about bridge runtime behavior"
-                assistant_text = f"Reply {i} with status"
-                turn = engine.begin_turn(
-                    conversation_key=key,
-                    channel="telegram",
-                    sender_name="User",
-                    user_input=user_text,
-                )
-                engine.finish_turn(turn, channel="telegram", assistant_text=assistant_text, new_thread_id="thread-k")
+            with mock.patch.object(
+                memory.llm_summarizer,
+                "summarize_via_ollama",
+                return_value=(
+                    "Objective:\n- bridge runtime behavior\n\n"
+                    "Decisions Made:\n- No explicit decision captured.\n\n"
+                    "Current State:\n- status replies provided\n\n"
+                    "Open Items:\n- No open item detected.\n\n"
+                    "User Preferences:\n- No durable preference detected.\n\n"
+                    "Risks/Blockers:\n- No blocker detected."
+                ),
+            ):
+                for i in range(55):
+                    user_text = f"Message {i} about bridge runtime behavior"
+                    assistant_text = f"Reply {i} with status"
+                    turn = engine.begin_turn(
+                        conversation_key=key,
+                        channel="telegram",
+                        sender_name="User",
+                        user_input=user_text,
+                    )
+                    engine.finish_turn(
+                        turn,
+                        channel="telegram",
+                        assistant_text=assistant_text,
+                        new_thread_id="thread-k",
+                    )
 
             status = engine.get_status(key)
             self.assertGreaterEqual(status.summary_count, 1)
@@ -669,19 +713,24 @@ class MemoryEngineTests(unittest.TestCase):
             )
             engine.remember_explicit(key, "favorite_shell: bash")
 
-            for i in range(8):
-                turn = engine.begin_turn(
-                    conversation_key=key,
-                    channel="telegram",
-                    sender_name="User",
-                    user_input=f"Retention message {i}",
-                )
-                engine.finish_turn(
-                    turn,
-                    channel="telegram",
-                    assistant_text=f"Retention reply {i}",
-                    new_thread_id="thread-r",
-                )
+            with mock.patch.object(
+                memory.llm_summarizer,
+                "summarize_via_ollama",
+                return_value=None,
+            ):
+                for i in range(8):
+                    turn = engine.begin_turn(
+                        conversation_key=key,
+                        channel="telegram",
+                        sender_name="User",
+                        user_input=f"Retention message {i}",
+                    )
+                    engine.finish_turn(
+                        turn,
+                        channel="telegram",
+                        assistant_text=f"Retention reply {i}",
+                        new_thread_id="thread-r",
+                    )
 
             status = engine.get_status(key)
             self.assertLessEqual(status.message_count, 6)
@@ -700,40 +749,45 @@ class MemoryEngineTests(unittest.TestCase):
                 prune_interval_seconds=0,
             )
 
-            important_turn = engine.begin_turn(
-                conversation_key=key,
-                channel="telegram",
-                sender_name="User",
-                user_input="Decision: use option B for the memory rollout.",
-            )
-            engine.finish_turn(
-                important_turn,
-                channel="telegram",
-                assistant_text="Noted.",
-                new_thread_id="thread-important",
-            )
-
-            filler_messages = (
-                "ok",
-                "thanks",
-                "yes",
-                "cool",
-                "nice",
-                "sounds good",
-            )
-            for idx, user_text in enumerate(filler_messages):
-                turn = engine.begin_turn(
+            with mock.patch.object(
+                memory.llm_summarizer,
+                "summarize_via_ollama",
+                return_value=None,
+            ):
+                important_turn = engine.begin_turn(
                     conversation_key=key,
                     channel="telegram",
                     sender_name="User",
-                    user_input=user_text,
+                    user_input="Decision: use option B for the memory rollout.",
                 )
                 engine.finish_turn(
-                    turn,
+                    important_turn,
                     channel="telegram",
-                    assistant_text=f"reply {idx}",
+                    assistant_text="Noted.",
                     new_thread_id="thread-important",
                 )
+
+                filler_messages = (
+                    "ok",
+                    "thanks",
+                    "yes",
+                    "cool",
+                    "nice",
+                    "sounds good",
+                )
+                for idx, user_text in enumerate(filler_messages):
+                    turn = engine.begin_turn(
+                        conversation_key=key,
+                        channel="telegram",
+                        sender_name="User",
+                        user_input=user_text,
+                    )
+                    engine.finish_turn(
+                        turn,
+                        channel="telegram",
+                        assistant_text=f"reply {idx}",
+                        new_thread_id="thread-important",
+                    )
 
             status = engine.get_status(key)
             self.assertLessEqual(status.message_count, 6)
