@@ -328,8 +328,8 @@ except ImportError:
     )
     import voice_alias_commands
 
-GEMMA_HEALTH_TIMEOUT_SECONDS = 6
-GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = 5
+GEMMA_HEALTH_TIMEOUT_SECONDS = engine_controls.GEMMA_HEALTH_TIMEOUT_SECONDS
+GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = engine_controls.GEMMA_HEALTH_CURL_TIMEOUT_SECONDS
 DISHFRAMED_REPO_ROOT = dishframed_processing.DISHFRAMED_REPO_ROOT
 DISHFRAMED_PYTHON_BIN = dishframed_processing.DISHFRAMED_PYTHON_BIN
 DISHFRAMED_USAGE_MESSAGE = dishframed_processing.DISHFRAMED_USAGE_MESSAGE
@@ -443,14 +443,8 @@ prewarm_attachment_archive_for_message = prompt_inputs.prewarm_attachment_archiv
 
 
 
-ENGINE_NAME_ALIASES = {
-    "chatgpt_web": "chatgptweb",
-}
-
-PI_PROVIDER_ALIASES = {
-    "ollama_ssh": "ollama",
-    "ssh": "ollama",
-}
+ENGINE_NAME_ALIASES = engine_controls.ENGINE_NAME_ALIASES
+PI_PROVIDER_ALIASES = engine_controls.PI_PROVIDER_ALIASES
 
 normalize_engine_name = engine_controls.normalize_engine_name
 configured_default_engine = engine_controls.configured_default_engine

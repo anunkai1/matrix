@@ -6,7 +6,7 @@ import subprocess
 import time
 from typing import Dict, List, Optional
 
-if __package__:
+try:
     from .attachment_processing import download_photo_to_temp, download_voice_to_temp, transcribe_voice
     from .channel_adapter import ChannelAdapter
     from .engine_controls import build_engine_runtime_config, configured_default_engine
@@ -35,7 +35,7 @@ if __package__:
     from .handler_models import DocumentPayload
     from .state_store import PendingDiaryBatch, State, StateRepository
     from .structured_logging import emit_event
-else:
+except ImportError:
     from attachment_processing import download_photo_to_temp, download_voice_to_temp, transcribe_voice
     from channel_adapter import ChannelAdapter
     from engine_controls import build_engine_runtime_config, configured_default_engine

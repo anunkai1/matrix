@@ -2,7 +2,7 @@ import logging
 import subprocess
 from typing import Callable, Dict, Optional, Tuple
 
-if __package__:
+try:
     from .channel_adapter import ChannelAdapter
     from . import control_commands
     from .diary_processing import build_diary_queue_status, build_diary_today_status
@@ -13,7 +13,7 @@ if __package__:
     from .runtime_profile import CANCEL_COMMAND_ALIASES, HELP_COMMAND_ALIASES, start_command_message
     from .state_store import State
     from . import voice_alias_commands
-else:
+except ImportError:
     from channel_adapter import ChannelAdapter
     import control_commands
     from diary_processing import build_diary_queue_status, build_diary_today_status

@@ -6,13 +6,13 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-if __package__:
+try:
     from .channel_adapter import ChannelAdapter
     from .engine_adapter import EngineAdapter
     from . import engine_health
     from .plugin_registry import build_default_plugin_registry
     from .state_store import State, StateRepository
-else:
+except ImportError:
     from channel_adapter import ChannelAdapter
     from engine_adapter import EngineAdapter
     import engine_health
@@ -25,10 +25,12 @@ GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = 5
 
 ENGINE_NAME_ALIASES = {
     "chatgpt": "chatgptweb",
+    "chatgpt_web": "chatgptweb",
 }
 PI_PROVIDER_ALIASES = {
     "ollama_http": "ollama",
     "ollama_ssh": "ollama",
+    "ssh": "ollama",
 }
 PI_PROVIDER_CHOICES = (
     ("ollama", "local Ollama or SSH-tunneled Ollama"),

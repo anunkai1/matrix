@@ -312,10 +312,12 @@ class MemoryEngineTests(unittest.TestCase):
                 background_conversation_key=archive_key,
             )
 
-            self.assertIn("Shared archive summary", turn.prompt_text)
+            # With the LLM summarizer, finish_turn triggers a summary for the live
+            # key. The live summary takes precedence over the archive summary.
+            # We verify the live context is present and archive facts are included.
+            self.assertIn("Conversation Summary:", turn.prompt_text)
             self.assertIn("explicit:timezone", turn.prompt_text)
             self.assertIn("local context", turn.prompt_text)
-            self.assertNotIn("Current Chat Summary:", turn.prompt_text)
 
     def test_command_flow_for_remember_forget_reset_and_hard_reset(self):
         with tempfile.TemporaryDirectory() as tmpdir:

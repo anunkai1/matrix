@@ -1,25 +1,20 @@
-import importlib
 import logging
 import os
 import subprocess
 from typing import Dict, List, Optional
 
 try:
+    from . import bridge_deps as handlers
     from .channel_adapter import ChannelAdapter
     from .handler_models import DocumentPayload, PreparedPromptInput, PromptRequest
     from .state_store import State
     from . import prompt_preparation
 except ImportError:
+    import bridge_deps as handlers
     from channel_adapter import ChannelAdapter
     from handler_models import DocumentPayload, PreparedPromptInput, PromptRequest
     from state_store import State
     import prompt_preparation
-
-
-def _bridge_handlers():
-    if __package__:
-        return importlib.import_module(".handlers", __package__)
-    return importlib.import_module("handlers")
 
 
 def transcribe_voice_for_chat(
@@ -31,7 +26,6 @@ def transcribe_voice_for_chat(
     voice_file_id: str,
     echo_transcript: bool = True,
 ) -> Optional[str]:
-    handlers = _bridge_handlers()
     if not config.voice_transcribe_cmd:
         client.send_message(
             chat_id,
@@ -145,7 +139,6 @@ def _prepare_prompt_input_request(
     request: PromptRequest,
     progress,
 ) -> Optional[PreparedPromptInput]:
-    handlers = _bridge_handlers()
     return prompt_preparation.prepare_prompt_input_request(
         request,
         progress,
@@ -172,7 +165,6 @@ def prepare_prompt_input(
     photo_file_ids: Optional[List[str]] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> Optional[PreparedPromptInput]:
-    handlers = _bridge_handlers()
     return _prepare_prompt_input_request(
         handlers.build_prompt_request(
             state=state,
@@ -201,7 +193,6 @@ def prewarm_attachment_archive_for_message(
     chat_id: int,
     message: Dict[str, object],
 ) -> None:
-    handlers = _bridge_handlers()
     prompt_preparation.prewarm_attachment_archive_for_message(
         state,
         config,

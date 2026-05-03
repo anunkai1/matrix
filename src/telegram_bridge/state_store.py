@@ -2,123 +2,38 @@ import json
 import os
 import sqlite3
 import tempfile
-import threading
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional
 
 try:
     from .conversation_scope import normalize_scope_storage_key, parse_telegram_scope_key
+    from . import request_state
+    from . import session_state
+    from .state_models import (
+        CanonicalSession,
+        PendingDiaryBatch,
+        PendingMediaGroup,
+        RecentPhotoSelection,
+        ScopeKey,
+        State,
+        WorkerSession,
+        normalize_scope_key,
+    )
 except ImportError:
     from conversation_scope import normalize_scope_storage_key, parse_telegram_scope_key
-
-
-ScopeKey = str
-
-
-def normalize_scope_key(scope_key: object) -> ScopeKey:
-    normalized = normalize_scope_storage_key(scope_key)
-    if normalized is None:
-        raise ValueError(f"Invalid scope key: {scope_key!r}")
-    return normalized
-
-
-@dataclass
-class CanonicalSession:
-    thread_id: str = ""
-    worker_created_at: Optional[float] = None
-    worker_last_used_at: Optional[float] = None
-    worker_policy_fingerprint: str = ""
-    in_flight_started_at: Optional[float] = None
-    in_flight_message_id: Optional[int] = None
-
-
-@dataclass
-class WorkerSession:
-    created_at: float
-    last_used_at: float
-    thread_id: str
-    policy_fingerprint: str
-
-
-@dataclass
-class PendingMediaGroup:
-    chat_id: int
-    media_group_id: str
-    updates: List[Dict[str, object]] = field(default_factory=list)
-    started_at: float = field(default_factory=time.time)
-    last_seen_at: float = field(default_factory=time.time)
-
-
-@dataclass
-class PendingDiaryBatch:
-    scope_key: str
-    chat_id: int
-    message_thread_id: Optional[int]
-    latest_message_id: Optional[int]
-    sender_name: str
-    actor_user_id: Optional[int]
-    messages: List[Dict[str, object]] = field(default_factory=list)
-    started_at: float = field(default_factory=time.time)
-    last_seen_at: float = field(default_factory=time.time)
-    worker_started: bool = False
-
-
-@dataclass
-class RecentPhotoSelection:
-    photo_file_ids: List[str] = field(default_factory=list)
-    message_id: Optional[int] = None
-    captured_at: float = field(default_factory=time.time)
-
-
-@dataclass
-class State:
-    started_at: float = field(default_factory=time.time)
-    busy_chats: Set[ScopeKey] = field(default_factory=set)
-    recent_requests: Dict[ScopeKey, List[float]] = field(default_factory=dict)
-    chat_threads: Dict[ScopeKey, str] = field(default_factory=dict)
-    chat_thread_path: str = ""
-    chat_engines: Dict[ScopeKey, str] = field(default_factory=dict)
-    chat_engine_path: str = ""
-    chat_codex_models: Dict[ScopeKey, str] = field(default_factory=dict)
-    chat_codex_model_path: str = ""
-    chat_codex_efforts: Dict[ScopeKey, str] = field(default_factory=dict)
-    chat_codex_effort_path: str = ""
-    chat_pi_providers: Dict[ScopeKey, str] = field(default_factory=dict)
-    chat_pi_provider_path: str = ""
-    chat_pi_models: Dict[ScopeKey, str] = field(default_factory=dict)
-    chat_pi_model_path: str = ""
-    worker_sessions: Dict[ScopeKey, WorkerSession] = field(default_factory=dict)
-    worker_sessions_path: str = ""
-    in_flight_requests: Dict[ScopeKey, Dict[str, object]] = field(default_factory=dict)
-    in_flight_path: str = ""
-    canonical_sessions_enabled: bool = False
-    canonical_legacy_mirror_enabled: bool = False
-    canonical_sqlite_enabled: bool = False
-    canonical_sqlite_path: str = ""
-    canonical_json_mirror_enabled: bool = False
-    chat_sessions: Dict[ScopeKey, CanonicalSession] = field(default_factory=dict)
-    chat_sessions_path: str = ""
-    restart_requested: bool = False
-    restart_in_progress: bool = False
-    restart_chat_id: Optional[int] = None
-    restart_message_thread_id: Optional[int] = None
-    restart_reply_to_message_id: Optional[int] = None
-    memory_engine: Optional[object] = None
-    affective_runtime: Optional[object] = None
-    attachment_store: Optional[object] = None
-    voice_alias_learning_store: Optional[object] = None
-    cancel_events: Dict[ScopeKey, threading.Event] = field(default_factory=dict)
-    pending_media_groups: Dict[str, PendingMediaGroup] = field(default_factory=dict)
-    recent_scope_photos: Dict[ScopeKey, RecentPhotoSelection] = field(default_factory=dict)
-    pending_diary_batches: Dict[ScopeKey, PendingDiaryBatch] = field(default_factory=dict)
-    queued_diary_batches: Dict[ScopeKey, List[PendingDiaryBatch]] = field(default_factory=dict)
-    diary_queue_processing_scopes: Set[ScopeKey] = field(default_factory=set)
-    auth_fingerprint_path: str = ""
-    auth_fingerprint: str = ""
-    lock: threading.Lock = field(default_factory=threading.Lock)
-    auth_change_lock: threading.Lock = field(default_factory=threading.Lock)
+    import request_state
+    import session_state
+    from state_models import (
+        CanonicalSession,
+        PendingDiaryBatch,
+        PendingMediaGroup,
+        RecentPhotoSelection,
+        ScopeKey,
+        State,
+        WorkerSession,
+        normalize_scope_key,
+    )
 
 
 def ensure_state_dir(path: str) -> None:
@@ -135,16 +50,26 @@ def quarantine_corrupt_state_file(path: str) -> Optional[str]:
     return str(quarantined)
 
 
-def load_chat_threads(path: str) -> Dict[ScopeKey, str]:
+def _load_json_object(path: str, *, state_label: str) -> Dict[object, object]:
     data_path = Path(path)
     if not data_path.exists():
         return {}
     try:
         raw = json.loads(data_path.read_text(encoding="utf-8"))
     except Exception as exc:
-        raise ValueError(f"Failed to parse chat thread state {path}: {exc}") from exc
+        raise ValueError(f"Failed to parse {state_label} state {path}: {exc}") from exc
     if not isinstance(raw, dict):
-        raise ValueError(f"Invalid chat thread state {path}: root is not object")
+        raise ValueError(f"Invalid {state_label} state {path}: root is not object")
+    return raw
+
+
+def _load_scope_string_map(
+    path: str,
+    *,
+    state_label: str,
+    normalize_value,
+) -> Dict[ScopeKey, str]:
+    raw = _load_json_object(path, state_label=state_label)
     parsed: Dict[ScopeKey, str] = {}
     for key, value in raw.items():
         if not isinstance(value, str) or not value.strip():
@@ -152,126 +77,62 @@ def load_chat_threads(path: str) -> Dict[ScopeKey, str]:
         scope_key = normalize_scope_storage_key(key)
         if scope_key is None:
             continue
-        parsed[scope_key] = value.strip()
+        normalized_value = normalize_value(value.strip())
+        if normalized_value:
+            parsed[scope_key] = normalized_value
     return parsed
+
+
+def load_chat_threads(path: str) -> Dict[ScopeKey, str]:
+    return _load_scope_string_map(
+        path,
+        state_label="chat thread",
+        normalize_value=lambda value: value,
+    )
 
 
 def load_chat_engines(path: str) -> Dict[ScopeKey, str]:
-    data_path = Path(path)
-    if not data_path.exists():
-        return {}
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"Failed to parse chat engine state {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid chat engine state {path}: root is not object")
-    parsed: Dict[ScopeKey, str] = {}
-    for key, value in raw.items():
-        if not isinstance(value, str) or not value.strip():
-            continue
-        scope_key = normalize_scope_storage_key(key)
-        if scope_key is None:
-            continue
-        parsed[scope_key] = value.strip().lower()
-    return parsed
+    return _load_scope_string_map(
+        path,
+        state_label="chat engine",
+        normalize_value=lambda value: value.lower(),
+    )
 
 
 def load_chat_codex_models(path: str) -> Dict[ScopeKey, str]:
-    data_path = Path(path)
-    if not data_path.exists():
-        return {}
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"Failed to parse chat Codex model state {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid chat Codex model state {path}: root is not object")
-    parsed: Dict[ScopeKey, str] = {}
-    for key, value in raw.items():
-        if not isinstance(value, str) or not value.strip():
-            continue
-        scope_key = normalize_scope_storage_key(key)
-        if scope_key is None:
-            continue
-        parsed[scope_key] = value.strip()
-    return parsed
+    return _load_scope_string_map(
+        path,
+        state_label="chat Codex model",
+        normalize_value=lambda value: value,
+    )
 
 
 def load_chat_codex_efforts(path: str) -> Dict[ScopeKey, str]:
-    data_path = Path(path)
-    if not data_path.exists():
-        return {}
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"Failed to parse chat Codex effort state {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid chat Codex effort state {path}: root is not object")
-    parsed: Dict[ScopeKey, str] = {}
-    for key, value in raw.items():
-        if not isinstance(value, str) or not value.strip():
-            continue
-        scope_key = normalize_scope_storage_key(key)
-        if scope_key is None:
-            continue
-        parsed[scope_key] = value.strip().lower()
-    return parsed
+    return _load_scope_string_map(
+        path,
+        state_label="chat Codex effort",
+        normalize_value=lambda value: value.lower(),
+    )
 
 
 def load_chat_pi_models(path: str) -> Dict[ScopeKey, str]:
-    data_path = Path(path)
-    if not data_path.exists():
-        return {}
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"Failed to parse chat Pi model state {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid chat Pi model state {path}: root is not object")
-    parsed: Dict[ScopeKey, str] = {}
-    for key, value in raw.items():
-        if not isinstance(value, str) or not value.strip():
-            continue
-        scope_key = normalize_scope_storage_key(key)
-        if scope_key is None:
-            continue
-        parsed[scope_key] = value.strip()
-    return parsed
+    return _load_scope_string_map(
+        path,
+        state_label="chat Pi model",
+        normalize_value=lambda value: value,
+    )
 
 
 def load_chat_pi_providers(path: str) -> Dict[ScopeKey, str]:
-    data_path = Path(path)
-    if not data_path.exists():
-        return {}
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"Failed to parse chat Pi provider state {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid chat Pi provider state {path}: root is not object")
-    parsed: Dict[ScopeKey, str] = {}
-    for key, value in raw.items():
-        if not isinstance(value, str) or not value.strip():
-            continue
-        scope_key = normalize_scope_storage_key(key)
-        if scope_key is None:
-            continue
-        parsed[scope_key] = value.strip().lower()
-    return parsed
+    return _load_scope_string_map(
+        path,
+        state_label="chat Pi provider",
+        normalize_value=lambda value: value.lower(),
+    )
 
 
 def load_worker_sessions(path: str) -> Dict[ScopeKey, WorkerSession]:
-    data_path = Path(path)
-    if not data_path.exists():
-        return {}
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"Failed to parse worker session state {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid worker session state {path}: root is not object")
-
+    raw = _load_json_object(path, state_label="worker session")
     parsed: Dict[ScopeKey, WorkerSession] = {}
     for key, value in raw.items():
         if not isinstance(value, dict):
@@ -301,16 +162,7 @@ def load_worker_sessions(path: str) -> Dict[ScopeKey, WorkerSession]:
 
 
 def load_in_flight_requests(path: str) -> Dict[ScopeKey, Dict[str, object]]:
-    data_path = Path(path)
-    if not data_path.exists():
-        return {}
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"Failed to parse in-flight state {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid in-flight state {path}: root is not object")
-
+    raw = _load_json_object(path, state_label="in-flight")
     out: Dict[ScopeKey, Dict[str, object]] = {}
     for key, value in raw.items():
         if not isinstance(value, dict):
@@ -330,16 +182,7 @@ def load_in_flight_requests(path: str) -> Dict[ScopeKey, Dict[str, object]]:
 
 
 def load_canonical_sessions(path: str) -> Dict[ScopeKey, CanonicalSession]:
-    data_path = Path(path)
-    if not data_path.exists():
-        return {}
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ValueError(f"Failed to parse canonical session state {path}: {exc}") from exc
-    if not isinstance(raw, dict):
-        raise ValueError(f"Invalid canonical session state {path}: root is not object")
-
+    raw = _load_json_object(path, state_label="canonical session")
     parsed: Dict[ScopeKey, CanonicalSession] = {}
     for key, value in raw.items():
         if not isinstance(value, dict):
@@ -1080,219 +923,83 @@ def sync_all_canonical_sessions(state: State) -> None:
 
 
 def clear_worker_session(state: State, scope_key: ScopeKey) -> bool:
-    scope_key = normalize_scope_key(scope_key)
-    if state.canonical_sessions_enabled:
-        changed = False
-        with state.lock:
-            session = state.chat_sessions.get(scope_key)
-            if session is not None and (
-                session.worker_created_at is not None
-                or session.worker_last_used_at is not None
-                or session.worker_policy_fingerprint
-            ):
-                session.worker_created_at = None
-                session.worker_last_used_at = None
-                session.worker_policy_fingerprint = ""
-                if canonical_session_is_empty(session):
-                    del state.chat_sessions[scope_key]
-                changed = True
-        if changed:
-            persist_canonical_and_mirror_legacy(state)
-        return changed
-
-    removed = False
-    with state.lock:
-        if scope_key in state.worker_sessions:
-            del state.worker_sessions[scope_key]
-            removed = True
-    if removed:
-        persist_worker_sessions(state)
-        sync_canonical_session(state, scope_key)
-    return removed
+    return session_state.clear_worker_session(
+        state,
+        scope_key,
+        normalize_scope_key_fn=normalize_scope_key,
+        canonical_session_is_empty_fn=canonical_session_is_empty,
+        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        persist_worker_sessions_fn=persist_worker_sessions,
+        sync_canonical_session_fn=sync_canonical_session,
+    )
 
 
 def get_thread_id(state: State, scope_key: ScopeKey) -> Optional[str]:
-    scope_key = normalize_scope_key(scope_key)
-    if state.canonical_sessions_enabled:
-        with state.lock:
-            session = state.chat_sessions.get(scope_key)
-            if session is None:
-                return None
-            thread_id = session.thread_id.strip()
-            return thread_id or None
-    with state.lock:
-        return state.chat_threads.get(scope_key)
+    return session_state.get_thread_id(
+        state,
+        scope_key,
+        normalize_scope_key_fn=normalize_scope_key,
+    )
 
 
 def set_thread_id(state: State, scope_key: ScopeKey, thread_id: str) -> None:
-    scope_key = normalize_scope_key(scope_key)
-    if state.canonical_sessions_enabled:
-        normalized_thread_id = thread_id.strip()
-        changed = False
-        with state.lock:
-            session = state.chat_sessions.get(scope_key)
-            if session is None:
-                session = CanonicalSession()
-                state.chat_sessions[scope_key] = session
-            if session.thread_id != normalized_thread_id:
-                session.thread_id = normalized_thread_id
-                changed = True
-            if session.worker_created_at is not None:
-                now = time.time()
-                if session.worker_last_used_at != now:
-                    session.worker_last_used_at = now
-                    changed = True
-        if changed:
-            persist_canonical_and_mirror_legacy(state)
-        return
-
-    normalized_thread_id = thread_id.strip()
-    persist_threads = False
-    persist_sessions = False
-    with state.lock:
-        if state.chat_threads.get(scope_key) != normalized_thread_id:
-            state.chat_threads[scope_key] = normalized_thread_id
-            persist_threads = True
-        session = state.worker_sessions.get(scope_key)
-        if session is not None:
-            session.thread_id = normalized_thread_id
-            session.last_used_at = time.time()
-            persist_sessions = True
-    if persist_threads:
-        _persist_legacy_state(state, chat_threads=True)
-    if persist_sessions:
-        _persist_legacy_state(state, worker_sessions=True)
-    if persist_threads or persist_sessions:
-        sync_canonical_session(state, scope_key)
+    session_state.set_thread_id(
+        state,
+        scope_key,
+        thread_id,
+        normalize_scope_key_fn=normalize_scope_key,
+        canonical_session_cls=CanonicalSession,
+        persist_legacy_state_fn=_persist_legacy_state,
+        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        sync_canonical_session_fn=sync_canonical_session,
+    )
 
 
 def clear_thread_id(state: State, scope_key: ScopeKey) -> bool:
-    scope_key = normalize_scope_key(scope_key)
-    if state.canonical_sessions_enabled:
-        removed = False
-        with state.lock:
-            session = state.chat_sessions.get(scope_key)
-            if session is not None:
-                if session.thread_id:
-                    session.thread_id = ""
-                    removed = True
-                if session.worker_created_at is not None:
-                    session.worker_last_used_at = time.time()
-                    removed = True
-                if canonical_session_is_empty(session):
-                    del state.chat_sessions[scope_key]
-                    removed = True
-        if removed:
-            persist_canonical_and_mirror_legacy(state)
-        return removed
-
-    removed = False
-    persist_sessions = False
-    with state.lock:
-        if scope_key in state.chat_threads:
-            del state.chat_threads[scope_key]
-            removed = True
-        session = state.worker_sessions.get(scope_key)
-        if session is not None:
-            session.thread_id = ""
-            session.last_used_at = time.time()
-            persist_sessions = True
-    if removed:
-        _persist_legacy_state(state, chat_threads=True)
-    if persist_sessions:
-        _persist_legacy_state(state, worker_sessions=True)
-    if removed or persist_sessions:
-        sync_canonical_session(state, scope_key)
-    return removed
+    return session_state.clear_thread_id(
+        state,
+        scope_key,
+        normalize_scope_key_fn=normalize_scope_key,
+        canonical_session_is_empty_fn=canonical_session_is_empty,
+        persist_legacy_state_fn=_persist_legacy_state,
+        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        sync_canonical_session_fn=sync_canonical_session,
+    )
 
 
 def mark_in_flight_request(state: State, scope_key: ScopeKey, message_id: Optional[int]) -> None:
-    scope_key = normalize_scope_key(scope_key)
-    if state.canonical_sessions_enabled:
-        with state.lock:
-            session = state.chat_sessions.get(scope_key)
-            if session is None:
-                session = CanonicalSession()
-                state.chat_sessions[scope_key] = session
-            session.in_flight_started_at = time.time()
-            session.in_flight_message_id = message_id if isinstance(message_id, int) else None
-        persist_canonical_and_mirror_legacy(state)
-        return
-
-    payload: Dict[str, object] = {"started_at": time.time()}
-    if isinstance(message_id, int):
-        payload["message_id"] = message_id
-    with state.lock:
-        state.in_flight_requests[scope_key] = payload
-    persist_in_flight_requests(state)
-    sync_canonical_session(state, scope_key)
+    request_state.mark_in_flight_request(
+        state,
+        scope_key,
+        message_id,
+        normalize_scope_key_fn=normalize_scope_key,
+        canonical_session_cls=CanonicalSession,
+        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        persist_in_flight_requests_fn=persist_in_flight_requests,
+        sync_canonical_session_fn=sync_canonical_session,
+    )
 
 
 def clear_in_flight_request(state: State, scope_key: ScopeKey) -> None:
-    scope_key = normalize_scope_key(scope_key)
-    if state.canonical_sessions_enabled:
-        changed = False
-        with state.lock:
-            session = state.chat_sessions.get(scope_key)
-            if session is not None and (
-                session.in_flight_started_at is not None
-                or session.in_flight_message_id is not None
-            ):
-                session.in_flight_started_at = None
-                session.in_flight_message_id = None
-                if canonical_session_is_empty(session):
-                    del state.chat_sessions[scope_key]
-                changed = True
-        if changed:
-            persist_canonical_and_mirror_legacy(state)
-        return
-
-    removed = False
-    with state.lock:
-        if scope_key in state.in_flight_requests:
-            del state.in_flight_requests[scope_key]
-            removed = True
-    if removed:
-        persist_in_flight_requests(state)
-        sync_canonical_session(state, scope_key)
+    request_state.clear_in_flight_request(
+        state,
+        scope_key,
+        normalize_scope_key_fn=normalize_scope_key,
+        canonical_session_is_empty_fn=canonical_session_is_empty,
+        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        persist_in_flight_requests_fn=persist_in_flight_requests,
+        sync_canonical_session_fn=sync_canonical_session,
+    )
 
 
 def pop_interrupted_requests(state: State) -> Dict[ScopeKey, Dict[str, object]]:
-    if state.canonical_sessions_enabled:
-        interrupted: Dict[ScopeKey, Dict[str, object]] = {}
-        with state.lock:
-            for scope_key, session in state.chat_sessions.items():
-                if session.in_flight_started_at is None:
-                    continue
-                payload: Dict[str, object] = {"started_at": float(session.in_flight_started_at)}
-                if session.in_flight_message_id is not None:
-                    payload["message_id"] = session.in_flight_message_id
-                interrupted[scope_key] = payload
-
-            if not interrupted:
-                return {}
-
-            for scope_key in list(interrupted):
-                session = state.chat_sessions.get(scope_key)
-                if session is None:
-                    continue
-                session.in_flight_started_at = None
-                session.in_flight_message_id = None
-                if canonical_session_is_empty(session):
-                    del state.chat_sessions[scope_key]
-        persist_canonical_and_mirror_legacy(state)
-        return interrupted
-
-    with state.lock:
-        if not state.in_flight_requests:
-            return {}
-        interrupted = dict(state.in_flight_requests)
-        state.in_flight_requests = {}
-    persist_in_flight_requests(state)
-    if state.canonical_sessions_enabled:
-        for scope_key in interrupted:
-            sync_canonical_session(state, scope_key)
-    return interrupted
+    return request_state.pop_interrupted_requests(
+        state,
+        canonical_session_is_empty_fn=canonical_session_is_empty,
+        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        persist_in_flight_requests_fn=persist_in_flight_requests,
+        sync_canonical_session_fn=sync_canonical_session,
+    )
 
 
 class StateRepository:

@@ -12,18 +12,25 @@ from zoneinfo import ZoneInfo
 
 try:
     from . import llm_summarizer
+    from . import memory_summary_utils
 except ImportError:
+    import sys
+    from pathlib import Path
+    _this_dir = str(Path(__file__).resolve().parent)
+    if _this_dir not in sys.path:
+        sys.path.insert(0, _this_dir)
     import llm_summarizer
+    import memory_summary_utils
 
 MODE_FULL = "all_context"
 MODE_FULL_LEGACY_ALIAS = "full"
 MODE_SESSION_ONLY = "session_only"
 ALLOWED_MODES = (MODE_FULL, MODE_SESSION_ONLY)
 
-# Former SUMMARY_TRIGGER_TOKENS removed — LLM summarizer is now the primary path.
+# SUMMARY_TRIGGER_TOKENS intentionally removed -- LLM summarizer is primary.
 # Keyword summarizer (_summarize_rows) is dormant, only called when force=True and Ollama fails.
 RECENT_WINDOW_MAX_MESSAGES = 120
-RECENT_WINDOW_TOKEN_BUDGET = 2400
+RECENT_WINDOW_TOKEN_BUDGET = 4000
 FACT_LIMIT = 20
 DEFAULT_MAX_MESSAGES_PER_KEY = 4000
 DEFAULT_MAX_SUMMARIES_PER_KEY = 80
@@ -471,55 +478,6 @@ class MemoryEngine:
         stripped = cls._CONTEXT_BLOCK_PATTERN.sub("", (text or "")).strip()
         return stripped or (text or "").strip()
 
-    @classmethod
-    def _clean_summary_line(cls, text: str, limit: int = 180) -> str:
-        value = (text or "").strip()
-        if not value:
-            return ""
-        value = MARKDOWN_LINK_PATTERN.sub(r"\1", value)
-        value = URL_PATTERN.sub("", value)
-        value = value.replace("`", "")
-        value = " ".join(value.split()).strip(" -")
-        if len(value) <= limit:
-            return value
-        return value[: max(0, limit - 3)].rstrip() + "..."
-
-    @staticmethod
-    def _is_summary_noise(text: str) -> bool:
-        lowered = (text or "").lower()
-        if not lowered:
-            return True
-        if lowered.startswith(("chunk id:", "traceback ", "to https://")):
-            return True
-        if lowered in {"proceed", "go ahead", "yes"}:
-            return True
-        if "/home/" in lowered and len(lowered) > 120:
-            return True
-        return False
-
-    @staticmethod
-    def _append_unique(items: List[str], value: str, max_items: int) -> None:
-        if not value:
-            return
-        candidate = value.strip()
-        if not candidate:
-            return
-        normalized = candidate.lower()
-        if any(existing.lower() == normalized for existing in items):
-            return
-        if len(items) >= max_items:
-            return
-        items.append(candidate)
-
-    @staticmethod
-    def _format_summary_section(title: str, items: Sequence[str], empty_text: str) -> str:
-        lines = [f"{title}:"]
-        if items:
-            lines.extend([f"- {item}" for item in items])
-        else:
-            lines.append(f"- {empty_text}")
-        return "\n".join(lines)
-
     def _load_recent_messages(
         self,
         conn: sqlite3.Connection,
@@ -920,47 +878,15 @@ class MemoryEngine:
         sections.append(f"Current User Input:\n{current_input.strip()}")
         return "\n\n".join(sections).strip()
 
-    @staticmethod
-    def _summary_text(row: Optional[sqlite3.Row]) -> str:
-        if row is None:
-            return ""
-        return str(row["summary_text"] or "").strip()
-
-    @staticmethod
-    def _summary_age(created_at: float) -> str:
-        seconds = time.time() - created_at
-        if seconds < 120:
-            return "just now"
-        minutes = int(seconds // 60)
-        if minutes < 60:
-            return f"{minutes} min ago"
-        hours = int(seconds // 3600)
-        if hours < 24:
-            return f"{hours}h ago"
-        days = int(seconds // 86400)
-        return f"{days}d ago"
-
-    @staticmethod
-    def _summary_title(base: str, row: Optional[sqlite3.Row]) -> str:
-        if row is None:
-            return base
-        created_at = row["created_at"]
-        if isinstance(created_at, (int, float)) and created_at > 0:
-            return f"{base} ({MemoryEngine._summary_age(float(created_at))})"
-        return base
-
     def _build_summary_sections(
         self,
         current_summary_row: Optional[sqlite3.Row],
         background_summary_row: Optional[sqlite3.Row],
     ) -> List[Tuple[str, str]]:
-        current_summary = self._summary_text(current_summary_row)
-        background_summary = self._summary_text(background_summary_row)
-        if not background_summary:
-            return [(self._summary_title("Conversation Summary", current_summary_row), current_summary)] if current_summary else []
-        if not current_summary:
-            return [(self._summary_title("Conversation Summary", background_summary_row), background_summary)]
-        return [(self._summary_title("Conversation Summary", current_summary_row), current_summary)]
+        return memory_summary_utils.build_summary_sections(
+            current_summary_row,
+            background_summary_row,
+        )
 
     def _build_fact_lines(
         self,
@@ -1405,6 +1331,7 @@ class MemoryEngine:
                     """,
                     (turn.conversation_key, new_thread_id.strip(), now),
                 )
+            self._maybe_summarize(conn, turn.conversation_key, turn.mode)
             self._prune_conversation(conn, turn.conversation_key, force=False)
 
     def summarize_all_unsummarized(self) -> Dict[str, bool]:
@@ -1515,129 +1442,10 @@ class MemoryEngine:
             result = None
         if result:
             return result, [], []
-        if force:
-            return self._summarize_rows(rows)
-        return "", [], []
+        return self._summarize_rows(rows)
 
     def _summarize_rows(self, rows: Sequence[sqlite3.Row]) -> Tuple[str, List[str], List[str]]:
-        parsed_rows: List[Tuple[str, str]] = []
-        for row in rows:
-            cleaned = self._clean_summary_line(str(row["text"] or ""))
-            if not cleaned or self._is_summary_noise(cleaned):
-                continue
-            role = str(row["sender_role"] or "user").strip().lower() or "user"
-            parsed_rows.append((role, cleaned))
-
-        objective: List[str] = []
-        decisions: List[str] = []
-        current_state: List[str] = []
-        open_items: List[str] = []
-        preferences: List[str] = []
-        risks: List[str] = []
-        question_candidates: List[str] = []
-
-        objective_terms = (
-            "i want",
-            "we need",
-            "please",
-            "can you",
-            "could you",
-            "goal",
-            "objective",
-        )
-        decision_terms = (
-            "proceed with these changes",
-            "accepted risk",
-            "as designed",
-            "change it to",
-            "rename",
-            "remove it",
-        )
-        preference_terms = (
-            "i prefer",
-            "we prefer",
-            "don't want",
-            "do not want",
-            "leave as is",
-            "as designed",
-        )
-        state_terms = (
-            "done",
-            "completed",
-            "implemented",
-            "fixed",
-            "pushed",
-            "restarted",
-            "active",
-            "running",
-            "updated",
-            "removed",
-            "renamed",
-            "added",
-        )
-        risk_terms = ("blocked", "error", "failed", "denied", "risk", "warning", "not found")
-        open_terms = ("pending", "need approval", "waiting", "follow-up", "next step", "todo")
-
-        for role, text in parsed_rows:
-            lowered = text.lower()
-            if role == "assistant":
-                if any(term in lowered for term in state_terms):
-                    self._append_unique(current_state, text, 3)
-                if any(term in lowered for term in risk_terms):
-                    self._append_unique(risks, text, 3)
-                if any(term in lowered for term in open_terms):
-                    self._append_unique(open_items, text, 3)
-                if any(term in lowered for term in decision_terms):
-                    self._append_unique(decisions, text, 3)
-            else:
-                if any(term in lowered for term in objective_terms):
-                    self._append_unique(objective, text, 2)
-                if any(term in lowered for term in decision_terms):
-                    self._append_unique(decisions, text, 3)
-                if any(term in lowered for term in preference_terms):
-                    self._append_unique(preferences, text, 3)
-                if "?" in text:
-                    self._append_unique(question_candidates, text, 4)
-                if any(term in lowered for term in risk_terms):
-                    self._append_unique(risks, text, 3)
-
-        if not objective:
-            for role, text in parsed_rows:
-                if role != "assistant":
-                    self._append_unique(objective, text, 1)
-                    break
-
-        if not current_state:
-            for role, text in reversed(parsed_rows):
-                if role == "assistant":
-                    self._append_unique(current_state, text, 1)
-                    break
-
-        if not open_items:
-            for candidate in question_candidates[-2:]:
-                lowered = candidate.lower()
-                if "anything else" in lowered or "what next" in lowered or "next step" in lowered:
-                    self._append_unique(open_items, candidate, 2)
-
-        summary_sections = [
-            self._format_summary_section("Objective", objective, "No explicit objective captured."),
-            self._format_summary_section("Decisions Made", decisions, "No explicit decision captured."),
-            self._format_summary_section("Current State", current_state, "No clear status update captured."),
-            self._format_summary_section("Open Items", open_items, "No open item detected."),
-            self._format_summary_section("User Preferences", preferences, "No durable preference detected."),
-            self._format_summary_section("Risks/Blockers", risks, "No blocker detected."),
-        ]
-        summary_text = "\n\n".join(summary_sections)
-
-        key_points_source = objective + decisions + current_state + preferences + risks
-        key_points: List[str] = []
-        for point in key_points_source:
-            self._append_unique(key_points, point, 8)
-
-        open_loops: List[str] = []
-        for item in open_items:
-            self._append_unique(open_loops, item, 6)
-        return summary_text, key_points, open_loops
+        return memory_summary_utils.summarize_rows(rows)
 
     @staticmethod
     def _is_sensitive(text: str) -> bool:

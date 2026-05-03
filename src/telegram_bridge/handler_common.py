@@ -3,7 +3,7 @@ import threading
 import time
 from typing import Dict, List, Optional
 
-if __package__:
+try:
     from .background_tasks import start_daemon_thread
     from .conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
     from .executor import ExecutorProgressEvent
@@ -15,7 +15,7 @@ if __package__:
     from .transport import TELEGRAM_LIMIT
     from .engine_controls import selectable_engine_plugins
     from .response_delivery import compact_progress_text
-else:
+except ImportError:
     from background_tasks import start_daemon_thread
     from conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
     from executor import ExecutorProgressEvent
