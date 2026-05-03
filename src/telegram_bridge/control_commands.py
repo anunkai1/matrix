@@ -13,6 +13,7 @@ try:
     from .state_store import State, StateRepository
     from .structured_logging import emit_event
     from . import response_delivery
+    from . import prompt_execution
 except ImportError:
     from channel_adapter import ChannelAdapter
     from memory_engine import MemoryEngine
@@ -25,6 +26,7 @@ except ImportError:
     from state_store import State, StateRepository
     from structured_logging import emit_event
     import response_delivery
+    import prompt_execution
 
 
 CANCEL_REQUESTED_MESSAGE = "Cancel requested. Stopping current request."
@@ -65,6 +67,7 @@ def handle_reset_command(
                 )
                 memory_engine.compact_summarized_messages(shared_archive_key)
             memory_engine.clear_session(conversation_key)
+            prompt_execution.clear_memory_injection_state(scope_key)
         except Exception:
             logging.exception("Failed to clear shared memory session for scope=%s", scope_key)
     if removed_thread or removed_worker:

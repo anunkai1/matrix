@@ -1,4 +1,3 @@
-import importlib
 import logging
 import subprocess
 import threading
@@ -17,10 +16,10 @@ except ImportError:
     from state_store import StateRepository
 
 
-def _bridge_handlers():
-    if __package__:
-        return importlib.import_module(".handlers", __package__)
-    return importlib.import_module("handlers")
+try:
+    from . import bridge_deps as handlers
+except ImportError:
+    import bridge_deps as handlers
 
 
 def execute_prompt_with_retry(
@@ -41,7 +40,6 @@ def execute_prompt_with_retry(
     cancel_event: Optional[threading.Event] = None,
     session_continuity_enabled: bool = True,
 ) -> Optional[subprocess.CompletedProcess[str]]:
-    handlers = _bridge_handlers()
     if scope_key is None:
         scope_key = handlers.build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
     allow_automatic_retry = config.persistent_workers_enabled
@@ -353,7 +351,6 @@ def finalize_prompt_success(
     scope_key: Optional[str] = None,
     message_thread_id: Optional[int] = None,
 ) -> tuple[Optional[str], str]:
-    handlers = _bridge_handlers()
     if scope_key is None:
         scope_key = handlers.build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
     new_thread_id, output = handlers.parse_executor_output(result.stdout or "")

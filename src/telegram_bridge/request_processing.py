@@ -1,4 +1,3 @@
-import importlib
 from typing import List, Optional
 
 try:
@@ -45,10 +44,10 @@ send_chat_action_safe = response_delivery.send_chat_action_safe
 infer_media_kind = response_delivery.infer_media_kind
 
 
-def _bridge_handlers():
-    if __package__:
-        return importlib.import_module(".handlers", __package__)
-    return importlib.import_module("handlers")
+try:
+    from . import bridge_deps as handlers
+except ImportError:
+    import bridge_deps as handlers
 
 
 def deliver_output_and_emit_success(
@@ -59,7 +58,6 @@ def deliver_output_and_emit_success(
     message_thread_id: Optional[int] = None,
     new_thread_id: bool = False,
 ) -> str:
-    handlers = _bridge_handlers()
     delivered_output = handlers.send_executor_output(
         client=client,
         chat_id=chat_id,
@@ -89,6 +87,9 @@ def begin_memory_turn(
     sender_name: str,
     stateless: bool,
     chat_id: int,
+    *,
+    engine_name: str = "",
+    has_persisted_thread: bool = False,
 ) -> tuple[str, Optional[str], Optional[TurnContext]]:
     return prompt_execution.begin_memory_turn(
         memory_engine,
@@ -102,6 +103,8 @@ def begin_memory_turn(
         chat_id,
         resolve_memory_conversation_key_fn=resolve_memory_conversation_key,
         resolve_shared_memory_archive_key_fn=resolve_shared_memory_archive_key,
+        engine_name=engine_name,
+        has_persisted_thread=has_persisted_thread,
     )
 
 
@@ -171,7 +174,6 @@ def build_progress_reporter(
     message_thread_id: Optional[int],
     progress_context_label: str,
 ):
-    handlers = _bridge_handlers()
     return prompt_execution.build_progress_reporter(
         client,
         config,
@@ -188,7 +190,6 @@ def _build_prompt_progress_reporter(
     request: PromptRequest,
     active_engine: EngineAdapter,
 ):
-    handlers = _bridge_handlers()
     return prompt_execution.build_prompt_progress_reporter(
         request,
         active_engine,
@@ -200,7 +201,6 @@ def _build_prompt_progress_reporter(
 
 
 def _process_prompt_request(request: PromptRequest) -> None:
-    handlers = _bridge_handlers()
     prompt_execution.process_prompt_request(
         request,
         progress_reporter_cls=handlers.ProgressReporter,
@@ -238,7 +238,6 @@ def _process_message_worker_request(request: PromptRequest) -> None:
 
 
 def _process_youtube_request(request: YoutubeRequest) -> None:
-    handlers = _bridge_handlers()
     special_request_processing.process_youtube_request(
         request,
         build_progress_reporter_fn=build_progress_reporter,
@@ -268,7 +267,6 @@ def _process_youtube_worker_request(request: YoutubeRequest) -> None:
 
 
 def _process_dishframed_request(request: DishframedRequest) -> None:
-    handlers = _bridge_handlers()
     special_request_processing.process_dishframed_request(
         request,
         build_progress_reporter_fn=build_progress_reporter,

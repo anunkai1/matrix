@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from .engine_adapter import CodexEngineAdapter, EngineAdapter
@@ -12,7 +12,6 @@ except ImportError:
     from handler_models import DocumentPayload, PromptRequest
     from memory_engine import MemoryEngine, TurnContext
     from state_store import StateRepository
-
 
 def emit_phase_timing(
     *,
@@ -115,6 +114,17 @@ def build_prompt_progress_reporter(
     )
 
 
+_MEMORY_INJECTION_INTERVAL_TOKENS = 150000
+_MEMORY_INJECTION_INTERVAL_SECONDS = 1800
+_memory_injection: Dict[str, Tuple[float, int]] = {}
+
+# Engines that always get a full memory turn (no throttling):
+# - stateless calls have no session to carry forward
+# - codex without a persisted thread has no LLM-side context
+# - empty engine_name means old compatibility API (no throttling info available)
+_UNTHROTTLED_ENGINE_NAMES: frozenset[str] = frozenset({"", "codex"})
+
+
 def begin_memory_turn(
     memory_engine: Optional[MemoryEngine],
     state_repo: StateRepository,
@@ -128,11 +138,56 @@ def begin_memory_turn(
     *,
     resolve_memory_conversation_key_fn,
     resolve_shared_memory_archive_key_fn,
+    engine_name: str = "",
+    has_persisted_thread: bool = False,
 ) -> tuple[str, Optional[str], Optional[TurnContext]]:
     if memory_engine is None:
         return prompt_text, (None if stateless else state_repo.get_thread_id(scope_key)), None
+    if stateless:
+        return _do_memory_turn(memory_engine, state_repo, config, channel_name, scope_key,
+                               prompt_text, sender_name, stateless, chat_id,
+                               resolve_memory_conversation_key_fn,
+                               resolve_shared_memory_archive_key_fn)
+
+    if engine_name in _UNTHROTTLED_ENGINE_NAMES and not has_persisted_thread:
+        return _do_memory_turn(memory_engine, state_repo, config, channel_name, scope_key,
+                               prompt_text, sender_name, stateless, chat_id,
+                               resolve_memory_conversation_key_fn,
+                               resolve_shared_memory_archive_key_fn)
+
+    now = time.time()
+    prompt_tokens = len(prompt_text) // 4
+    entry = _memory_injection.get(scope_key)
+
+    if entry is not None:
+        last_ts, token_count = entry
+        token_count += prompt_tokens
+        if token_count < _MEMORY_INJECTION_INTERVAL_TOKENS and (now - last_ts) < _MEMORY_INJECTION_INTERVAL_SECONDS:
+            _memory_injection[scope_key] = (last_ts, token_count)
+            return prompt_text, state_repo.get_thread_id(scope_key), None
+
+    _memory_injection[scope_key] = (now, 0)
+    return _do_memory_turn(memory_engine, state_repo, config, channel_name, scope_key,
+                           prompt_text, sender_name, stateless, chat_id,
+                           resolve_memory_conversation_key_fn,
+                           resolve_shared_memory_archive_key_fn)
+
+
+def _do_memory_turn(
+    memory_engine: MemoryEngine,
+    state_repo: StateRepository,
+    config,
+    channel_name: str,
+    scope_key: str,
+    prompt_text: str,
+    sender_name: str,
+    stateless: bool,
+    chat_id: int,
+    resolve_memory_conversation_key_fn,
+    resolve_shared_memory_archive_key_fn,
+) -> tuple[str, Optional[str], Optional[TurnContext]]:
     conversation_key = resolve_memory_conversation_key_fn(config, channel_name, scope_key)
-    persisted_thread_id = None if stateless else state_repo.get_thread_id(scope_key)
+    persisted_thread_id = state_repo.get_thread_id(scope_key)
     if not stateless:
         try:
             if persisted_thread_id:
@@ -161,6 +216,10 @@ def begin_memory_turn(
     except Exception:
         logging.exception("Failed to prepare shared memory turn for chat_id=%s", chat_id)
         return prompt_text, persisted_thread_id, None
+
+
+def clear_memory_injection_state(scope_key: str) -> None:
+    _memory_injection.pop(scope_key, None)
 
 
 def begin_affective_turn(
@@ -315,6 +374,8 @@ def process_prompt_request(
         attachment_file_ids = list(prepared.attachment_file_ids)
         prompt_text = prepared.prompt_text
         memory_started_at = time.monotonic()
+        engine_name = getattr(active_engine, "engine_name", "")
+        has_persisted_thread = bool(state_repo.get_thread_id(scope_key)) if not stateless else False
         prompt_text, previous_thread_id, turn_context = begin_memory_turn(
             memory_engine=memory_engine,
             state_repo=state_repo,
@@ -327,6 +388,8 @@ def process_prompt_request(
             chat_id=chat_id,
             resolve_memory_conversation_key_fn=resolve_memory_conversation_key_fn,
             resolve_shared_memory_archive_key_fn=resolve_shared_memory_archive_key_fn,
+            engine_name=engine_name,
+            has_persisted_thread=has_persisted_thread,
         )
         emit_phase_timing(
             chat_id=chat_id,

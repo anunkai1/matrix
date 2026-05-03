@@ -1,4 +1,3 @@
-import importlib
 import threading
 from typing import List, Optional
 
@@ -24,10 +23,10 @@ start_background_worker = response_delivery.start_background_worker
 resolve_engine_for_scope = engine_controls.resolve_engine_for_scope
 
 
-def _bridge_handlers():
-    if __package__:
-        return importlib.import_module(".handlers", __package__)
-    return importlib.import_module("handlers")
+try:
+    from . import bridge_deps as handlers
+except ImportError:
+    import bridge_deps as handlers
 
 
 def process_prompt(
@@ -50,7 +49,6 @@ def process_prompt(
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
-    handlers = _bridge_handlers()
     handlers._process_prompt_request(
         build_prompt_request(
             state=state,
@@ -95,7 +93,6 @@ def process_message_worker(
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
-    handlers = _bridge_handlers()
     handlers._process_message_worker_request(
         build_prompt_request(
             state=state,
@@ -140,7 +137,6 @@ def start_message_worker(
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> None:
-    handlers = _bridge_handlers()
     request = build_prompt_request(
         state=state,
         config=config,
@@ -178,7 +174,6 @@ def process_youtube_request(
     actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
-    handlers = _bridge_handlers()
     if scope_key is None:
         scope_key = handlers.build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
     handlers._process_youtube_request(
@@ -213,7 +208,6 @@ def process_youtube_worker(
     actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
-    handlers = _bridge_handlers()
     handlers._process_youtube_worker_request(
         build_youtube_request(
             state=state,
@@ -246,7 +240,6 @@ def start_youtube_worker(
     actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
-    handlers = _bridge_handlers()
     start_background_worker(
         handlers._process_youtube_worker_request,
         build_youtube_request(
@@ -277,7 +270,6 @@ def process_dishframed_request(
     photo_file_ids: List[str],
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
-    handlers = _bridge_handlers()
     handlers._process_dishframed_request(
         build_dishframed_request(
             state=state,
@@ -304,7 +296,6 @@ def process_dishframed_worker(
     photo_file_ids: List[str],
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
-    handlers = _bridge_handlers()
     handlers._process_dishframed_worker_request(
         build_dishframed_request(
             state=state,
@@ -331,7 +322,6 @@ def start_dishframed_worker(
     photo_file_ids: List[str],
     cancel_event: Optional[threading.Event] = None,
 ) -> None:
-    handlers = _bridge_handlers()
     start_background_worker(
         handlers._process_dishframed_worker_request,
         build_dishframed_request(

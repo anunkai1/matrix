@@ -10,15 +10,20 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
+try:
+    from . import llm_summarizer
+except ImportError:
+    import llm_summarizer
+
 MODE_FULL = "all_context"
 MODE_FULL_LEGACY_ALIAS = "full"
 MODE_SESSION_ONLY = "session_only"
 ALLOWED_MODES = (MODE_FULL, MODE_SESSION_ONLY)
 
-SUMMARY_TRIGGER_MESSAGES = 100
-SUMMARY_TRIGGER_TOKENS = 12000
+# Former SUMMARY_TRIGGER_TOKENS removed — LLM summarizer is now the primary path.
+# Keyword summarizer (_summarize_rows) is dormant, only called when force=True and Ollama fails.
 RECENT_WINDOW_MAX_MESSAGES = 120
-RECENT_WINDOW_TOKEN_BUDGET = 4000
+RECENT_WINDOW_TOKEN_BUDGET = 2400
 FACT_LIMIT = 20
 DEFAULT_MAX_MESSAGES_PER_KEY = 4000
 DEFAULT_MAX_SUMMARIES_PER_KEY = 80
@@ -456,6 +461,16 @@ class MemoryEngine:
             return compact
         return compact[: max(0, limit - 3)].rstrip() + "..."
 
+    _CONTEXT_BLOCK_PATTERN = re.compile(
+        r"Current Telegram Context:.+?Current User Message:\s*",
+        re.DOTALL,
+    )
+
+    @classmethod
+    def _strip_context_block(cls, text: str) -> str:
+        stripped = cls._CONTEXT_BLOCK_PATTERN.sub("", (text or "")).strip()
+        return stripped or (text or "").strip()
+
     @classmethod
     def _clean_summary_line(cls, text: str, limit: int = 180) -> str:
         value = (text or "").strip()
@@ -563,7 +578,7 @@ class MemoryEngine:
     def _load_latest_summary(self, conn: sqlite3.Connection, conversation_key: str) -> Optional[sqlite3.Row]:
         return conn.execute(
             """
-            SELECT summary_text, key_points_json, open_loops_json
+            SELECT summary_text, key_points_json, open_loops_json, created_at
             FROM chat_summaries
             WHERE conversation_key = ?
             ORDER BY id DESC
@@ -875,7 +890,8 @@ class MemoryEngine:
         sections.append(
             "Memory Context Rules:\n"
             "- Treat summary/facts as background context, not hard requirements.\n"
-            "- Prefer the user's current request when conflicts exist."
+            "- Prefer the user's current request when conflicts exist.\n"
+            "- Summaries include age. Risks/blockers from old summaries that don't appear in recent messages have likely been resolved."
         )
 
         if mode == MODE_FULL and summary_sections:
@@ -895,7 +911,9 @@ class MemoryEngine:
             for row in recent_rows:
                 role = str(row["sender_role"] or "user")
                 sender = str(row["sender_name"] or role)
-                text = self._sanitize_line(str(row["text"] or ""), 220)
+                raw_text = str(row["text"] or "")
+                clean_text = self._strip_context_block(raw_text)
+                text = self._sanitize_line(clean_text, 220)
                 lines.append(f"- [{role}] {sender}: {text}")
             sections.append("Recent Messages:\n" + "\n".join(lines))
 
@@ -908,6 +926,29 @@ class MemoryEngine:
             return ""
         return str(row["summary_text"] or "").strip()
 
+    @staticmethod
+    def _summary_age(created_at: float) -> str:
+        seconds = time.time() - created_at
+        if seconds < 120:
+            return "just now"
+        minutes = int(seconds // 60)
+        if minutes < 60:
+            return f"{minutes} min ago"
+        hours = int(seconds // 3600)
+        if hours < 24:
+            return f"{hours}h ago"
+        days = int(seconds // 86400)
+        return f"{days}d ago"
+
+    @staticmethod
+    def _summary_title(base: str, row: Optional[sqlite3.Row]) -> str:
+        if row is None:
+            return base
+        created_at = row["created_at"]
+        if isinstance(created_at, (int, float)) and created_at > 0:
+            return f"{base} ({MemoryEngine._summary_age(float(created_at))})"
+        return base
+
     def _build_summary_sections(
         self,
         current_summary_row: Optional[sqlite3.Row],
@@ -916,15 +957,10 @@ class MemoryEngine:
         current_summary = self._summary_text(current_summary_row)
         background_summary = self._summary_text(background_summary_row)
         if not background_summary:
-            return [("Conversation Summary", current_summary)] if current_summary else []
+            return [(self._summary_title("Conversation Summary", current_summary_row), current_summary)] if current_summary else []
         if not current_summary:
-            return [("Conversation Summary", background_summary)]
-        if current_summary == background_summary:
-            return [("Conversation Summary", current_summary)]
-        return [
-            ("Shared Memory Summary", background_summary),
-            ("Current Chat Summary", current_summary),
-        ]
+            return [(self._summary_title("Conversation Summary", background_summary_row), background_summary)]
+        return [(self._summary_title("Conversation Summary", current_summary_row), current_summary)]
 
     def _build_fact_lines(
         self,
@@ -1369,8 +1405,15 @@ class MemoryEngine:
                     """,
                     (turn.conversation_key, new_thread_id.strip(), now),
                 )
-            self._maybe_summarize(conn, turn.conversation_key, turn.mode)
             self._prune_conversation(conn, turn.conversation_key, force=False)
+
+    def summarize_all_unsummarized(self) -> Dict[str, bool]:
+        results: Dict[str, bool] = {}
+        with self._lock, self._connect() as conn:
+            keys = self._list_conversation_keys(conn)
+        for key in keys:
+            results[key] = self.run_summarization_if_needed(key, force=True)
+        return results
 
     def run_summarization_if_needed(self, conversation_key: str, force: bool = False) -> bool:
         with self._lock, self._connect() as conn:
@@ -1418,11 +1461,7 @@ class MemoryEngine:
         if not rows:
             return False
 
-        token_total = sum(int(row["token_estimate"] or 0) for row in rows)
-        if not force and len(rows) < SUMMARY_TRIGGER_MESSAGES and token_total < SUMMARY_TRIGGER_TOKENS:
-            return False
-
-        summary_text, key_points, open_loops = self._summarize_rows(rows)
+        summary_text, key_points, open_loops = self._summarize_via_llm(rows, force=force)
         end_id = int(rows[-1]["id"])
         now = time.time()
         conn.execute(
@@ -1466,6 +1505,19 @@ class MemoryEngine:
                 source_msg_id=int(row["id"]),
             )
         return True
+
+    def _summarize_via_llm(
+        self, rows: Sequence[sqlite3.Row], *, force: bool = False
+    ) -> Tuple[str, List[str], List[str]]:
+        try:
+            result = llm_summarizer.summarize_via_ollama(rows)
+        except Exception:
+            result = None
+        if result:
+            return result, [], []
+        if force:
+            return self._summarize_rows(rows)
+        return "", [], []
 
     def _summarize_rows(self, rows: Sequence[sqlite3.Row]) -> Tuple[str, List[str], List[str]]:
         parsed_rows: List[Tuple[str, str]] = []
