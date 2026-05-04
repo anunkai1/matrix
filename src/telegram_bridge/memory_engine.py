@@ -8,7 +8,7 @@ from typing import List, Optional, Sequence
 
 
 RECENT_WINDOW_MAX_MESSAGES = None
-RECENT_WINDOW_TOKEN_BUDGET = 5000
+RECENT_WINDOW_TOKEN_BUDGET = 10000
 
 
 @dataclass

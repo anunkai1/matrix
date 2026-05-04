@@ -703,6 +703,30 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         normalized.append("--print")
         return normalized
 
+    @staticmethod
+    def clear_scope_session_files(config, scope_key: str) -> int:
+        """Delete all Pi session files for a Telegram scope. Returns count deleted."""
+        mode = str(getattr(config, "pi_session_mode", "none") or "none").strip().lower()
+        if mode in {"", "none", "off", "disabled", "no_session"}:
+            return 0
+        configured_dir = str(getattr(config, "pi_session_dir", "") or "").strip()
+        base_dir = Path(configured_dir).expanduser() if configured_dir else Path.home() / ".pi" / "agent" / "telegram-sessions"
+        if not base_dir.is_dir():
+            return 0
+        scope_label = re.sub(r"[^A-Za-z0-9._-]+", "_", scope_key).strip("._-")
+        if not scope_label:
+            return 0
+        deleted = 0
+        for f in list(base_dir.glob(f"{scope_label}*.jsonl")):
+            f.unlink()
+            deleted += 1
+        archive_dir = base_dir / ".archive"
+        if archive_dir.is_dir():
+            for f in list(archive_dir.glob(f"{scope_label}*.jsonl")):
+                f.unlink()
+                deleted += 1
+        return deleted
+
     def _safe_session_filename(self, session_key: str) -> str:
         digest = hashlib.sha256(session_key.encode("utf-8")).hexdigest()[:12]
         label = re.sub(r"[^A-Za-z0-9._-]+", "_", session_key).strip("._-")

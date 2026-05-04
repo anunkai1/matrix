@@ -3,6 +3,7 @@ from typing import Optional
 
 try:
     from .channel_adapter import ChannelAdapter
+    from .engine_adapter import PiEngineAdapter
     from .memory_engine import MemoryEngine
     from .memory_scope import resolve_memory_conversation_key
     from .session_manager import request_safe_restart, trigger_restart_async
@@ -12,6 +13,7 @@ try:
     from . import prompt_execution
 except ImportError:
     from channel_adapter import ChannelAdapter
+    from engine_adapter import PiEngineAdapter
     from memory_engine import MemoryEngine
     from memory_scope import resolve_memory_conversation_key
     from session_manager import request_safe_restart, trigger_restart_async
@@ -49,6 +51,7 @@ def handle_reset_command(
         try:
             memory_engine.clear_session(conversation_key)
             prompt_execution.clear_memory_injection_state(scope_key)
+            PiEngineAdapter.clear_scope_session_files(config, scope_key)
         except Exception:
             logging.exception("Failed to clear memory session for scope=%s", scope_key)
     if removed_thread or removed_worker:
