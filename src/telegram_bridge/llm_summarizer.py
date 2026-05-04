@@ -41,7 +41,7 @@ def summarize_via_ollama(
         "prompt": prompt,
         "stream": False,
         "options": {
-            "num_predict": 300,
+            "num_predict": 600,
             "temperature": 0.2,
         },
     }).encode("utf-8")

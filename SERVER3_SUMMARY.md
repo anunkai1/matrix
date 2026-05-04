@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-05-03 (AEST, +10:00)
+Last updated: 2026-05-04 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -19,8 +19,8 @@ Last updated: 2026-05-03 (AEST, +10:00)
 - Runtime pattern: Telegram long polling + local `codex exec`
 - Server4 Beast (`192.168.0.124`) now hosts Ollama models `gemma4:26b` and `qwen3-coder:30b`; Server3 Telegram bridge chats can select `gemma` directly through Ollama or `pi` through local Server3 Pi using Server4 as the model backend; default engine remains `codex`.
 - Core capabilities: text/photo/voice/document handling, per-chat memory persistence, optional persistent workers, optional canonical session model, safe queued `/restart`.
-- Memory summarization now uses local `gemma3:4b` via Ollama (`127.0.0.1:11434`) as the primary summary path; the old keyword classifier is a dormant fallback only when Ollama is unavailable during forced maintenance passes.
-- Memory injection is throttled: framework (rules + summary + facts + recent messages) is injected on cold start, then skipped for 150K tokens or 30 minutes for stateful engines. Most turns send only the user message.
+- Memory summarization now uses local `gemma3:4b` via Ollama (`127.0.0.1:11434`) as the primary summary path; normal turns summarize only when unsummarized backlog reaches `2500` estimated tokens, summary output budget is now `600` tokens, and the old keyword classifier is a dormant fallback only when Ollama is unavailable during forced maintenance passes.
+- Memory injection is throttled: framework (rules + summary + facts + recent raw tail + optional older unsummarized tail) is injected on cold start, then skipped for 150K tokens or 30 minutes for stateful engines. Most turns send only the user message.
 - Browser Brain live mode is now `existing_session` on local CDP port `9223`; the visible `tv` Brave helper is the intended on-screen login path for sites like `x.com`, while the Browser Brain API now keeps snapshot refs locator-friendly with ARIA snapshots and supports guarded hover/select/dialog/console/network actions.
 - Telegram reply-context wrappers now use English labels (`Reply Context`, `Original Message Author`, `Message User Replied To`, `Current User Message`) while downstream parsers remain backward-compatible with older Russian wrappers.
 - Canonical runtime inventory now lives in `infra/server3-runtime-manifest.json`, with shared live inspection via `python3 ops/server3_runtime_status.py`
@@ -58,10 +58,11 @@ Last updated: 2026-05-03 (AEST, +10:00)
 - Server3 state resilience now uses a monthly quiesced backup path (`server3-state-backup.service` / `server3-state-backup.timer`) that snapshots rebuild-critical host/app/runtime state to `/srv/external/server3-backups/state`; the Arr media payload stays on the external data disk and is intentionally excluded.
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
 - Server4/API/browser engine integration keeps Server3 as the bot/control-plane host: use `/engine gemma`, `/engine pi`, `/engine codex`, `/engine chatgptweb`, `/engine reset`, and `/engine status` per chat/topic. Gemma is a direct text-only Ollama path; Pi runs locally in the Server3 runtime root while using Server4 Ollama through the tunnel; Venice remains available as a Pi provider rather than a first-class engine choice; `chatgptweb` is a brittle Browser Brain-backed lab engine; all report live health details in `/engine status` where applicable.
-- Memory summarization now runs locally on Server3 via `gemma3:4b` on Ollama (port `11434`). The old keyword classifier is dormant, waking only on forced maintenance passes when Ollama is down.
-- Memory injection is throttled: framework injected on cold start → skipped for 150K tokens or 30 min for stateful engines.
+- Memory summarization now runs locally on Server3 via `gemma3:4b` on Ollama (port `11434`). Normal turns summarize only once unsummarized backlog reaches `2500` estimated tokens; the old keyword classifier is dormant, waking only on forced maintenance passes when Ollama is down. Summary output allowance is now `600` tokens.
+- Memory injection is throttled: framework injected on cold start → skipped for 150K tokens or 30 min for stateful engines. The injected payload is rules + one live-or-shared summary + facts + recent raw tail (5000 estimated-token budget) + optional older unsummarized raw tail (1500 estimated-token budget).
 
 ## Recent Changes (Rolling Max 8)
+- 2026-05-04: reshaped memory prompt rebuilds. Recent raw tail now uses a `5000` estimated-token budget with no hard message-count cap and no per-line `220`-char clipping; older non-overlapping unsummarized raw tail now has its own `1500` estimated-token budget; normal summarization now waits for `2500` estimated unsummarized tokens before calling Gemma, and Gemma summary output allowance increased from `300` to `600` tokens.
 - 2026-05-03: overhauled memory summarization. Replaced keyword-classifier trigger with local `gemma3:4b` LLM summarizer via Ollama; removed 12K-token/100-message inline threshold; stripped bridge-injected context headers from user messages before summarization; fixed sqlite3.Row key-access bug that caused summaries to run on empty input. Keyword classifier is now dormant fallback (force=True + Ollama-down only).
 - 2026-05-03: split `state_store.py` into `state_models.py` + `session_state.py` + `request_state.py`; extracted `memory_summary_utils.py` from `memory_engine.py`; centralized cross-module lazy facade in `bridge_deps.py` replacing 4x duplicated `_bridge_handlers()` patterns.
 - 2026-05-03: added memory injection throttling. Framework injected on cold start → skipped for 150K tokens or 30 min for stateful engines (codex-with-thread, pi, gemma, chatgptweb). Codex new sessions and compat API callers always get full injection. Fixed `engine_name=""` cross-call contamination bug.

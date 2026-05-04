@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-05-04T11:30:00+10:00 - Update Operator Docs In The Same Rollout As Memory-Behavior Changes
+- Mistake pattern: We changed live memory behavior several times (summary threshold, prompt injection shape, recent/raw caps, shared-memory usage) without immediately updating the operator-facing markdown, leaving `SERVER3_SUMMARY.md` and bridge docs stale.
+- Prevention rule: When changing memory behavior, update the operator docs in the same rollout: `SERVER3_SUMMARY.md` for high-signal runtime truth, the main bridge doc for detailed behavior, and any other directly affected runbook/mental-model page that names the old limits or flow.
+- Where/when applied: Any change to `memory_engine.py`, `llm_summarizer.py`, `memory_merge.py`, prompt injection thresholds, shared-memory merge rules, or `/reset` memory behavior.
+
 ### 2026-05-03T20:00:00+10:00 - Document Design Rationale When Removing Thresholds
 - Mistake pattern: We removed the SUMMARY_TRIGGER_TOKENS=12000 gate from `_maybe_summarize` because the new LLM summarizer (local gemma3:4b) doesn't need a token threshold. Another LLM later re-added both the constants and the gate, undoing the architecture change, because the removal had no explanation in the code.
 - Prevention rule: When removing a historically important mechanism (threshold, gate, fallback), leave a comment block in the code explaining WHY the mechanism was designed that way and WHY the current architecture no longer needs it. Without that context, future contributors will treat the removal as a bug.

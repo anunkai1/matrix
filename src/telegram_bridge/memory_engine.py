@@ -27,10 +27,12 @@ MODE_FULL_LEGACY_ALIAS = "full"
 MODE_SESSION_ONLY = "session_only"
 ALLOWED_MODES = (MODE_FULL, MODE_SESSION_ONLY)
 
-# SUMMARY_TRIGGER_TOKENS intentionally removed -- LLM summarizer is primary.
-# Keyword summarizer (_summarize_rows) is dormant, only called when force=True and Ollama fails.
-RECENT_WINDOW_MAX_MESSAGES = 120
-RECENT_WINDOW_TOKEN_BUDGET = 4000
+# LLM summarization is primary, but we batch it to avoid running Gemma on every turn.
+# Forced maintenance summarization still bypasses this threshold.
+SUMMARY_TRIGGER_TOKENS = 2500
+RECENT_WINDOW_MAX_MESSAGES = None
+RECENT_WINDOW_TOKEN_BUDGET = 5000
+UNSUMMARIZED_TAIL_TOKEN_BUDGET = 1500
 FACT_LIMIT = 20
 DEFAULT_MAX_MESSAGES_PER_KEY = 4000
 DEFAULT_MAX_SUMMARIES_PER_KEY = 80
@@ -482,12 +484,12 @@ class MemoryEngine:
         self,
         conn: sqlite3.Connection,
         conversation_key: str,
-        max_messages: int = RECENT_WINDOW_MAX_MESSAGES,
+        max_messages: Optional[int] = RECENT_WINDOW_MAX_MESSAGES,
         token_budget: int = RECENT_WINDOW_TOKEN_BUDGET,
     ) -> List[sqlite3.Row]:
         rows = conn.execute(
             """
-            SELECT sender_role, sender_name, text, token_estimate
+            SELECT id, sender_role, sender_name, text, token_estimate
             FROM messages
             WHERE conversation_key = ?
             ORDER BY id DESC
@@ -495,11 +497,20 @@ class MemoryEngine:
             """,
             (conversation_key,),
         ).fetchall()
+        return self._select_recent_rows(rows, max_messages=max_messages, token_budget=token_budget)
+
+    @staticmethod
+    def _select_recent_rows(
+        rows: Sequence[sqlite3.Row],
+        *,
+        max_messages: Optional[int],
+        token_budget: int,
+    ) -> List[sqlite3.Row]:
         selected: List[sqlite3.Row] = []
         token_total = 0
         for row in rows:
             row_tokens = max(1, int(row["token_estimate"] or 1))
-            if selected and len(selected) >= max_messages:
+            if max_messages is not None and selected and len(selected) >= max_messages:
                 break
             if selected and token_total + row_tokens > token_budget:
                 break
@@ -507,6 +518,51 @@ class MemoryEngine:
             token_total += row_tokens
         selected.reverse()
         return selected
+
+    def _load_unsummarized_tail(
+        self,
+        conn: sqlite3.Connection,
+        conversation_key: str,
+        *,
+        recent_rows: Sequence[sqlite3.Row],
+        token_budget: int = UNSUMMARIZED_TAIL_TOKEN_BUDGET,
+    ) -> List[sqlite3.Row]:
+        state_row = conn.execute(
+            """
+            SELECT unsummarized_start_msg_id
+            FROM memory_state
+            WHERE conversation_key = ?
+            """,
+            (conversation_key,),
+        ).fetchone()
+        start_id = (
+            int(state_row["unsummarized_start_msg_id"])
+            if state_row and state_row["unsummarized_start_msg_id"] is not None
+            else None
+        )
+        if start_id is None:
+            return []
+
+        oldest_recent_id = min(int(row["id"]) for row in recent_rows) if recent_rows else None
+        params: List[object] = [conversation_key, start_id]
+        query = """
+            SELECT id, sender_role, sender_name, text, token_estimate
+            FROM messages
+            WHERE conversation_key = ? AND id >= ?
+        """
+        if oldest_recent_id is not None:
+            query += " AND id < ?"
+            params.append(oldest_recent_id)
+        query += """
+            ORDER BY id DESC
+            LIMIT 240
+        """
+        rows = conn.execute(query, tuple(params)).fetchall()
+        return self._select_recent_rows(
+            rows,
+            max_messages=240,
+            token_budget=token_budget,
+        )
 
     def _load_recent_messages_for_role(
         self,
@@ -841,6 +897,7 @@ class MemoryEngine:
         mode: str,
         current_input: str,
         recent_rows: Sequence[sqlite3.Row],
+        unsummarized_rows: Sequence[sqlite3.Row],
         summary_sections: Sequence[Tuple[str, str]],
         fact_lines: Sequence[str],
     ) -> str:
@@ -871,9 +928,20 @@ class MemoryEngine:
                 sender = str(row["sender_name"] or role)
                 raw_text = str(row["text"] or "")
                 clean_text = self._strip_context_block(raw_text)
-                text = self._sanitize_line(clean_text, 220)
+                text = " ".join(clean_text.split())
                 lines.append(f"- [{role}] {sender}: {text}")
             sections.append("Recent Messages:\n" + "\n".join(lines))
+
+        if unsummarized_rows:
+            lines = []
+            for row in unsummarized_rows:
+                role = str(row["sender_role"] or "user")
+                sender = str(row["sender_name"] or role)
+                raw_text = str(row["text"] or "")
+                clean_text = self._strip_context_block(raw_text)
+                text = " ".join(clean_text.split())
+                lines.append(f"- [{role}] {sender}: {text}")
+            sections.append("Unsummarized Context:\n" + "\n".join(lines))
 
         sections.append(f"Current User Input:\n{current_input.strip()}")
         return "\n\n".join(sections).strip()
@@ -1243,6 +1311,11 @@ class MemoryEngine:
                 mode = self._normalize_mode(str(mode_row["mode"] if mode_row else MODE_FULL))
 
             recent_rows = self._load_recent_messages(conn, conversation_key)
+            unsummarized_rows = self._load_unsummarized_tail(
+                conn,
+                conversation_key,
+                recent_rows=recent_rows,
+            ) if mode == MODE_FULL else []
             current_summary_row = self._load_latest_summary(conn, conversation_key) if mode == MODE_FULL else None
             current_fact_rows = self._load_active_facts(conn, conversation_key) if mode == MODE_FULL else []
             background_key = (background_conversation_key or "").strip()
@@ -1271,6 +1344,7 @@ class MemoryEngine:
                 mode,
                 clean_input,
                 recent_rows,
+                unsummarized_rows,
                 summary_sections,
                 fact_lines,
             )
@@ -1386,6 +1460,9 @@ class MemoryEngine:
             (conversation_key, int(start_id)),
         ).fetchall()
         if not rows:
+            return False
+        token_total = sum(max(1, int(row["token_estimate"] or 1)) for row in rows)
+        if not force and token_total < SUMMARY_TRIGGER_TOKENS:
             return False
 
         summary_result = self._summarize_via_llm(rows, force=force)

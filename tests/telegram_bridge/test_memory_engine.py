@@ -264,10 +264,19 @@ class MemoryEngineTests(unittest.TestCase):
                 user_input="Final check",
             )
             recent_block = assembled.prompt_text.split("Recent Messages:\n", maxsplit=1)[1]
+            recent_block = recent_block.split("\n\n", maxsplit=1)[0]
+            self.assertIn("reply 7", recent_block)
             self.assertIn("Long message 7", recent_block)
-            self.assertIn("Long message 6", recent_block)
-            self.assertNotIn("Long message 0", recent_block)
-            self.assertNotIn("Long message 1", recent_block)
+
+            self.assertIn("Unsummarized Context:\n", assembled.prompt_text)
+            unsummarized_block = assembled.prompt_text.split(
+                "Unsummarized Context:\n",
+                maxsplit=1,
+            )[1]
+            unsummarized_block = unsummarized_block.split("\n\n", maxsplit=1)[0]
+            self.assertIn("Long message 3", unsummarized_block)
+            self.assertIn("reply 2", unsummarized_block)
+            self.assertNotIn("Long message 0", unsummarized_block)
 
     def test_begin_turn_uses_shared_background_summary_and_facts_without_mixing_recent_messages(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -305,7 +314,7 @@ class MemoryEngineTests(unittest.TestCase):
                 conversation_key=live_key,
                 channel="telegram",
                 sender_name="User",
-                user_input="local context",
+                user_input="local context " + ("detail " * 220),
             )
             with mock.patch.object(
                 memory.llm_summarizer,
@@ -651,8 +660,8 @@ class MemoryEngineTests(unittest.TestCase):
                 ),
             ):
                 for i in range(55):
-                    user_text = f"Message {i} about bridge runtime behavior"
-                    assistant_text = f"Reply {i} with status"
+                    user_text = f"Message {i} about bridge runtime behavior " + ("detail " * 18)
+                    assistant_text = f"Reply {i} with status " + ("signal " * 10)
                     turn = engine.begin_turn(
                         conversation_key=key,
                         channel="telegram",
@@ -698,8 +707,89 @@ class MemoryEngineTests(unittest.TestCase):
             self.assertIn("Durable Facts:", assembled.prompt_text)
             self.assertIn("Recent Messages:", assembled.prompt_text)
             recent_block = assembled.prompt_text.split("Recent Messages:\n", maxsplit=1)[1]
+            recent_block = recent_block.split("\n\n", maxsplit=1)[0]
             recent_lines = [line for line in recent_block.splitlines() if line.startswith("- [")]
-            self.assertLessEqual(len(recent_lines), memory.RECENT_WINDOW_MAX_MESSAGES)
+            self.assertGreater(len(recent_lines), 0)
+
+    def test_finish_turn_waits_for_summary_token_threshold_unless_forced(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "memory.sqlite3")
+            key = memory.MemoryEngine.telegram_key(778)
+            engine = memory.MemoryEngine(db_path)
+
+            summary_text = (
+                "Objective:\n- summarize batched memory\n\n"
+                "Decisions Made:\n- wait for threshold\n\n"
+                "Current State:\n- summarizer triggered\n\n"
+                "Open Items:\n- No open item detected.\n\n"
+                "User Preferences:\n- No durable preference detected.\n\n"
+                "Risks/Blockers:\n- No blocker detected."
+            )
+
+            with mock.patch.object(
+                memory.llm_summarizer,
+                "summarize_via_ollama",
+                return_value=summary_text,
+            ) as summarize_mock:
+                short_turn = engine.begin_turn(
+                    conversation_key=key,
+                    channel="telegram",
+                    sender_name="User",
+                    user_input="small batch",
+                )
+                engine.finish_turn(
+                    short_turn,
+                    channel="telegram",
+                    assistant_text="small reply",
+                    new_thread_id="thread-small",
+                )
+
+                self.assertEqual(summarize_mock.call_count, 0)
+                self.assertEqual(engine.get_status(key).summary_count, 0)
+
+                long_turn = engine.begin_turn(
+                    conversation_key=key,
+                    channel="telegram",
+                    sender_name="User",
+                    user_input="threshold " + ("detail " * 1100),
+                )
+                engine.finish_turn(
+                    long_turn,
+                    channel="telegram",
+                    assistant_text="large reply " + ("status " * 400),
+                    new_thread_id="thread-small",
+                )
+
+                self.assertGreaterEqual(summarize_mock.call_count, 1)
+                self.assertGreaterEqual(engine.get_status(key).summary_count, 1)
+
+            forced_key = memory.MemoryEngine.telegram_key(779)
+            forced_engine = memory.MemoryEngine(db_path)
+            with mock.patch.object(
+                memory.llm_summarizer,
+                "summarize_via_ollama",
+                return_value=None,
+            ) as forced_mock:
+                turn = forced_engine.begin_turn(
+                    conversation_key=forced_key,
+                    channel="telegram",
+                    sender_name="User",
+                    user_input="tiny force batch",
+                )
+                forced_engine.finish_turn(
+                    turn,
+                    channel="telegram",
+                    assistant_text="tiny reply",
+                    new_thread_id="thread-force",
+                )
+
+                self.assertEqual(forced_mock.call_count, 0)
+                self.assertEqual(forced_engine.get_status(forced_key).summary_count, 0)
+                self.assertTrue(
+                    forced_engine.run_summarization_if_needed(forced_key, force=True)
+                )
+                self.assertEqual(forced_mock.call_count, 1)
+                self.assertEqual(forced_engine.get_status(forced_key).summary_count, 1)
 
     def test_retention_prunes_old_messages_and_keeps_explicit_facts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
