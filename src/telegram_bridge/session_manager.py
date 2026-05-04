@@ -11,8 +11,7 @@ try:
     from .background_tasks import start_daemon_thread
     from .conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
     from .memory_engine import MemoryEngine
-    from .memory_merge import merge_conversation_keys
-    from .memory_scope import resolve_memory_conversation_key, resolve_shared_memory_archive_key
+    from .memory_scope import resolve_memory_conversation_key
     from .runtime_paths import build_shared_core_root, shared_core_path
     from .state_store import (
         CanonicalSession,
@@ -31,8 +30,7 @@ except ImportError:
     from background_tasks import start_daemon_thread
     from conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
     from memory_engine import MemoryEngine
-    from memory_merge import merge_conversation_keys
-    from memory_scope import resolve_memory_conversation_key, resolve_shared_memory_archive_key
+    from memory_scope import resolve_memory_conversation_key
     from runtime_paths import build_shared_core_root, shared_core_path
     from state_store import (
         CanonicalSession,
@@ -226,15 +224,12 @@ def _send_policy_refresh_notice(
 
 
 def _archive_expired_chat_memory(state: State, config, client, scope_key: str) -> None:
-    channel_name = getattr(client, "channel_name", "telegram")
-    archive_key = resolve_shared_memory_archive_key(config, channel_name)
-    if not archive_key:
-        return
     memory_engine = state.memory_engine
     if not isinstance(memory_engine, MemoryEngine):
         return
+    channel_name = getattr(client, "channel_name", "telegram")
     live_key = resolve_memory_conversation_key(config, channel_name, scope_key)
-    if not live_key or live_key == archive_key:
+    if not live_key:
         return
 
     try:
@@ -243,37 +238,21 @@ def _archive_expired_chat_memory(state: State, config, client, scope_key: str) -
         logging.exception("Failed to read live memory status before expiry for scope=%s", scope_key)
         return
 
-    if (
-        status.message_count <= 0
-        and status.active_fact_count <= 0
-        and status.summary_count <= 0
-        and not status.session_active
-    ):
+    if status.message_count <= 0 and not status.session_active:
         return
 
     try:
-        result = merge_conversation_keys(
-            db_path=memory_engine.db_path,
-            source_keys=[live_key],
-            target_key=archive_key,
-            allow_existing_target=True,
-            force_summarize_target=True,
-            min_message_score=0.75,
-        )
         memory_engine.clear_session(live_key)
         emit_event(
-            "bridge.memory_archived_on_expiry",
+            "bridge.memory_cleared_on_expiry",
             fields={
                 "scope_key": scope_key,
                 "source_key": live_key,
-                "target_key": archive_key,
-                "messages_copied": result.messages_copied,
-                "facts_merged": result.facts_merged,
-                "summaries_generated": result.summaries_generated,
+                "messages_cleared": status.message_count,
             },
         )
     except Exception:
-        logging.exception("Failed to archive expired live memory for scope=%s", scope_key)
+        logging.exception("Failed to clear expired live memory for scope=%s", scope_key)
 
 
 def get_cached_policy_fingerprint(paths: List[str], now: Optional[float] = None) -> str:

@@ -4,11 +4,7 @@ from typing import Optional
 try:
     from .channel_adapter import ChannelAdapter
     from .memory_engine import MemoryEngine
-    from .memory_merge import merge_conversation_keys
-    from .memory_scope import (
-        resolve_memory_conversation_key,
-        resolve_shared_memory_archive_key,
-    )
+    from .memory_scope import resolve_memory_conversation_key
     from .session_manager import request_safe_restart, trigger_restart_async
     from .state_store import State, StateRepository
     from .structured_logging import emit_event
@@ -17,11 +13,7 @@ try:
 except ImportError:
     from channel_adapter import ChannelAdapter
     from memory_engine import MemoryEngine
-    from memory_merge import merge_conversation_keys
-    from memory_scope import (
-        resolve_memory_conversation_key,
-        resolve_shared_memory_archive_key,
-    )
+    from memory_scope import resolve_memory_conversation_key
     from session_manager import request_safe_restart, trigger_restart_async
     from state_store import State, StateRepository
     from structured_logging import emit_event
@@ -54,22 +46,11 @@ def handle_reset_command(
     if memory_engine is not None:
         memory_channel = getattr(client, "channel_name", "telegram")
         conversation_key = resolve_memory_conversation_key(config, memory_channel, scope_key)
-        shared_archive_key = resolve_shared_memory_archive_key(config, memory_channel)
         try:
-            if shared_archive_key and shared_archive_key != conversation_key:
-                merge_conversation_keys(
-                    db_path=memory_engine.db_path,
-                    source_keys=[conversation_key],
-                    target_key=shared_archive_key,
-                    allow_existing_target=True,
-                    force_summarize_target=True,
-                    min_message_score=0.75,
-                )
-                memory_engine.compact_summarized_messages(shared_archive_key)
             memory_engine.clear_session(conversation_key)
             prompt_execution.clear_memory_injection_state(scope_key)
         except Exception:
-            logging.exception("Failed to clear shared memory session for scope=%s", scope_key)
+            logging.exception("Failed to clear memory session for scope=%s", scope_key)
     if removed_thread or removed_worker:
         client.send_message(
             chat_id,

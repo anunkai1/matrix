@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 try:
-    from .memory_engine import MODE_FULL, MemoryEngine
+    from .memory_engine import MemoryEngine
 except ImportError:
-    from memory_engine import MODE_FULL, MemoryEngine
+    from memory_engine import MemoryEngine
 
 
 @dataclass(frozen=True)
@@ -15,8 +15,8 @@ class MergeResult:
     target_key: str
     source_keys: Tuple[str, ...]
     messages_copied: int
-    facts_merged: int
-    summaries_generated: int
+    facts_merged: int = 0
+    summaries_generated: int = 0
 
 
 def _normalize_keys(keys: Sequence[str]) -> List[str]:
@@ -32,15 +32,7 @@ def _normalize_keys(keys: Sequence[str]) -> List[str]:
 
 
 def _target_has_data(conn: sqlite3.Connection, conversation_key: str) -> bool:
-    tables = (
-        'messages',
-        'sessions',
-        'memory_facts',
-        'chat_summaries',
-        'memory_state',
-        'memory_config',
-    )
-    for table in tables:
+    for table in ('messages', 'sessions'):
         row = conn.execute(
             f'SELECT 1 FROM {table} WHERE conversation_key = ? LIMIT 1',
             (conversation_key,),
@@ -51,25 +43,8 @@ def _target_has_data(conn: sqlite3.Connection, conversation_key: str) -> bool:
 
 
 def _clear_target(conn: sqlite3.Connection, conversation_key: str) -> None:
-    for table in (
-        'sessions',
-        'memory_facts',
-        'chat_summaries',
-        'memory_state',
-        'messages',
-        'memory_config',
-    ):
+    for table in ('sessions', 'messages'):
         conn.execute(f'DELETE FROM {table} WHERE conversation_key = ?', (conversation_key,))
-
-
-def _fact_priority(row: sqlite3.Row) -> Tuple[int, float, float, float, int]:
-    return (
-        1 if int(row['explicit']) else 0,
-        float(row['last_used_at'] or 0.0),
-        float(row['created_at'] or 0.0),
-        float(row['confidence'] or 0.0),
-        int(row['id']),
-    )
 
 
 def _iter_source_messages(conn: sqlite3.Connection, source_keys: Sequence[str]) -> Iterable[sqlite3.Row]:
@@ -79,18 +54,6 @@ def _iter_source_messages(conn: sqlite3.Connection, source_keys: Sequence[str]) 
         FROM messages
         WHERE conversation_key IN ({placeholders})
         ORDER BY ts ASC, id ASC
-    '''
-    return conn.execute(query, tuple(source_keys))
-
-
-def _iter_source_facts(conn: sqlite3.Connection, source_keys: Sequence[str]) -> Iterable[sqlite3.Row]:
-    placeholders = ','.join('?' for _ in source_keys)
-    query = f'''
-        SELECT id, conversation_key, fact_key, fact_value, explicit, confidence, source_msg_id, status, created_at, last_used_at
-        FROM memory_facts
-        WHERE conversation_key IN ({placeholders})
-          AND status = 'active'
-        ORDER BY created_at ASC, id ASC
     '''
     return conn.execute(query, tuple(source_keys))
 
@@ -129,7 +92,6 @@ def merge_conversation_keys(
 
     engine = MemoryEngine(db_path)
     message_id_map: Dict[Tuple[str, int], int] = {}
-    facts_by_key: Dict[str, sqlite3.Row] = {}
     messages_copied = 0
 
     with engine._lock, engine._connect() as conn:
@@ -152,20 +114,7 @@ def merge_conversation_keys(
             ):
                 existing_target_message_map[_message_signature(row)] = int(row['id'])
 
-            for row in _iter_source_facts(conn, [normalized_target]):
-                facts_by_key[str(row['fact_key'])] = row
-
-        source_fact_keys = set()
-
         for row in _iter_source_messages(conn, normalized_sources):
-            if min_message_score is not None and not engine.should_keep_message_for_shared_archive(
-                text=str(row['text'] or ''),
-                sender_role=str(row['sender_role'] or 'user'),
-                token_estimate=int(row['token_estimate'] or 1),
-                is_bot=bool(int(row['is_bot'] or 0)),
-                min_score=float(min_message_score),
-            ):
-                continue
             signature = _message_signature(row)
             existing_message_id = existing_target_message_map.get(signature)
             if existing_message_id is not None:
@@ -200,81 +149,8 @@ def merge_conversation_keys(
             existing_target_message_map[signature] = inserted_message_id
             messages_copied += 1
 
-        for row in _iter_source_facts(conn, normalized_sources):
-            fact_key = str(row['fact_key'])
-            source_fact_keys.add(fact_key)
-            existing = facts_by_key.get(fact_key)
-            if existing is None or _fact_priority(row) > _fact_priority(existing):
-                facts_by_key[fact_key] = row
-
-        for row in facts_by_key.values():
-            source_msg_id: Optional[int] = None
-            original_source_msg_id = row['source_msg_id']
-            if isinstance(original_source_msg_id, int):
-                source_conversation_key = str(row['conversation_key'])
-                if source_conversation_key == normalized_target:
-                    source_msg_id = original_source_msg_id
-                else:
-                    source_msg_id = message_id_map.get((source_conversation_key, original_source_msg_id))
-            conn.execute(
-                '''
-                INSERT INTO memory_facts (
-                    conversation_key,
-                    fact_key,
-                    fact_value,
-                    explicit,
-                    confidence,
-                    source_msg_id,
-                    status,
-                    created_at,
-                    last_used_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
-                ON CONFLICT(conversation_key, fact_key)
-                DO UPDATE SET
-                    fact_value = excluded.fact_value,
-                    explicit = excluded.explicit,
-                    confidence = excluded.confidence,
-                    source_msg_id = excluded.source_msg_id,
-                    status = 'active',
-                    created_at = excluded.created_at,
-                    last_used_at = excluded.last_used_at
-                ''',
-                (
-                    normalized_target,
-                    str(row['fact_key']),
-                    str(row['fact_value']),
-                    int(row['explicit']),
-                    float(row['confidence']),
-                    source_msg_id,
-                    float(row['created_at']),
-                    float(row['last_used_at']),
-                ),
-            )
-
-        if overwrite_target or not allow_existing_target:
-            conn.execute(
-                'INSERT OR REPLACE INTO memory_config (conversation_key, mode) VALUES (?, ?)',
-                (normalized_target, MODE_FULL),
-            )
-            conn.execute('DELETE FROM sessions WHERE conversation_key = ?', (normalized_target,))
-            conn.execute('DELETE FROM chat_summaries WHERE conversation_key = ?', (normalized_target,))
-        else:
-            conn.execute(
-                'INSERT OR IGNORE INTO memory_config (conversation_key, mode) VALUES (?, ?)',
-                (normalized_target, MODE_FULL),
-            )
-        engine._reconcile_memory_state(conn, normalized_target)
-
-    summaries_generated = 0
-    force_once = bool(force_summarize_target)
-    while engine.run_summarization_if_needed(normalized_target, force=force_once):
-        summaries_generated += 1
-        force_once = False
-
     return MergeResult(
         target_key=normalized_target,
         source_keys=tuple(normalized_sources),
         messages_copied=messages_copied,
-        facts_merged=len(source_fact_keys),
-        summaries_generated=summaries_generated,
     )

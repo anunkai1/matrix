@@ -1,136 +1,14 @@
-import hashlib
-import json
 import re
 import sqlite3
 import threading
 import time
-from datetime import datetime, timedelta
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
-from zoneinfo import ZoneInfo
+from typing import List, Optional, Sequence
 
-try:
-    from . import llm_summarizer
-    from . import memory_summary_utils
-except ImportError:
-    import sys
-    from pathlib import Path
-    _this_dir = str(Path(__file__).resolve().parent)
-    if _this_dir not in sys.path:
-        sys.path.insert(0, _this_dir)
-    import llm_summarizer
-    import memory_summary_utils
 
-MODE_FULL = "all_context"
-MODE_FULL_LEGACY_ALIAS = "full"
-MODE_SESSION_ONLY = "session_only"
-ALLOWED_MODES = (MODE_FULL, MODE_SESSION_ONLY)
-
-# LLM summarization is primary, but we batch it to avoid running Gemma on every turn.
-# Forced maintenance summarization still bypasses this threshold.
-SUMMARY_TRIGGER_TOKENS = 2500
 RECENT_WINDOW_MAX_MESSAGES = None
 RECENT_WINDOW_TOKEN_BUDGET = 5000
-UNSUMMARIZED_TAIL_TOKEN_BUDGET = 1500
-FACT_LIMIT = 20
-DEFAULT_MAX_MESSAGES_PER_KEY = 4000
-DEFAULT_MAX_SUMMARIES_PER_KEY = 80
-DEFAULT_PRUNE_INTERVAL_SECONDS = 300
-MAX_NATURAL_LANGUAGE_RECALL_MESSAGES = 20
-BRISBANE_TZ = ZoneInfo("Australia/Brisbane")
-
-NUMBER_WORDS = {
-    "one": 1,
-    "two": 2,
-    "three": 3,
-    "four": 4,
-    "five": 5,
-    "six": 6,
-    "seven": 7,
-    "eight": 8,
-    "nine": 9,
-    "ten": 10,
-    "eleven": 11,
-    "twelve": 12,
-    "thirteen": 13,
-    "fourteen": 14,
-    "fifteen": 15,
-    "sixteen": 16,
-    "seventeen": 17,
-    "eighteen": 18,
-    "nineteen": 19,
-    "twenty": 20,
-}
-
-SENSITIVE_PATTERNS = (
-    "password",
-    "passcode",
-    "secret",
-    "private key",
-    "api key",
-    "token",
-    "credit card",
-    "debit card",
-    "bank account",
-    "routing number",
-    "social security",
-    "ssn",
-    "medical",
-    "diagnosis",
-    "health record",
-)
-
-SENSITIVE_KEY_VALUE_PATTERN = re.compile(
-    r"(?i)\b(password|passcode|secret|private[ _-]?key|api[ _-]?key|token|ssn|social security|credit card|debit card|bank account|routing number)\b\s*[:=]\s*([^\s,;]+)"
-)
-SENSITIVE_PHRASE_PATTERN = re.compile(
-    r"(?i)\b(password|passcode|secret|private[ _-]?key|api[ _-]?key|token)\b\s+(?:is\s+)?([^\s,;]+)"
-)
-BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9_\-\.=]{10,})")
-API_TOKEN_PATTERN = re.compile(r"\b(sk-[A-Za-z0-9_-]{8,})\b")
-LONG_HEX_PATTERN = re.compile(r"\b([A-Fa-f0-9]{32,})\b")
-URL_PATTERN = re.compile(r"https?://\S+")
-MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\([^)]+\)")
-MESSAGE_IMPORTANCE_KEYWORDS = (
-    "decide",
-    "decision",
-    "prefer",
-    "remember",
-    "important",
-    "need",
-    "want",
-    "plan",
-    "fix",
-    "bug",
-    "error",
-    "issue",
-    "implement",
-    "status",
-    "summary",
-    "risk",
-    "blocked",
-    "use",
-    "set",
-    "configure",
-    "option",
-)
-LOW_VALUE_MESSAGE_TEXT = {
-    "ok",
-    "okay",
-    "thanks",
-    "thank you",
-    "thx",
-    "yes",
-    "yep",
-    "no",
-    "nope",
-    "cool",
-    "nice",
-    "sounds good",
-    "all good",
-    "great",
-}
 
 
 @dataclass
@@ -154,42 +32,14 @@ class CommandResult:
 @dataclass
 class MemoryStatus:
     conversation_key: str
-    mode: str
     session_active: bool
-    active_fact_count: int
-    summary_count: int
     message_count: int
 
 
-@dataclass
-class RetentionPruneResult:
-    scanned_keys: int
-    pruned_messages: int
-    pruned_summaries: int
-
-
-@dataclass(frozen=True)
-class NaturalLanguageMemoryIntent:
-    kind: str
-    role: Optional[str] = None
-    count: int = 0
-    window: Optional[str] = None
-
-
 class MemoryEngine:
-    def __init__(
-        self,
-        db_path: str,
-        max_messages_per_key: int = DEFAULT_MAX_MESSAGES_PER_KEY,
-        max_summaries_per_key: int = DEFAULT_MAX_SUMMARIES_PER_KEY,
-        prune_interval_seconds: int = DEFAULT_PRUNE_INTERVAL_SECONDS,
-    ) -> None:
+    def __init__(self, db_path: str) -> None:
         self.db_path = db_path
         self._lock = threading.RLock()
-        self.max_messages_per_key = max(0, int(max_messages_per_key))
-        self.max_summaries_per_key = max(0, int(max_summaries_per_key))
-        self.prune_interval_seconds = max(0, int(prune_interval_seconds))
-        self._next_prune_deadline: Dict[str, float] = {}
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.ensure_schema()
 
@@ -225,13 +75,11 @@ class MemoryEngine:
         return conn
 
     @staticmethod
-    def _normalize_mode(mode: str) -> str:
-        normalized = (mode or "").strip().lower()
-        if normalized == MODE_FULL_LEGACY_ALIAS:
-            return MODE_FULL
-        if normalized in ALLOWED_MODES:
-            return normalized
-        return MODE_FULL
+    def estimate_tokens(text: str) -> int:
+        content = (text or "").strip()
+        if not content:
+            return 1
+        return max(1, len(content) // 4)
 
     def ensure_schema(self) -> None:
         with self._lock, self._connect() as conn:
@@ -255,123 +103,12 @@ class MemoryEngine:
                     updated_at REAL NOT NULL
                 );
 
-                CREATE TABLE IF NOT EXISTS memory_facts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    conversation_key TEXT NOT NULL,
-                    fact_key TEXT NOT NULL,
-                    fact_value TEXT NOT NULL,
-                    explicit INTEGER NOT NULL DEFAULT 0,
-                    confidence REAL NOT NULL DEFAULT 0,
-                    evidence_count INTEGER NOT NULL DEFAULT 1,
-                    source_msg_id INTEGER,
-                    status TEXT NOT NULL DEFAULT 'active',
-                    created_at REAL NOT NULL,
-                    last_observed_at REAL NOT NULL DEFAULT 0,
-                    last_used_at REAL NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS chat_summaries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    conversation_key TEXT NOT NULL,
-                    start_msg_id INTEGER NOT NULL,
-                    end_msg_id INTEGER NOT NULL,
-                    summary_text TEXT NOT NULL,
-                    key_points_json TEXT NOT NULL,
-                    open_loops_json TEXT NOT NULL,
-                    created_at REAL NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS memory_state (
-                    conversation_key TEXT PRIMARY KEY,
-                    unsummarized_start_msg_id INTEGER,
-                    last_summary_msg_id INTEGER,
-                    updated_at REAL NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS memory_config (
-                    conversation_key TEXT PRIMARY KEY,
-                    mode TEXT NOT NULL DEFAULT 'all_context'
-                );
-
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_facts_key
-                    ON memory_facts (conversation_key, fact_key);
                 CREATE INDEX IF NOT EXISTS idx_messages_key_id
                     ON messages (conversation_key, id);
                 CREATE INDEX IF NOT EXISTS idx_messages_key_ts
                     ON messages (conversation_key, ts);
-                CREATE INDEX IF NOT EXISTS idx_memory_facts_lookup
-                    ON memory_facts (conversation_key, status, confidence, last_used_at);
-                CREATE INDEX IF NOT EXISTS idx_chat_summaries_lookup
-                    ON chat_summaries (conversation_key, id);
                 """
             )
-            fact_columns = {
-                str(row["name"]): row
-                for row in conn.execute("PRAGMA table_info(memory_facts)").fetchall()
-            }
-            if "evidence_count" not in fact_columns:
-                conn.execute(
-                    "ALTER TABLE memory_facts ADD COLUMN evidence_count INTEGER NOT NULL DEFAULT 1"
-                )
-            if "last_observed_at" not in fact_columns:
-                conn.execute(
-                    "ALTER TABLE memory_facts ADD COLUMN last_observed_at REAL NOT NULL DEFAULT 0"
-                )
-                conn.execute(
-                    "UPDATE memory_facts SET last_observed_at = created_at WHERE last_observed_at = 0"
-                )
-            # Normalize legacy mode label to the canonical mode name.
-            conn.execute(
-                "UPDATE memory_config SET mode = ? WHERE mode = ?",
-                (MODE_FULL, MODE_FULL_LEGACY_ALIAS),
-            )
-
-    @staticmethod
-    def estimate_tokens(text: str) -> int:
-        content = (text or "").strip()
-        if not content:
-            return 1
-        return max(1, len(content) // 4)
-
-    def _ensure_memory_rows(self, conn: sqlite3.Connection, conversation_key: str) -> None:
-        conn.execute(
-            "INSERT OR IGNORE INTO memory_config (conversation_key, mode) VALUES (?, ?)",
-            (conversation_key, MODE_FULL),
-        )
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO memory_state (
-                conversation_key,
-                unsummarized_start_msg_id,
-                last_summary_msg_id,
-                updated_at
-            ) VALUES (?, NULL, NULL, ?)
-            """,
-            (conversation_key, time.time()),
-        )
-
-    def get_mode(self, conversation_key: str) -> str:
-        with self._lock, self._connect() as conn:
-            self._ensure_memory_rows(conn, conversation_key)
-            row = conn.execute(
-                "SELECT mode FROM memory_config WHERE conversation_key = ?",
-                (conversation_key,),
-            ).fetchone()
-        mode = str(row["mode"] if row else MODE_FULL).strip().lower()
-        return self._normalize_mode(mode)
-
-    def set_mode(self, conversation_key: str, mode: str) -> str:
-        candidate = (mode or "").strip().lower()
-        if candidate not in ALLOWED_MODES and candidate != MODE_FULL_LEGACY_ALIAS:
-            raise ValueError(f"Invalid mode: {mode}")
-        normalized = self._normalize_mode(candidate)
-        with self._lock, self._connect() as conn:
-            self._ensure_memory_rows(conn, conversation_key)
-            conn.execute(
-                "INSERT OR REPLACE INTO memory_config (conversation_key, mode) VALUES (?, ?)",
-                (conversation_key, normalized),
-            )
-        return normalized
 
     def get_session_thread_id(self, conversation_key: str) -> Optional[str]:
         with self._lock, self._connect() as conn:
@@ -404,10 +141,6 @@ class MemoryEngine:
         with self._lock, self._connect() as conn:
             conn.execute("DELETE FROM sessions WHERE conversation_key = ?", (conversation_key,))
             conn.execute("DELETE FROM messages WHERE conversation_key = ?", (conversation_key,))
-            conn.execute("DELETE FROM memory_facts WHERE conversation_key = ?", (conversation_key,))
-            conn.execute("DELETE FROM chat_summaries WHERE conversation_key = ?", (conversation_key,))
-            conn.execute("DELETE FROM memory_state WHERE conversation_key = ?", (conversation_key,))
-            conn.execute("DELETE FROM memory_config WHERE conversation_key = ?", (conversation_key,))
 
     def _append_message(
         self,
@@ -445,30 +178,7 @@ class MemoryEngine:
                 1 if is_bot else 0,
             ),
         )
-        message_id = int(row.lastrowid)
-        self._ensure_memory_rows(conn, conversation_key)
-        state = conn.execute(
-            "SELECT unsummarized_start_msg_id FROM memory_state WHERE conversation_key = ?",
-            (conversation_key,),
-        ).fetchone()
-        start_id = state["unsummarized_start_msg_id"] if state else None
-        if start_id is None:
-            conn.execute(
-                """
-                UPDATE memory_state
-                SET unsummarized_start_msg_id = ?, updated_at = ?
-                WHERE conversation_key = ?
-                """,
-                (message_id, now, conversation_key),
-            )
-        return message_id
-
-    @staticmethod
-    def _sanitize_line(text: str, limit: int = 240) -> str:
-        compact = " ".join((text or "").split())
-        if len(compact) <= limit:
-            return compact
-        return compact[: max(0, limit - 3)].rstrip() + "..."
+        return int(row.lastrowid)
 
     _CONTEXT_BLOCK_PATTERN = re.compile(
         r"Current Telegram Context:.+?Current User Message:\s*",
@@ -519,762 +229,6 @@ class MemoryEngine:
         selected.reverse()
         return selected
 
-    def _load_unsummarized_tail(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        *,
-        recent_rows: Sequence[sqlite3.Row],
-        token_budget: int = UNSUMMARIZED_TAIL_TOKEN_BUDGET,
-    ) -> List[sqlite3.Row]:
-        state_row = conn.execute(
-            """
-            SELECT unsummarized_start_msg_id
-            FROM memory_state
-            WHERE conversation_key = ?
-            """,
-            (conversation_key,),
-        ).fetchone()
-        start_id = (
-            int(state_row["unsummarized_start_msg_id"])
-            if state_row and state_row["unsummarized_start_msg_id"] is not None
-            else None
-        )
-        if start_id is None:
-            return []
-
-        oldest_recent_id = min(int(row["id"]) for row in recent_rows) if recent_rows else None
-        params: List[object] = [conversation_key, start_id]
-        query = """
-            SELECT id, sender_role, sender_name, text, token_estimate
-            FROM messages
-            WHERE conversation_key = ? AND id >= ?
-        """
-        if oldest_recent_id is not None:
-            query += " AND id < ?"
-            params.append(oldest_recent_id)
-        query += """
-            ORDER BY id DESC
-            LIMIT 240
-        """
-        rows = conn.execute(query, tuple(params)).fetchall()
-        return self._select_recent_rows(
-            rows,
-            max_messages=240,
-            token_budget=token_budget,
-        )
-
-    def _load_recent_messages_for_role(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        limit: int,
-        role: Optional[str],
-    ) -> List[sqlite3.Row]:
-        params: List[object] = [conversation_key]
-        query = """
-            SELECT sender_role, sender_name, text, ts
-            FROM messages
-            WHERE conversation_key = ?
-        """
-        if role:
-            query += " AND sender_role = ?"
-            params.append(role)
-        query += """
-            ORDER BY id DESC
-            LIMIT ?
-        """
-        params.append(limit)
-        rows = conn.execute(query, tuple(params)).fetchall()
-        rows.reverse()
-        return rows
-
-    def _load_latest_summary(self, conn: sqlite3.Connection, conversation_key: str) -> Optional[sqlite3.Row]:
-        return conn.execute(
-            """
-            SELECT summary_text, key_points_json, open_loops_json, created_at
-            FROM chat_summaries
-            WHERE conversation_key = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (conversation_key,),
-        ).fetchone()
-
-    def _load_active_facts(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        limit: int = FACT_LIMIT,
-    ) -> List[sqlite3.Row]:
-        rows = conn.execute(
-            """
-            SELECT id, fact_key, fact_value, confidence, explicit, evidence_count, last_observed_at
-            FROM memory_facts
-            WHERE conversation_key = ? AND status = 'active' AND confidence >= 0.7
-            ORDER BY explicit DESC, evidence_count DESC, last_observed_at DESC, confidence DESC, last_used_at DESC, id DESC
-            LIMIT ?
-            """,
-            (conversation_key, limit),
-        ).fetchall()
-        if rows:
-            now = time.time()
-            conn.executemany(
-                "UPDATE memory_facts SET last_used_at = ? WHERE id = ?",
-                [(now, int(row["id"])) for row in rows],
-            )
-        return rows
-
-    def _load_latest_summary_in_window(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        start_ts: float,
-        end_ts: float,
-    ) -> Optional[sqlite3.Row]:
-        return conn.execute(
-            """
-            SELECT summary_text, key_points_json, open_loops_json, created_at
-            FROM chat_summaries
-            WHERE conversation_key = ? AND created_at >= ? AND created_at < ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (conversation_key, start_ts, end_ts),
-        ).fetchone()
-
-    def _load_messages_in_window(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        start_ts: float,
-        end_ts: float,
-    ) -> List[sqlite3.Row]:
-        return conn.execute(
-            """
-            SELECT id, sender_role, sender_name, text, token_estimate, is_bot, ts
-            FROM messages
-            WHERE conversation_key = ? AND ts >= ? AND ts < ?
-            ORDER BY id
-            """,
-            (conversation_key, start_ts, end_ts),
-        ).fetchall()
-
-    def _load_active_facts_in_window(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        start_ts: float,
-        end_ts: float,
-        limit: int = FACT_LIMIT,
-    ) -> List[sqlite3.Row]:
-        return conn.execute(
-            """
-            SELECT mf.id, mf.fact_key, mf.fact_value, mf.explicit, mf.confidence
-            FROM memory_facts AS mf
-            LEFT JOIN messages AS m
-                ON m.id = mf.source_msg_id
-            WHERE mf.conversation_key = ?
-              AND mf.status = 'active'
-              AND (
-                    (
-                        mf.source_msg_id IS NOT NULL
-                        AND m.conversation_key = ?
-                        AND m.ts >= ?
-                        AND m.ts < ?
-                    )
-                    OR (
-                        mf.source_msg_id IS NULL
-                        AND mf.created_at >= ?
-                        AND mf.created_at < ?
-                    )
-              )
-            ORDER BY mf.explicit DESC, mf.confidence DESC, mf.id DESC
-            LIMIT ?
-            """,
-            (
-                conversation_key,
-                conversation_key,
-                start_ts,
-                end_ts,
-                start_ts,
-                end_ts,
-                limit,
-            ),
-        ).fetchall()
-
-    @staticmethod
-    def _format_timestamp(ts: float) -> str:
-        return datetime.fromtimestamp(float(ts), tz=BRISBANE_TZ).strftime("%Y-%m-%d %H:%M:%S AEST")
-
-    @classmethod
-    def score_message_importance(
-        cls,
-        *,
-        text: str,
-        sender_role: str,
-        token_estimate: int,
-        is_bot: bool,
-    ) -> float:
-        normalized_text = " ".join((text or "").strip().lower().split())
-        if not normalized_text:
-            return -1.0
-
-        score = 0.0
-        if sender_role == "user":
-            score += 0.35
-        if not is_bot:
-            score += 0.15
-
-        score += min(1.5, max(1, int(token_estimate or 1)) / 40.0)
-
-        if "?" in normalized_text:
-            score += 0.5
-        if ":" in normalized_text:
-            score += 0.25
-        if any(keyword in normalized_text for keyword in MESSAGE_IMPORTANCE_KEYWORDS):
-            score += 1.2
-
-        word_count = len(normalized_text.split())
-        if word_count <= 2:
-            score -= 0.4
-        if normalized_text in LOW_VALUE_MESSAGE_TEXT:
-            score -= 1.5
-        elif word_count <= 4 and normalized_text.replace("!", "").replace(".", "") in LOW_VALUE_MESSAGE_TEXT:
-            score -= 1.0
-        return score
-
-    @classmethod
-    def should_keep_message_for_shared_archive(
-        cls,
-        *,
-        text: str,
-        sender_role: str,
-        token_estimate: int,
-        is_bot: bool,
-        min_score: float = 0.75,
-    ) -> bool:
-        return cls.score_message_importance(
-            text=text,
-            sender_role=sender_role,
-            token_estimate=token_estimate,
-            is_bot=is_bot,
-        ) >= min_score
-
-    @staticmethod
-    def _parse_count_token(token: str) -> Optional[int]:
-        value = (token or "").strip().lower()
-        if not value:
-            return None
-        if value.isdigit():
-            return int(value)
-        return NUMBER_WORDS.get(value)
-
-    @staticmethod
-    def _window_bounds(window: str, now: Optional[datetime] = None) -> Tuple[datetime, datetime]:
-        current = now.astimezone(BRISBANE_TZ) if now else datetime.now(BRISBANE_TZ)
-        start_of_today = current.replace(hour=0, minute=0, second=0, microsecond=0)
-        normalized = (window or "").strip().lower().replace("-", "_").replace(" ", "_")
-        if normalized == "today":
-            return start_of_today, current
-        if normalized == "yesterday":
-            start = start_of_today - timedelta(days=1)
-            return start, start_of_today
-        if normalized == "this_week":
-            start = start_of_today - timedelta(days=start_of_today.weekday())
-            return start, current
-        raise ValueError(f"Unsupported window: {window}")
-
-    def _render_recent_messages_reply(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        role: str,
-        count: int,
-    ) -> str:
-        safe_count = max(1, min(count, MAX_NATURAL_LANGUAGE_RECALL_MESSAGES))
-        rows = self._load_recent_messages_for_role(conn, conversation_key, safe_count, role)
-        if not rows:
-            if role == "assistant":
-                return "I couldn't find any of my stored messages for this conversation yet."
-            return "I couldn't find any of your stored messages for this conversation yet."
-
-        label = "My" if role == "assistant" else "Your"
-        if len(rows) == 1:
-            heading = f"{label} last message in memory is:"
-        else:
-            heading = f"{label} last {len(rows)} messages in memory are:"
-        lines = [heading]
-        for index, row in enumerate(rows, start=1):
-            text = self._sanitize_line(str(row["text"] or ""), 240)
-            lines.append(f"{index}. {self._format_timestamp(float(row['ts']))}: {text}")
-        return "\n".join(lines)
-
-    def _render_summary_window_reply(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        window: str,
-        now: Optional[datetime] = None,
-    ) -> str:
-        start_dt, end_dt = self._window_bounds(window, now=now)
-        start_ts = start_dt.timestamp()
-        end_ts = end_dt.timestamp()
-        summary_row = self._load_latest_summary_in_window(conn, conversation_key, start_ts, end_ts)
-        fact_rows = self._load_active_facts_in_window(conn, conversation_key, start_ts, end_ts)
-
-        if summary_row is not None:
-            summary_text = str(summary_row["summary_text"] or "").strip()
-        else:
-            message_rows = self._load_messages_in_window(conn, conversation_key, start_ts, end_ts)
-            if not message_rows and not fact_rows:
-                window_label = (window or "").replace("_", " ")
-                return f"I couldn't find anything in memory for {window_label}."
-            if message_rows:
-                summary_text, _, _ = self._summarize_rows(message_rows)
-            else:
-                summary_text = "No stored messages were captured in that window."
-
-        window_label = (window or "").replace("_", " ")
-        lines = [f"From {window_label}, I remember:", summary_text.strip()]
-        if fact_rows:
-            lines.append("")
-            lines.append("Facts learned in that window:")
-            for row in fact_rows:
-                fact_key = str(row["fact_key"] or "").strip()
-                fact_value = self._sanitize_line(str(row["fact_value"] or ""), 140)
-                lines.append(f"- {fact_key}: {fact_value}")
-        return "\n".join(line for line in lines if line is not None).strip()
-
-    def _render_active_facts_reply(self, conversation_key: str) -> str:
-        rows = [row for row in self.export_facts(conversation_key) if str(row["status"]) == "active"]
-        if not rows:
-            return "I don't have any active facts stored for this conversation."
-
-        lines = ["What I currently remember as active facts is:"]
-        for row in rows:
-            lines.append(f"- {row['fact_key']}: {row['fact_value']}")
-        return "\n".join(lines)
-
-    def _render_latest_summary_reply(self, conn: sqlite3.Connection, conversation_key: str) -> str:
-        summary_row = self._load_latest_summary(conn, conversation_key)
-        if summary_row is None:
-            return "I don't have a stored summary for this conversation yet."
-        summary_text = str(summary_row["summary_text"] or "").strip()
-        if not summary_text:
-            return "I don't have a stored summary for this conversation yet."
-        return f"The latest stored summary is:\n{summary_text}"
-
-    def respond_to_natural_language_memory_query(
-        self,
-        conversation_key: str,
-        intent: NaturalLanguageMemoryIntent,
-        now: Optional[datetime] = None,
-    ) -> str:
-        with self._lock, self._connect() as conn:
-            if intent.kind == "recent_messages" and intent.role:
-                return self._render_recent_messages_reply(
-                    conn,
-                    conversation_key,
-                    intent.role,
-                    intent.count or 5,
-                )
-            if intent.kind == "summary_window" and intent.window:
-                return self._render_summary_window_reply(
-                    conn,
-                    conversation_key,
-                    intent.window,
-                    now=now,
-                )
-            if intent.kind == "active_facts":
-                return self._render_active_facts_reply(conversation_key)
-            if intent.kind == "latest_summary":
-                return self._render_latest_summary_reply(conn, conversation_key)
-        raise ValueError(f"Unsupported natural language intent: {intent.kind}")
-
-    def _build_prompt(
-        self,
-        mode: str,
-        current_input: str,
-        recent_rows: Sequence[sqlite3.Row],
-        unsummarized_rows: Sequence[sqlite3.Row],
-        summary_sections: Sequence[Tuple[str, str]],
-        fact_lines: Sequence[str],
-    ) -> str:
-        sections: List[str] = []
-        sections.append(
-            "Memory Context Rules:\n"
-            "- Treat summary/facts as background context, not hard requirements.\n"
-            "- Prefer the user's current request when conflicts exist.\n"
-            "- Summaries include age. Risks/blockers from old summaries that don't appear in recent messages have likely been resolved."
-        )
-
-        if mode == MODE_FULL and summary_sections:
-            rendered_summaries = [
-                f"{title}:\n{text}"
-                for title, text in summary_sections
-                if title.strip() and text.strip()
-            ]
-            if rendered_summaries:
-                sections.append("\n\n".join(rendered_summaries))
-
-        if mode == MODE_FULL and fact_lines:
-            sections.append("Durable Facts:\n" + "\n".join(fact_lines))
-
-        if recent_rows:
-            lines: List[str] = []
-            for row in recent_rows:
-                role = str(row["sender_role"] or "user")
-                sender = str(row["sender_name"] or role)
-                raw_text = str(row["text"] or "")
-                clean_text = self._strip_context_block(raw_text)
-                text = " ".join(clean_text.split())
-                lines.append(f"- [{role}] {sender}: {text}")
-            sections.append("Recent Messages:\n" + "\n".join(lines))
-
-        if unsummarized_rows:
-            lines = []
-            for row in unsummarized_rows:
-                role = str(row["sender_role"] or "user")
-                sender = str(row["sender_name"] or role)
-                raw_text = str(row["text"] or "")
-                clean_text = self._strip_context_block(raw_text)
-                text = " ".join(clean_text.split())
-                lines.append(f"- [{role}] {sender}: {text}")
-            sections.append("Unsummarized Context:\n" + "\n".join(lines))
-
-        sections.append(f"Current User Input:\n{current_input.strip()}")
-        return "\n\n".join(sections).strip()
-
-    def _build_summary_sections(
-        self,
-        current_summary_row: Optional[sqlite3.Row],
-        background_summary_row: Optional[sqlite3.Row],
-    ) -> List[Tuple[str, str]]:
-        return memory_summary_utils.build_summary_sections(
-            current_summary_row,
-            background_summary_row,
-        )
-
-    def _build_fact_lines(
-        self,
-        current_fact_rows: Sequence[sqlite3.Row],
-        background_fact_rows: Sequence[sqlite3.Row],
-    ) -> List[str]:
-        include_source_labels = bool(background_fact_rows)
-        lines: List[str] = []
-        seen_fact_keys = set()
-        sources = (
-            ("current", current_fact_rows),
-            ("shared", background_fact_rows),
-        )
-        for source_name, rows in sources:
-            for row in rows:
-                fact_key = str(row["fact_key"] or "").strip()
-                if not fact_key or fact_key in seen_fact_keys:
-                    continue
-                seen_fact_keys.add(fact_key)
-                value = self._sanitize_line(str(row["fact_value"]), 140)
-                if include_source_labels:
-                    prefix = f"{source_name}:{row['id']}"
-                else:
-                    prefix = str(row["id"])
-                lines.append(f"- [{prefix}] {fact_key}: {value}")
-                if len(lines) >= FACT_LIMIT:
-                    return lines
-        return lines
-
-    def _list_conversation_keys(self, conn: sqlite3.Connection) -> List[str]:
-        rows = conn.execute(
-            """
-            SELECT conversation_key FROM memory_state
-            UNION
-            SELECT DISTINCT conversation_key FROM messages
-            UNION
-            SELECT DISTINCT conversation_key FROM chat_summaries
-            """
-        ).fetchall()
-        keys: List[str] = []
-        for row in rows:
-            key = str(row["conversation_key"] or "").strip()
-            if key:
-                keys.append(key)
-        return keys
-
-    def _reconcile_memory_state(self, conn: sqlite3.Connection, conversation_key: str) -> None:
-        self._ensure_memory_rows(conn, conversation_key)
-        state_row = conn.execute(
-            """
-            SELECT unsummarized_start_msg_id
-            FROM memory_state
-            WHERE conversation_key = ?
-            """,
-            (conversation_key,),
-        ).fetchone()
-        unsummarized_start = (
-            int(state_row["unsummarized_start_msg_id"])
-            if state_row and state_row["unsummarized_start_msg_id"] is not None
-            else None
-        )
-
-        summary_row = conn.execute(
-            """
-            SELECT end_msg_id
-            FROM chat_summaries
-            WHERE conversation_key = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (conversation_key,),
-        ).fetchone()
-        latest_summary_end = int(summary_row["end_msg_id"]) if summary_row else None
-
-        oldest_message_row = conn.execute(
-            """
-            SELECT id
-            FROM messages
-            WHERE conversation_key = ?
-            ORDER BY id ASC
-            LIMIT 1
-            """,
-            (conversation_key,),
-        ).fetchone()
-        oldest_message_id = int(oldest_message_row["id"]) if oldest_message_row else None
-
-        if oldest_message_id is None:
-            new_unsummarized_start = None
-        else:
-            floor_id = oldest_message_id
-            if latest_summary_end is not None:
-                floor_id = max(floor_id, latest_summary_end + 1)
-            if unsummarized_start is None or unsummarized_start < floor_id:
-                new_unsummarized_start = floor_id
-            else:
-                new_unsummarized_start = unsummarized_start
-
-        conn.execute(
-            """
-            UPDATE memory_state
-            SET unsummarized_start_msg_id = ?, last_summary_msg_id = ?, updated_at = ?
-            WHERE conversation_key = ?
-            """,
-            (new_unsummarized_start, latest_summary_end, time.time(), conversation_key),
-        )
-
-    def _prune_messages_for_key(self, conn: sqlite3.Connection, conversation_key: str) -> int:
-        if self.max_messages_per_key <= 0:
-            return 0
-        rows = conn.execute(
-            """
-            SELECT id, sender_role, text, token_estimate, is_bot
-            FROM messages
-            WHERE conversation_key = ?
-            ORDER BY id ASC
-            """,
-            (conversation_key,),
-        ).fetchall()
-        if len(rows) <= self.max_messages_per_key:
-            return 0
-
-        keep_target = self.max_messages_per_key
-        recent_floor = min(keep_target, max(4, keep_target // 2))
-        keep_ids = {
-            int(row["id"])
-            for row in rows[-recent_floor:]
-        }
-        remaining_slots = max(0, keep_target - len(keep_ids))
-        if remaining_slots > 0:
-            older_rows = rows[:-recent_floor] if recent_floor < len(rows) else []
-            ranked_older = sorted(
-                older_rows,
-                key=lambda row: (
-                    self.score_message_importance(
-                        text=str(row["text"] or ""),
-                        sender_role=str(row["sender_role"] or "user"),
-                        token_estimate=int(row["token_estimate"] or 1),
-                        is_bot=bool(int(row["is_bot"] or 0)),
-                    ),
-                    int(row["id"]),
-                ),
-                reverse=True,
-            )
-            for row in ranked_older[:remaining_slots]:
-                keep_ids.add(int(row["id"]))
-
-        delete_ids = [int(row["id"]) for row in rows if int(row["id"]) not in keep_ids]
-        if not delete_ids:
-            return 0
-        placeholders = ",".join("?" for _ in delete_ids)
-        delete_row = conn.execute(
-            f"DELETE FROM messages WHERE conversation_key = ? AND id IN ({placeholders})",
-            (conversation_key, *delete_ids),
-        )
-        return int(delete_row.rowcount or 0)
-
-    def _prune_summaries_for_key(self, conn: sqlite3.Connection, conversation_key: str) -> int:
-        if self.max_summaries_per_key <= 0:
-            return 0
-        cutoff_row = conn.execute(
-            """
-            SELECT id
-            FROM chat_summaries
-            WHERE conversation_key = ?
-            ORDER BY id DESC
-            LIMIT 1 OFFSET ?
-            """,
-            (conversation_key, self.max_summaries_per_key - 1),
-        ).fetchone()
-        if not cutoff_row:
-            return 0
-
-        cutoff_id = int(cutoff_row["id"])
-        delete_row = conn.execute(
-            "DELETE FROM chat_summaries WHERE conversation_key = ? AND id < ?",
-            (conversation_key, cutoff_id),
-        )
-        return int(delete_row.rowcount or 0)
-
-    def _prune_conversation(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        force: bool = False,
-    ) -> Tuple[int, int]:
-        now = time.time()
-        if not force and self.prune_interval_seconds > 0:
-            next_deadline = self._next_prune_deadline.get(conversation_key, 0.0)
-            if now < next_deadline:
-                return 0, 0
-            self._next_prune_deadline[conversation_key] = now + float(
-                self.prune_interval_seconds
-            )
-        elif force and self.prune_interval_seconds > 0:
-            self._next_prune_deadline[conversation_key] = now + float(
-                self.prune_interval_seconds
-            )
-
-        deleted_messages = self._prune_messages_for_key(conn, conversation_key)
-        deleted_summaries = self._prune_summaries_for_key(conn, conversation_key)
-        if deleted_messages > 0 or deleted_summaries > 0:
-            self._reconcile_memory_state(conn, conversation_key)
-        return deleted_messages, deleted_summaries
-
-    def _compact_summarized_messages_for_key(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-    ) -> int:
-        summary_row = conn.execute(
-            """
-            SELECT end_msg_id
-            FROM chat_summaries
-            WHERE conversation_key = ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (conversation_key,),
-        ).fetchone()
-        if not summary_row or summary_row["end_msg_id"] is None:
-            return 0
-
-        cutoff_id = int(summary_row["end_msg_id"])
-        delete_row = conn.execute(
-            "DELETE FROM messages WHERE conversation_key = ? AND id <= ?",
-            (conversation_key, cutoff_id),
-        )
-        deleted_messages = int(delete_row.rowcount or 0)
-        if deleted_messages > 0:
-            self._reconcile_memory_state(conn, conversation_key)
-        return deleted_messages
-
-    def compact_summarized_messages(self, conversation_key: str) -> int:
-        with self._lock, self._connect() as conn:
-            self._ensure_memory_rows(conn, conversation_key)
-            return self._compact_summarized_messages_for_key(conn, conversation_key)
-
-    def run_retention_prune(
-        self,
-        conversation_key: Optional[str] = None,
-        force: bool = False,
-    ) -> RetentionPruneResult:
-        with self._lock, self._connect() as conn:
-            keys = [conversation_key] if conversation_key else self._list_conversation_keys(conn)
-            total_messages = 0
-            total_summaries = 0
-            for key in keys:
-                deleted_messages, deleted_summaries = self._prune_conversation(
-                    conn,
-                    key,
-                    force=force,
-                )
-                total_messages += deleted_messages
-                total_summaries += deleted_summaries
-        return RetentionPruneResult(
-            scanned_keys=len(keys),
-            pruned_messages=total_messages,
-            pruned_summaries=total_summaries,
-        )
-
-    def regenerate_summaries(self, conversation_key: Optional[str] = None) -> int:
-        with self._lock, self._connect() as conn:
-            if conversation_key:
-                summary_rows = conn.execute(
-                    """
-                    SELECT id, conversation_key, start_msg_id, end_msg_id
-                    FROM chat_summaries
-                    WHERE conversation_key = ?
-                    ORDER BY id
-                    """,
-                    (conversation_key,),
-                ).fetchall()
-            else:
-                summary_rows = conn.execute(
-                    """
-                    SELECT id, conversation_key, start_msg_id, end_msg_id
-                    FROM chat_summaries
-                    ORDER BY id
-                    """
-                ).fetchall()
-
-            updated = 0
-            for summary_row in summary_rows:
-                row_id = int(summary_row["id"])
-                row_key = str(summary_row["conversation_key"])
-                start_id = int(summary_row["start_msg_id"])
-                end_id = int(summary_row["end_msg_id"])
-                message_rows = conn.execute(
-                    """
-                    SELECT id, sender_role, sender_name, text, token_estimate, is_bot
-                    FROM messages
-                    WHERE conversation_key = ? AND id >= ? AND id <= ?
-                    ORDER BY id
-                    """,
-                    (row_key, start_id, end_id),
-                ).fetchall()
-                if not message_rows:
-                    continue
-                summary_text, key_points, open_loops = self._summarize_rows(message_rows)
-                conn.execute(
-                    """
-                    UPDATE chat_summaries
-                    SET summary_text = ?, key_points_json = ?, open_loops_json = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        summary_text,
-                        json.dumps(key_points, ensure_ascii=True),
-                        json.dumps(open_loops, ensure_ascii=True),
-                        row_id,
-                    ),
-                )
-                updated += 1
-            return updated
-
-    def checkpoint_and_vacuum(self) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            conn.execute("VACUUM")
-
     def begin_turn(
         self,
         conversation_key: str,
@@ -1282,8 +236,6 @@ class MemoryEngine:
         sender_name: str,
         user_input: str,
         stateless: bool = False,
-        mode_override: Optional[str] = None,
-        background_conversation_key: Optional[str] = None,
         thread_id_override: Optional[str] = None,
     ) -> TurnContext:
         clean_input = (user_input or "").strip()
@@ -1300,30 +252,8 @@ class MemoryEngine:
             )
 
         with self._lock, self._connect() as conn:
-            self._ensure_memory_rows(conn, conversation_key)
-            if mode_override:
-                mode = self._normalize_mode(mode_override)
-            else:
-                mode_row = conn.execute(
-                    "SELECT mode FROM memory_config WHERE conversation_key = ?",
-                    (conversation_key,),
-                ).fetchone()
-                mode = self._normalize_mode(str(mode_row["mode"] if mode_row else MODE_FULL))
-
             recent_rows = self._load_recent_messages(conn, conversation_key)
-            unsummarized_rows = self._load_unsummarized_tail(
-                conn,
-                conversation_key,
-                recent_rows=recent_rows,
-            ) if mode == MODE_FULL else []
-            current_summary_row = self._load_latest_summary(conn, conversation_key) if mode == MODE_FULL else None
-            current_fact_rows = self._load_active_facts(conn, conversation_key) if mode == MODE_FULL else []
-            background_key = (background_conversation_key or "").strip()
-            background_summary_row = None
-            background_fact_rows: List[sqlite3.Row] = []
-            if mode == MODE_FULL and background_key and background_key != conversation_key:
-                background_summary_row = self._load_latest_summary(conn, background_key)
-                background_fact_rows = self._load_active_facts(conn, background_key)
+
             if thread_id_override is not None:
                 thread_id = (thread_id_override or "").strip() or None
             else:
@@ -1332,22 +262,20 @@ class MemoryEngine:
                     (conversation_key,),
                 ).fetchone()
                 thread_id = str(thread_row["thread_id"] if thread_row else "").strip() or None
-            summary_sections = self._build_summary_sections(
-                current_summary_row,
-                background_summary_row,
-            )
-            fact_lines = self._build_fact_lines(
-                current_fact_rows,
-                background_fact_rows,
-            )
-            prompt_text = self._build_prompt(
-                mode,
-                clean_input,
-                recent_rows,
-                unsummarized_rows,
-                summary_sections,
-                fact_lines,
-            )
+
+            sections: List[str] = []
+            if recent_rows:
+                lines: List[str] = []
+                for row in recent_rows:
+                    role = str(row["sender_role"] or "user")
+                    sender = str(row["sender_name"] or role)
+                    raw_text = str(row["text"] or "")
+                    clean_text = self._strip_context_block(raw_text)
+                    text = " ".join(clean_text.split())
+                    lines.append(f"- [{role}] {sender}: {text}")
+                sections.append("Recent Messages:\n" + "\n".join(lines))
+            sections.append(f"Current User Input:\n{clean_input.strip()}")
+            prompt_text = "\n\n".join(sections).strip()
 
             user_message_id = self._append_message(
                 conn,
@@ -1359,12 +287,9 @@ class MemoryEngine:
                 is_bot=False,
             )
 
-            if mode == MODE_FULL:
-                self._upsert_inferred_facts(conn, conversation_key, clean_input, user_message_id)
-
         return TurnContext(
             conversation_key=conversation_key,
-            mode=mode,
+            mode="all_context",
             stateless=False,
             thread_id=thread_id,
             prompt_text=prompt_text,
@@ -1405,469 +330,6 @@ class MemoryEngine:
                     """,
                     (turn.conversation_key, new_thread_id.strip(), now),
                 )
-            self._maybe_summarize(conn, turn.conversation_key, turn.mode)
-            self._prune_conversation(conn, turn.conversation_key, force=False)
-
-    def summarize_all_unsummarized(self) -> Dict[str, bool]:
-        results: Dict[str, bool] = {}
-        with self._lock, self._connect() as conn:
-            keys = self._list_conversation_keys(conn)
-        for key in keys:
-            results[key] = self.run_summarization_if_needed(key, force=True)
-        return results
-
-    def run_summarization_if_needed(self, conversation_key: str, force: bool = False) -> bool:
-        with self._lock, self._connect() as conn:
-            self._ensure_memory_rows(conn, conversation_key)
-            row = conn.execute(
-                "SELECT mode FROM memory_config WHERE conversation_key = ?",
-                (conversation_key,),
-            ).fetchone()
-            mode = self._normalize_mode(str(row["mode"] if row else MODE_FULL))
-            return self._maybe_summarize(conn, conversation_key, mode, force=force)
-
-    def _maybe_summarize(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        mode: str,
-        force: bool = False,
-    ) -> bool:
-        if mode != MODE_FULL:
-            return False
-        self._ensure_memory_rows(conn, conversation_key)
-        state_row = conn.execute(
-            """
-            SELECT unsummarized_start_msg_id, last_summary_msg_id
-            FROM memory_state WHERE conversation_key = ?
-            """,
-            (conversation_key,),
-        ).fetchone()
-        if not state_row:
-            return False
-
-        start_id = state_row["unsummarized_start_msg_id"]
-        if start_id is None:
-            return False
-
-        rows = conn.execute(
-            """
-            SELECT id, sender_role, sender_name, text, token_estimate, is_bot
-            FROM messages
-            WHERE conversation_key = ? AND id >= ?
-            ORDER BY id
-            """,
-            (conversation_key, int(start_id)),
-        ).fetchall()
-        if not rows:
-            return False
-        token_total = sum(max(1, int(row["token_estimate"] or 1)) for row in rows)
-        if not force and token_total < SUMMARY_TRIGGER_TOKENS:
-            return False
-
-        summary_result = self._summarize_via_llm(rows, force=force)
-        if summary_result is None:
-            return False
-        summary_text, key_points, open_loops = summary_result
-        end_id = int(rows[-1]["id"])
-        now = time.time()
-        conn.execute(
-            """
-            INSERT INTO chat_summaries (
-                conversation_key,
-                start_msg_id,
-                end_msg_id,
-                summary_text,
-                key_points_json,
-                open_loops_json,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                conversation_key,
-                int(start_id),
-                end_id,
-                summary_text,
-                json.dumps(key_points, ensure_ascii=True),
-                json.dumps(open_loops, ensure_ascii=True),
-                now,
-            ),
-        )
-        conn.execute(
-            """
-            UPDATE memory_state
-            SET unsummarized_start_msg_id = ?, last_summary_msg_id = ?, updated_at = ?
-            WHERE conversation_key = ?
-            """,
-            (end_id + 1, end_id, now, conversation_key),
-        )
-
-        for row in rows:
-            if int(row["is_bot"] or 0) != 0:
-                continue
-            self._upsert_inferred_facts(
-                conn,
-                conversation_key,
-                str(row["text"] or ""),
-                source_msg_id=int(row["id"]),
-            )
-        return True
-
-    def _summarize_via_llm(
-        self, rows: Sequence[sqlite3.Row], *, force: bool = False
-    ) -> Optional[Tuple[str, List[str], List[str]]]:
-        try:
-            result = llm_summarizer.summarize_via_ollama(rows)
-        except Exception:
-            result = None
-        if result:
-            return result, [], []
-        if force:
-            return self._summarize_rows(rows)
-        return None
-
-    def _summarize_rows(self, rows: Sequence[sqlite3.Row]) -> Tuple[str, List[str], List[str]]:
-        return memory_summary_utils.summarize_rows(rows)
-
-    @staticmethod
-    def _is_sensitive(text: str) -> bool:
-        lowered = (text or "").lower()
-        return any(marker in lowered for marker in SENSITIVE_PATTERNS)
-
-    @staticmethod
-    def _mask_secret_token(token: str) -> str:
-        clean = (token or "").strip()
-        if len(clean) <= 6:
-            return "[REDACTED]"
-        return f"{clean[:2]}...[REDACTED]...{clean[-2:]}"
-
-    @classmethod
-    def _redact_sensitive_text(cls, text: str) -> Tuple[str, bool]:
-        value = (text or "").strip()
-        if not value:
-            return value, False
-
-        redacted = value
-        changed = False
-
-        def redact_key_value(match: re.Match[str]) -> str:
-            nonlocal changed
-            changed = True
-            key = match.group(1)
-            return f"{key}: [REDACTED]"
-
-        def redact_phrase(match: re.Match[str]) -> str:
-            nonlocal changed
-            changed = True
-            key = match.group(1)
-            return f"{key} [REDACTED]"
-
-        def redact_bearer(match: re.Match[str]) -> str:
-            nonlocal changed
-            changed = True
-            return f"Bearer {cls._mask_secret_token(match.group(1))}"
-
-        def redact_token(match: re.Match[str]) -> str:
-            nonlocal changed
-            changed = True
-            return cls._mask_secret_token(match.group(1))
-
-        redacted = SENSITIVE_KEY_VALUE_PATTERN.sub(redact_key_value, redacted)
-        redacted = SENSITIVE_PHRASE_PATTERN.sub(redact_phrase, redacted)
-        redacted = BEARER_PATTERN.sub(redact_bearer, redacted)
-        redacted = API_TOKEN_PATTERN.sub(redact_token, redacted)
-        redacted = LONG_HEX_PATTERN.sub(redact_token, redacted)
-        return redacted, changed
-
-    def _upsert_fact(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        fact_key: str,
-        fact_value: str,
-        explicit: bool,
-        confidence: float,
-        source_msg_id: Optional[int],
-    ) -> int:
-        now = time.time()
-        conn.execute(
-            """
-            INSERT INTO memory_facts (
-                conversation_key,
-                fact_key,
-                fact_value,
-                explicit,
-                confidence,
-                evidence_count,
-                source_msg_id,
-                status,
-                created_at,
-                last_observed_at,
-                last_used_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
-            ON CONFLICT(conversation_key, fact_key)
-            DO UPDATE SET
-                fact_value = excluded.fact_value,
-                explicit = CASE WHEN memory_facts.explicit = 1 OR excluded.explicit = 1 THEN 1 ELSE 0 END,
-                confidence = MAX(memory_facts.confidence, excluded.confidence),
-                evidence_count = memory_facts.evidence_count + 1,
-                source_msg_id = excluded.source_msg_id,
-                status = 'active',
-                last_observed_at = excluded.last_observed_at,
-                last_used_at = excluded.last_used_at
-            """,
-            (
-                conversation_key,
-                fact_key,
-                fact_value,
-                1 if explicit else 0,
-                float(confidence),
-                1,
-                source_msg_id,
-                now,
-                now,
-                now,
-            ),
-        )
-        row = conn.execute(
-            "SELECT id FROM memory_facts WHERE conversation_key = ? AND fact_key = ?",
-            (conversation_key, fact_key),
-        ).fetchone()
-        return int(row["id"])
-
-    def remember_explicit(self, conversation_key: str, text: str) -> Tuple[int, str]:
-        value = (text or "").strip()
-        if not value:
-            raise ValueError("No memory text provided")
-        value, changed = self._redact_sensitive_text(value)
-        if self._is_sensitive(value) and not changed:
-            raise ValueError(
-                "Refusing to store raw sensitive memory. Remove secrets or use non-sensitive summary text."
-            )
-        fact_key = self._derive_explicit_fact_key(value)
-        with self._lock, self._connect() as conn:
-            fact_id = self._upsert_fact(
-                conn,
-                conversation_key,
-                fact_key,
-                value,
-                explicit=True,
-                confidence=0.99,
-                source_msg_id=None,
-            )
-        return fact_id, fact_key
-
-    @staticmethod
-    def _derive_explicit_fact_key(value: str) -> str:
-        raw = value.strip()
-        if ":" in raw:
-            left = raw.split(":", maxsplit=1)[0].strip().lower()
-            if left:
-                slug = re.sub(r"[^a-z0-9_]+", "_", left).strip("_")
-                if slug:
-                    return f"explicit:{slug[:40]}"
-        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
-        return f"explicit:{digest}"
-
-    def _upsert_inferred_facts(
-        self,
-        conn: sqlite3.Connection,
-        conversation_key: str,
-        text: str,
-        source_msg_id: Optional[int],
-    ) -> None:
-        raw = (text or "").strip()
-        if not raw:
-            return
-        if self._is_sensitive(raw):
-            return
-
-        inferred = self._infer_facts(raw)
-        for fact_key, fact_value, confidence in inferred:
-            if self._is_sensitive(fact_value):
-                continue
-            self._upsert_fact(
-                conn,
-                conversation_key,
-                fact_key,
-                fact_value,
-                explicit=False,
-                confidence=confidence,
-                source_msg_id=source_msg_id,
-            )
-
-    @staticmethod
-    def _normalize_fact_value(text: str) -> str:
-        cleaned = " ".join((text or "").split())
-        return cleaned.strip(" .")
-
-    def _infer_facts(self, text: str) -> List[Tuple[str, str, float]]:
-        out: List[Tuple[str, str, float]] = []
-
-        name_match = re.search(r"\bmy name is\s+([A-Za-z][A-Za-z0-9 _\-']{0,60})", text, flags=re.I)
-        if name_match:
-            value = self._normalize_fact_value(name_match.group(1))
-            if value:
-                out.append(("profile:name", value, 0.92))
-
-        loc_match = re.search(r"\bi (?:am|m)\s+from\s+([^.!?\n]{2,80})", text, flags=re.I)
-        if loc_match:
-            value = self._normalize_fact_value(loc_match.group(1))
-            if value:
-                out.append(("profile:location", value, 0.82))
-
-        tz_match = re.search(r"\bmy timezone is\s+([^.!?\n]{2,60})", text, flags=re.I)
-        if tz_match:
-            value = self._normalize_fact_value(tz_match.group(1))
-            if value:
-                out.append(("profile:timezone", value, 0.86))
-
-        for match in re.finditer(r"\bi (?:prefer|like|love)\s+([^.!?\n]{2,80})", text, flags=re.I):
-            value = self._normalize_fact_value(match.group(1))
-            if not value:
-                continue
-            slug = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")[:30]
-            if not slug:
-                slug = hashlib.sha1(value.encode("utf-8")).hexdigest()[:10]
-            out.append((f"pref:{slug}", value, 0.78))
-
-        dedup: Dict[str, Tuple[str, str, float]] = {}
-        for item in out:
-            dedup[item[0]] = item
-        return list(dedup.values())
-
-    def export_facts(
-        self,
-        conversation_key: str,
-        include_sensitive: bool = False,
-    ) -> List[Dict[str, object]]:
-        with self._lock, self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, fact_key, fact_value, explicit, confidence, status
-                     , evidence_count, last_observed_at
-                FROM memory_facts
-                WHERE conversation_key = ?
-                ORDER BY status DESC, explicit DESC, evidence_count DESC, last_observed_at DESC, confidence DESC, id DESC
-                """,
-                (conversation_key,),
-            ).fetchall()
-        out: List[Dict[str, object]] = []
-        for row in rows:
-            fact_value = str(row["fact_value"] or "")
-            safe_value, changed = self._redact_sensitive_text(fact_value)
-            out.append(
-                {
-                    "id": int(row["id"]),
-                    "fact_key": str(row["fact_key"]),
-                    "fact_value": fact_value if include_sensitive else safe_value,
-                    "explicit": int(row["explicit"]),
-                    "confidence": float(row["confidence"]),
-                    "evidence_count": int(row["evidence_count"] or 1),
-                    "status": str(row["status"]),
-                    "sensitive": bool(changed or self._is_sensitive(fact_value)),
-                }
-            )
-        return out
-
-    def forget_fact(self, conversation_key: str, selector: str) -> str:
-        candidate = (selector or "").strip()
-        if not candidate:
-            raise ValueError("Missing fact selector")
-
-        with self._lock, self._connect() as conn:
-            if candidate.isdigit():
-                row = conn.execute(
-                    "SELECT id FROM memory_facts WHERE id = ? AND conversation_key = ?",
-                    (int(candidate), conversation_key),
-                ).fetchone()
-                if not row:
-                    return f"No fact found with id {candidate}."
-                conn.execute(
-                    "UPDATE memory_facts SET status = 'inactive' WHERE id = ?",
-                    (int(candidate),),
-                )
-                return f"Forgot fact id {candidate}."
-
-            matches = conn.execute(
-                """
-                SELECT id, fact_key
-                FROM memory_facts
-                WHERE conversation_key = ? AND fact_key = ? AND status = 'active'
-                ORDER BY id DESC
-                """,
-                (conversation_key, candidate),
-            ).fetchall()
-            if not matches:
-                fuzzy = conn.execute(
-                    """
-                    SELECT id, fact_key
-                    FROM memory_facts
-                    WHERE conversation_key = ? AND fact_key LIKE ? AND status = 'active'
-                    ORDER BY id DESC
-                    LIMIT 5
-                    """,
-                    (conversation_key, f"%{candidate}%"),
-                ).fetchall()
-                if not fuzzy:
-                    return f"No active fact found for key '{candidate}'."
-                if len(fuzzy) > 1:
-                    options = ", ".join([f"{row['id']}:{row['fact_key']}" for row in fuzzy])
-                    return f"Multiple matching facts. Use /forget <fact_id>. Matches: {options}"
-                match_id = int(fuzzy[0]["id"])
-                conn.execute(
-                    "UPDATE memory_facts SET status = 'inactive' WHERE id = ?",
-                    (match_id,),
-                )
-                return f"Forgot fact id {match_id}."
-
-            if len(matches) > 1:
-                ids = ", ".join([str(row["id"]) for row in matches])
-                return f"Multiple active facts use key '{candidate}'. Use /forget <fact_id>. IDs: {ids}"
-
-            match_id = int(matches[0]["id"])
-            conn.execute(
-                "UPDATE memory_facts SET status = 'inactive' WHERE id = ?",
-                (match_id,),
-            )
-            return f"Forgot fact id {match_id}."
-
-    def forget_all(self, conversation_key: str) -> int:
-        with self._lock, self._connect() as conn:
-            row = conn.execute(
-                "UPDATE memory_facts SET status = 'inactive' WHERE conversation_key = ? AND status = 'active'",
-                (conversation_key,),
-            )
-            return int(row.rowcount or 0)
-
-    def hard_reset_memory(self, conversation_key: str) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute("DELETE FROM sessions WHERE conversation_key = ?", (conversation_key,))
-            conn.execute("DELETE FROM memory_facts WHERE conversation_key = ?", (conversation_key,))
-            conn.execute("DELETE FROM chat_summaries WHERE conversation_key = ?", (conversation_key,))
-            conn.execute("DELETE FROM memory_state WHERE conversation_key = ?", (conversation_key,))
-            conn.execute("DELETE FROM messages WHERE conversation_key = ?", (conversation_key,))
-            conn.execute("DELETE FROM memory_config WHERE conversation_key = ?", (conversation_key,))
-            self._next_prune_deadline.pop(conversation_key, None)
-
-    def hard_reset_all_memory(self) -> Dict[str, int]:
-        with self._lock, self._connect() as conn:
-            counts = {
-                "sessions": int(conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]),
-                "facts": int(conn.execute("SELECT COUNT(*) FROM memory_facts").fetchone()[0]),
-                "summaries": int(conn.execute("SELECT COUNT(*) FROM chat_summaries").fetchone()[0]),
-                "states": int(conn.execute("SELECT COUNT(*) FROM memory_state").fetchone()[0]),
-                "messages": int(conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]),
-                "configs": int(conn.execute("SELECT COUNT(*) FROM memory_config").fetchone()[0]),
-            }
-            conn.execute("DELETE FROM sessions")
-            conn.execute("DELETE FROM memory_facts")
-            conn.execute("DELETE FROM chat_summaries")
-            conn.execute("DELETE FROM memory_state")
-            conn.execute("DELETE FROM messages")
-            conn.execute("DELETE FROM memory_config")
-            self._next_prune_deadline.clear()
-            return counts
 
     def clear_all_session_threads(self) -> int:
         with self._lock, self._connect() as conn:
@@ -1881,37 +343,40 @@ class MemoryEngine:
 
     def get_status(self, conversation_key: str) -> MemoryStatus:
         with self._lock, self._connect() as conn:
-            self._ensure_memory_rows(conn, conversation_key)
-            mode_row = conn.execute(
-                "SELECT mode FROM memory_config WHERE conversation_key = ?",
-                (conversation_key,),
-            ).fetchone()
-            mode = self._normalize_mode(str(mode_row["mode"] if mode_row else MODE_FULL))
             session_row = conn.execute(
                 "SELECT thread_id FROM sessions WHERE conversation_key = ?",
                 (conversation_key,),
             ).fetchone()
             session = str(session_row["thread_id"] if session_row else "").strip()
-            active_fact_count = conn.execute(
-                "SELECT COUNT(*) AS c FROM memory_facts WHERE conversation_key = ? AND status = 'active'",
-                (conversation_key,),
-            ).fetchone()["c"]
-            summary_count = conn.execute(
-                "SELECT COUNT(*) AS c FROM chat_summaries WHERE conversation_key = ?",
-                (conversation_key,),
-            ).fetchone()["c"]
             message_count = conn.execute(
                 "SELECT COUNT(*) AS c FROM messages WHERE conversation_key = ?",
                 (conversation_key,),
             ).fetchone()["c"]
         return MemoryStatus(
             conversation_key=conversation_key,
-            mode=mode,
             session_active=bool(session.strip()),
-            active_fact_count=int(active_fact_count),
-            summary_count=int(summary_count),
             message_count=int(message_count),
         )
+
+    def hard_reset_memory(self, conversation_key: str) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM sessions WHERE conversation_key = ?", (conversation_key,))
+            conn.execute("DELETE FROM messages WHERE conversation_key = ?", (conversation_key,))
+
+    def hard_reset_all_memory(self) -> dict:
+        with self._lock, self._connect() as conn:
+            counts = {
+                "sessions": int(conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]),
+                "messages": int(conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]),
+            }
+            conn.execute("DELETE FROM sessions")
+            conn.execute("DELETE FROM messages")
+            return counts
+
+    def checkpoint_and_vacuum(self) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.execute("VACUUM")
 
 
 def handle_memory_command(engine: MemoryEngine, conversation_key: str, text: str) -> CommandResult:
@@ -1919,180 +384,27 @@ def handle_memory_command(engine: MemoryEngine, conversation_key: str, text: str
     if not raw.startswith("/"):
         return CommandResult(handled=False)
 
-    parts = raw.split(maxsplit=1)
-    command = parts[0].split("@", maxsplit=1)[0].lower()
-    tail = parts[1].strip() if len(parts) > 1 else ""
+    command = raw.split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
 
     if command == "/ask":
+        tail = raw.split(maxsplit=1)[1].strip() if len(raw.split(maxsplit=1)) > 1 else ""
         if not tail:
             return CommandResult(handled=True, response="Usage: /ask <prompt>")
         return CommandResult(handled=True, run_prompt=tail, stateless=True)
 
-    if command == "/memory":
-        if not tail or tail == "mode":
-            mode = engine.get_mode(conversation_key)
-            return CommandResult(handled=True, response=f"Memory mode: {mode}")
-
-        mode_match = re.fullmatch(r"mode\s+(all_context|full|session_only)", tail, flags=re.I)
-        if mode_match:
-            mode = engine.set_mode(conversation_key, mode_match.group(1).lower())
-            return CommandResult(handled=True, response=f"Memory mode set to {mode}.")
-
-        if tail.lower() == "status":
-            status = engine.get_status(conversation_key)
-            session_text = "yes" if status.session_active else "no"
-            return CommandResult(
-                handled=True,
-                response=(
-                    "Memory status:\n"
-                    f"- key: {status.conversation_key}\n"
-                    f"- mode: {status.mode}\n"
-                    f"- session active: {session_text}\n"
-                    f"- active facts: {status.active_fact_count}\n"
-                    f"- summaries: {status.summary_count}\n"
-                    f"- stored messages: {status.message_count}"
-                ),
-            )
-
-        if tail.lower() in {"export", "export raw"}:
-            include_sensitive = tail.lower() == "export raw"
-            rows = engine.export_facts(
-                conversation_key,
-                include_sensitive=include_sensitive,
-            )
-            if not rows:
-                return CommandResult(handled=True, response="No facts stored for this conversation key.")
-            lines = [
-                "Active/known facts:"
-                if include_sensitive
-                else "Active/known facts (sensitive values redacted by default):"
-            ]
-            for row in rows:
-                status = str(row["status"])
-                sensitivity = "yes" if bool(row["sensitive"]) else "no"
-                lines.append(
-                    f"- id={row['id']} key={row['fact_key']} status={status} sensitive={sensitivity} value={row['fact_value']}"
-                )
-            return CommandResult(handled=True, response="\n".join(lines))
-
-        return CommandResult(
-            handled=True,
-            response=(
-                "Usage:\n"
-                "/memory mode\n"
-                "/memory mode all_context\n"
-                "/memory mode full (legacy alias)\n"
-                "/memory mode session_only\n"
-                "/memory status\n"
-                "/memory export\n"
-                "/memory export raw"
-            ),
-        )
-
-    if command == "/remember":
-        if not tail:
-            return CommandResult(handled=True, response="Usage: /remember <text>")
-        fact_id, fact_key = engine.remember_explicit(conversation_key, tail)
-        return CommandResult(
-            handled=True,
-            response=f"Remembered (id={fact_id}, key={fact_key}).",
-        )
-
-    if command == "/forget":
-        if not tail:
-            return CommandResult(handled=True, response="Usage: /forget <fact_id|fact_key>")
-        message = engine.forget_fact(conversation_key, tail)
-        return CommandResult(handled=True, response=message)
-
-    if command == "/forget-all":
-        changed = engine.forget_all(conversation_key)
-        return CommandResult(handled=True, response=f"Forgot {changed} fact(s) for this key.")
-
-    if command == "/reset-session":
-        engine.clear_session(conversation_key)
-        return CommandResult(handled=True, response="Session continuity reset for this key.")
-
-    if command == "/hard-reset-memory":
-        engine.hard_reset_memory(conversation_key)
-        return CommandResult(handled=True, response="Hard reset complete for this key.")
+    if command in {"/memory", "/remember", "/forget", "/forget-all", "/reset-session", "/hard-reset-memory"}:
+        return CommandResult(handled=True, response="Memory commands have been simplified. Use /reset to clear this chat.")
 
     return CommandResult(handled=False)
 
 
 def build_memory_help_lines() -> List[str]:
-    return [
-        "Memory commands:",
-        "/memory mode - show mode for this conversation key",
-        "/memory mode all_context - use summary + facts + recent messages",
-        "/memory mode session_only - keep session continuity and recent messages only",
-        "/memory status - show memory/session counts for this key",
-        "/memory export - list stored facts for this key (redacted)",
-        "/memory export raw - list stored facts including raw values",
-        "/remember <text> - store explicit durable memory (secrets auto-redacted)",
-        "/forget <fact_id|fact_key> - disable one fact",
-        "/forget-all - disable all facts for this key",
-        "/reset-session - clear session continuity only",
-        "/hard-reset-memory - clear session + facts + summaries + messages for this key",
-        "/ask <prompt> - run one stateless turn (no memory read/write)",
-    ]
+    return []
 
 
-def parse_natural_language_memory_intent(text: str) -> Optional[NaturalLanguageMemoryIntent]:
-    lowered = " ".join((text or "").strip().lower().split())
-    if not lowered or lowered.startswith("/"):
-        return None
-
-    recent_patterns = (
-        (r"\bmy\s+last\s+(?P<count>[a-z0-9]+)\s+messages\b", "user"),
-        (r"\bthe\s+last\s+(?P<count>[a-z0-9]+)\s+messages\s+i\s+sent(?:\s+you)?\b", "user"),
-        (r"\bwhat\s+(?:were|was)\s+the\s+last\s+(?P<count>[a-z0-9]+)\s+messages\s+i\s+sent(?:\s+you)?\b", "user"),
-        (r"\byour\s+last\s+(?P<count>[a-z0-9]+)\s+messages\b", "assistant"),
-        (r"\bthe\s+last\s+(?P<count>[a-z0-9]+)\s+messages\s+you\s+sent(?:\s+me)?\b", "assistant"),
-        (r"\bwhat\s+(?:were|was)\s+the\s+last\s+(?P<count>[a-z0-9]+)\s+messages\s+you\s+sent(?:\s+me)?\b", "assistant"),
-    )
-    for pattern, role in recent_patterns:
-        match = re.search(pattern, lowered)
-        if not match:
-            continue
-        count = MemoryEngine._parse_count_token(match.group("count"))
-        if count is None:
-            return None
-        return NaturalLanguageMemoryIntent(
-            kind="recent_messages",
-            role=role,
-            count=count,
-        )
-
-    summary_match = re.search(
-        r"\bwhat\s+do\s+you\s+remember\s+from\s+(?P<window>today|yesterday|this\s+week)\b",
-        lowered,
-    )
-    if summary_match:
-        return NaturalLanguageMemoryIntent(
-            kind="summary_window",
-            window=summary_match.group("window").replace(" ", "_"),
-        )
-
-    if re.search(r"\bwhat\s+facts\s+do\s+you\s+remember\b", lowered):
-        return NaturalLanguageMemoryIntent(kind="active_facts")
-
-    if re.search(r"\b(?:what(?:'s| is)\s+)?(?:the\s+)?latest\s+summary\b", lowered):
-        return NaturalLanguageMemoryIntent(kind="latest_summary")
-
+def parse_natural_language_memory_intent(text: str) -> None:
     return None
 
 
-def handle_natural_language_memory_query(
-    engine: MemoryEngine,
-    conversation_key: str,
-    text: str,
-    now: Optional[datetime] = None,
-) -> Optional[str]:
-    intent = parse_natural_language_memory_intent(text)
-    if intent is None:
-        return None
-    return engine.respond_to_natural_language_memory_query(
-        conversation_key,
-        intent,
-        now=now,
-    )
+def handle_natural_language_memory_query(engine, conversation_key, text, now=None) -> None:
+    return None

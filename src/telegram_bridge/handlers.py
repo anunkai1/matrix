@@ -97,18 +97,8 @@ try:
     )
     from . import message_inputs
     from . import youtube_processing
-    from .memory_engine import (
-        MemoryEngine,
-        TurnContext,
-        build_memory_help_lines,
-        handle_memory_command,
-        handle_natural_language_memory_query,
-    )
-    from .memory_scope import (
-        resolve_memory_conversation_key,
-        resolve_shared_memory_archive_key,
-    )
-    from .memory_merge import merge_conversation_keys
+    from .memory_engine import MemoryEngine, TurnContext, handle_memory_command, handle_natural_language_memory_query
+    from .memory_scope import resolve_memory_conversation_key
     from .plugin_registry import build_default_plugin_registry
     from . import prompt_execution
     from . import prompt_inputs
@@ -252,18 +242,8 @@ except ImportError:
     )
     import message_inputs
     import youtube_processing
-    from memory_engine import (
-        MemoryEngine,
-        TurnContext,
-        build_memory_help_lines,
-        handle_memory_command,
-        handle_natural_language_memory_query,
-    )
-    from memory_scope import (
-        resolve_memory_conversation_key,
-        resolve_shared_memory_archive_key,
-    )
-    from memory_merge import merge_conversation_keys
+    from memory_engine import MemoryEngine, TurnContext, handle_memory_command, handle_natural_language_memory_query
+    from memory_scope import resolve_memory_conversation_key
     from plugin_registry import build_default_plugin_registry
     import prompt_execution
     import prompt_inputs

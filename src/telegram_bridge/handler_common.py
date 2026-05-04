@@ -7,7 +7,7 @@ try:
     from .background_tasks import start_daemon_thread
     from .conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
     from .executor import ExecutorProgressEvent
-    from .memory_engine import MemoryEngine, build_memory_help_lines
+    from .memory_engine import MemoryEngine
     from .memory_scope import resolve_memory_conversation_key
     from .runtime_profile import assistant_label
     from .state_store import State, StateRepository
@@ -19,7 +19,7 @@ except ImportError:
     from background_tasks import start_daemon_thread
     from conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
     from executor import ExecutorProgressEvent
-    from memory_engine import MemoryEngine, build_memory_help_lines
+    from memory_engine import MemoryEngine
     from memory_scope import resolve_memory_conversation_key
     from runtime_profile import assistant_label
     from state_store import State, StateRepository
@@ -423,7 +423,7 @@ def build_help_text(config) -> str:
             )
         )
     )
-    return base + "\n\n" + "\n".join(build_memory_help_lines())
+    return base
 
 
 def build_status_text(
@@ -497,10 +497,7 @@ def build_status_text(
             except Exception:
                 logging.exception("Failed to query memory status for scope_key=%s", scope_key)
             else:
-                lines.append(f"Memory mode: {memory_status.mode}")
-                lines.append(f"Memory facts: {memory_status.active_fact_count}")
-                lines.append(f"Memory summaries: {memory_status.summary_count}")
-                lines.append(f"Memory messages: {memory_status.message_count}")
+                lines.append(f"Memory messages (last 5000 tokens): {memory_status.message_count}")
                 lines.append(f"Memory session active: {memory_status.session_active}")
 
     return "\n".join(lines)

@@ -6,10 +6,7 @@ try:
     from .engine_adapter import CodexEngineAdapter, EngineAdapter
     from .handler_models import DocumentPayload, DishframedRequest, PromptRequest, YoutubeRequest
     from .memory_engine import MemoryEngine, TurnContext
-    from .memory_scope import (
-        resolve_memory_conversation_key,
-        resolve_shared_memory_archive_key,
-    )
+    from .memory_scope import resolve_memory_conversation_key
     from . import prompt_execution
     from . import special_request_processing
     from . import response_delivery
@@ -23,10 +20,7 @@ except ImportError:
     from engine_adapter import CodexEngineAdapter, EngineAdapter
     from handler_models import DocumentPayload, DishframedRequest, PromptRequest, YoutubeRequest
     from memory_engine import MemoryEngine, TurnContext
-    from memory_scope import (
-        resolve_memory_conversation_key,
-        resolve_shared_memory_archive_key,
-    )
+    from memory_scope import resolve_memory_conversation_key
     import prompt_execution
     import special_request_processing
     import response_delivery
@@ -102,7 +96,6 @@ def begin_memory_turn(
         stateless,
         chat_id,
         resolve_memory_conversation_key_fn=resolve_memory_conversation_key,
-        resolve_shared_memory_archive_key_fn=resolve_shared_memory_archive_key,
         engine_name=engine_name,
         has_persisted_thread=has_persisted_thread,
     )
@@ -217,7 +210,6 @@ def _process_prompt_request(request: PromptRequest) -> None:
         finalize_request_progress_fn=finalize_request_progress,
         emit_event_fn=emit_event,
         resolve_memory_conversation_key_fn=resolve_memory_conversation_key,
-        resolve_shared_memory_archive_key_fn=resolve_shared_memory_archive_key,
     )
 
 

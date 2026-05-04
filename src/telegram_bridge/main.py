@@ -620,9 +620,6 @@ def run_bridge(config: Config) -> int:
     )
     memory_engine = MemoryEngine(
         config.memory_sqlite_path,
-        max_messages_per_key=config.memory_max_messages_per_key,
-        max_summaries_per_key=config.memory_max_summaries_per_key,
-        prune_interval_seconds=config.memory_prune_interval_seconds,
     )
     affective_runtime = build_affective_runtime(config)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
@@ -837,13 +834,9 @@ def run_bridge(config: Config) -> int:
                 memory_reset_counts = memory_engine.hard_reset_all_memory()
                 logging.warning(
                     "Policy fingerprint changed; hard-reset bridge memory "
-                    "(sessions=%s facts=%s summaries=%s states=%s messages=%s configs=%s).",
+                    "(sessions=%s messages=%s).",
                     memory_reset_counts["sessions"],
-                    memory_reset_counts["facts"],
-                    memory_reset_counts["summaries"],
-                    memory_reset_counts["states"],
                     memory_reset_counts["messages"],
-                    memory_reset_counts["configs"],
                 )
                 emit_event(
                     "bridge.memory_reset_for_policy_change",
@@ -1093,10 +1086,8 @@ def run_bridge(config: Config) -> int:
         config.attachment_max_total_bytes,
     )
     logging.info(
-        "Memory retention max_messages_per_key=%s max_summaries_per_key=%s prune_interval_seconds=%s",
-        config.memory_max_messages_per_key,
-        config.memory_max_summaries_per_key,
-        config.memory_prune_interval_seconds,
+        "Memory db_path=%s",
+        config.memory_sqlite_path,
     )
     logging.info(
         "Voice alias learning enabled=%s path=%s min_examples=%s confirmation_window_seconds=%s",
@@ -1137,9 +1128,7 @@ def run_bridge(config: Config) -> int:
                 else "json"
             ),
             "canonical_bootstrap_source": canonical_bootstrap_source,
-            "memory_max_messages_per_key": config.memory_max_messages_per_key,
-            "memory_max_summaries_per_key": config.memory_max_summaries_per_key,
-            "memory_prune_interval_seconds": config.memory_prune_interval_seconds,
+            "memory_db_path": config.memory_sqlite_path,
             "attachment_retention_seconds": config.attachment_retention_seconds,
             "attachment_max_total_bytes": config.attachment_max_total_bytes,
             "channel_plugin": config.channel_plugin,

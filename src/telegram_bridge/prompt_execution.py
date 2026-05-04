@@ -137,7 +137,6 @@ def begin_memory_turn(
     chat_id: int,
     *,
     resolve_memory_conversation_key_fn,
-    resolve_shared_memory_archive_key_fn,
     engine_name: str = "",
     has_persisted_thread: bool = False,
 ) -> tuple[str, Optional[str], Optional[TurnContext]]:
@@ -146,14 +145,12 @@ def begin_memory_turn(
     if stateless:
         return _do_memory_turn(memory_engine, state_repo, config, channel_name, scope_key,
                                prompt_text, sender_name, stateless, chat_id,
-                               resolve_memory_conversation_key_fn,
-                               resolve_shared_memory_archive_key_fn)
+                               resolve_memory_conversation_key_fn)
 
     if engine_name in _UNTHROTTLED_ENGINE_NAMES and not has_persisted_thread:
         return _do_memory_turn(memory_engine, state_repo, config, channel_name, scope_key,
                                prompt_text, sender_name, stateless, chat_id,
-                               resolve_memory_conversation_key_fn,
-                               resolve_shared_memory_archive_key_fn)
+                               resolve_memory_conversation_key_fn)
 
     now = time.time()
     prompt_tokens = len(prompt_text) // 4
@@ -169,8 +166,7 @@ def begin_memory_turn(
     _memory_injection[scope_key] = (now, 0)
     return _do_memory_turn(memory_engine, state_repo, config, channel_name, scope_key,
                            prompt_text, sender_name, stateless, chat_id,
-                           resolve_memory_conversation_key_fn,
-                           resolve_shared_memory_archive_key_fn)
+                           resolve_memory_conversation_key_fn)
 
 
 def _do_memory_turn(
@@ -184,7 +180,6 @@ def _do_memory_turn(
     stateless: bool,
     chat_id: int,
     resolve_memory_conversation_key_fn,
-    resolve_shared_memory_archive_key_fn,
 ) -> tuple[str, Optional[str], Optional[TurnContext]]:
     conversation_key = resolve_memory_conversation_key_fn(config, channel_name, scope_key)
     persisted_thread_id = state_repo.get_thread_id(scope_key)
@@ -206,10 +201,6 @@ def _do_memory_turn(
             sender_name=sender_name,
             user_input=prompt_text,
             stateless=stateless,
-            background_conversation_key=resolve_shared_memory_archive_key_fn(
-                config,
-                channel_name,
-            ),
             thread_id_override=persisted_thread_id,
         )
         return turn_context.prompt_text, persisted_thread_id, turn_context
@@ -281,7 +272,6 @@ def process_prompt_request(
     finalize_request_progress_fn,
     emit_event_fn,
     resolve_memory_conversation_key_fn,
-    resolve_shared_memory_archive_key_fn,
 ) -> None:
     state = request.state
     config = request.config
@@ -387,7 +377,6 @@ def process_prompt_request(
             stateless=stateless,
             chat_id=chat_id,
             resolve_memory_conversation_key_fn=resolve_memory_conversation_key_fn,
-            resolve_shared_memory_archive_key_fn=resolve_shared_memory_archive_key_fn,
             engine_name=engine_name,
             has_persisted_thread=has_persisted_thread,
         )
