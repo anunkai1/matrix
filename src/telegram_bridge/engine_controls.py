@@ -24,6 +24,7 @@ from telegram_bridge.engine_catalog import (
     load_codex_model_choices as _load_codex_model_choices,
 )
 from telegram_bridge.engine_adapter import EngineAdapter
+from telegram_bridge.handler_models import CallbackActionResult
 from telegram_bridge import engine_health
 from telegram_bridge import engine_pi_catalog
 from telegram_bridge.plugin_registry import build_default_plugin_registry
@@ -250,6 +251,105 @@ def _reset_engine_for_scope(state: State, config, scope_key: str) -> str:
     suffix = "removed" if removed else "already using default"
     return f"Engine override {suffix}. This chat now uses {configured_default_engine(config)}."
 
+def _send_control_result(
+    client: ChannelAdapter,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+    result: CallbackActionResult,
+) -> bool:
+    client.send_message(
+        chat_id,
+        result.text,
+        reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
+        reply_markup=result.reply_markup,
+    )
+    return True
+
+def _build_engine_action_result(
+    state: State,
+    config,
+    scope_key: str,
+    action: str,
+    engine_name: str = "",
+) -> CallbackActionResult:
+    if action == "reset":
+        text = _reset_engine_for_scope(state, config, scope_key)
+    elif action == "set":
+        text = _set_engine_for_scope(state, config, scope_key, engine_name)
+    else:
+        text = build_engine_status_text(state, config, scope_key)
+    return CallbackActionResult(
+        text=text,
+        reply_markup=_build_engine_picker_markup(state, config, scope_key),
+    )
+
+def _build_pi_provider_action_result(
+    state: State,
+    config,
+    scope_key: str,
+    action: str,
+    value: str = "",
+) -> CallbackActionResult:
+    if action == "set":
+        text = _set_pi_provider_for_scope(state, config, scope_key, value)
+        reply_markup = _build_engine_picker_markup(state, config, scope_key)
+    else:
+        text = build_pi_providers_text(state, config, scope_key)
+        reply_markup = _build_provider_picker_markup(state, config, scope_key)
+    return CallbackActionResult(text=text, reply_markup=reply_markup)
+
+def _build_model_action_result(
+    state: State,
+    config,
+    scope_key: str,
+    action: str,
+    *,
+    engine_name: str = "",
+    value: str = "",
+    page_index: Optional[int] = None,
+) -> CallbackActionResult:
+    active_engine = engine_name or _model_active_engine_name(state, config, scope_key)
+    if action == "reset":
+        text = _reset_model_for_scope(state, config, scope_key, active_engine)
+    elif action == "set":
+        if active_engine == "codex":
+            text = _set_codex_model_for_scope(state, config, scope_key, value)
+        elif active_engine == "pi":
+            text = _set_pi_model_for_scope(state, config, scope_key, value)
+        else:
+            text = build_model_status_text(state, config, scope_key)
+    else:
+        text = build_model_status_text(state, config, scope_key)
+    return CallbackActionResult(
+        text=text,
+        reply_markup=_build_model_picker_markup(
+            state,
+            config,
+            scope_key,
+            page_index=page_index,
+        ),
+    )
+
+def _build_effort_action_result(
+    state: State,
+    config,
+    scope_key: str,
+    action: str,
+    value: str = "",
+) -> CallbackActionResult:
+    if action == "reset":
+        text = _reset_codex_effort_for_scope(state, config, scope_key)
+    elif action == "set":
+        text = _set_codex_effort_for_scope(state, config, scope_key, value)
+    else:
+        text = build_effort_status_text(state, config, scope_key)
+    return CallbackActionResult(
+        text=text,
+        reply_markup=_build_effort_picker_markup(state, config, scope_key),
+    )
+
 def handle_engine_command(
     state: State,
     config,
@@ -263,24 +363,13 @@ def handle_engine_command(
     pieces = raw_text.strip().split(maxsplit=1)
     tail = pieces[1].strip().lower() if len(pieces) > 1 else "status"
     tail = normalize_engine_name(tail)
-    reply_markup: Optional[Dict[str, object]] = None
     if tail in {"", "status"}:
-        text = build_engine_status_text(state, config, scope_key)
-        reply_markup = _build_engine_picker_markup(state, config, scope_key)
+        result = _build_engine_action_result(state, config, scope_key, "status")
     elif tail == "reset":
-        text = _reset_engine_for_scope(state, config, scope_key)
-        reply_markup = _build_engine_picker_markup(state, config, scope_key)
+        result = _build_engine_action_result(state, config, scope_key, "reset")
     else:
-        text = _set_engine_for_scope(state, config, scope_key, tail)
-        reply_markup = _build_engine_picker_markup(state, config, scope_key)
-    client.send_message(
-        chat_id,
-        text,
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
-        reply_markup=reply_markup,
-    )
-    return True
+        result = _build_engine_action_result(state, config, scope_key, "set", tail)
+    return _send_control_result(client, chat_id, message_thread_id, message_id, result)
 
 def handle_pi_command(
     state: State,
@@ -299,22 +388,21 @@ def handle_pi_command(
     display_config = build_engine_runtime_config(state, config, scope_key, "pi")
 
     if tail in {"", "status"}:
-        client.send_message(
+        return _send_control_result(
+            client,
             chat_id,
-            build_pi_status_text(state, config, scope_key),
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
+            message_thread_id,
+            message_id,
+            CallbackActionResult(text=build_pi_status_text(state, config, scope_key)),
         )
-        return True
     if tail == "providers":
-        client.send_message(
+        return _send_control_result(
+            client,
             chat_id,
-            build_pi_providers_text(state, config, scope_key),
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-            reply_markup=_build_provider_picker_markup(state, config, scope_key),
+            message_thread_id,
+            message_id,
+            _build_pi_provider_action_result(state, config, scope_key, "menu"),
         )
-        return True
     if tail == "models":
         try:
             text = build_pi_models_text(state, config, scope_key)
@@ -325,114 +413,124 @@ def handle_pi_command(
                 "\n\nDeprecated alias: `/pi models` still works for compatibility, "
                 "but `/model list` is the canonical command."
             )
-        client.send_message(
+        return _send_control_result(
+            client,
             chat_id,
-            text,
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
+            message_thread_id,
+            message_id,
+            CallbackActionResult(text=text),
         )
-        return True
     if tail == "reset":
         removed_provider = state_repo.clear_chat_pi_provider(scope_key)
         removed_model = state_repo.clear_chat_pi_model(scope_key)
         effective_config = build_engine_runtime_config(state, config, scope_key, "pi")
         source_text = "chat overrides cleared" if (removed_provider or removed_model) else "no chat overrides were set"
-        client.send_message(
+        return _send_control_result(
+            client,
             chat_id,
-            (
+            message_thread_id,
+            message_id,
+            CallbackActionResult(
+                text=(
                 f"{source_text}. "
                 f"Pi provider is now {configured_pi_provider(effective_config)} "
                 f"({_build_pi_provider_source_text(state, scope_key)}). "
                 f"Pi model is now {configured_pi_model(effective_config)} "
                 f"({_build_pi_model_source_text(state, scope_key)})."
+                )
             ),
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
         )
-        return True
     if tail.startswith("provider"):
         provider_name = raw_tail[8:].strip() if len(raw_tail) >= 8 else ""
         if not provider_name:
-            client.send_message(
+            return _send_control_result(
+                client,
                 chat_id,
-                "Usage: /pi provider <name>\nUse /pi providers to list available Pi providers.",
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
+                message_thread_id,
+                message_id,
+                CallbackActionResult(
+                    text="Usage: /pi provider <name>\nUse /pi providers to list available Pi providers."
+                ),
             )
-            return True
         try:
-            text = _set_pi_provider_for_scope(state, config, scope_key, provider_name)
+            result = _build_pi_provider_action_result(state, config, scope_key, "set", provider_name)
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-            client.send_message(
+            return _send_control_result(
+                client,
                 chat_id,
-                "Failed to validate Pi provider.\n"
-                f"Error: {_brief_health_error(exc)}",
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
+                message_thread_id,
+                message_id,
+                CallbackActionResult(
+                    text="Failed to validate Pi provider.\n"
+                    f"Error: {_brief_health_error(exc)}"
+                ),
             )
-            return True
-        client.send_message(
-            chat_id,
-            text,
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return True
+        return _send_control_result(client, chat_id, message_thread_id, message_id, result)
     if tail.startswith("model"):
         model_name = raw_tail[5:].strip() if len(raw_tail) >= 5 else ""
         if not model_name:
-            client.send_message(
+            return _send_control_result(
+                client,
                 chat_id,
-                "Usage: /model <name>\nUse /model list to list available models for the current Pi provider.",
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
+                message_thread_id,
+                message_id,
+                CallbackActionResult(
+                    text="Usage: /model <name>\nUse /model list to list available models for the current Pi provider."
+                ),
             )
-            return True
         try:
             available_models = _pi_provider_model_names(display_config)
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-            client.send_message(
+            return _send_control_result(
+                client,
                 chat_id,
-                "Failed to validate Pi models.\n"
-                f"Error: {_brief_health_error(exc)}",
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
+                message_thread_id,
+                message_id,
+                CallbackActionResult(
+                    text="Failed to validate Pi models.\n"
+                    f"Error: {_brief_health_error(exc)}"
+                ),
             )
-            return True
         resolved_model = _resolve_pi_model_candidate(available_models, model_name)
         if resolved_model is None:
             provider = configured_pi_provider(display_config)
-            client.send_message(
+            return _send_control_result(
+                client,
                 chat_id,
-                (
+                message_thread_id,
+                message_id,
+                CallbackActionResult(
+                    text=(
                     f"Model not available for Pi provider `{provider}`: `{model_name}`\n"
                     "Use /model list to see the allowed model names."
+                    )
                 ),
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
             )
-            return True
         state_repo.set_chat_pi_model(scope_key, resolved_model)
         updated_config = build_engine_runtime_config(state, config, scope_key, "pi")
-        client.send_message(
+        return _send_control_result(
+            client,
             chat_id,
-            (
+            message_thread_id,
+            message_id,
+            CallbackActionResult(
+                text=(
                 f"Pi model for this chat is now {configured_pi_model(updated_config)} "
                 f"({_build_pi_model_source_text(state, scope_key)}).\n"
                 "Deprecated alias: `/pi model` still works for compatibility, "
                 "but `/model <name>` is the canonical command."
+                )
             ),
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
         )
-        return True
-    client.send_message(
+    return _send_control_result(
+        client,
         chat_id,
-        "Unknown /pi command. Use /pi, /pi providers, /pi provider <name>, or /pi reset. Use /model list and /model <name> for Pi model selection.",
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
+        message_thread_id,
+        message_id,
+        CallbackActionResult(
+            text="Unknown /pi command. Use /pi, /pi providers, /pi provider <name>, or /pi reset. Use /model list and /model <name> for Pi model selection."
+        ),
     )
-    return True
 
 def _build_model_picker_markup(
     state: State,
@@ -666,40 +764,50 @@ def handle_model_command(
     raw_tail = pieces[1].strip() if len(pieces) > 1 else "status"
     tail = raw_tail.lower()
     active_engine = _model_active_engine_name(state, config, scope_key)
-    reply_markup: Optional[Dict[str, object]] = None
 
     if tail in {"", "status"}:
-        text = build_model_status_text(state, config, scope_key)
-        reply_markup = _build_model_picker_markup(state, config, scope_key)
+        result = _build_model_action_result(state, config, scope_key, "status")
     elif tail == "list":
         try:
             text = build_model_list_text(state, config, scope_key)
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
             text = "Failed to list models.\n" f"Error: {_brief_health_error(exc)}"
+        result = CallbackActionResult(text=text)
     elif tail == "reset":
-        text = _reset_model_for_scope(state, config, scope_key, active_engine)
-        reply_markup = _build_model_picker_markup(state, config, scope_key)
+        result = _build_model_action_result(
+            state,
+            config,
+            scope_key,
+            "reset",
+            engine_name=active_engine,
+        )
     else:
         if active_engine == "codex":
-            text = _set_codex_model_for_scope(state, config, scope_key, raw_tail)
-            reply_markup = _build_model_picker_markup(state, config, scope_key)
+            result = _build_model_action_result(
+                state,
+                config,
+                scope_key,
+                "set",
+                engine_name=active_engine,
+                value=raw_tail,
+            )
         elif active_engine == "pi":
             try:
-                text = _set_pi_model_for_scope(state, config, scope_key, raw_tail)
+                result = _build_model_action_result(
+                    state,
+                    config,
+                    scope_key,
+                    "set",
+                    engine_name=active_engine,
+                    value=raw_tail,
+                )
             except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-                text = "Failed to validate Pi models.\n" f"Error: {_brief_health_error(exc)}"
-            reply_markup = _build_model_picker_markup(state, config, scope_key)
+                result = CallbackActionResult(
+                    text="Failed to validate Pi models.\n" f"Error: {_brief_health_error(exc)}"
+                )
         else:
-            text = build_model_status_text(state, config, scope_key)
-
-    client.send_message(
-        chat_id,
-        text,
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
-        reply_markup=reply_markup,
-    )
-    return True
+            result = _build_model_action_result(state, config, scope_key, "status")
+    return _send_control_result(client, chat_id, message_thread_id, message_id, result)
 
 def handle_effort_command(
     state: State,
@@ -715,30 +823,18 @@ def handle_effort_command(
     raw_tail = pieces[1].strip() if len(pieces) > 1 else "status"
     tail = raw_tail.lower()
     active_engine = _model_active_engine_name(state, config, scope_key)
-    reply_markup: Optional[Dict[str, object]] = None
 
     if tail in {"", "status"}:
-        text = build_effort_status_text(state, config, scope_key)
-        reply_markup = _build_effort_picker_markup(state, config, scope_key)
+        result = _build_effort_action_result(state, config, scope_key, "status")
     elif tail == "list":
-        text = build_effort_list_text(state, config, scope_key)
+        result = CallbackActionResult(text=build_effort_list_text(state, config, scope_key))
     elif tail == "reset":
-        text = _reset_codex_effort_for_scope(state, config, scope_key)
-        reply_markup = _build_effort_picker_markup(state, config, scope_key)
+        result = _build_effort_action_result(state, config, scope_key, "reset")
     elif active_engine != "codex":
-        text = build_effort_status_text(state, config, scope_key)
+        result = _build_effort_action_result(state, config, scope_key, "status")
     else:
-        text = _set_codex_effort_for_scope(state, config, scope_key, raw_tail)
-        reply_markup = _build_effort_picker_markup(state, config, scope_key)
-
-    client.send_message(
-        chat_id,
-        text,
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
-        reply_markup=reply_markup,
-    )
-    return True
+        result = _build_effort_action_result(state, config, scope_key, "set", raw_tail)
+    return _send_control_result(client, chat_id, message_thread_id, message_id, result)
 
 def resolve_engine_for_scope(
     state: State,

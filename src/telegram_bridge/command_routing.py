@@ -207,59 +207,41 @@ def handle_known_command(
     return False
 
 def _handle_engine_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
-    if ctx.action == "reset":
-        text = engine_controls._reset_engine_for_scope(ctx.state, ctx.config, ctx.scope_key)
-    elif ctx.action == "set":
-        text = engine_controls._set_engine_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.engine_name)
-    else:
-        text = engine_controls.build_engine_status_text(ctx.state, ctx.config, ctx.scope_key)
-    return CallbackActionResult(
-        text=text,
-        reply_markup=engine_controls._build_engine_picker_markup(ctx.state, ctx.config, ctx.scope_key),
+    return engine_controls._build_engine_action_result(
+        ctx.state,
+        ctx.config,
+        ctx.scope_key,
+        ctx.action,
+        ctx.engine_name,
     )
 
 def _handle_pi_provider_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
-    if ctx.action == "set":
-        text = engine_controls._set_pi_provider_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
-        reply_markup = engine_controls._build_engine_picker_markup(ctx.state, ctx.config, ctx.scope_key)
-    else:
-        text = engine_controls.build_pi_providers_text(ctx.state, ctx.config, ctx.scope_key)
-        reply_markup = engine_controls._build_provider_picker_markup(ctx.state, ctx.config, ctx.scope_key)
-    return CallbackActionResult(text=text, reply_markup=reply_markup)
+    return engine_controls._build_pi_provider_action_result(
+        ctx.state,
+        ctx.config,
+        ctx.scope_key,
+        ctx.action,
+        ctx.value,
+    )
 
 def _handle_model_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
-    requested_page = engine_controls._parse_page_index(ctx.value)
-    if ctx.action == "reset":
-        text = engine_controls._reset_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.engine_name)
-    elif ctx.action == "set":
-        if ctx.engine_name == "codex":
-            text = engine_controls._set_codex_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
-        elif ctx.engine_name == "pi":
-            text = engine_controls._set_pi_model_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
-        else:
-            text = engine_controls.build_model_status_text(ctx.state, ctx.config, ctx.scope_key)
-    else:
-        text = engine_controls.build_model_status_text(ctx.state, ctx.config, ctx.scope_key)
-    return CallbackActionResult(
-        text=text,
-        reply_markup=engine_controls._build_model_picker_markup(
-            ctx.state,
-            ctx.config,
-            ctx.scope_key,
-            page_index=requested_page,
-        ),
+    return engine_controls._build_model_action_result(
+        ctx.state,
+        ctx.config,
+        ctx.scope_key,
+        ctx.action,
+        engine_name=ctx.engine_name,
+        value=ctx.value,
+        page_index=engine_controls._parse_page_index(ctx.value),
     )
 
 def _handle_codex_effort_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
-    if ctx.action == "reset":
-        text = engine_controls._reset_codex_effort_for_scope(ctx.state, ctx.config, ctx.scope_key)
-    elif ctx.action == "set":
-        text = engine_controls._set_codex_effort_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
-    else:
-        text = engine_controls.build_effort_status_text(ctx.state, ctx.config, ctx.scope_key)
-    return CallbackActionResult(
-        text=text,
-        reply_markup=engine_controls._build_effort_picker_markup(ctx.state, ctx.config, ctx.scope_key),
+    return engine_controls._build_effort_action_result(
+        ctx.state,
+        ctx.config,
+        ctx.scope_key,
+        ctx.action,
+        ctx.value,
     )
 
 CALLBACK_ACTION_HANDLERS: Dict[Tuple[str, Optional[str]], CallbackActionFn] = {
