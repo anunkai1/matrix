@@ -32,7 +32,7 @@ def handle_reset_command(
     try:
         PiEngineAdapter.clear_scope_session_files(config, scope_key)
     except Exception:
-        logging.exception("Failed to clear Pi session files for scope=%s", scope_key)
+        logging.exception("Failed to archive Pi session files for scope=%s", scope_key)
     if removed_thread or removed_worker:
         client.send_message(
             chat_id,

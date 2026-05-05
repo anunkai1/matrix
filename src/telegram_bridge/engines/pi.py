@@ -150,8 +150,14 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         return normalized
 
     @staticmethod
-    def clear_scope_session_files(config, scope_key: str) -> int:
-        """Delete all Pi session files for a Telegram scope. Returns count deleted."""
+    @classmethod
+    def clear_scope_session_files(cls, config, scope_key: str) -> int:
+        """Archive all Pi session files for a Telegram scope so a fresh session
+        starts on the next turn.  Files are renamed with a timestamp suffix
+        and moved to the archive directory — nothing is deleted.
+
+        Returns the number of files archived.
+        """
         mode = str(getattr(config, "pi_session_mode", "none") or "none").strip().lower()
         if mode in {"", "none", "off", "disabled", "no_session"}:
             return 0
@@ -162,16 +168,20 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         scope_label = re.sub(r"[^A-Za-z0-9._-]+", "_", scope_key).strip("._-")
         if not scope_label:
             return 0
-        deleted = 0
-        for f in list(base_dir.glob(f"{scope_label}*.jsonl")):
-            f.unlink()
-            deleted += 1
         archive_dir = base_dir / ".archive"
-        if archive_dir.is_dir():
-            for f in list(archive_dir.glob(f"{scope_label}*.jsonl")):
-                f.unlink()
-                deleted += 1
-        return deleted
+        timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        archived = 0
+        for f in list(base_dir.glob(f"{scope_label}*.jsonl")):
+            if f.parent == archive_dir:
+                continue
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            archive_path = archive_dir / f"{f.stem}.reset.{timestamp}{f.suffix}"
+            try:
+                f.rename(archive_path)
+                archived += 1
+            except OSError:
+                pass
+        return archived
 
     def _safe_session_filename(self, session_key: str) -> str:
         digest = hashlib.sha256(session_key.encode("utf-8")).hexdigest()[:12]
