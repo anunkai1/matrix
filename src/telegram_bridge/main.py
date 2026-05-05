@@ -292,6 +292,155 @@ def load_state_mapping_or_empty(
         )
         return {}
 
+def build_bridge_state_paths(state_dir: str) -> Dict[str, str]:
+    return {
+        "chat_threads": os.path.join(state_dir, "chat_threads.json"),
+        "chat_engines": os.path.join(state_dir, "chat_engines.json"),
+        "chat_codex_models": os.path.join(state_dir, "chat_codex_models.json"),
+        "chat_codex_efforts": os.path.join(state_dir, "chat_codex_efforts.json"),
+        "chat_pi_providers": os.path.join(state_dir, "chat_pi_providers.json"),
+        "chat_pi_models": os.path.join(state_dir, "chat_pi_models.json"),
+        "worker_sessions": os.path.join(state_dir, "worker_sessions.json"),
+        "in_flight_requests": os.path.join(state_dir, "in_flight_requests.json"),
+        "chat_sessions": os.path.join(state_dir, "chat_sessions.json"),
+    }
+
+def load_bridge_state_mappings(state_paths: Dict[str, str]) -> Dict[str, Dict[object, object]]:
+    state_specs = (
+        ("threads", "chat_threads", load_chat_threads, "chat thread mappings"),
+        ("engines", "chat_engines", load_chat_engines, "chat engine mappings"),
+        ("codex_models", "chat_codex_models", load_chat_codex_models, "chat Codex model mappings"),
+        ("codex_efforts", "chat_codex_efforts", load_chat_codex_efforts, "chat Codex effort mappings"),
+        ("pi_models", "chat_pi_models", load_chat_pi_models, "chat Pi model mappings"),
+        ("pi_providers", "chat_pi_providers", load_chat_pi_providers, "chat Pi provider mappings"),
+        ("worker_sessions", "worker_sessions", load_worker_sessions, "worker session state"),
+        ("in_flight", "in_flight_requests", load_in_flight_requests, "in-flight request state"),
+    )
+    loaded: Dict[str, Dict[object, object]] = {}
+    for key, path_key, loader, description in state_specs:
+        loaded[key] = load_state_mapping_or_empty(
+            state_paths[path_key],
+            loader,
+            description=description,
+        )
+    return loaded
+
+def _load_canonical_json_with_fallback(
+    chat_sessions_path: str,
+    *,
+    failure_source: str,
+    empty_source: str,
+) -> tuple[Dict[int, CanonicalSession], str]:
+    try:
+        loaded_canonical_sessions = load_canonical_sessions(chat_sessions_path)
+    except Exception:
+        logging.exception(
+            "Failed to load canonical session state from %s; starting with compatibility snapshot.",
+            chat_sessions_path,
+        )
+        moved = quarantine_corrupt_state_file(chat_sessions_path)
+        if moved:
+            logging.error("Quarantined corrupt canonical session state file to %s", moved)
+        emit_event(
+            "bridge.state_load_failed",
+            level=logging.WARNING,
+            fields={"state_file": chat_sessions_path},
+        )
+        return {}, failure_source
+    if loaded_canonical_sessions:
+        return loaded_canonical_sessions, "canonical_json"
+    return {}, empty_source
+
+def load_canonical_session_bootstrap(
+    config: Config,
+    state_paths: Dict[str, str],
+    loaded_threads: Dict[int, str],
+    loaded_worker_sessions: Dict[int, WorkerSession],
+    loaded_in_flight: Dict[int, Dict[str, object]],
+) -> tuple[Dict[int, CanonicalSession], str]:
+    if not config.canonical_sessions_enabled:
+        return {}, "disabled"
+
+    chat_sessions_path = state_paths["chat_sessions"]
+    if not config.canonical_sqlite_enabled:
+        return _load_canonical_json_with_fallback(
+            chat_sessions_path,
+            failure_source="canonical_json_reset_after_load_failure",
+            empty_source="legacy_json_snapshot",
+        )
+
+    canonical_bootstrap_source = "sqlite"
+    try:
+        loaded_canonical_sessions = load_canonical_sessions_sqlite(
+            config.canonical_sqlite_path
+        )
+    except Exception:
+        logging.exception(
+            "Failed to load canonical session SQLite state from %s; starting with compatibility snapshot.",
+            config.canonical_sqlite_path,
+        )
+        moved = quarantine_corrupt_state_file(config.canonical_sqlite_path)
+        if moved:
+            logging.error(
+                "Quarantined corrupt canonical session SQLite state file to %s",
+                moved,
+            )
+        emit_event(
+            "bridge.state_load_failed",
+            level=logging.WARNING,
+            fields={"state_file": config.canonical_sqlite_path},
+        )
+        loaded_canonical_sessions = {}
+        canonical_bootstrap_source = "sqlite_reset_after_load_failure"
+
+    if loaded_canonical_sessions:
+        return loaded_canonical_sessions, canonical_bootstrap_source
+
+    import_sessions, import_source = _load_canonical_json_with_fallback(
+        chat_sessions_path,
+        failure_source="none",
+        empty_source="none",
+    )
+    if not import_sessions:
+        import_sessions = build_canonical_sessions_from_legacy(
+            loaded_threads,
+            loaded_worker_sessions,
+            loaded_in_flight,
+        )
+        if import_sessions:
+            import_source = "legacy_json"
+
+    try:
+        loaded_canonical_sessions, imported = load_or_import_canonical_sessions_sqlite(
+            config.canonical_sqlite_path,
+            import_sessions=import_sessions,
+        )
+    except Exception:
+        logging.exception(
+            "Failed to import/initialize canonical session SQLite state at %s; starting empty.",
+            config.canonical_sqlite_path,
+        )
+        moved = quarantine_corrupt_state_file(config.canonical_sqlite_path)
+        if moved:
+            logging.error(
+                "Quarantined canonical session SQLite state file after import failure to %s",
+                moved,
+            )
+        emit_event(
+            "bridge.state_load_failed",
+            level=logging.WARNING,
+            fields={"state_file": config.canonical_sqlite_path},
+        )
+        return {}, "sqlite_reset_after_import_failure"
+
+    if imported:
+        return loaded_canonical_sessions, f"sqlite_imported_from_{import_source}"
+    if loaded_canonical_sessions:
+        return loaded_canonical_sessions, "sqlite"
+    if canonical_bootstrap_source.startswith("sqlite_reset"):
+        return {}, canonical_bootstrap_source
+    return {}, "sqlite_empty"
+
 def drop_pending_updates(client: ChannelAdapter) -> int:
     offset = 0
     dropped = 0
@@ -520,178 +669,29 @@ def run_bridge(config: Config) -> int:
         max_total_bytes=config.attachment_max_total_bytes,
     )
     affective_runtime = build_affective_runtime(config)
-    chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
-    chat_engine_path = os.path.join(config.state_dir, "chat_engines.json")
-    chat_codex_model_path = os.path.join(config.state_dir, "chat_codex_models.json")
-    chat_codex_effort_path = os.path.join(config.state_dir, "chat_codex_efforts.json")
-    chat_pi_provider_path = os.path.join(config.state_dir, "chat_pi_providers.json")
-    chat_pi_model_path = os.path.join(config.state_dir, "chat_pi_models.json")
-    worker_sessions_path = os.path.join(config.state_dir, "worker_sessions.json")
-    in_flight_path = os.path.join(config.state_dir, "in_flight_requests.json")
-    chat_sessions_path = os.path.join(config.state_dir, "chat_sessions.json")
-    loaded_threads = load_state_mapping_or_empty(
-        chat_thread_path,
-        load_chat_threads,
-        description="chat thread mappings",
+    state_paths = build_bridge_state_paths(config.state_dir)
+    loaded_state = load_bridge_state_mappings(state_paths)
+    loaded_threads = loaded_state["threads"]
+    loaded_engines = loaded_state["engines"]
+    loaded_codex_models = loaded_state["codex_models"]
+    loaded_codex_efforts = loaded_state["codex_efforts"]
+    loaded_pi_models = loaded_state["pi_models"]
+    loaded_pi_providers = loaded_state["pi_providers"]
+    loaded_worker_sessions = loaded_state["worker_sessions"]
+    loaded_in_flight = loaded_state["in_flight"]
+    loaded_canonical_sessions, canonical_bootstrap_source = load_canonical_session_bootstrap(
+        config,
+        state_paths,
+        loaded_threads,
+        loaded_worker_sessions,
+        loaded_in_flight,
     )
-    loaded_engines = load_state_mapping_or_empty(
-        chat_engine_path,
-        load_chat_engines,
-        description="chat engine mappings",
-    )
-    loaded_codex_models = load_state_mapping_or_empty(
-        chat_codex_model_path,
-        load_chat_codex_models,
-        description="chat Codex model mappings",
-    )
-    loaded_codex_efforts = load_state_mapping_or_empty(
-        chat_codex_effort_path,
-        load_chat_codex_efforts,
-        description="chat Codex effort mappings",
-    )
-    loaded_pi_models = load_state_mapping_or_empty(
-        chat_pi_model_path,
-        load_chat_pi_models,
-        description="chat Pi model mappings",
-    )
-    loaded_pi_providers = load_state_mapping_or_empty(
-        chat_pi_provider_path,
-        load_chat_pi_providers,
-        description="chat Pi provider mappings",
-    )
-    loaded_worker_sessions = load_state_mapping_or_empty(
-        worker_sessions_path,
-        load_worker_sessions,
-        description="worker session state",
-    )
-    loaded_in_flight = load_state_mapping_or_empty(
-        in_flight_path,
-        load_in_flight_requests,
-        description="in-flight request state",
-    )
-
-    loaded_canonical_sessions: Dict[int, CanonicalSession] = {}
-    canonical_bootstrap_source = "disabled"
-    if config.canonical_sessions_enabled:
-        if config.canonical_sqlite_enabled:
-            canonical_bootstrap_source = "sqlite"
-            try:
-                loaded_canonical_sessions = load_canonical_sessions_sqlite(
-                    config.canonical_sqlite_path
-                )
-            except Exception:
-                logging.exception(
-                    "Failed to load canonical session SQLite state from %s; starting with compatibility snapshot.",
-                    config.canonical_sqlite_path,
-                )
-                moved = quarantine_corrupt_state_file(config.canonical_sqlite_path)
-                if moved:
-                    logging.error(
-                        "Quarantined corrupt canonical session SQLite state file to %s",
-                        moved,
-                    )
-                emit_event(
-                    "bridge.state_load_failed",
-                    level=logging.WARNING,
-                    fields={"state_file": config.canonical_sqlite_path},
-                )
-                loaded_canonical_sessions = {}
-                canonical_bootstrap_source = "sqlite_reset_after_load_failure"
-
-            if not loaded_canonical_sessions:
-                import_sessions: Dict[int, CanonicalSession] = {}
-                import_source = "none"
-                try:
-                    import_sessions = load_canonical_sessions(chat_sessions_path)
-                except Exception:
-                    logging.exception(
-                        "Failed to load canonical JSON state from %s during SQLite bootstrap; ignoring JSON source.",
-                        chat_sessions_path,
-                    )
-                    moved = quarantine_corrupt_state_file(chat_sessions_path)
-                    if moved:
-                        logging.error(
-                            "Quarantined corrupt canonical session JSON state file to %s",
-                            moved,
-                        )
-                    emit_event(
-                        "bridge.state_load_failed",
-                        level=logging.WARNING,
-                        fields={"state_file": chat_sessions_path},
-                    )
-                    import_sessions = {}
-                if import_sessions:
-                    import_source = "canonical_json"
-                else:
-                    import_sessions = build_canonical_sessions_from_legacy(
-                        loaded_threads,
-                        loaded_worker_sessions,
-                        loaded_in_flight,
-                    )
-                    if import_sessions:
-                        import_source = "legacy_json"
-
-                try:
-                    loaded_canonical_sessions, imported = load_or_import_canonical_sessions_sqlite(
-                        config.canonical_sqlite_path,
-                        import_sessions=import_sessions,
-                    )
-                except Exception:
-                    logging.exception(
-                        "Failed to import/initialize canonical session SQLite state at %s; starting empty.",
-                        config.canonical_sqlite_path,
-                    )
-                    moved = quarantine_corrupt_state_file(config.canonical_sqlite_path)
-                    if moved:
-                        logging.error(
-                            "Quarantined canonical session SQLite state file after import failure to %s",
-                            moved,
-                        )
-                    emit_event(
-                        "bridge.state_load_failed",
-                        level=logging.WARNING,
-                        fields={"state_file": config.canonical_sqlite_path},
-                    )
-                    loaded_canonical_sessions = {}
-                    imported = False
-                    canonical_bootstrap_source = "sqlite_reset_after_import_failure"
-
-                if imported:
-                    canonical_bootstrap_source = f"sqlite_imported_from_{import_source}"
-                elif loaded_canonical_sessions:
-                    canonical_bootstrap_source = "sqlite"
-                elif not canonical_bootstrap_source.startswith("sqlite_reset"):
-                    canonical_bootstrap_source = "sqlite_empty"
-        else:
-            try:
-                loaded_canonical_sessions = load_canonical_sessions(chat_sessions_path)
-            except Exception:
-                logging.exception(
-                    "Failed to load canonical session state from %s; starting with compatibility snapshot.",
-                    chat_sessions_path,
-                )
-                moved = quarantine_corrupt_state_file(chat_sessions_path)
-                if moved:
-                    logging.error("Quarantined corrupt canonical session state file to %s", moved)
-                emit_event(
-                    "bridge.state_load_failed",
-                    level=logging.WARNING,
-                    fields={"state_file": chat_sessions_path},
-                )
-                loaded_canonical_sessions = {}
-                canonical_bootstrap_source = "canonical_json_reset_after_load_failure"
-            else:
-                if loaded_canonical_sessions:
-                    canonical_bootstrap_source = "canonical_json"
-                else:
-                    canonical_bootstrap_source = "legacy_json_snapshot"
-
-        if loaded_canonical_sessions:
-            (
-                loaded_threads,
-                loaded_worker_sessions,
-                loaded_in_flight,
-            ) = build_legacy_from_canonical(loaded_canonical_sessions)
+    if loaded_canonical_sessions:
+        (
+            loaded_threads,
+            loaded_worker_sessions,
+            loaded_in_flight,
+        ) = build_legacy_from_canonical(loaded_canonical_sessions)
 
     current_policy_fingerprint = ""
     policy_reset_result = {
@@ -793,21 +793,21 @@ def run_bridge(config: Config) -> int:
 
     state = State(
         chat_threads=loaded_threads,
-        chat_thread_path=chat_thread_path,
+        chat_thread_path=state_paths["chat_threads"],
         chat_engines=loaded_engines,
-        chat_engine_path=chat_engine_path,
+        chat_engine_path=state_paths["chat_engines"],
         chat_codex_models=loaded_codex_models,
-        chat_codex_model_path=chat_codex_model_path,
+        chat_codex_model_path=state_paths["chat_codex_models"],
         chat_codex_efforts=loaded_codex_efforts,
-        chat_codex_effort_path=chat_codex_effort_path,
+        chat_codex_effort_path=state_paths["chat_codex_efforts"],
         chat_pi_providers=loaded_pi_providers,
-        chat_pi_provider_path=chat_pi_provider_path,
+        chat_pi_provider_path=state_paths["chat_pi_providers"],
         chat_pi_models=loaded_pi_models,
-        chat_pi_model_path=chat_pi_model_path,
+        chat_pi_model_path=state_paths["chat_pi_models"],
         worker_sessions=loaded_worker_sessions,
-        worker_sessions_path=worker_sessions_path,
+        worker_sessions_path=state_paths["worker_sessions"],
         in_flight_requests=loaded_in_flight,
-        in_flight_path=in_flight_path,
+        in_flight_path=state_paths["in_flight_requests"],
         canonical_sessions_enabled=config.canonical_sessions_enabled,
         canonical_legacy_mirror_enabled=config.canonical_legacy_mirror_enabled,
         canonical_sqlite_enabled=(
@@ -816,7 +816,7 @@ def run_bridge(config: Config) -> int:
         canonical_sqlite_path=config.canonical_sqlite_path,
         canonical_json_mirror_enabled=config.canonical_json_mirror_enabled,
         chat_sessions=loaded_canonical_sessions,
-        chat_sessions_path=chat_sessions_path,
+        chat_sessions_path=state_paths["chat_sessions"],
         affective_runtime=affective_runtime,
         attachment_store=attachment_store,
         voice_alias_learning_store=voice_alias_learning_store,
@@ -944,7 +944,11 @@ def run_bridge(config: Config) -> int:
         config.whatsapp_poll_timeout_seconds,
     )
     logging.info("Executor command=%s", config.executor_cmd)
-    logging.info("Loaded %s chat thread mappings from %s", len(loaded_threads), chat_thread_path)
+    logging.info(
+        "Loaded %s chat thread mappings from %s",
+        len(loaded_threads),
+        state_paths["chat_threads"],
+    )
     logging.info(
         "Persistent workers enabled=%s count=%s max=%s idle_expiry=disabled idle_timeout_setting=%ss ignored",
         config.persistent_workers_enabled,
@@ -952,7 +956,11 @@ def run_bridge(config: Config) -> int:
         config.persistent_workers_max,
         config.persistent_workers_idle_timeout_seconds,
     )
-    logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
+    logging.info(
+        "Loaded %s in-flight request marker(s) from %s",
+        len(loaded_in_flight),
+        state_paths["in_flight_requests"],
+    )
     logging.info(
         "Affective runtime enabled=%s db_path=%s ping_target=%s",
         bool(affective_runtime),
@@ -982,7 +990,7 @@ def run_bridge(config: Config) -> int:
             else "json"
         ),
         canonical_bootstrap_source,
-        chat_sessions_path,
+        state_paths["chat_sessions"],
         config.canonical_sqlite_path,
     )
     logging.info(
