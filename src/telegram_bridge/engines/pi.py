@@ -1,7 +1,6 @@
 import base64
 import json
 import mimetypes
-import os
 import shlex
 import socket
 import subprocess
@@ -27,6 +26,7 @@ from telegram_bridge.engines.pi_sessions import (
     clear_scope_session_files,
     sanitize_session_images,
 )
+from telegram_bridge.engines import pi_transport
 
 class PiEngineAdapter(CompletedProcessOutputMixin):
     engine_name = "pi"
@@ -242,65 +242,25 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         prompt: str,
         session_key: Optional[str],
     ) -> str:
-        cwd = str(getattr(config, "pi_local_cwd", "") or "").strip() or None
-        cmd = self._build_pi_text_args(
+        return pi_transport.run_pi_text_local(
             config,
-            include_no_context_files=False,
-            session_key=session_key,
+            prompt,
+            session_key,
+            build_pi_text_args=self._build_pi_text_args,
+            subprocess_module=subprocess,
         )
-        env = os.environ.copy()
-        tunnel_port = int(getattr(config, "pi_ollama_tunnel_local_port", 11435))
-        env["OLLAMA_HOST"] = f"http://127.0.0.1:{tunnel_port}"
-        completed = subprocess.run(
-            cmd + [prompt],
-            cwd=cwd,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=int(getattr(config, "pi_request_timeout_seconds", 180)),
-        )
-        if completed.returncode != 0:
-            raise RuntimeError(
-                completed.stderr.strip()
-                or completed.stdout.strip()
-                or "Pi text-mode local runner failed."
-            )
-        output = (completed.stdout or "").strip()
-        if not output:
-            raise RuntimeError("Pi text-mode local runner produced no output.")
-        return output
 
     def _run_pi_text_ssh(
         self,
         config,
         prompt: str,
     ) -> str:
-        timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
-        ssh_host = str(getattr(config, "pi_ssh_host", "server4-beast")).strip() or "server4-beast"
-        remote_cwd = str(getattr(config, "pi_remote_cwd", "/tmp") or "/tmp").strip()
-        args = ["timeout", str(timeout)] + self._build_pi_text_args(
+        return pi_transport.run_pi_text_ssh(
             config,
-            include_no_context_files=True,
-            session_key=None,
+            prompt,
+            build_pi_text_args=self._build_pi_text_args,
+            subprocess_module=subprocess,
         )
-        quoted = " ".join(shlex.quote(part) for part in args + [prompt])
-        remote_command = f"cd {shlex.quote(remote_cwd)} && {quoted}" if remote_cwd else quoted
-        completed = subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", ssh_host, remote_command],
-            capture_output=True,
-            text=True,
-            timeout=timeout + 5,
-        )
-        if completed.returncode != 0:
-            raise RuntimeError(
-                completed.stderr.strip()
-                or completed.stdout.strip()
-                or "Pi text-mode SSH runner failed."
-            )
-        output = (completed.stdout or "").strip()
-        if not output:
-            raise RuntimeError("Pi text-mode SSH runner produced no output.")
-        return output
 
     def _read_rpc_stdout(
         self,
@@ -308,39 +268,19 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         cancel_event: Optional[threading.Event],
         timeout: int,
     ) -> list[str]:
-        lines: list[str] = []
-        start = time.monotonic()
-        while time.monotonic() - start < timeout:
-            if cancel_event is not None and cancel_event.is_set():
-                process.kill()
-                raise ExecutorCancelledError("Pi request canceled by user.")
-            line = process.stdout.readline() if process.stdout else ""
-            if not line:
-                if process.poll() is not None:
-                    break
-                time.sleep(0.05)
-                continue
-            lines.append(line)
-            try:
-                event = json.loads(line.strip())
-            except json.JSONDecodeError:
-                continue
-            if event.get("type") == "agent_end":
-                break
-        return lines
+        return pi_transport.read_rpc_stdout(
+            process,
+            cancel_event,
+            timeout,
+            time_module=time,
+            executor_cancelled_error_cls=ExecutorCancelledError,
+        )
 
     def _build_remote_command(self, config) -> str:
-        timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
-        remote_cwd = str(getattr(config, "pi_remote_cwd", "/tmp") or "/tmp").strip()
-        args = ["timeout", str(timeout)] + self._build_pi_rpc_args(
+        return pi_transport.build_remote_command(
             config,
-            include_no_context_files=True,
-            session_key=None,
+            build_pi_rpc_args=self._build_pi_rpc_args,
         )
-        quoted = " ".join(shlex.quote(part) for part in args)
-        if remote_cwd:
-            return f"cd {shlex.quote(remote_cwd)} && {quoted}"
-        return quoted
 
     def _run_pi_ssh(
         self,
@@ -351,105 +291,38 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
     ) -> str:
-        timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
-        prompt_json = self._build_rpc_prompt_json(
+        return pi_transport.run_pi_ssh(
+            config,
             prompt,
+            cancel_event,
             image_path=image_path,
             image_paths=image_paths,
+            build_rpc_prompt_json=self._build_rpc_prompt_json,
+            build_remote_command_fn=self._build_remote_command,
+            read_rpc_stdout_fn=self._read_rpc_stdout,
+            extract_rpc_response=self._extract_rpc_response,
+            should_retry_pi_text_mode=self._should_retry_pi_text_mode,
+            run_pi_text_ssh_fn=self._run_pi_text_ssh,
+            subprocess_module=subprocess,
+            executor_cancelled_error_cls=ExecutorCancelledError,
         )
-        ssh_host = str(getattr(config, "pi_ssh_host", "server4-beast")).strip() or "server4-beast"
-        process = subprocess.Popen(
-            [
-                "ssh",
-                "-o",
-                "BatchMode=yes",
-                ssh_host,
-                self._build_remote_command(config),
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        try:
-            process.stdin.write(prompt_json + "\n")
-            process.stdin.flush()
-            stdout_lines = self._read_rpc_stdout(process, cancel_event, timeout + 10)
-            process.stdin.close()
-            process.stdin = None
-            _, stderr = process.communicate(timeout=5)
-        except BaseException:
-            process.kill()
-            raise
-        if cancel_event is not None and cancel_event.is_set():
-            raise ExecutorCancelledError("Pi request canceled by user.")
-        if process.returncode != 0:
-            raise RuntimeError(((stderr or "") + "\nstdout_lines=%d" % len(stdout_lines) or "".join(stdout_lines) or "Pi SSH transport failed.").strip())
-        try:
-            return self._extract_rpc_response(stdout_lines)
-        except RuntimeError as exc:
-            if not self._should_retry_pi_text_mode(
-                exc,
-                image_path=image_path,
-                image_paths=image_paths,
-            ):
-                raise
-            return self._run_pi_text_ssh(config, prompt)
 
     def _local_ollama_tunnel_healthy(self, port: int) -> bool:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=1.0):
-                return True
-        except OSError:
-            return False
+        return pi_transport.local_ollama_tunnel_healthy(
+            port,
+            socket_module=socket,
+        )
 
     def _ensure_local_ollama_tunnel(self, config) -> None:
-        enabled = bool(getattr(config, "pi_ollama_tunnel_enabled", True))
-        if not enabled:
-            return
-        port = int(getattr(config, "pi_ollama_tunnel_local_port", 11435))
-        if self._local_ollama_tunnel_healthy(port):
-            return
-        ssh_host = str(getattr(config, "pi_ssh_host", "server4-beast")).strip() or "server4-beast"
-        remote_host = str(getattr(config, "pi_ollama_tunnel_remote_host", "127.0.0.1") or "127.0.0.1").strip()
-        remote_port = int(getattr(config, "pi_ollama_tunnel_remote_port", 11434))
-        tunnel_spec = f"127.0.0.1:{port}:{remote_host}:{remote_port}"
-        completed = subprocess.run(
-            [
-                "ssh",
-                "-fN",
-                "-o",
-                "ExitOnForwardFailure=yes",
-                "-o",
-                "BatchMode=yes",
-                "-L",
-                tunnel_spec,
-                ssh_host,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
+        pi_transport.ensure_local_ollama_tunnel(
+            config,
+            local_ollama_tunnel_healthy_fn=self._local_ollama_tunnel_healthy,
+            subprocess_module=subprocess,
+            time_module=time,
         )
-        if completed.returncode != 0 and not self._local_ollama_tunnel_healthy(port):
-            raise RuntimeError(
-                completed.stderr.strip()
-                or completed.stdout.strip()
-                or f"failed to start Pi Ollama tunnel on port {port}"
-            )
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            if self._local_ollama_tunnel_healthy(port):
-                return
-            time.sleep(0.1)
-        raise RuntimeError(f"Pi Ollama tunnel did not become ready on port {port}")
 
     def _pi_provider_uses_ollama_tunnel(self, config) -> bool:
-        provider = (
-            str(getattr(config, "pi_provider", "ollama") or "ollama")
-            .strip()
-            .lower()
-        )
-        return provider in {"ollama", "ollama_ssh", "ssh"}
+        return pi_transport.pi_provider_uses_ollama_tunnel(config)
 
     def _run_pi_local(
         self,
@@ -461,56 +334,24 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
     ) -> str:
-        timeout = int(getattr(config, "pi_request_timeout_seconds", 180))
-        if self._pi_provider_uses_ollama_tunnel(config):
-            self._ensure_local_ollama_tunnel(config)
-        prompt_json = self._build_rpc_prompt_json(
+        return pi_transport.run_pi_local(
+            config,
             prompt,
+            session_key,
+            cancel_event,
             image_path=image_path,
             image_paths=image_paths,
+            pi_provider_uses_ollama_tunnel_fn=self._pi_provider_uses_ollama_tunnel,
+            ensure_local_ollama_tunnel_fn=self._ensure_local_ollama_tunnel,
+            build_rpc_prompt_json=self._build_rpc_prompt_json,
+            build_pi_rpc_args=self._build_pi_rpc_args,
+            read_rpc_stdout_fn=self._read_rpc_stdout,
+            extract_rpc_response=self._extract_rpc_response,
+            should_retry_pi_text_mode=self._should_retry_pi_text_mode,
+            run_pi_text_local_fn=self._run_pi_text_local,
+            subprocess_module=subprocess,
+            executor_cancelled_error_cls=ExecutorCancelledError,
         )
-        cwd = str(getattr(config, "pi_local_cwd", "") or "").strip() or None
-        cmd = self._build_pi_rpc_args(
-            config,
-            include_no_context_files=False,
-            session_key=session_key,
-        )
-        env = os.environ.copy()
-        tunnel_port = int(getattr(config, "pi_ollama_tunnel_local_port", 11435))
-        env["OLLAMA_HOST"] = f"http://127.0.0.1:{tunnel_port}"
-        process = subprocess.Popen(
-            cmd,
-            cwd=cwd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-        try:
-            process.stdin.write(prompt_json + "\n")
-            process.stdin.flush()
-            stdout_lines = self._read_rpc_stdout(process, cancel_event, timeout + 10)
-            process.stdin.close()
-            process.stdin = None
-            _, stderr = process.communicate(timeout=5)
-        except BaseException:
-            process.kill()
-            raise
-        if cancel_event is not None and cancel_event.is_set():
-            raise ExecutorCancelledError("Pi request canceled by user.")
-        if process.returncode != 0:
-            raise RuntimeError(((stderr or "") + "\nstdout_lines=%d" % len(stdout_lines) or "".join(stdout_lines) or "Pi local runner failed.").strip())
-        try:
-            return self._extract_rpc_response(stdout_lines)
-        except RuntimeError as exc:
-            if not self._should_retry_pi_text_mode(
-                exc,
-                image_path=image_path,
-                image_paths=image_paths,
-            ):
-                raise
-            return self._run_pi_text_local(config, prompt, session_key)
 
     def run(
         self,
