@@ -1,172 +1,38 @@
 import copy
-import json
-import os
-import shlex
 import subprocess
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.engine_catalog import (
+    ENGINE_NAME_ALIASES,
+    PI_MODEL_PICKER_PAGE_SIZE,
+    PI_PROVIDER_ALIASES,
+    PI_PROVIDER_CHOICES,
+    configured_codex_model,
+    configured_codex_reasoning_effort,
+    configured_default_engine,
+    configured_pi_model,
+    configured_pi_provider,
+    normalize_engine_name,
+    normalize_pi_provider_name,
+    pi_provider_uses_ollama_tunnel,
+    resolve_codex_effort_candidate as _resolve_codex_effort_candidate,
+    resolve_codex_model_candidate as _resolve_codex_model_candidate,
+    selectable_engine_plugins,
+    supported_codex_efforts_for_model as _supported_codex_efforts_for_model,
+    load_codex_model_catalog as _load_codex_model_catalog,
+    load_codex_model_choices as _load_codex_model_choices,
+)
 from telegram_bridge.engine_adapter import EngineAdapter
 from telegram_bridge import engine_health
+from telegram_bridge import engine_pi_catalog
 from telegram_bridge.plugin_registry import build_default_plugin_registry
 from telegram_bridge.state_store import State, StateRepository
 
 GEMMA_HEALTH_TIMEOUT_SECONDS = 6
 GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = 5
 
-ENGINE_NAME_ALIASES = {
-    "chatgpt": "chatgptweb",
-    "chatgpt_web": "chatgptweb",
-}
-PI_PROVIDER_ALIASES = {
-    "ollama_http": "ollama",
-    "ollama_ssh": "ollama",
-    "ssh": "ollama",
-}
-PI_PROVIDER_CHOICES = (
-    ("ollama", "local Ollama or SSH-tunneled Ollama"),
-    ("venice", "Venice API models"),
-    ("deepseek", "DeepSeek API models"),
-)
-PI_MODEL_PICKER_PAGE_SIZE = 16
 _brief_health_error = engine_health._brief_health_error
-
-def normalize_engine_name(engine_name: str) -> str:
-    normalized = str(engine_name or "").strip().lower()
-    return ENGINE_NAME_ALIASES.get(normalized, normalized)
-
-def configured_default_engine(config) -> str:
-    return normalize_engine_name(getattr(config, "engine_plugin", "codex") or "codex")
-
-def selectable_engine_plugins(config) -> List[str]:
-    configured: List[str] = []
-    for value in getattr(config, "selectable_engine_plugins", ["codex", "gemma", "pi"]):
-        normalized = normalize_engine_name(str(value))
-        if normalized and normalized not in configured:
-            configured.append(normalized)
-    default_engine = configured_default_engine(config)
-    if default_engine not in configured:
-        configured.insert(0, default_engine)
-    return configured
-
-def configured_pi_provider(config) -> str:
-    provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip().lower()
-    return PI_PROVIDER_ALIASES.get(provider, provider) or "ollama"
-
-def normalize_pi_provider_name(provider_name: str) -> str:
-    provider = str(provider_name or "").strip().lower()
-    return PI_PROVIDER_ALIASES.get(provider, provider)
-
-def configured_pi_model(config) -> str:
-    return str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip() or "qwen3-coder:30b"
-
-def pi_provider_uses_ollama_tunnel(config) -> bool:
-    return configured_pi_provider(config) == "ollama"
-
-def configured_codex_model(config) -> str:
-    return str(getattr(config, "codex_model", "") or "").strip()
-
-def configured_codex_reasoning_effort(config) -> str:
-    return str(getattr(config, "codex_reasoning_effort", "") or "").strip().lower()
-
-def _codex_models_cache_path() -> Path:
-    codex_home = str(os.getenv("CODEX_HOME", "") or "").strip()
-    if codex_home:
-        return Path(codex_home).expanduser() / "models_cache.json"
-    return Path.home() / ".codex" / "models_cache.json"
-
-def _load_codex_model_catalog() -> List[Dict[str, object]]:
-    cache_path = _codex_models_cache_path()
-    if not cache_path.exists():
-        return []
-    data = json.loads(cache_path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        return []
-    models = data.get("models")
-    if not isinstance(models, list):
-        return []
-    catalog: List[Dict[str, object]] = []
-    seen: Set[str] = set()
-    for item in models:
-        if not isinstance(item, dict):
-            continue
-        slug = str(item.get("slug", "") or "").strip()
-        if not slug:
-            continue
-        visibility = str(item.get("visibility", "") or "").strip().lower()
-        if visibility and visibility != "list":
-            continue
-        key = slug.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        display_name = str(item.get("display_name", "") or "").strip() or slug
-        efforts: List[str] = []
-        raw_efforts = item.get("supported_reasoning_levels")
-        if isinstance(raw_efforts, list):
-            for raw_effort in raw_efforts:
-                if not isinstance(raw_effort, dict):
-                    continue
-                effort = str(raw_effort.get("effort", "") or "").strip().lower()
-                if effort and effort not in efforts:
-                    efforts.append(effort)
-        catalog.append(
-            {
-                "slug": slug,
-                "display_name": display_name,
-                "supported_efforts": efforts,
-            }
-        )
-    return catalog
-
-def _load_codex_model_choices() -> List[Tuple[str, str]]:
-    choices: List[Tuple[str, str]] = []
-    for item in _load_codex_model_catalog():
-        slug = str(item.get("slug", "") or "").strip()
-        if not slug:
-            continue
-        display_name = str(item.get("display_name", "") or "").strip() or slug
-        choices.append((slug, display_name))
-    return choices
-
-def _supported_codex_efforts_for_model(model_name: str) -> List[str]:
-    normalized_model = str(model_name or "").strip()
-    default_efforts = ["low", "medium", "high", "xhigh"]
-    if not normalized_model:
-        return default_efforts
-    folded = normalized_model.casefold()
-    for item in _load_codex_model_catalog():
-        slug = str(item.get("slug", "") or "").strip()
-        display_name = str(item.get("display_name", "") or "").strip()
-        if slug.casefold() != folded and display_name.casefold() != folded:
-            continue
-        efforts = [
-            str(value).strip().lower()
-            for value in item.get("supported_efforts", [])
-            if str(value).strip()
-        ]
-        return efforts or default_efforts
-    return default_efforts
-
-def _resolve_codex_effort_candidate(model_name: str, requested_effort: str) -> Optional[str]:
-    normalized_effort = str(requested_effort or "").strip().lower()
-    if not normalized_effort:
-        return None
-    for effort in _supported_codex_efforts_for_model(model_name):
-        if effort == normalized_effort:
-            return effort
-    return None
-
-def _resolve_codex_model_candidate(requested_model: str) -> str:
-    requested = str(requested_model or "").strip()
-    if not requested:
-        return ""
-    folded = requested.casefold()
-    for slug, display_name in _load_codex_model_choices():
-        if slug.casefold() == folded or display_name.casefold() == folded:
-            return slug
-    return requested
 
 def build_engine_runtime_config(state, config, scope_key: str, engine_name: str):
     runtime_config = copy.copy(config)
@@ -214,35 +80,16 @@ def _build_pi_model_source_text(state: State, scope_key: str) -> str:
     return "global default"
 
 def _pi_provider_choice_lines(current_provider: str) -> List[str]:
-    lines: List[str] = []
-    for provider, description in PI_PROVIDER_CHOICES:
-        marker = " (current)" if provider == current_provider else ""
-        lines.append(f"- {provider}{marker} - {description}")
-    return lines
+    return engine_pi_catalog.pi_provider_choice_lines(current_provider)
 
 def _pi_provider_description(provider_name: str) -> str:
-    normalized = normalize_pi_provider_name(provider_name)
-    for provider, description in PI_PROVIDER_CHOICES:
-        if provider == normalized:
-            return description
-    return "custom Pi provider"
+    return engine_pi_catalog.pi_provider_description(provider_name)
 
 def _pi_provider_sort_key(provider_name: str) -> Tuple[int, str]:
-    normalized = normalize_pi_provider_name(provider_name)
-    for index, (provider, _description) in enumerate(PI_PROVIDER_CHOICES):
-        if provider == normalized:
-            return (index, normalized)
-    return (len(PI_PROVIDER_CHOICES), normalized)
+    return engine_pi_catalog.pi_provider_sort_key(provider_name)
 
 def _pi_available_provider_names(config) -> List[str]:
-    names = {
-        normalize_pi_provider_name(row_provider)
-        for row_provider, row_model in _pi_model_rows(config)
-        if str(row_provider).strip() and str(row_model).strip()
-    }
-    if not names:
-        return []
-    return sorted(names, key=_pi_provider_sort_key)
+    return engine_pi_catalog.pi_available_provider_names(config)
 
 def build_pi_providers_text(state: State, config, scope_key: str) -> str:
     display_config = build_engine_runtime_config(state, config, scope_key, "pi")
@@ -266,89 +113,19 @@ def build_pi_providers_text(state: State, config, scope_key: str) -> str:
     return "\n".join(lines)
 
 def _run_pi_command(config, command: str) -> subprocess.CompletedProcess[str]:
-    pi_bin = str(getattr(config, "pi_bin", "pi") or "pi").strip() or "pi"
-    argv = shlex.split(command)
-    if argv and argv[0] == "pi":
-        argv[0] = pi_bin
-    command_text = shlex.join(argv) if argv else shlex.quote(pi_bin)
-    runner = str(getattr(config, "pi_runner", "ssh") or "ssh").strip().lower()
-    timeout = GEMMA_HEALTH_TIMEOUT_SECONDS + 4
-    if runner in {"local", "server3"}:
-        env = None
-        if pi_provider_uses_ollama_tunnel(config):
-            tunnel_port = int(getattr(config, "pi_ollama_tunnel_local_port", 11435))
-            env = os.environ.copy()
-            env["OLLAMA_HOST"] = f"http://127.0.0.1:{tunnel_port}"
-        return subprocess.run(
-            argv or [pi_bin],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=str(getattr(config, "pi_local_cwd", "") or "").strip() or None,
-            env=env,
-        )
-    host = str(getattr(config, "pi_ssh_host", "server4-beast") or "").strip() or "server4-beast"
-    return subprocess.run(
-        [
-            "ssh",
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            f"ConnectTimeout={GEMMA_HEALTH_TIMEOUT_SECONDS}",
-            host,
-            f"command -v {shlex.quote(pi_bin)} >/dev/null && {command_text}",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    return engine_pi_catalog.run_pi_command(config, command)
 
 def _parse_pi_model_rows(payload: str) -> List[Tuple[str, str]]:
-    rows: List[Tuple[str, str]] = []
-    for raw_line in str(payload or "").splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        if line.lower().startswith("provider"):
-            continue
-        parts = line.split()
-        if len(parts) < 2:
-            continue
-        rows.append((parts[0], parts[1]))
-    return rows
+    return engine_pi_catalog.parse_pi_model_rows(payload)
 
 def _pi_model_rows(config) -> List[Tuple[str, str]]:
-    completed = _run_pi_command(config, "pi --list-models")
-    if completed.returncode != 0:
-        raise RuntimeError(
-            completed.stderr.strip()
-            or completed.stdout.strip()
-            or f"ssh exited {completed.returncode}"
-        )
-    payload = completed.stdout.strip() or completed.stderr.strip()
-    return _parse_pi_model_rows(payload)
+    return engine_pi_catalog.pi_model_rows(config)
 
 def _pi_provider_model_names(config) -> List[str]:
-    provider = configured_pi_provider(config)
-    model_names = [
-        row_model
-        for row_provider, row_model in _pi_model_rows(config)
-        if row_provider.strip().lower() == provider
-    ]
-    return sorted(dict.fromkeys(model_names), key=str.casefold)
+    return engine_pi_catalog.pi_provider_model_names(config)
 
 def _resolve_pi_model_candidate(available_models: List[str], requested_model: str) -> Optional[str]:
-    requested = requested_model.strip()
-    if not requested:
-        return None
-    for available in available_models:
-        if available == requested:
-            return available
-    folded = requested.casefold()
-    matches = [available for available in available_models if available.casefold() == folded]
-    if len(matches) == 1:
-        return matches[0]
-    return None
+    return engine_pi_catalog.resolve_pi_model_candidate(available_models, requested_model)
 
 def build_pi_models_text(state: State, config, scope_key: str) -> str:
     display_config = build_engine_runtime_config(state, config, scope_key, "pi")
