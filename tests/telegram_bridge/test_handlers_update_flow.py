@@ -159,47 +159,6 @@ class HandleUpdateHelperTests(unittest.TestCase):
         known.assert_called_once()
         queue_capture.assert_called_once()
 
-    def test_prepare_update_dispatch_request_handles_memory_recall_without_dispatch(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            memory_engine = bridge.MemoryEngine(f"{tmpdir}/memory.sqlite3")
-            flow = bridge_handlers.UpdateFlowState(
-                state=bridge.State(memory_engine=memory_engine),
-                config=make_config(shared_memory_key="shared:architect:main"),
-                client=FakeTelegramClient(),
-                engine=None,
-                ctx=bridge_handlers.IncomingUpdateContext(
-                    update={},
-                    message={"text": "what do you remember"},
-                    chat_id=1,
-                    message_thread_id=None,
-                    scope_key="tg:1",
-                    message_id=94,
-                    actor_user_id=1,
-                    is_private_chat=True,
-                    update_id=127,
-                ),
-                prompt_input="what do you remember",
-                photo_file_ids=[],
-                voice_file_id=None,
-                document=None,
-                reply_context_prompt="",
-                telegram_context_prompt="",
-                enforce_voice_prefix_from_transcript=False,
-                sender_name="User",
-                command=None,
-            )
-
-            with mock.patch.object(
-                bridge_handlers,
-                "handle_natural_language_memory_query",
-                return_value="Memory reply",
-            ) as recall:
-                dispatch = bridge_handlers.prepare_update_dispatch_request(flow, 10.0)
-
-        self.assertIsNone(dispatch)
-        recall.assert_called_once()
-        self.assertEqual(flow.client.messages[-1][:3], (1, "Memory reply", 94))
-
     def test_prepare_update_dispatch_request_routes_youtube_keyword_mode(self):
         flow = self._make_flow(
             prompt_input="watch this",

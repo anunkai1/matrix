@@ -147,7 +147,6 @@ def apply_auth_change_thread_reset(
     loaded_threads: Dict[ScopeKey, str],
     loaded_worker_sessions: Dict[ScopeKey, WorkerSession],
     loaded_canonical_sessions: Dict[ScopeKey, CanonicalSession],
-    memory_engine=None,
 ) -> Dict[str, object]:
     if not current_auth_fingerprint.strip():
         return {
@@ -157,7 +156,6 @@ def apply_auth_change_thread_reset(
                 "threads": 0,
                 "worker_sessions": 0,
                 "canonical_sessions": 0,
-                "memory_sessions": 0,
             },
         }
 
@@ -167,7 +165,6 @@ def apply_auth_change_thread_reset(
         "threads": 0,
         "worker_sessions": 0,
         "canonical_sessions": 0,
-        "memory_sessions": 0,
     }
     applied = False
 
@@ -177,8 +174,6 @@ def apply_auth_change_thread_reset(
             loaded_worker_sessions,
             loaded_canonical_sessions,
         )
-        if memory_engine is not None and hasattr(memory_engine, "clear_all_session_threads"):
-            reset_counts["memory_sessions"] = int(memory_engine.clear_all_session_threads() or 0)
         applied = any(reset_counts.values())
 
     persist_saved_auth_fingerprint(state_path, current_auth_fingerprint)
@@ -252,7 +247,6 @@ def refresh_runtime_auth_fingerprint(state: State) -> Dict[str, object]:
                 "threads": 0,
                 "worker_sessions": 0,
                 "canonical_sessions": 0,
-                "memory_sessions": 0,
             },
         }
 
@@ -267,16 +261,10 @@ def refresh_runtime_auth_fingerprint(state: State) -> Dict[str, object]:
                     "threads": 0,
                     "worker_sessions": 0,
                     "canonical_sessions": 0,
-                    "memory_sessions": 0,
                 },
             }
 
         reset_counts = clear_runtime_thread_state(state)
-        memory_sessions = 0
-        memory_engine = getattr(state, "memory_engine", None)
-        if memory_engine is not None and hasattr(memory_engine, "clear_all_session_threads"):
-            memory_sessions = int(memory_engine.clear_all_session_threads() or 0)
-        reset_counts["memory_sessions"] = memory_sessions
 
         state.auth_fingerprint = current_auth_fingerprint
         persist_saved_auth_fingerprint(state.auth_fingerprint_path, current_auth_fingerprint)

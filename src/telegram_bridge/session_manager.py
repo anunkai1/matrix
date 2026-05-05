@@ -10,8 +10,6 @@ from typing import List, Optional
 try:
     from .background_tasks import start_daemon_thread
     from .conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
-    from .memory_engine import MemoryEngine
-    from .memory_scope import resolve_memory_conversation_key
     from .runtime_paths import build_shared_core_root, shared_core_path
     from .state_store import (
         CanonicalSession,
@@ -29,8 +27,6 @@ try:
 except ImportError:
     from background_tasks import start_daemon_thread
     from conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
-    from memory_engine import MemoryEngine
-    from memory_scope import resolve_memory_conversation_key
     from runtime_paths import build_shared_core_root, shared_core_path
     from state_store import (
         CanonicalSession,
@@ -221,38 +217,6 @@ def _send_policy_refresh_notice(
         )
     except Exception:
         logging.exception("Failed to send policy-refresh notice for chat_id=%s", chat_id)
-
-
-def _archive_expired_chat_memory(state: State, config, client, scope_key: str) -> None:
-    memory_engine = state.memory_engine
-    if not isinstance(memory_engine, MemoryEngine):
-        return
-    channel_name = getattr(client, "channel_name", "telegram")
-    live_key = resolve_memory_conversation_key(config, channel_name, scope_key)
-    if not live_key:
-        return
-
-    try:
-        status = memory_engine.get_status(live_key)
-    except Exception:
-        logging.exception("Failed to read live memory status before expiry for scope=%s", scope_key)
-        return
-
-    if status.message_count <= 0 and not status.session_active:
-        return
-
-    try:
-        memory_engine.clear_session(live_key)
-        emit_event(
-            "bridge.memory_cleared_on_expiry",
-            fields={
-                "scope_key": scope_key,
-                "source_key": live_key,
-                "messages_cleared": status.message_count,
-            },
-        )
-    except Exception:
-        logging.exception("Failed to clear expired live memory for scope=%s", scope_key)
 
 
 def get_cached_policy_fingerprint(paths: List[str], now: Optional[float] = None) -> str:

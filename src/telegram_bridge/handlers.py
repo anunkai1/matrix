@@ -97,8 +97,6 @@ try:
     )
     from . import message_inputs
     from . import youtube_processing
-    from .memory_engine import MemoryEngine, TurnContext, handle_memory_command, handle_natural_language_memory_query
-    from .memory_scope import resolve_memory_conversation_key
     from .plugin_registry import build_default_plugin_registry
     from . import prompt_execution
     from . import prompt_inputs
@@ -242,8 +240,6 @@ except ImportError:
     )
     import message_inputs
     import youtube_processing
-    from memory_engine import MemoryEngine, TurnContext, handle_memory_command, handle_natural_language_memory_query
-    from memory_scope import resolve_memory_conversation_key
     from plugin_registry import build_default_plugin_registry
     import prompt_execution
     import prompt_inputs
@@ -402,7 +398,6 @@ process_dishframed_request = request_starts.process_dishframed_request
 process_dishframed_worker = request_starts.process_dishframed_worker
 start_dishframed_worker = request_starts.start_dishframed_worker
 deliver_output_and_emit_success = request_processing.deliver_output_and_emit_success
-begin_memory_turn = request_processing.begin_memory_turn
 begin_affective_turn = request_processing.begin_affective_turn
 emit_request_processing_started = request_processing.emit_request_processing_started
 emit_phase_timing = request_processing.emit_phase_timing

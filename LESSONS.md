@@ -15,6 +15,16 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-05-05T09:30:00+10:00 - Engine-Native Sessions Make SQLite Memory Redundant
+- Mistake pattern: The bridge maintained a separate SQLite memory layer (~590 lines) that stored ~10k tokens of recent messages and injected them into every prompt, even though both Pi and Codex already maintain their own full session files (JSONL) that replay the entire conversation history to the provider API on every turn. The SQLite layer was a strict subset of what the engine sessions already carried.
+- Prevention rule: Before adding a new state/memory/caching layer, verify whether the underlying engine (Pi, Codex, etc.) already provides equivalent or better persistence. Engine-native sessions are the source of truth for conversation continuity; don't duplicate them in bridge code.
+- Where/when applied: Any new memory, state, or caching mechanism proposed for the Telegram bridge. Check the active engine's session model first.
+
+### 2026-05-05T01:00:00+10:00 - Never Overwrite Systemd EnvironmentFile With Single-Line Edits
+- Mistake pattern: The May 4 memory-simplification rollout needed to add `TELEGRAM_MEMORY_ENABLED=false` to the bridge env file. A write (overwrite) was used instead of append, replacing all ~60 lines of config with the single new line. The bot token and all other config were wiped, causing a crash loop with ~150 restart failures before detection.
+- Prevention rule: When editing systemd `EnvironmentFile`-backed config files programmatically, always use append (`>>` / `tee -a`) for additive changes. If the change is non-additive, first copy the file to a timestamped `.bak` in the same directory, then use a line-targeted edit (`sed`, `grep -v` + append). Always verify line count before and after (`wc -l`), and sanity-check that `TELEGRAM_BOT_TOKEN` (or equivalent critical key) is still present.
+- Where/when applied: Any programmatic edit to `/etc/default/telegram-*-bridge`, `/etc/default/*` env files, or any systemd `EnvironmentFile` path. Also applies to `.env` files consumed by service startup.
+
 ### 2026-05-04T11:30:00+10:00 - Update Operator Docs In The Same Rollout As Memory-Behavior Changes
 - Mistake pattern: We changed live memory behavior several times (summary threshold, prompt injection shape, recent/raw caps, shared-memory usage) without immediately updating the operator-facing markdown, leaving `SERVER3_SUMMARY.md` and bridge docs stale.
 - Prevention rule: When changing memory behavior, update the operator docs in the same rollout: `SERVER3_SUMMARY.md` for high-signal runtime truth, the main bridge doc for detailed behavior, and any other directly affected runbook/mental-model page that names the old limits or flow.

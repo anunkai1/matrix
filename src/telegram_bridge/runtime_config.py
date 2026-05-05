@@ -66,17 +66,12 @@ class Config:
     canonical_sqlite_enabled: bool
     canonical_sqlite_path: str
     canonical_json_mirror_enabled: bool
-    memory_sqlite_path: str
-    memory_max_messages_per_key: int
-    memory_max_summaries_per_key: int
-    memory_prune_interval_seconds: int
     required_prefixes: List[str]
     required_prefix_ignore_case: bool
     require_prefix_in_private: bool
     allow_private_chats_unlisted: bool
     allow_group_chats_unlisted: bool
     assistant_name: str
-    shared_memory_key: str
     channel_plugin: str
     engine_plugin: str
     selectable_engine_plugins: List[str]
@@ -406,26 +401,21 @@ def load_codex_reasoning_effort() -> str:
     return str(effort).strip().lower() if isinstance(effort, str) else ""
 
 
-def resolve_state_paths(state_dir: str) -> tuple[str, str, str]:
+def resolve_state_paths(state_dir: str) -> tuple[str, str]:
     canonical_sqlite_path = os.getenv("TELEGRAM_CANONICAL_SQLITE_PATH", "").strip()
     if not canonical_sqlite_path:
         canonical_sqlite_path = os.path.join(state_dir, "chat_sessions.sqlite3")
-
-    memory_sqlite_path = os.getenv("TELEGRAM_MEMORY_SQLITE_PATH", "").strip()
-    if not memory_sqlite_path:
-        memory_sqlite_path = os.path.join(state_dir, "memory.sqlite3")
 
     affective_runtime_db_path = os.getenv(
         "TELEGRAM_AFFECTIVE_RUNTIME_DB_PATH",
         os.path.join(state_dir, "affective_state.sqlite3"),
     ).strip() or os.path.join(state_dir, "affective_state.sqlite3")
 
-    return canonical_sqlite_path, memory_sqlite_path, affective_runtime_db_path
+    return canonical_sqlite_path, affective_runtime_db_path
 
 
-def resolve_runtime_identity() -> tuple[str, str, str, str, str, str]:
+def resolve_runtime_identity() -> tuple[str, str, str, str, str]:
     assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
-    shared_memory_key = os.getenv("TELEGRAM_SHARED_MEMORY_KEY", "").strip()
     progress_label = os.getenv("TELEGRAM_PROGRESS_LABEL", "").strip()
 
     raw_progress_elapsed_prefix = os.getenv("TELEGRAM_PROGRESS_ELAPSED_PREFIX")
@@ -445,7 +435,6 @@ def resolve_runtime_identity() -> tuple[str, str, str, str, str, str]:
     )
     return (
         assistant_name,
-        shared_memory_key,
         progress_label,
         progress_elapsed_prefix,
         progress_elapsed_suffix,
@@ -468,7 +457,7 @@ def load_config() -> Config:
     ).strip()
     if not state_dir:
         raise ValueError("TELEGRAM_BRIDGE_STATE_DIR cannot be empty")
-    canonical_sqlite_path, memory_sqlite_path, affective_runtime_db_path = resolve_state_paths(
+    canonical_sqlite_path, affective_runtime_db_path = resolve_state_paths(
         state_dir
     )
     affective_runtime_ping_target = os.getenv(
@@ -479,7 +468,6 @@ def load_config() -> Config:
     allowed_chat_ids = parse_allowed_chat_ids(raw_chat_ids) if raw_chat_ids else set()
     (
         assistant_name,
-        shared_memory_key,
         progress_label,
         progress_elapsed_prefix,
         progress_elapsed_suffix,
@@ -585,22 +573,6 @@ def load_config() -> Config:
             "TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED",
             False,
         ),
-        memory_sqlite_path=memory_sqlite_path,
-        memory_max_messages_per_key=parse_int_env(
-            "TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY",
-            4000,
-            minimum=0,
-        ),
-        memory_max_summaries_per_key=parse_int_env(
-            "TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY",
-            80,
-            minimum=0,
-        ),
-        memory_prune_interval_seconds=parse_int_env(
-            "TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS",
-            300,
-            minimum=0,
-        ),
         required_prefixes=parse_prefixes_env("TELEGRAM_REQUIRED_PREFIXES"),
         required_prefix_ignore_case=parse_bool_env(
             "TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE",
@@ -619,7 +591,6 @@ def load_config() -> Config:
             False,
         ),
         assistant_name=assistant_name,
-        shared_memory_key=shared_memory_key,
         progress_label=progress_label,
         progress_elapsed_prefix=progress_elapsed_prefix,
         progress_elapsed_suffix=progress_elapsed_suffix,

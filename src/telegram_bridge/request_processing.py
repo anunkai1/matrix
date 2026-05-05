@@ -5,8 +5,6 @@ try:
     from .channel_adapter import ChannelAdapter
     from .engine_adapter import CodexEngineAdapter, EngineAdapter
     from .handler_models import DocumentPayload, DishframedRequest, PromptRequest, YoutubeRequest
-    from .memory_engine import MemoryEngine, TurnContext
-    from .memory_scope import resolve_memory_conversation_key
     from . import prompt_execution
     from . import special_request_processing
     from . import response_delivery
@@ -19,8 +17,6 @@ except ImportError:
     from channel_adapter import ChannelAdapter
     from engine_adapter import CodexEngineAdapter, EngineAdapter
     from handler_models import DocumentPayload, DishframedRequest, PromptRequest, YoutubeRequest
-    from memory_engine import MemoryEngine, TurnContext
-    from memory_scope import resolve_memory_conversation_key
     import prompt_execution
     import special_request_processing
     import response_delivery
@@ -69,36 +65,6 @@ def deliver_output_and_emit_success(
         },
     )
     return delivered_output
-
-
-def begin_memory_turn(
-    memory_engine: Optional[MemoryEngine],
-    state_repo: StateRepository,
-    config,
-    channel_name: str,
-    scope_key: str,
-    prompt_text: str,
-    sender_name: str,
-    stateless: bool,
-    chat_id: int,
-    *,
-    engine_name: str = "",
-    has_persisted_thread: bool = False,
-) -> tuple[str, Optional[str], Optional[TurnContext]]:
-    return prompt_execution.begin_memory_turn(
-        memory_engine,
-        state_repo,
-        config,
-        channel_name,
-        scope_key,
-        prompt_text,
-        sender_name,
-        stateless,
-        chat_id,
-        resolve_memory_conversation_key_fn=resolve_memory_conversation_key,
-        engine_name=engine_name,
-        has_persisted_thread=has_persisted_thread,
-    )
 
 
 def begin_affective_turn(
@@ -199,7 +165,6 @@ def _process_prompt_request(request: PromptRequest) -> None:
         progress_reporter_cls=handlers.ProgressReporter,
         state_repository_cls=StateRepository,
         codex_engine_adapter_factory=CodexEngineAdapter,
-        memory_engine_cls=MemoryEngine,
         assistant_label_fn=assistant_label,
         build_engine_runtime_config_fn=build_engine_runtime_config,
         build_engine_progress_context_label_fn=build_engine_progress_context_label,
@@ -209,7 +174,6 @@ def _process_prompt_request(request: PromptRequest) -> None:
         finalize_prompt_success_fn=handlers.finalize_prompt_success,
         finalize_request_progress_fn=finalize_request_progress,
         emit_event_fn=emit_event,
-        resolve_memory_conversation_key_fn=resolve_memory_conversation_key,
     )
 
 

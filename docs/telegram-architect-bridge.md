@@ -33,12 +33,7 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
   - `src/telegram_bridge/engine_adapter.py`
   - `src/telegram_bridge/plugin_registry.py`
   - `src/telegram_bridge/bridge_deps.py`
-- Memory, state, and scope:
-  - `src/telegram_bridge/memory_engine.py`
-  - `src/telegram_bridge/memory_scope.py`
-  - `src/telegram_bridge/memory_merge.py`
-  - `src/telegram_bridge/memory_summary_utils.py`
-  - `src/telegram_bridge/llm_summarizer.py`
+- State and scope:
   - `src/telegram_bridge/conversation_scope.py`
   - `src/telegram_bridge/state_store.py`
   - `src/telegram_bridge/state_models.py`
@@ -68,23 +63,6 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Shared Server3 runtime manifest: `infra/server3-runtime-manifest.json`
 - Shared Server3 runtime status helper: `ops/server3_runtime_status.py`
 - Status helper: `ops/telegram-bridge/status_service.sh`
-- Memory maintenance helper: `ops/telegram-bridge/memory_maintenance.sh`
-- Memory restore helper: `ops/telegram-bridge/memory_restore.sh`
-- Memory restore drill helper: `ops/telegram-bridge/memory_restore_drill.sh`
-- Summary regeneration helper: `ops/telegram-bridge/regenerate_summaries.py`
-- Memory alert helper: `ops/telegram-bridge/memory_alert.sh`
-- Memory timer installer: `ops/telegram-bridge/install_memory_timers.sh`
-- Memory maintenance systemd units:
-  - `infra/systemd/telegram-architect-memory-maintenance.service`
-  - `infra/systemd/telegram-architect-memory-maintenance.timer`
-- Memory health systemd units:
-  - `infra/systemd/telegram-architect-memory-health.service`
-  - `infra/systemd/telegram-architect-memory-health.timer`
-- Memory restore drill systemd units:
-  - `infra/systemd/telegram-architect-memory-restore-drill.service`
-  - `infra/systemd/telegram-architect-memory-restore-drill.timer`
-- Memory alert systemd unit:
-  - `infra/systemd/telegram-architect-memory-alert@.service`
 - Voice runtime installer: `ops/telegram-voice/install_faster_whisper.sh`
 - Voice env updater: `ops/telegram-voice/configure_env.sh`
 - Voice command wrapper: `ops/telegram-voice/transcribe_voice.sh`
@@ -153,17 +131,6 @@ TELEGRAM_RATE_LIMIT_PER_MINUTE=12
 # TELEGRAM_CANONICAL_SQLITE_ENABLED=false
 # TELEGRAM_CANONICAL_SQLITE_PATH=/home/architect/.local/state/telegram-architect-bridge/chat_sessions.sqlite3
 # TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED=false
-# TELEGRAM_MEMORY_SQLITE_PATH=/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3
-# TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY=4000
-# TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY=80
-# TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS=300
-# TELEGRAM_MEMORY_BACKUP_RETENTION_DAYS=14
-# TELEGRAM_MEMORY_HEALTH_MAX_DB_BYTES=1073741824
-# TELEGRAM_MEMORY_HEALTH_MAX_QUERY_MS=1500
-# TELEGRAM_MEMORY_HEALTH_LOOKBACK_MINUTES=60
-# TELEGRAM_MEMORY_HEALTH_MAX_LOCK_ERRORS=0
-# TELEGRAM_MEMORY_HEALTH_MAX_WRITE_FAILURES=0
-# TELEGRAM_MEMORY_ALERT_LOG_LINES=80
 ENV
 ```
 
@@ -252,21 +219,15 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/pi models` deprecated compatibility alias for `/model list`
 - `/cancel` cancel the current in-flight request for this chat
 - `/restart` safe bridge restart (queues until current work finishes)
-- `/reset` archive this chat's live memory into the shared archive when configured, then clear this chat's saved context/thread
+- `/reset` clear this chat's saved context/thread and Pi session files
 - `/voice-alias list` show pending learned voice corrections
 - `/voice-alias approve <id>` approve one learned correction
 - `/voice-alias reject <id>` reject one learned correction
 - `/voice-alias add <source> => <target>` add manual correction
 - `server3-tv-start` start TV desktop mode from shell
 - `server3-tv-stop` stop TV desktop mode and return to CLI from shell
-- `/memory mode` show memory mode for this conversation key
-- `/memory mode all_context` use summary + durable facts + recent messages
-- `/memory mode session_only` use recent messages + session continuity only
-- `/memory status` show mode/session/fact/summary counts for this key
-- `/memory export` list stored facts for this key (sensitive values redacted)
-- `/memory export raw` list stored facts including raw values
-- `/remember <text>` store explicit durable memory (obvious secrets auto-redacted)
-- `/forget <fact_id|fact_key>` disable one fact
+- `/remember ...` legacy compatibility command
+- `/forget ...` legacy compatibility command
 
 ## Server4 Gemma Engine
 
@@ -291,7 +252,7 @@ The bridge can also select the `pi` coding agent as an engine through the same `
 - Use `/pi` to inspect Pi status for the current chat/topic.
 - For true runtime-root preservation, set `PI_RUNNER=local` and `PI_LOCAL_CWD` to the bot runtime root, for example `/home/tank/tankbot`.
 - Live Server3 Pi/Venice bridges now run with `PI_SESSION_MODE=telegram_scope`; that maps native Pi sessions to Telegram scope keys instead of the shared working directory.
-- Pi session retention is intentionally short-horizon: rotate a scope file when it crosses the configured size or age threshold, archive it, and keep durable memory in `memory.sqlite3`.
+- Pi session retention: rotate a scope file when it crosses the configured size or age threshold; conversation continuity is handled entirely by engine-native session files (Pi JSONL per chat/topic, Codex JSONL per exec session).
 - Per chat/topic, use `/engine pi`, `/engine codex`, `/engine reset`, or `/engine status`.
 - When Pi is the effective engine, `/engine status` reports Pi runner/config details and checks model availability.
 - Pi bridge requests are text-only for now; use Codex for image/file-heavy turns.
@@ -332,27 +293,15 @@ The bridge can select `chatgptweb` as a brittle text-only experimental engine. T
 - `chatgptweb` is for lab use only. It can break on UI changes, logout, CAPTCHA, rate limits, or browser state drift.
 - When `chatgptweb` is effective, `/engine status` checks Browser Brain reachability and whether a ChatGPT tab is visible.
 
-## Memory Commands
-
-- `/forget-all` disable all facts for this key
-- `/reset-session` clear session continuity only
-- `/hard-reset-memory` clear session + facts + summaries + stored messages for this key
-- `/ask <prompt>` run one stateless turn (no memory read/write)
-
 Message handling:
-
-- All allowlisted chats route to Architect.
-- Optional prefix gate:
   - set `TELEGRAM_REQUIRED_PREFIXES` (comma-separated) to only process matching messages.
   - example: `TELEGRAM_REQUIRED_PREFIXES=@architect,architect`
   - after a matched prefix, accepted separators are Unicode whitespace, `:`, `-`, `,`, and `.`
   - non-matching messages are ignored.
-- Messages starting with `HA` or `Home Assistant` are forced into Home Assistant mode:
   - the bridge wraps the request with strict policy to use only `ops/ha/*.sh` scripts
-  - HA-keyword requests run stateless (no memory/session carryover)
+  - HA-keyword requests run stateless (no session carryover)
   - empty keyword-only messages are rejected with a usage hint
-- Messages starting with `Server3 TV` are routed into Server3 operations mode:
-  - requests run stateless (no memory/session carryover)
+  - requests run stateless (no session carryover)
   - the bridge wraps the request with strict policy to prefer deterministic scripts:
     - `/usr/local/bin/server3-tv-start`
     - `/usr/local/bin/server3-tv-stop`
@@ -361,20 +310,17 @@ Message handling:
     - `ops/tv-desktop/server3-tv-browser-youtube-pause.sh`
     - `ops/tv-desktop/server3-tv-browser-youtube-play.sh`
   - empty keyword-only messages are rejected with a usage hint
-- Messages starting with `Server3 Browser` or `Browser Brain` are routed into Browser Brain mode:
-  - requests run stateless (no memory/session carryover)
+  - requests run stateless (no session carryover)
   - the bridge wraps the request with strict policy to prefer deterministic scripts:
     - `ops/browser_brain/browser_brain_ctl.sh`
     - `ops/browser_brain/status_service.sh`
   - Browser Brain requests should use `start`, then `open`/`navigate`, then `snapshot`, then actions by exact `ref`
   - empty keyword-only messages are rejected with a usage hint
-- Bare YouTube links are auto-routed into YouTube link mode:
-  - requests run stateless (no memory/session carryover)
+  - requests run stateless (no session carryover)
   - the bridge defaults a bare link to concise video summary behavior
   - the bridge uses `yt-dlp` for metadata plus captions retrieval, then falls back to local transcription when captions are unavailable
   - if neither captions nor local transcription succeeds, the bridge returns an explicit failure instead of a metadata-only pseudo-summary
-- Messages starting with `Nextcloud` are routed into Nextcloud operations mode:
-  - requests run stateless (no memory/session carryover)
+  - requests run stateless (no session carryover)
   - the bridge wraps the request with strict policy to use deterministic scripts:
     - `ops/nextcloud/nextcloud-files-list.sh`
     - `ops/nextcloud/nextcloud-file-upload.sh`
@@ -382,13 +328,6 @@ Message handling:
     - `ops/nextcloud/nextcloud-calendars-list.sh`
     - `ops/nextcloud/nextcloud-calendar-create-event.sh`
   - empty keyword-only messages are rejected with a usage hint
-- Text, photo, voice, and document/file inputs are supported.
-- Photo without caption uses: `Please analyze this image.`
-- File without caption uses: `Please analyze this file.`
-- Voice transcription is echoed before Architect output, including confidence when available.
-- Low-confidence transcripts are not executed automatically when confirmation gating is enabled.
-- On startup, queued Telegram updates are discarded so old backlog messages are not replayed.
-- While Architect is running, the bridge sends:
   - Telegram typing actions (`typing`)
   - a progress status message that is edited in place with elapsed time and step updates
 ## Context Persistence
@@ -396,83 +335,12 @@ Message handling:
 - Chat context is stored per Telegram chat as `chat_id -> thread_id`.
 - Default state file path: `/home/architect/.local/state/telegram-architect-bridge/chat_threads.json`
 - Override with env var: `TELEGRAM_BRIDGE_STATE_DIR`.
-- Shared memory database path (Telegram + CLI): `/home/architect/.local/state/telegram-architect-bridge/memory.sqlite3`
-  - override with `TELEGRAM_MEMORY_SQLITE_PATH`
-- Conversation key model:
-  - default Telegram chat key: `tg:<chat_id>`
-  - default CLI key: `shared:architect:main`
-  - optional bridge-wide Telegram override: `TELEGRAM_SHARED_MEMORY_KEY=<shared_key>`
-  - optional CLI override: `CLI_CONVERSATION_KEY=<shared_key>`
-  - CLI profile names still exist, but they only affect the key when an explicit conversation-key override is used in a way that bypasses the built-in shared default
-  - when `TELEGRAM_SHARED_MEMORY_KEY` is set, each Telegram chat writes to its own live session key under that shared namespace and reads the configured shared key as archive/background context
-  - Server3 now also runs a daily shared-archive merge at `04:10` local time via `telegram-architect-memory-archive-merge.timer`, which folds `shared:architect:main:session:*` keys back into the shared archive
-  - current post-merge live-session policy is `summarize_live_sessions`, so the merge preserves the live keys, forces summarization on them after the archive merge, and then compacts raw messages already covered by summaries
-  - the shared archive key is also compacted after merge-time summarization, so long-term raw storage does not grow forever once that history is covered by summaries
-  - `/reset` now performs an explicit live-key archive merge before clearing the chat-local key, which prevents unmerged chat memory from being lost on reset when shared memory is configured
-  - CLI can still point directly at the shared archive key, so it sees merged memory after the daily archive merge or any future explicit merge flow
-  - current Server3 Architect rollout uses `shared:architect:main`
-- Memory modes:
-  - default mode for new keys: `all_context`
-  - optional mode: `session_only`
-  - no persistent `off` mode
-- `all_context` mode prompt assembly uses:
-  - latest summary (live summary if present, otherwise shared/background summary; generated by local gemma3:4b via Ollama on thresholded finish_turn passes and forced maintenance passes)
-  - active high-confidence facts (current and shared facts merged, deduped, capped at 20)
-  - recent raw-message tail selected by a `5000` estimated-token budget, with no hard message-count cap and no per-line `220`-char clipping
-  - optional older non-overlapping unsummarized raw-message tail selected by a separate `1500` estimated-token budget
-  - current user input
-- `session_only` mode keeps session continuity and recent messages only.
-- Summarization trigger in `all_context` mode:
-  - normal turns summarize only when unsummarized backlog reaches `2500` estimated tokens
-  - Gemma summary output allowance is `600` tokens
-  - keyword fallback only activates on forced maintenance passes when Ollama is unavailable
-- Memory injection throttling: the full framework (rules + summary + facts + recent raw tail + optional unsummarized raw tail) is injected on cold start, then skipped for 150K tokens or 30 minutes for stateful engines (codex-with-thread, pi, gemma, chatgptweb). Most turns receive only the user message; the LLM carries context in its own window.
-- Retention defaults:
-  - explicit and inferred facts are retained until explicitly cleared
-  - messages are auto-pruned per conversation key after `TELEGRAM_MEMORY_MAX_MESSAGES_PER_KEY` (default `4000`)
-  - summaries are auto-pruned per conversation key after `TELEGRAM_MEMORY_MAX_SUMMARIES_PER_KEY` (default `80`)
-  - prune cadence is `TELEGRAM_MEMORY_PRUNE_INTERVAL_SECONDS` (default `300`)
-  - backup cleanup retention uses `TELEGRAM_MEMORY_BACKUP_RETENTION_DAYS` (default `14`)
-  - use `/forget`, `/forget-all`, `/reset-session`, or `/hard-reset-memory` for per-key cleanup
-- Optional persistent worker-session manager (feature-flagged):
-  - enable with `TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`
-  - default max workers: `TELEGRAM_PERSISTENT_WORKERS_MAX=4`
-  - idle expiry is now disabled; `TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS` is retained only as a legacy compatibility knob and no longer clears saved context on idle
-  - worker session state file: `/home/architect/.local/state/telegram-architect-bridge/worker_sessions.json`
-  - default policy watch set: runtime `AGENTS.md`, shared `ARCHITECT_INSTRUCTION.md`, and shared `SERVER3_ARCHIVE.md`
-  - override watched files with `TELEGRAM_POLICY_WATCH_FILES=/abs/path/a.md,/abs/path/b.md`
-  - disable policy-watch resets with `TELEGRAM_POLICY_WATCH_MODE=off`
-  - reordered or duplicated policy-watch entries are normalized before fingerprinting, so list order alone does not reset worker sessions
-- Optional canonical session-store mode:
-  - enable with `TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`
-  - default backend (JSON): `/home/architect/.local/state/telegram-architect-bridge/chat_sessions.json`
-  - optional SQLite backend:
-    - `TELEGRAM_CANONICAL_SQLITE_ENABLED=true`
-    - `TELEGRAM_CANONICAL_SQLITE_PATH=/home/architect/.local/state/telegram-architect-bridge/chat_sessions.sqlite3`
-    - on first SQLite run with an empty DB, the bridge imports in this order:
-      - canonical JSON (`chat_sessions.json`) if present
-      - otherwise legacy JSON state files (`chat_threads.json`, `worker_sessions.json`, `in_flight_requests.json`)
-    - once SQLite has rows, later startups keep SQLite as source-of-truth (no re-import overwrite)
-  - rollback mirrors:
-    - `TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED=true` mirrors legacy JSON files from canonical state
-    - `TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED=true` mirrors canonical JSON (`chat_sessions.json`) even when SQLite is enabled
-- In-flight request markers are persisted at `/home/architect/.local/state/telegram-architect-bridge/in_flight_requests.json`.
-- If the bridge restarts while a request is in progress, the chat receives a one-time startup notice to resend the interrupted request.
-- Operator restarts through `ops/telegram-bridge/restart_and_verify.sh` now wait for persisted in-flight work to clear before calling `systemctl restart`, which reduces avoidable interruption notices during normal maintenance.
-- On resume failures, the bridge preserves saved thread context by default.
-- It only auto-resets thread context when executor error output clearly indicates an invalid or missing thread.
-- With persistent workers enabled:
-  - overlapping requests are still rejected while a chat is busy
-  - stale sessions are reset on next message when watched policy files change, with user notice
-  - idle sessions are no longer auto-expired; saved context persists until explicit reset, policy-change reset, capacity eviction, or restart
 
 ## Architect CLI Parity
 
-- Managed shell launcher (`architect`) now routes normal prompt usage through shared-memory CLI:
   - script: `src/architect_cli/main.py`
   - default key: `shared:architect:main`
   - named profile example: `architect --profile work \"...\"`
-- CLI and Telegram use the same memory engine + command syntax (`/memory`, `/remember`, `/forget`, `/ask`, etc.).
 
 ## Safety Controls
 
@@ -520,63 +388,6 @@ Common checks:
 - Voice pipeline issues in `TELEGRAM_VOICE_TRANSCRIBE_CMD`
 - Voice transcribe service status/health: `python3 src/telegram_bridge/voice_transcribe_service.py ping`
 - Voice transcribe service logs: check `TELEGRAM_VOICE_WHISPER_LOG_PATH` (default `/tmp/telegram-voice-whisper.log`)
-
-Memory maintenance:
-
-```bash
-bash ops/telegram-bridge/memory_maintenance.sh
-# optional:
-# bash ops/telegram-bridge/memory_maintenance.sh --db /path/to/memory.sqlite3 --backup-retention-days 21 --skip-vacuum
-```
-
-Memory restore (run while bridge service is stopped):
-
-```bash
-bash ops/telegram-bridge/memory_restore.sh /path/to/backup.sqlite3
-# optional:
-# bash ops/telegram-bridge/memory_restore.sh /path/to/backup.sqlite3 --db /path/to/memory.sqlite3
-```
-
-Non-destructive restore drill:
-
-```bash
-bash ops/telegram-bridge/memory_restore_drill.sh
-# optional:
-# bash ops/telegram-bridge/memory_restore_drill.sh --backup /path/to/memory-backup.sqlite3 --keep-temp
-```
-
-Summary regeneration (rebuild existing `chat_summaries` with current formatter):
-
-```bash
-python3 ops/telegram-bridge/regenerate_summaries.py
-# optional:
-# python3 ops/telegram-bridge/regenerate_summaries.py --conversation-key tg:211761499
-```
-
-Scheduled memory timers:
-
-```bash
-bash ops/telegram-bridge/install_memory_timers.sh apply
-bash ops/telegram-bridge/install_memory_timers.sh status
-```
-
-Monthly restore drill timer:
-
-```bash
-sudo systemctl --no-pager --full status telegram-architect-memory-restore-drill.timer
-```
-
-Memory health check (on-demand):
-
-```bash
-bash ops/telegram-bridge/memory_health_check.sh
-```
-
-Memory alert logs:
-
-```bash
-sudo journalctl -u 'telegram-architect-memory-alert@*.service' -n 100 --no-pager
-```
 
 ## Rollback
 

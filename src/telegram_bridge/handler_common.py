@@ -7,8 +7,6 @@ try:
     from .background_tasks import start_daemon_thread
     from .conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
     from .executor import ExecutorProgressEvent
-    from .memory_engine import MemoryEngine
-    from .memory_scope import resolve_memory_conversation_key
     from .runtime_profile import assistant_label
     from .state_store import State, StateRepository
     from .structured_logging import emit_event
@@ -19,8 +17,6 @@ except ImportError:
     from background_tasks import start_daemon_thread
     from conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
     from executor import ExecutorProgressEvent
-    from memory_engine import MemoryEngine
-    from memory_scope import resolve_memory_conversation_key
     from runtime_profile import assistant_label
     from state_store import State, StateRepository
     from structured_logging import emit_event
@@ -487,17 +483,5 @@ def build_status_text(
         lines.append(f"This chat has Codex thread: {has_thread}")
         lines.append(f"This chat has worker session: {has_worker}")
         lines.append(f"This chat engine: {selected_engine or getattr(config, 'engine_plugin', 'codex')}")
-        memory_engine = state.memory_engine
-        if isinstance(memory_engine, MemoryEngine):
-            memory_channel = getattr(config, "channel_plugin", "telegram")
-            try:
-                memory_status = memory_engine.get_status(
-                    resolve_memory_conversation_key(config, memory_channel, scope_key)
-                )
-            except Exception:
-                logging.exception("Failed to query memory status for scope_key=%s", scope_key)
-            else:
-                lines.append(f"Memory messages (last 5000 tokens): {memory_status.message_count}")
-                lines.append(f"Memory session active: {memory_status.session_active}")
 
     return "\n".join(lines)

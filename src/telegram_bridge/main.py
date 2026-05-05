@@ -33,7 +33,6 @@ try:
         handle_update,
     )
     from .media import TelegramFileDownloadSpec, download_telegram_file_to_temp
-    from .memory_engine import MemoryEngine
     from .plugin_registry import build_default_plugin_registry
     from .runtime_config import (
         Config,
@@ -106,7 +105,6 @@ except ImportError:
         handle_update,
     )
     from media import TelegramFileDownloadSpec, download_telegram_file_to_temp
-    from memory_engine import MemoryEngine
     from plugin_registry import build_default_plugin_registry
     from runtime_config import (
         Config,
@@ -618,9 +616,6 @@ def run_bridge(config: Config) -> int:
         retention_seconds=config.attachment_retention_seconds,
         max_total_bytes=config.attachment_max_total_bytes,
     )
-    memory_engine = MemoryEngine(
-        config.memory_sqlite_path,
-    )
     affective_runtime = build_affective_runtime(config)
     chat_thread_path = os.path.join(config.state_dir, "chat_threads.json")
     chat_engine_path = os.path.join(config.state_dir, "chat_engines.json")
@@ -830,19 +825,6 @@ def run_bridge(config: Config) -> int:
                     "canonical_session_count": counts["canonical_sessions"],
                 },
             )
-            if getattr(config, "policy_reset_memory_on_change", False):
-                memory_reset_counts = memory_engine.hard_reset_all_memory()
-                logging.warning(
-                    "Policy fingerprint changed; hard-reset bridge memory "
-                    "(sessions=%s messages=%s).",
-                    memory_reset_counts["sessions"],
-                    memory_reset_counts["messages"],
-                )
-                emit_event(
-                    "bridge.memory_reset_for_policy_change",
-                    level=logging.WARNING,
-                    fields=memory_reset_counts,
-                )
 
     current_auth_fingerprint = compute_current_auth_fingerprint()
     auth_reset_result = apply_auth_change_thread_reset(
@@ -851,17 +833,15 @@ def run_bridge(config: Config) -> int:
         loaded_threads=loaded_threads,
         loaded_worker_sessions=loaded_worker_sessions,
         loaded_canonical_sessions=loaded_canonical_sessions,
-        memory_engine=memory_engine,
     )
     if auth_reset_result["applied"]:
         counts = auth_reset_result["counts"]
         logging.warning(
             "Auth fingerprint changed; cleared stored thread state "
-            "(threads=%s worker_sessions=%s canonical_sessions=%s memory_sessions=%s).",
+            "(threads=%s worker_sessions=%s canonical_sessions=%s).",
             counts["threads"],
             counts["worker_sessions"],
             counts["canonical_sessions"],
-            counts["memory_sessions"],
         )
         emit_event(
             "bridge.thread_state_reset_for_auth_change",
@@ -870,7 +850,6 @@ def run_bridge(config: Config) -> int:
                 "thread_count": counts["threads"],
                 "worker_session_count": counts["worker_sessions"],
                 "canonical_session_count": counts["canonical_sessions"],
-                "memory_session_count": counts["memory_sessions"],
             },
         )
 
@@ -935,7 +914,6 @@ def run_bridge(config: Config) -> int:
         canonical_json_mirror_enabled=config.canonical_json_mirror_enabled,
         chat_sessions=loaded_canonical_sessions,
         chat_sessions_path=chat_sessions_path,
-        memory_engine=memory_engine,
         affective_runtime=affective_runtime,
         attachment_store=attachment_store,
         voice_alias_learning_store=voice_alias_learning_store,
@@ -1072,7 +1050,6 @@ def run_bridge(config: Config) -> int:
         config.persistent_workers_idle_timeout_seconds,
     )
     logging.info("Loaded %s in-flight request marker(s) from %s", len(loaded_in_flight), in_flight_path)
-    logging.info("Memory SQLite path=%s", config.memory_sqlite_path)
     logging.info(
         "Affective runtime enabled=%s db_path=%s ping_target=%s",
         bool(affective_runtime),
@@ -1084,10 +1061,6 @@ def run_bridge(config: Config) -> int:
         os.path.join(config.state_dir, "attachments.sqlite3"),
         config.attachment_retention_seconds,
         config.attachment_max_total_bytes,
-    )
-    logging.info(
-        "Memory db_path=%s",
-        config.memory_sqlite_path,
     )
     logging.info(
         "Voice alias learning enabled=%s path=%s min_examples=%s confirmation_window_seconds=%s",
@@ -1128,7 +1101,6 @@ def run_bridge(config: Config) -> int:
                 else "json"
             ),
             "canonical_bootstrap_source": canonical_bootstrap_source,
-            "memory_db_path": config.memory_sqlite_path,
             "attachment_retention_seconds": config.attachment_retention_seconds,
             "attachment_max_total_bytes": config.attachment_max_total_bytes,
             "channel_plugin": config.channel_plugin,

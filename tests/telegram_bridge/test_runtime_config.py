@@ -178,5 +178,6 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(config.diary_nextcloud_app_password, "secret")
         self.assertEqual(config.diary_nextcloud_remote_root, "/Travel Diary")
 
+
 if __name__ == "__main__":
     unittest.main()

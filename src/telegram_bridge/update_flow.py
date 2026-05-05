@@ -490,39 +490,6 @@ def prepare_update_dispatch_request(
             document=flow.document,
         )
 
-    memory_engine = flow.state.memory_engine if isinstance(flow.state.memory_engine, handlers.MemoryEngine) else None
-    memory_channel = getattr(flow.client, "channel_name", "telegram")
-    if memory_engine is not None and flow.prompt_input and not flow.priority_keyword_mode:
-        cmd_result = handlers.handle_memory_command(
-            engine=memory_engine,
-            conversation_key=handlers.resolve_memory_conversation_key(
-                flow.config,
-                memory_channel,
-                flow.ctx.scope_key,
-            ),
-            text=flow.prompt_input,
-        )
-        if cmd_result.handled:
-            if cmd_result.response:
-                flow.client.send_message(
-                    flow.ctx.chat_id,
-                    cmd_result.response,
-                    reply_to_message_id=flow.ctx.message_id,
-                )
-            if cmd_result.run_prompt is None:
-                handlers.emit_event(
-                    "bridge.command_handled",
-                    fields={
-                        "chat_id": flow.ctx.chat_id,
-                        "message_id": flow.ctx.message_id,
-                        "command": flow.command or "",
-                    },
-                )
-                return None
-            flow.prompt_input = cmd_result.run_prompt
-            flow.stateless = cmd_result.stateless
-            flow.command = None
-
     if handlers.handle_known_command(
         flow.state,
         flow.config,
@@ -543,28 +510,6 @@ def prepare_update_dispatch_request(
             },
         )
         return None
-
-    if memory_engine is not None and flow.prompt_input and not flow.priority_keyword_mode and not flow.stateless:
-        recall_response = handlers.handle_natural_language_memory_query(
-            memory_engine,
-            handlers.resolve_memory_conversation_key(flow.config, memory_channel, flow.ctx.scope_key),
-            flow.prompt_input,
-        )
-        if recall_response:
-            flow.client.send_message(
-                flow.ctx.chat_id,
-                recall_response,
-                reply_to_message_id=flow.ctx.message_id,
-            )
-            handlers.emit_event(
-                "bridge.command_handled",
-                fields={
-                    "chat_id": flow.ctx.chat_id,
-                    "message_id": flow.ctx.message_id,
-                    "command": "natural_language_memory_recall",
-                },
-            )
-            return None
 
     prompt = (flow.prompt_input or "").strip()
     raw_prompt = prompt

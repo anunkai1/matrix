@@ -238,17 +238,12 @@ def make_config(**overrides):
         "canonical_sqlite_enabled": False,
         "canonical_sqlite_path": "/tmp/chat_sessions.sqlite3",
         "canonical_json_mirror_enabled": False,
-        "memory_sqlite_path": "/tmp/memory.sqlite3",
-        "memory_max_messages_per_key": 4000,
-        "memory_max_summaries_per_key": 80,
-        "memory_prune_interval_seconds": 300,
         "required_prefixes": [],
         "required_prefix_ignore_case": True,
         "require_prefix_in_private": True,
         "allow_private_chats_unlisted": False,
         "allow_group_chats_unlisted": False,
         "assistant_name": "Architect",
-        "shared_memory_key": "",
         "channel_plugin": "telegram",
         "engine_plugin": "codex",
         "selectable_engine_plugins": ["codex", "gemma", "pi"],
@@ -4711,6 +4706,47 @@ class BridgeCoreTests(unittest.TestCase):
             bridge.handle_update(state, config, client, update)
             self.assertTrue(client.messages)
             self.assertIn("Memory status:", client.messages[-1][1])
+
+    @mock.patch.object(bridge_handlers, "start_message_worker")
+    def test_handle_update_routes_ask_without_memory_engine(self, start_message_worker):
+        state = bridge.State(memory_engine=None)
+        client = FakeTelegramClient()
+        config = make_config()
+        update = {
+            "update_id": 47,
+            "message": {
+                "message_id": 454,
+                "chat": {"id": 1},
+                "text": "/ask be stateless",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(start_message_worker.called)
+        started_request = start_message_worker.call_args.kwargs
+        self.assertTrue(started_request["stateless"])
+        self.assertIn("Current User Message:\nbe stateless", started_request["prompt"])
+
+    def test_status_reports_disabled_memory(self):
+        state = bridge.State(memory_engine=None)
+        client = FakeTelegramClient()
+        config = make_config(memory_enabled=False)
+        update = {
+            "update_id": 48,
+            "message": {
+                "message_id": 455,
+                "chat": {"id": 1},
+                "text": "/status",
+            },
+        }
+
+        bridge.handle_update(state, config, client, update)
+
+        self.assertTrue(client.messages)
+        status_text = client.messages[-1][1]
+        self.assertIn("SQLite memory: disabled", status_text)
+        self.assertIn("Memory messages (last 5000 tokens): disabled", status_text)
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
     def test_handle_update_routes_natural_language_memory_recall(self, start_message_worker):

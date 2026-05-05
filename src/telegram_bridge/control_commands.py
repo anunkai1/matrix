@@ -4,8 +4,6 @@ from typing import Optional
 try:
     from .channel_adapter import ChannelAdapter
     from .engine_adapter import PiEngineAdapter
-    from .memory_engine import MemoryEngine
-    from .memory_scope import resolve_memory_conversation_key
     from .session_manager import request_safe_restart, trigger_restart_async
     from .state_store import State, StateRepository
     from .structured_logging import emit_event
@@ -14,8 +12,6 @@ try:
 except ImportError:
     from channel_adapter import ChannelAdapter
     from engine_adapter import PiEngineAdapter
-    from memory_engine import MemoryEngine
-    from memory_scope import resolve_memory_conversation_key
     from session_manager import request_safe_restart, trigger_restart_async
     from state_store import State, StateRepository
     from structured_logging import emit_event
@@ -44,16 +40,10 @@ def handle_reset_command(
     state_repo = StateRepository(state)
     removed_thread = state_repo.clear_thread_id(scope_key)
     removed_worker = state_repo.clear_worker_session(scope_key) if config.persistent_workers_enabled else False
-    memory_engine = state.memory_engine if isinstance(state.memory_engine, MemoryEngine) else None
-    if memory_engine is not None:
-        memory_channel = getattr(client, "channel_name", "telegram")
-        conversation_key = resolve_memory_conversation_key(config, memory_channel, scope_key)
-        try:
-            memory_engine.clear_session(conversation_key)
-            prompt_execution.clear_memory_injection_state(scope_key)
-            PiEngineAdapter.clear_scope_session_files(config, scope_key)
-        except Exception:
-            logging.exception("Failed to clear memory session for scope=%s", scope_key)
+    try:
+        PiEngineAdapter.clear_scope_session_files(config, scope_key)
+    except Exception:
+        logging.exception("Failed to clear Pi session files for scope=%s", scope_key)
     if removed_thread or removed_worker:
         client.send_message(
             chat_id,
