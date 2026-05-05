@@ -1,5 +1,5 @@
 window.SERVER3_CONTROL_PLANE_DATA = {
-  "generatedAt": "2026-04-30T20:53:51.331633+10:00",
+  "generatedAt": "2026-05-06T07:00:49.009548+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
@@ -9,10 +9,10 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     "approvalCopy": "explicit human gates from live Server3 state",
     "jobValue": "12 tracked",
     "jobCopy": "timers, approvals, and operator playback in one surface",
-    "hostValue": "load 0.89 / ram 11%",
+    "hostValue": "load 3.53 / ram 12%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "30 Apr 2026 20:53 AEST",
+      "06 May 2026 07:00 AEST",
       "snapshot file server3-control-plane-data.js",
       "0 approval item(s)"
     ],
@@ -86,39 +86,31 @@ window.SERVER3_CONTROL_PLANE_DATA = {
   },
   "activity": [
     {
-      "time": "20:53:32",
-      "title": "Oracle recent service activity",
-      "channel": "signal runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "2026-04-30 20:53:32,185 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
-    },
-    {
-      "time": "20:17:35",
-      "title": "Mavali ETH recent service activity",
-      "channel": "venue operations runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "bridge.request_processing_finished"
-    },
-    {
-      "time": "13:15:34",
-      "title": "Diary recent service activity",
-      "channel": "capture runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "bridge.diary_batch_finished"
-    },
-    {
-      "time": "09:21:28",
+      "time": "07:02:40",
       "title": "Tank recent service activity",
       "channel": "telegram sibling",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "bridge.telegram_api_retry_succeeded | getUpdates"
+      "copy": "telegram-tank-bridge.service: Failed with result 'exit-code'."
     },
     {
-      "time": "17:55:06",
+      "time": "07:02:40",
+      "title": "Diary recent service activity",
+      "channel": "capture runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "telegram-diary-bridge.service: Failed with result 'exit-code'."
+    },
+    {
+      "time": "07:02:30",
+      "title": "Oracle recent service activity",
+      "channel": "signal runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "2026-05-06 07:02:30,414 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
+    },
+    {
+      "time": "07:01:54",
       "title": "Browser Brain recent service activity",
       "channel": "browser control surface",
       "statusClass": "busy",
@@ -126,12 +118,20 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "copy": "no live browser target | no explicit auth cue"
     },
     {
-      "time": "15:30:56",
-      "title": "Govorun recent service activity",
-      "channel": "whatsapp runtime",
+      "time": "07:01:24",
+      "title": "Architect recent service activity",
+      "channel": "telegram primary",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
+      "copy": "bridge.started"
+    },
+    {
+      "time": "20:22:26",
+      "title": "Mavali ETH recent service activity",
+      "channel": "venue operations runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.telegram_api_retry_succeeded | getUpdates"
     }
   ],
   "playback": {
@@ -231,26 +231,26 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     {
       "title": "Observer summary",
       "tagClass": "busy",
-      "tagText": "01 May 08:05",
-      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 30 Apr 08:05."
+      "tagText": "06 May 08:05",
+      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 05 May 08:05."
     },
     {
       "title": "Routing drift check",
       "tagClass": "busy",
-      "tagText": "01 May 06:15",
-      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 30 Apr 06:15."
+      "tagText": "07 May 06:15",
+      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 06 May 06:15."
     },
     {
       "title": "State backup",
       "tagClass": "busy",
-      "tagText": "01 May 05:00",
-      "body": "server3-state-backup.timer is active(waiting). Last trigger: 01 Apr 05:00."
+      "tagText": "01 Jun 05:00",
+      "body": "server3-state-backup.timer is active(waiting). Last trigger: 01 May 05:00."
     },
     {
       "title": "Receipt monitor",
       "tagClass": "busy",
       "tagText": "not scheduled",
-      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 30 Apr 20:31."
+      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 06 May 06:41."
     }
   ],
   "floor": [
@@ -258,24 +258,24 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "title": "Internal disk",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "11% used",
-      "body": "/ | 403 GiB free of 480 GiB",
+      "value": "14% used",
+      "body": "/ | 390 GiB free of 480 GiB",
       "statusLine": "system root filesystem"
     },
     {
       "title": "External disk",
       "stateClass": "warn",
       "stateText": "watch",
-      "value": "40% used",
-      "body": "/srv/external/server3-arr | 1005 GiB free of 1833 GiB",
+      "value": "42% used",
+      "body": "/srv/external/server3-arr | 968 GiB free of 1833 GiB",
       "statusLine": "backup disk: 7% used"
     },
     {
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 0.89 / ram 11%",
-      "body": "primary route nordlynx / 10.5.0.2",
+      "value": "load 3.53 / ram 12%",
+      "body": "primary route eno2 / 192.168.0.148",
       "statusLine": "host: server3"
     },
     {
@@ -283,7 +283,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "stateClass": "busy",
       "stateText": "live",
       "value": "/data/downloads",
-      "body": "11% used | 403 GiB free of 480 GiB",
+      "body": "14% used | 390 GiB free of 480 GiB",
       "statusLine": "canonical media namespace is /data/downloads and /data/media/..."
     },
     {
@@ -292,7 +292,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "stateText": "queued",
       "value": "Observer summary, Routing drift check, State backup",
       "body": "Visible timers stay on the floor so continuity work is never hidden behind another tool.",
-      "statusLine": "next: 01 May 08:05"
+      "statusLine": "next: 06 May 08:05"
     }
   ],
   "runtimes": [
@@ -330,7 +330,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-architect-bridge.service",
-          "value": "--:--:-- no recent log line"
+          "value": "07:01:24 bridge.started"
         }
       ],
       "watchouts": [
@@ -414,7 +414,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-tank-bridge.service",
-          "value": "09:21:28 bridge.telegram_api_retry_succeeded | getUpdates"
+          "value": "07:02:10 File \"/home/tank/tankbot/src/telegram_bridge/main.py\", line 12, in <module>"
         }
       ],
       "watchouts": [
@@ -485,7 +485,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-diary-bridge.service",
-          "value": "13:15:34 bridge.diary_batch_finished"
+          "value": "07:02:17 File \"/home/diary/diarybot/src/telegram_bridge/main.py\", line 12, in <module>"
         }
       ],
       "watchouts": [
@@ -556,11 +556,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "whatsapp-govorun-bridge.service",
-          "value": "15:30:56 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
+          "value": "05:06:07 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
         },
         {
           "label": "govorun-whatsapp-bridge.service",
-          "value": "12:38:21 bridge.request_processing_finished"
+          "value": "14:46:13 bridge.request_phase_timing"
         }
       ],
       "watchouts": [
@@ -632,11 +632,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "20:53:32 2026-04-30 20:53:32,185 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
+          "value": "07:02:10 2026-05-06 07:02:10,245 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
         },
         {
           "label": "oracle-signal-bridge.service",
-          "value": "15:31:58 bridge.started"
+          "value": "05:07:56 bridge.started"
         }
       ],
       "watchouts": [
@@ -708,7 +708,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-mavali-eth-bridge.service",
-          "value": "20:17:35 bridge.request_processing_finished"
+          "value": "20:22:26 bridge.telegram_api_retry_succeeded | getUpdates"
         },
         {
           "label": "mavali-eth-receipt-monitor.timer",
@@ -779,16 +779,16 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       ],
       "recentJobs": [
         {
-          "label": "17:55:06 snapshot",
-          "value": "22 elements | snap-e999074c"
+          "label": "08:14:18 snapshot",
+          "value": "136 elements | snap-1006472c"
         },
         {
-          "label": "17:55:06 tabs.focus",
+          "label": "08:14:15 wait",
+          "value": "Feb 1"
+        },
+        {
+          "label": "08:14:13 act.press",
           "value": "browser event"
-        },
-        {
-          "label": "17:54:34 snapshot",
-          "value": "22 elements | snap-963b3315"
         }
       ],
       "watchouts": [
@@ -832,7 +832,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         "state": [
           {
             "label": "connection",
-            "value": "managed / running"
+            "value": "unknown / stopped"
           },
           {
             "label": "auth posture",
@@ -861,20 +861,20 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         ],
         "activity": [
           {
-            "label": "17:55:06 snapshot",
-            "value": "22 elements | snap-e999074c"
+            "label": "08:14:18 snapshot",
+            "value": "136 elements | snap-1006472c"
           },
           {
-            "label": "17:55:06 tabs.focus",
+            "label": "08:14:15 wait",
+            "value": "Feb 1"
+          },
+          {
+            "label": "08:14:13 act.press",
             "value": "browser event"
           },
           {
-            "label": "17:54:34 snapshot",
-            "value": "22 elements | snap-963b3315"
-          },
-          {
-            "label": "17:54:29 snapshot",
-            "value": "snap-bf0eb101"
+            "label": "08:14:10 snapshot",
+            "value": "132 elements | snap-d19a708e"
           }
         ],
         "summary": {
@@ -883,7 +883,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
           "auth_posture": "no explicit auth cue",
           "manual_takeover": "tv helper not visible",
           "capture_dir": "/var/lib/server3-browser-brain/captures",
-          "started_at": "2026-04-28T07:53:34.308306+00:00"
+          "started_at": ""
         }
       }
     }

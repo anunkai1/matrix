@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
@@ -14,25 +13,15 @@ if str(TELEGRAM_BRIDGE_DIR) not in sys.path:
     sys.path.insert(0, str(TELEGRAM_BRIDGE_DIR))
 
 from executor import parse_executor_output  # type: ignore
-from memory_engine import (  # type: ignore
-    MemoryEngine,
-    build_memory_help_lines,
-    handle_memory_command,
-    handle_natural_language_memory_query,
-)
 
 
-DEFAULT_STATE_DIR = "/home/architect/.local/state/telegram-architect-bridge"
 DEFAULT_LAUNCHER_NAME = os.getenv("CLI_LAUNCHER_NAME", "architect").strip() or "architect"
 DEFAULT_ASSISTANT_NAME = os.getenv("CLI_ASSISTANT_NAME", "Architect").strip() or "Architect"
-DEFAULT_MEMORY_NAMESPACE = os.getenv("CLI_MEMORY_NAMESPACE", "architect").strip() or "architect"
-DEFAULT_CONVERSATION_KEY = os.getenv("CLI_CONVERSATION_KEY", "shared:architect:main").strip()
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="CLI with shared memory")
-    parser.add_argument("prompt", nargs="*", help="Prompt text or memory command")
-    parser.add_argument("--profile", default="default", help="CLI memory profile name")
+    parser = argparse.ArgumentParser(description="Codex CLI wrapper")
+    parser.add_argument("prompt", nargs="*", help="Prompt text")
     parser.add_argument(
         "--launcher-name",
         default=DEFAULT_LAUNCHER_NAME,
@@ -42,26 +31,6 @@ def parse_args() -> argparse.Namespace:
         "--assistant-name",
         default=DEFAULT_ASSISTANT_NAME,
         help="Assistant name used in fallback output text",
-    )
-    parser.add_argument(
-        "--memory-namespace",
-        default=DEFAULT_MEMORY_NAMESPACE,
-        help="CLI memory namespace (default: architect)",
-    )
-    parser.add_argument(
-        "--conversation-key",
-        default=DEFAULT_CONVERSATION_KEY,
-        help="Explicit shared memory conversation key override (for example tg:123456789)",
-    )
-    parser.add_argument(
-        "--state-dir",
-        default=os.getenv("TELEGRAM_BRIDGE_STATE_DIR", DEFAULT_STATE_DIR),
-        help="Base state directory used for shared SQLite memory",
-    )
-    parser.add_argument(
-        "--memory-db",
-        default=os.getenv("TELEGRAM_MEMORY_SQLITE_PATH", ""),
-        help="Shared memory SQLite path (default: <state-dir>/memory.sqlite3)",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -85,39 +54,14 @@ def resolve_input(args: argparse.Namespace) -> str:
     return ""
 
 
-def build_memory_db_path(args: argparse.Namespace) -> str:
-    if args.memory_db.strip():
-        return args.memory_db.strip()
-    return str(Path(args.state_dir).expanduser() / "memory.sqlite3")
-
-
-def build_conversation_key(args: argparse.Namespace) -> str:
-    if args.conversation_key.strip():
-        return args.conversation_key.strip()
-    if DEFAULT_CONVERSATION_KEY:
-        return DEFAULT_CONVERSATION_KEY
-    return MemoryEngine.cli_key(args.profile, namespace=args.memory_namespace)
-
-
-def run_codex(codex_bin: str, prompt: str, thread_id: Optional[str], timeout_seconds: int) -> subprocess.CompletedProcess[str]:
-    if thread_id:
-        cmd = [
-            codex_bin,
-            "exec",
-            "resume",
-            "--dangerously-bypass-approvals-and-sandbox",
-            "--json",
-            thread_id,
-            "-",
-        ]
-    else:
-        cmd = [
-            codex_bin,
-            "exec",
-            "--dangerously-bypass-approvals-and-sandbox",
-            "--json",
-            "-",
-        ]
+def run_codex(codex_bin: str, prompt: str, timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+    cmd = [
+        codex_bin,
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--json",
+        "-",
+    ]
     return subprocess.run(
         cmd,
         input=prompt + ("\n" if not prompt.endswith("\n") else ""),
@@ -129,14 +73,9 @@ def run_codex(codex_bin: str, prompt: str, thread_id: Optional[str], timeout_sec
 
 
 def print_cli_help(launcher_name: str, assistant_name: str) -> None:
-    print(f"{assistant_name} CLI memory mode")
+    print(f"{assistant_name} CLI")
     print(f"Usage: {launcher_name} <prompt>")
-    print(f"Usage: {launcher_name} --profile work <prompt>")
-    print(f"Usage: {launcher_name} /memory status")
-    print(f"Usage: {launcher_name} /ask <prompt>")
-    print("")
-    for line in build_memory_help_lines():
-        print(line)
+    print(f"Usage: {launcher_name} < input.txt")
 
 
 def main() -> int:
@@ -150,46 +89,8 @@ def main() -> int:
         print_cli_help(args.launcher_name, args.assistant_name)
         return 0
 
-    memory_db = build_memory_db_path(args)
-    engine = MemoryEngine(memory_db)
-    conversation_key = build_conversation_key(args)
-
-    cmd_result = handle_memory_command(engine, conversation_key, raw_input)
-    if cmd_result.handled:
-        if cmd_result.response:
-            print(cmd_result.response)
-        if cmd_result.run_prompt is None:
-            return 0
-        prompt_text = cmd_result.run_prompt
-        stateless = cmd_result.stateless
-    else:
-        prompt_text = raw_input
-        stateless = False
-
-    if not stateless:
-        recall_response = handle_natural_language_memory_query(
-            engine,
-            conversation_key,
-            prompt_text,
-        )
-        if recall_response:
-            print(recall_response)
-            return 0
-
     try:
-        turn = engine.begin_turn(
-            conversation_key=conversation_key,
-            channel="cli",
-            sender_name="CLI User",
-            user_input=prompt_text,
-            stateless=stateless,
-        )
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-
-    try:
-        result = run_codex(args.codex_bin, turn.prompt_text, turn.thread_id, args.timeout_seconds)
+        result = run_codex(args.codex_bin, raw_input, args.timeout_seconds)
     except subprocess.TimeoutExpired:
         print("Request timed out.", file=sys.stderr)
         return 124
@@ -206,21 +107,10 @@ def main() -> int:
             print(f"Executor failed with exit code {result.returncode}", file=sys.stderr)
         return result.returncode
 
-    new_thread_id, output = parse_executor_output(result.stdout or "")
+    _new_thread_id, output = parse_executor_output(result.stdout or "")
     if not output:
         output = f"(No output from {args.assistant_name})"
     print(output)
-
-    try:
-        engine.finish_turn(
-            turn,
-            channel="cli",
-            assistant_text=output,
-            new_thread_id=new_thread_id,
-        )
-    except Exception:
-        # Keep response success even if memory write fails.
-        return 0
 
     return 0
 

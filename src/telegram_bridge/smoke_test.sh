@@ -9,7 +9,6 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
   "${REPO_ROOT}/src/telegram_bridge/main.py" \
   "${REPO_ROOT}/src/telegram_bridge/executor.py" \
   "${REPO_ROOT}/src/telegram_bridge/handlers.py" \
-  "${REPO_ROOT}/src/telegram_bridge/memory_engine.py" \
   "${REPO_ROOT}/src/telegram_bridge/media.py" \
   "${REPO_ROOT}/src/telegram_bridge/session_manager.py" \
   "${REPO_ROOT}/src/telegram_bridge/state_store.py" \

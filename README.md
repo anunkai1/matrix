@@ -8,14 +8,13 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Runtime mode: Telegram long polling + local `codex exec` executor
 - Additional active runtimes: `telegram-agentsmith-bridge.service`, `telegram-diary-bridge.service`, `telegram-tank-bridge.service`, `telegram-trinity-bridge.service`, `telegram-mavali-eth-bridge.service`, `telegram-macrorayd-bridge.service`, `whatsapp-govorun-bridge.service` + `govorun-whatsapp-bridge.service`, `signal-oracle-bridge.service` + `oracle-signal-bridge.service`
 - Input modes: text, photo (image + optional caption), voice snippets (transcribed to text and echoed back), and generic files/documents for analysis
-- Context behavior: shared SQLite memory engine (Telegram + CLI) with per-conversation-key isolation and default `all_context` memory mode
+- Context behavior: engine-native session continuity (`~/.pi/agent/telegram-sessions/` for Pi and `~/.codex/sessions/` for Codex exec sessions)
 - Optional persistent worker-session manager via env flag (`TELEGRAM_PERSISTENT_WORKERS_ENABLED=true`)
   - default policy watch set: runtime `AGENTS.md`, shared `ARCHITECT_INSTRUCTION.md`, and `SERVER3_ARCHIVE.md`
   - override with `TELEGRAM_POLICY_WATCH_FILES`, or disable with `TELEGRAM_POLICY_WATCH_MODE=off`
   - reordered or duplicated watch-file entries are normalized, so they do not trigger unnecessary worker/session resets
 - Optional canonical session-store mode via env flag (`TELEGRAM_CANONICAL_SESSIONS_ENABLED=true`), with optional SQLite backend (`TELEGRAM_CANONICAL_SQLITE_ENABLED=true`) and optional rollback mirrors (`TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED=true`, `TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED=true`)
-- Memory commands: `/memory ...`, `/remember`, `/forget`, `/forget-all`, `/reset-session`, `/hard-reset-memory`, `/ask` (stateless one-turn)
-- Retention default: memory rows persist until per-key reset/forget commands are used
+- Reset behavior: `/reset` clears the bridge thread id plus Pi session files for the current chat/topic
 - Built-in safe `/restart` command (queues restart until active work completes)
 - Restart interruption notice: if bridge restarts mid-request, affected chats get a resend prompt on startup
 - Help alias: `/h` (same as `/help`)
@@ -39,11 +38,11 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 ## Repository Structure
 
 - `src/` runtime code
-  - Shared bridge core: `src/telegram_bridge/` for bootstrap, routing, channel adapters, engine adapters, memory/session/state persistence, attachments/media, structured logging, and voice helpers
-  - Shared-memory CLI wrapper: `src/architect_cli/main.py`
+  - Shared bridge core: `src/telegram_bridge/` for bootstrap, routing, channel adapters, engine adapters, session/state persistence, attachments/media, structured logging, and voice helpers
+  - Codex CLI wrapper: `src/architect_cli/main.py`
   - Browser Brain service: `src/browser_brain/`
   - Mavali ETH runtime and wallet/protocol engine: `src/mavali_eth/`
-  - Mavali ETH shared-memory CLI wrapper: `src/mavali_eth_cli/`
+  - Mavali ETH CLI package: `src/mavali_eth_cli/`
   - SignalTube lab modules: `src/signaltube/`
   - Kids World prototype: `src/kids_world/`
   - Web3 substrate helpers: `src/web3_substrate/`
