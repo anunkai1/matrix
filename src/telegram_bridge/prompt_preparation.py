@@ -2,13 +2,8 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-try:
-    from . import attachment_processing
-    from .handler_models import PreparedPromptInput, PromptRequest
-except ImportError:
-    import attachment_processing
-    from handler_models import PreparedPromptInput, PromptRequest
-
+from telegram_bridge import attachment_processing
+from telegram_bridge.handler_models import PreparedPromptInput, PromptRequest
 
 def prepare_prompt_input_request(
     request: PromptRequest,
@@ -309,7 +304,6 @@ def prepare_prompt_input_request(
         cleanup_paths=cleanup_paths,
         attachment_file_ids=attachment_file_ids,
     )
-
 
 def prewarm_attachment_archive_for_message(
     state,

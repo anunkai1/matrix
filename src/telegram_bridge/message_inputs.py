@@ -2,15 +2,9 @@ import re
 import time
 from typing import Dict, List, Optional
 
-try:
-    from .conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
-    from .handler_models import DocumentPayload
-    from .state_store import RecentPhotoSelection, State
-except ImportError:
-    from conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
-    from handler_models import DocumentPayload
-    from state_store import RecentPhotoSelection, State
-
+from telegram_bridge.conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
+from telegram_bridge.handler_models import DocumentPayload
+from telegram_bridge.state_store import RecentPhotoSelection, State
 
 def pick_largest_photo_file_id(photo_items: List[object]) -> Optional[str]:
     best_file_id: Optional[str] = None
@@ -27,7 +21,6 @@ def pick_largest_photo_file_id(photo_items: List[object]) -> Optional[str]:
             best_size = size_score
             best_file_id = file_id.strip()
     return best_file_id
-
 
 def extract_discrete_photo_file_ids(photo_items: List[object]) -> List[str]:
     has_transport_descriptors = any(
@@ -52,12 +45,10 @@ def extract_discrete_photo_file_ids(photo_items: List[object]) -> List[str]:
         photo_file_ids.append(normalized)
     return photo_file_ids
 
-
 def normalize_optional_text(value: object) -> Optional[str]:
     if not isinstance(value, str):
         return None
     return value.strip()
-
 
 def iter_media_group_messages(message: Dict[str, object]) -> List[Dict[str, object]]:
     grouped = message.get("media_group_messages")
@@ -66,7 +57,6 @@ def iter_media_group_messages(message: Dict[str, object]) -> List[Dict[str, obje
         if messages:
             return messages
     return [message]
-
 
 def collapse_media_group_updates(updates: List[Dict[str, object]]) -> List[Dict[str, object]]:
     collapsed: List[Dict[str, object]] = []
@@ -129,7 +119,6 @@ def collapse_media_group_updates(updates: List[Dict[str, object]]) -> List[Dict[
 
     return collapsed
 
-
 def build_reply_context_prompt(message: Dict[str, object]) -> str:
     reply_to = message.get("reply_to_message")
     if not isinstance(reply_to, dict):
@@ -158,7 +147,6 @@ def build_reply_context_prompt(message: Dict[str, object]) -> str:
 
     return "Reply Context:\n" + sender_line + "\n\n".join(body_parts)
 
-
 TELEGRAM_CONTEXT_TARGET_HINT_RE = re.compile(
     r"(?i)\b("
     r"message[_ ]id|reply[_ ]to[_ ]message[_ ]id|"
@@ -166,7 +154,6 @@ TELEGRAM_CONTEXT_TARGET_HINT_RE = re.compile(
     r"to this chat message|reply to this chat"
     r")\b"
 )
-
 
 def should_include_telegram_context_prompt(
     prompt_input: Optional[str],
@@ -181,7 +168,6 @@ def should_include_telegram_context_prompt(
     if (channel_name or "telegram").strip().lower() == "telegram":
         return True
     return TELEGRAM_CONTEXT_TARGET_HINT_RE.search(prompt_text) is not None
-
 
 def build_telegram_context_prompt(
     chat_id: int,
@@ -219,7 +205,6 @@ def build_telegram_context_prompt(
     )
     return "\n".join(lines)
 
-
 def select_media_prompt(text: Optional[str], caption: Optional[str], default_prompt: str) -> str:
     text_value = text or ""
     caption_value = caption or ""
@@ -230,7 +215,6 @@ def select_media_prompt(text: Optional[str], caption: Optional[str], default_pro
     if text_value:
         return text_value
     return default_prompt
-
 
 def extract_document_payload(message: Dict[str, object]) -> Optional[DocumentPayload]:
     document = message.get("document")
@@ -248,7 +232,6 @@ def extract_document_payload(message: Dict[str, object]) -> Optional[DocumentPay
         file_name=file_name.strip() if isinstance(file_name, str) and file_name.strip() else "unnamed",
         mime_type=mime_type.strip() if isinstance(mime_type, str) and mime_type.strip() else "unknown",
     )
-
 
 def extract_message_media_payload(
     message: Dict[str, object],
@@ -270,7 +253,6 @@ def extract_message_media_payload(
 
     return None, None, None
 
-
 def extract_message_photo_file_ids(message: Dict[str, object]) -> List[str]:
     photo_file_ids: List[str] = []
     for candidate in iter_media_group_messages(message):
@@ -289,9 +271,7 @@ def extract_message_photo_file_ids(message: Dict[str, object]) -> List[str]:
         photo_file_ids.append(file_id)
     return photo_file_ids
 
-
 RECENT_SCOPE_PHOTO_TTL_SECONDS = 600
-
 
 def remember_recent_scope_photos(
     state: State,
@@ -325,7 +305,6 @@ def remember_recent_scope_photos(
         for candidate in expired_scope_keys:
             state.recent_scope_photos.pop(candidate, None)
 
-
 def get_recent_scope_photos(state: State, scope_key: str) -> List[str]:
     now = time.time()
     scope_candidates = [scope_key]
@@ -348,7 +327,6 @@ def get_recent_scope_photos(state: State, scope_key: str) -> List[str]:
             return list(selection.photo_file_ids)
     return []
 
-
 def describe_message_media(message: Dict[str, object]) -> str:
     photo_file_ids = extract_message_photo_file_ids(message)
     _, voice_file_id, document = extract_message_media_payload(message)
@@ -363,7 +341,6 @@ def describe_message_media(message: Dict[str, object]) -> str:
             return f"В исходном сообщении был файл: {document.file_name}."
         return "В исходном сообщении был файл."
     return ""
-
 
 def extract_prompt_and_media(
     message: Dict[str, object],
@@ -411,7 +388,6 @@ def extract_prompt_and_media(
         return text, [], None, None
 
     return None, [], None, None
-
 
 def extract_sender_name(message: Dict[str, object]) -> str:
     sender = message.get("from")

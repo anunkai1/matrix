@@ -10,17 +10,13 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
-try:
-    from .structured_logging import emit_event
-except ImportError:
-    from structured_logging import emit_event
+from telegram_bridge.structured_logging import emit_event
 
 TELEGRAM_LIMIT = 4096
 TELEGRAM_CAPTION_LIMIT = 1024
 TELEGRAM_API_DEFAULT_MAX_ATTEMPTS = 3
 TELEGRAM_API_MAX_BACKOFF_SECONDS = 10.0
 TELEGRAM_TRANSIENT_ERROR_CODES = {429, 500, 502, 503, 504}
-
 
 class TelegramApiError(RuntimeError):
     def __init__(
@@ -36,7 +32,6 @@ class TelegramApiError(RuntimeError):
         self.retry_after_seconds = retry_after_seconds
         code_text = f"{error_code} " if error_code is not None else ""
         super().__init__(f"Telegram API {method} failed: {code_text}{description}")
-
 
 def split_for_limit(text: str, limit: int) -> List[str]:
     if not text:
@@ -54,7 +49,6 @@ def split_for_limit(text: str, limit: int) -> List[str]:
         remaining = remaining[split_at:].lstrip("\n")
     return chunks
 
-
 def to_telegram_chunks(text: str) -> List[str]:
     stripped = text.strip()
     if not stripped:
@@ -70,7 +64,6 @@ def to_telegram_chunks(text: str) -> List[str]:
     for index, chunk in enumerate(base_chunks, start=1):
         output.append(f"[{index}/{total}]\n{chunk}")
     return output
-
 
 class TelegramClient:
     def __init__(self, config) -> None:

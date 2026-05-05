@@ -1,8 +1,4 @@
-try:
-    from .http_channel import HttpBridgeChannelAdapter
-except ImportError:
-    from http_channel import HttpBridgeChannelAdapter
-
+from telegram_bridge.http_channel import HttpBridgeChannelAdapter
 
 class SignalChannelAdapter(HttpBridgeChannelAdapter):
     channel_name = "signal"

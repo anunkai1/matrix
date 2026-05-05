@@ -9,6 +9,7 @@ User=tank
 Group=tank
 WorkingDirectory=/home/tank/tankbot
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/tank/tankbot/src
 Environment=UNIT_NAME=telegram-tank-bridge.service
 Environment=TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot
 Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix

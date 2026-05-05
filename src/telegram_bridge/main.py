@@ -9,160 +9,84 @@ import time
 from typing import Dict, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
 
-try:
-    from .affective_runtime import build_affective_runtime
-    from .auth_state import (
-        apply_auth_change_thread_reset,
-        build_auth_fingerprint_state_path,
-        clear_loaded_thread_state,
-        compute_current_auth_fingerprint,
-    )
-    from .attachment_store import AttachmentStore
-    from .channel_adapter import ChannelAdapter
-    from .conversation_scope import parse_telegram_scope_key
-    from .executor import (
-        ExecutorProgressEvent,
-        extract_executor_progress_event,
-        parse_executor_output,
-    )
-    from .engine_adapter import EngineAdapter
-    from .handlers import (
-        DocumentPayload,
-        collapse_media_group_updates,
-        extract_prompt_and_media,
-        handle_update,
-    )
-    from .media import TelegramFileDownloadSpec, download_telegram_file_to_temp
-    from .plugin_registry import build_default_plugin_registry
-    from .runtime_config import (
-        Config,
-        default_voice_alias_replacements,
-        load_config,
-        parse_plugin_name_env,
-    )
-    from .session_manager import (
-        clear_busy,
-        compute_policy_fingerprint,
-        ensure_chat_worker_session,
-        expire_idle_worker_sessions,
-        finish_restart_attempt,
-        pop_ready_restart_request,
-        request_safe_restart,
-    )
-    from .state_store import (
-        CanonicalSession,
-        PendingMediaGroup,
-        State,
-        StateRepository,
-        WorkerSession,
-        canonical_session_is_empty,
-        build_canonical_sessions_from_legacy,
-        build_legacy_from_canonical,
-        ensure_state_dir,
-        load_canonical_sessions,
-        load_canonical_sessions_sqlite,
-        load_chat_codex_models,
-        load_chat_codex_efforts,
-        load_chat_engines,
-        load_chat_pi_models,
-        load_chat_pi_providers,
-        load_chat_threads,
-        load_in_flight_requests,
-        load_or_import_canonical_sessions_sqlite,
-        load_worker_sessions,
-        mirror_legacy_from_canonical,
-        persist_chat_threads,
-        persist_canonical_sessions,
-        persist_worker_sessions,
-        quarantine_corrupt_state_file,
-        sync_all_canonical_sessions,
-    )
-    from .stream_buffer import BoundedTextBuffer
-    from .structured_logging import configure_bridge_logging, emit_event
-    from .transport import TELEGRAM_LIMIT, TelegramClient, to_telegram_chunks
-    from .voice_alias_learning import VoiceAliasLearningStore
-except ImportError:
-    from affective_runtime import build_affective_runtime
-    from auth_state import (
-        apply_auth_change_thread_reset,
-        build_auth_fingerprint_state_path,
-        clear_loaded_thread_state,
-        compute_current_auth_fingerprint,
-    )
-    from attachment_store import AttachmentStore
-    from channel_adapter import ChannelAdapter
-    from conversation_scope import parse_telegram_scope_key
-    from executor import (
-        ExecutorProgressEvent,
-        extract_executor_progress_event,
-        parse_executor_output,
-    )
-    from engine_adapter import EngineAdapter
-    from handlers import (
-        DocumentPayload,
-        collapse_media_group_updates,
-        extract_prompt_and_media,
-        handle_update,
-    )
-    from media import TelegramFileDownloadSpec, download_telegram_file_to_temp
-    from plugin_registry import build_default_plugin_registry
-    from runtime_config import (
-        Config,
-        default_voice_alias_replacements,
-        load_config,
-        parse_plugin_name_env,
-    )
-    from session_manager import (
-        clear_busy,
-        compute_policy_fingerprint,
-        ensure_chat_worker_session,
-        expire_idle_worker_sessions,
-        finish_restart_attempt,
-        pop_ready_restart_request,
-        request_safe_restart,
-    )
-    from state_store import (
-        CanonicalSession,
-        PendingMediaGroup,
-        State,
-        StateRepository,
-        WorkerSession,
-        canonical_session_is_empty,
-        build_canonical_sessions_from_legacy,
-        build_legacy_from_canonical,
-        ensure_state_dir,
-        load_canonical_sessions,
-        load_canonical_sessions_sqlite,
-        load_chat_codex_models,
-        load_chat_codex_efforts,
-        load_chat_engines,
-        load_chat_pi_models,
-        load_chat_pi_providers,
-        load_chat_threads,
-        load_in_flight_requests,
-        load_or_import_canonical_sessions_sqlite,
-        load_worker_sessions,
-        mirror_legacy_from_canonical,
-        persist_chat_threads,
-        persist_canonical_sessions,
-        persist_worker_sessions,
-        quarantine_corrupt_state_file,
-        sync_all_canonical_sessions,
-    )
-    from stream_buffer import BoundedTextBuffer
-    from structured_logging import configure_bridge_logging, emit_event
-    from transport import TELEGRAM_LIMIT, TelegramClient, to_telegram_chunks
-    from voice_alias_learning import VoiceAliasLearningStore
-
+from telegram_bridge.affective_runtime import build_affective_runtime
+from telegram_bridge.auth_state import (
+    apply_auth_change_thread_reset,
+    build_auth_fingerprint_state_path,
+    clear_loaded_thread_state,
+    compute_current_auth_fingerprint,
+)
+from telegram_bridge.attachment_store import AttachmentStore
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.conversation_scope import parse_telegram_scope_key
+from telegram_bridge.executor import (
+    ExecutorProgressEvent,
+    extract_executor_progress_event,
+    parse_executor_output,
+)
+from telegram_bridge.engine_adapter import EngineAdapter
+from telegram_bridge.handlers import (
+    DocumentPayload,
+    collapse_media_group_updates,
+    extract_prompt_and_media,
+    handle_update,
+)
+from telegram_bridge.media import TelegramFileDownloadSpec, download_telegram_file_to_temp
+from telegram_bridge.plugin_registry import build_default_plugin_registry
+from telegram_bridge.runtime_config import (
+    Config,
+    default_voice_alias_replacements,
+    load_config,
+    parse_plugin_name_env,
+)
+from telegram_bridge.session_manager import (
+    clear_busy,
+    compute_policy_fingerprint,
+    ensure_chat_worker_session,
+    expire_idle_worker_sessions,
+    finish_restart_attempt,
+    pop_ready_restart_request,
+    request_safe_restart,
+)
+from telegram_bridge.state_store import (
+    CanonicalSession,
+    PendingMediaGroup,
+    State,
+    StateRepository,
+    WorkerSession,
+    canonical_session_is_empty,
+    build_canonical_sessions_from_legacy,
+    build_legacy_from_canonical,
+    ensure_state_dir,
+    load_canonical_sessions,
+    load_canonical_sessions_sqlite,
+    load_chat_codex_models,
+    load_chat_codex_efforts,
+    load_chat_engines,
+    load_chat_pi_models,
+    load_chat_pi_providers,
+    load_chat_threads,
+    load_in_flight_requests,
+    load_or_import_canonical_sessions_sqlite,
+    load_worker_sessions,
+    mirror_legacy_from_canonical,
+    persist_chat_threads,
+    persist_canonical_sessions,
+    persist_worker_sessions,
+    quarantine_corrupt_state_file,
+    sync_all_canonical_sessions,
+)
+from telegram_bridge.stream_buffer import BoundedTextBuffer
+from telegram_bridge.structured_logging import configure_bridge_logging, emit_event
+from telegram_bridge.transport import TELEGRAM_LIMIT, TelegramClient, to_telegram_chunks
+from telegram_bridge.voice_alias_learning import VoiceAliasLearningStore
 
 def build_policy_fingerprint_state_path(state_dir: str) -> str:
     return os.path.join(state_dir, "policy_fingerprint.txt")
 
-
 def build_update_offset_state_path(state_dir: str, channel_plugin: str) -> str:
     normalized = (channel_plugin or "telegram").strip().lower() or "telegram"
     return os.path.join(state_dir, f"{normalized}_update_offset.txt")
-
 
 def load_saved_policy_fingerprint(path: str) -> str:
     if not path:
@@ -175,7 +99,6 @@ def load_saved_policy_fingerprint(path: str) -> str:
     except OSError:
         logging.exception("Failed to read policy fingerprint state from %s", path)
         return ""
-
 
 def persist_saved_policy_fingerprint(path: str, fingerprint: str) -> None:
     if not path:
@@ -190,7 +113,6 @@ def persist_saved_policy_fingerprint(path: str, fingerprint: str) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(tmp_path, path)
-
 
 def load_saved_update_offset(path: str) -> int:
     if not path:
@@ -215,7 +137,6 @@ def load_saved_update_offset(path: str) -> int:
         return 0
     return parsed
 
-
 def persist_saved_update_offset(path: str, offset: int) -> None:
     if not path:
         return
@@ -230,7 +151,6 @@ def persist_saved_update_offset(path: str, offset: int) -> None:
         os.fsync(handle.fileno())
     os.replace(tmp_path, path)
 
-
 def clear_thread_state_for_policy_change(
     loaded_threads: Dict[int, str],
     loaded_worker_sessions: Dict[int, WorkerSession],
@@ -241,7 +161,6 @@ def clear_thread_state_for_policy_change(
         loaded_worker_sessions,
         loaded_canonical_sessions,
     )
-
 
 def apply_policy_change_thread_reset(
     state_dir: str,
@@ -279,7 +198,6 @@ def apply_policy_change_thread_reset(
         "previous_policy_fingerprint": previous_policy_fingerprint,
         "counts": reset_counts,
     }
-
 
 def run_self_test() -> int:
     sample = "x" * (TELEGRAM_LIMIT + 50)
@@ -350,7 +268,6 @@ def run_self_test() -> int:
     print("self-test: ok")
     return 0
 
-
 def load_state_mapping_or_empty(
     path: str,
     loader,
@@ -374,7 +291,6 @@ def load_state_mapping_or_empty(
             fields={"state_file": path},
         )
         return {}
-
 
 def drop_pending_updates(client: ChannelAdapter) -> int:
     offset = 0
@@ -413,21 +329,17 @@ def drop_pending_updates(client: ChannelAdapter) -> int:
     )
     return offset
 
-
 def should_discard_startup_backlog(config: Config) -> bool:
     return getattr(config, "channel_plugin", "telegram") == "telegram"
 
-
 def should_resume_saved_update_offset(config: Config) -> bool:
     return not should_discard_startup_backlog(config)
-
 
 def should_reset_saved_update_offset(
     offset: int,
     queue_max_update_id: Optional[int],
 ) -> bool:
     return offset > 0 and queue_max_update_id is not None and offset > queue_max_update_id + 1
-
 
 def inspect_channel_update_bounds(client: ChannelAdapter) -> Tuple[Optional[int], Optional[int]]:
     updates = client.get_updates(0, timeout_seconds=0)
@@ -440,7 +352,6 @@ def inspect_channel_update_bounds(client: ChannelAdapter) -> Tuple[Optional[int]
     if not update_ids:
         return None, None
     return min(update_ids), max(update_ids)
-
 
 def compute_initial_update_offset(
     config: Config,
@@ -472,7 +383,6 @@ def compute_initial_update_offset(
     )
     return offset, offset_state_path
 
-
 def maybe_reset_stale_runtime_offset(
     config: Config,
     client: ChannelAdapter,
@@ -497,9 +407,7 @@ def maybe_reset_stale_runtime_offset(
     )
     return 0
 
-
 MEDIA_GROUP_QUIET_WINDOW_SECONDS = 2.0
-
 
 def get_media_group_identity(update: Dict[str, object]) -> Optional[Tuple[int, str]]:
     message = update.get("message")
@@ -515,10 +423,8 @@ def get_media_group_identity(update: Dict[str, object]) -> Optional[Tuple[int, s
         return None
     return chat_id, media_group_id.strip()
 
-
 def make_pending_media_group_key(chat_id: int, media_group_id: str) -> str:
     return f"{chat_id}:{media_group_id}"
-
 
 def buffer_pending_media_group_updates(
     state: State,
@@ -552,7 +458,6 @@ def buffer_pending_media_group_updates(
 
     return immediate_updates
 
-
 def flush_ready_media_group_updates(
     state: State,
     *,
@@ -580,7 +485,6 @@ def flush_ready_media_group_updates(
         flushed_updates.extend(collapse_media_group_updates(pending.updates))
     return flushed_updates
 
-
 def compute_poll_timeout_seconds(state: State, config: Config, *, now: Optional[float] = None) -> Optional[int]:
     if not state.pending_media_groups:
         return None
@@ -596,7 +500,6 @@ def compute_poll_timeout_seconds(state: State, config: Config, *, now: Optional[
 
     wait_seconds = max(1, int(math.ceil(min(remaining_windows))))
     return min(config.poll_timeout_seconds, wait_seconds)
-
 
 def run_bridge(config: Config) -> int:
     emit_event(
@@ -1163,7 +1066,6 @@ def run_bridge(config: Config) -> int:
             )
             time.sleep(config.retry_sleep_seconds)
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Telegram Architect bridge")
     parser.add_argument(
@@ -1185,7 +1087,6 @@ def main() -> int:
         return 1
 
     return run_bridge(config)
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

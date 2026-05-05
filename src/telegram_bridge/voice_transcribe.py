@@ -9,7 +9,6 @@ from typing import Iterable
 
 from faster_whisper import WhisperModel
 
-
 def _collect_transcript(segments: Iterable[object]) -> str:
     parts: list[str] = []
     for segment in segments:
@@ -17,7 +16,6 @@ def _collect_transcript(segments: Iterable[object]) -> str:
         if text:
             parts.append(text)
     return " ".join(parts).strip()
-
 
 def _run_transcription(
     model_name: str,
@@ -48,7 +46,6 @@ def _run_transcription(
         temperature=temperature,
     )
     return _collect_transcript(segments)
-
 
 def main() -> int:
     if len(sys.argv) < 2:
@@ -114,7 +111,6 @@ def main() -> int:
     if transcript:
         print(transcript)
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

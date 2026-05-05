@@ -6,13 +6,8 @@ import os
 import re
 from typing import List, Optional
 
-try:
-    from .channel_adapter import ChannelAdapter
-    from .runtime_paths import build_shared_core_root, shared_core_path
-except ImportError:
-    from channel_adapter import ChannelAdapter
-    from runtime_paths import build_shared_core_root, shared_core_path
-
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.runtime_paths import build_shared_core_root, shared_core_path
 
 HELP_COMMAND_ALIASES = ("/help", "/h")
 CANCEL_COMMAND_ALIASES = ("/cancel", "/c")
@@ -47,10 +42,8 @@ WHATSAPP_REPLY_PREFIX = "Даю справку:"
 WHATSAPP_REPLY_PREFIX_RE = re.compile(r"^\s*даю\s+справку\s*:\s*", re.IGNORECASE)
 WHATSAPP_LEGACY_REPLY_PREFIX_RE = re.compile(r"^\s*говорун\s*:\s*", re.IGNORECASE)
 
-
 def build_repo_root() -> str:
     return build_shared_core_root()
-
 
 def build_ha_routing_script_allowlist() -> List[str]:
     return [
@@ -61,7 +54,6 @@ def build_ha_routing_script_allowlist() -> List[str]:
         shared_core_path("ops", "ha", "set_climate_mode.sh"),
         shared_core_path("ops", "ha", "schedule_climate_mode.sh"),
     ]
-
 
 def build_server3_routing_script_allowlist() -> List[str]:
     return [
@@ -74,7 +66,6 @@ def build_server3_routing_script_allowlist() -> List[str]:
         shared_core_path("ops", "tv-desktop", "server3-tv-browser-youtube-play.sh"),
     ]
 
-
 def build_nextcloud_routing_script_allowlist() -> List[str]:
     return [
         shared_core_path("ops", "nextcloud", "nextcloud-files-list.sh"),
@@ -84,24 +75,20 @@ def build_nextcloud_routing_script_allowlist() -> List[str]:
         shared_core_path("ops", "nextcloud", "nextcloud-calendar-create-event.sh"),
     ]
 
-
 def build_browser_brain_routing_script_allowlist() -> List[str]:
     return [
         shared_core_path("ops", "browser_brain", "browser_brain_ctl.sh"),
         shared_core_path("ops", "browser_brain", "status_service.sh"),
     ]
 
-
 def build_sro_routing_script_allowlist() -> List[str]:
     return [
         shared_core_path("ops", "runtime_observer", "runtime_observer_ctl.sh"),
     ]
 
-
 def assistant_label(config) -> str:
     value = getattr(config, "assistant_name", "").strip()
     return value or "Architect"
-
 
 def build_engine_progress_context_label(config, engine_name: Optional[str] = None) -> str:
     selected = str(engine_name or getattr(config, "engine_plugin", "codex") or "codex").strip().lower()
@@ -134,14 +121,11 @@ def build_engine_progress_context_label(config, engine_name: Optional[str] = Non
         return f"(codex | {model})" if model else "(codex)"
     return f"({selected})"
 
-
 def start_command_message(config) -> str:
     return f"Telegram {assistant_label(config)} bridge is online. Send a prompt to begin."
 
-
 def resume_retry_phase(config) -> str:
     return f"Retrying as a new {assistant_label(config)} session."
-
 
 def extract_keyword_request(text: str, keywords: List[str]) -> tuple[bool, str]:
     stripped = text.strip()
@@ -159,26 +143,20 @@ def extract_keyword_request(text: str, keywords: List[str]) -> tuple[bool, str]:
             return True, remainder.lstrip(" :-\t")
     return False, ""
 
-
 def extract_ha_keyword_request(text: str) -> tuple[bool, str]:
     return extract_keyword_request(text, ["ha", "home assistant"])
-
 
 def extract_server3_keyword_request(text: str) -> tuple[bool, str]:
     return extract_keyword_request(text, ["server3 tv"])
 
-
 def extract_nextcloud_keyword_request(text: str) -> tuple[bool, str]:
     return extract_keyword_request(text, ["nextcloud"])
-
 
 def extract_browser_brain_keyword_request(text: str) -> tuple[bool, str]:
     return extract_keyword_request(text, ["server3 browser", "browser brain"])
 
-
 def extract_sro_keyword_request(text: str) -> tuple[bool, str]:
     return extract_keyword_request(text, ["sro", "server3 runtime observer", "runtime observer"])
-
 
 def extract_youtube_link_request(text: str) -> tuple[bool, str]:
     stripped = text.strip()
@@ -196,7 +174,6 @@ def extract_youtube_link_request(text: str) -> tuple[bool, str]:
         return False, ""
     return True, url
 
-
 def build_ha_keyword_prompt(user_request: str) -> str:
     scripts = "\n".join(f"- {path}" for path in build_ha_routing_script_allowlist())
     return (
@@ -210,7 +187,6 @@ def build_ha_keyword_prompt(user_request: str) -> str:
         "- If entity/time/mode is unclear, ask one concise clarification question instead of guessing.\n"
         "- After execution, report the result with state or timer/service unit names."
     )
-
 
 def build_server3_keyword_prompt(user_request: str) -> str:
     scripts = "\n".join(f"- {path}" for path in build_server3_routing_script_allowlist())
@@ -229,7 +205,6 @@ def build_server3_keyword_prompt(user_request: str) -> str:
         "- After execution, report exact scripts/commands used and final outcome."
     )
 
-
 def build_nextcloud_keyword_prompt(user_request: str) -> str:
     scripts = "\n".join(f"- {path}" for path in build_nextcloud_routing_script_allowlist())
     return (
@@ -246,7 +221,6 @@ def build_nextcloud_keyword_prompt(user_request: str) -> str:
         "- After execution, report exact scripts used and final outcome."
     )
 
-
 def build_browser_brain_keyword_prompt(user_request: str) -> str:
     scripts = "\n".join(f"- {path}" for path in build_browser_brain_routing_script_allowlist())
     return (
@@ -262,7 +236,6 @@ def build_browser_brain_keyword_prompt(user_request: str) -> str:
         "- Use console/network/dialogs for browser diagnostics instead of arbitrary JavaScript when possible.\n"
         "- After execution, report exact commands used plus resulting tab_id, snapshot_id, refs, and final URL/title."
     )
-
 
 def build_sro_keyword_prompt(user_request: str) -> str:
     scripts = "\n".join(f"- {path}" for path in build_sro_routing_script_allowlist())
@@ -282,18 +255,14 @@ def build_sro_keyword_prompt(user_request: str) -> str:
         "- After execution, report the exact command used and the resulting KPI state or outcome."
     )
 
-
 def is_whatsapp_channel(client: ChannelAdapter) -> bool:
     return getattr(client, "channel_name", "") == "whatsapp"
-
 
 def is_signal_channel(client: ChannelAdapter) -> bool:
     return getattr(client, "channel_name", "") == "signal"
 
-
 def command_bypasses_required_prefix(client: ChannelAdapter, command: Optional[str]) -> bool:
     return is_whatsapp_channel(client) and command == "/voice-alias"
-
 
 def apply_outbound_reply_prefix(client: ChannelAdapter, text: str) -> str:
     if not is_whatsapp_channel(client):

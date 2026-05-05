@@ -16,16 +16,14 @@ from typing import Any
 
 _DEPS: Any = None
 
-
 def _load() -> Any:
     global _DEPS
     if _DEPS is None:
         if __package__:
             _DEPS = importlib.import_module(".handlers", __package__)
         else:
-            _DEPS = importlib.import_module("handlers")
+            _DEPS = importlib.import_module("telegram_bridge.handlers")
     return _DEPS
-
 
 def __getattr__(name: str) -> Any:
     return getattr(_load(), name)

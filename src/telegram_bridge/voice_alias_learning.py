@@ -8,14 +8,11 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-
 def _normalize_phrase(value: str) -> str:
     return " ".join((value or "").strip().split()).casefold()
 
-
 def _pair_key(source: str, target: str) -> str:
     return f"{_normalize_phrase(source)}=>{_normalize_phrase(target)}"
-
 
 @dataclass
 class VoiceAliasSuggestion:
@@ -26,13 +23,11 @@ class VoiceAliasSuggestion:
     created_at: float
     last_seen_at: float
 
-
 @dataclass
 class VoiceAliasLearningResult:
     consumed: bool
     suggestion_created: List[VoiceAliasSuggestion]
     extracted_pairs: List[Tuple[str, str]]
-
 
 class VoiceAliasLearningStore:
     def __init__(

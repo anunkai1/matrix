@@ -3,7 +3,6 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
-
 def start_daemon_thread(
     target: Callable[..., None],
     *args: object,

@@ -10,15 +10,13 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
-BRIDGE_DIR = ROOT / "src" / "telegram_bridge"
 SRC_ROOT = ROOT / "src"
-if str(BRIDGE_DIR) not in sys.path:
-    sys.path.insert(0, str(BRIDGE_DIR))
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-import engine_adapter as bridge_engine_adapter
-import plugin_registry as bridge_plugin_registry
+import telegram_bridge.engine_adapter as bridge_engine_adapter
+import telegram_bridge.engines.pi as pi_engine
+import telegram_bridge.plugin_registry as bridge_plugin_registry
 
 
 def _make_fake_pi_process(output_text: str):
@@ -215,7 +213,7 @@ class PiPluginTests(unittest.TestCase):
                 raise AssertionError("kill should not be called")
 
         with mock.patch.object(
-            bridge_engine_adapter.subprocess,
+            pi_engine.subprocess,
             "Popen",
             return_value=_GateableProcess(),
         ):
@@ -252,7 +250,7 @@ class PiPluginTests(unittest.TestCase):
         fake_process = _make_fake_pi_process("hello from local pi")
 
         with mock.patch.object(
-            bridge_engine_adapter.subprocess,
+            pi_engine.subprocess,
             "Popen",
             return_value=fake_process,
         ):
@@ -294,7 +292,7 @@ class PiPluginTests(unittest.TestCase):
         fake_process = _make_fake_pi_process("hello from pi")
 
         with mock.patch.object(
-            bridge_engine_adapter.subprocess,
+            pi_engine.subprocess,
             "Popen",
             return_value=fake_process,
         ) as popen_mock:
@@ -339,7 +337,7 @@ class PiPluginTests(unittest.TestCase):
         fake_process = _make_fake_pi_process("hello from local pi")
 
         with mock.patch.object(
-            bridge_engine_adapter.subprocess,
+            pi_engine.subprocess,
             "Popen",
             return_value=fake_process,
         ) as popen_mock:
@@ -387,7 +385,7 @@ class PiPluginTests(unittest.TestCase):
         with (
             mock.patch.object(engine, "_ensure_local_ollama_tunnel") as ensure_tunnel,
             mock.patch.object(
-                bridge_engine_adapter.subprocess,
+                pi_engine.subprocess,
                 "Popen",
                 return_value=fake_process,
             ) as popen_mock,
@@ -441,7 +439,7 @@ class PiPluginTests(unittest.TestCase):
                 side_effect=AssertionError("Ollama tunnel should not start for Venice"),
             ),
             mock.patch.object(
-                bridge_engine_adapter.subprocess,
+                pi_engine.subprocess,
                 "Popen",
                 return_value=fake_process,
             ) as popen_mock,
@@ -490,12 +488,12 @@ class PiPluginTests(unittest.TestCase):
 
         with (
             mock.patch.object(
-                bridge_engine_adapter.subprocess,
+                pi_engine.subprocess,
                 "Popen",
                 return_value=fake_process,
             ),
             mock.patch.object(
-                bridge_engine_adapter.subprocess,
+                pi_engine.subprocess,
                 "run",
                 return_value=fake_completed,
             ) as run_mock,
@@ -595,7 +593,7 @@ class PiPluginTests(unittest.TestCase):
         fake_process = _make_fake_pi_process("hello from scoped pi")
 
         with mock.patch.object(
-            bridge_engine_adapter.subprocess,
+            pi_engine.subprocess,
             "Popen",
             return_value=fake_process,
         ) as popen_mock:
@@ -675,7 +673,7 @@ class PiPluginTests(unittest.TestCase):
             fake_process = _make_fake_pi_process("rotated session")
 
             with mock.patch.object(
-                bridge_engine_adapter.subprocess,
+                pi_engine.subprocess,
                 "Popen",
                 return_value=fake_process,
             ):

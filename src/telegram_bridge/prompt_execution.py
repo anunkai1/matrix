@@ -2,14 +2,9 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-try:
-    from .engine_adapter import CodexEngineAdapter, EngineAdapter
-    from .handler_models import DocumentPayload, PromptRequest
-    from .state_store import StateRepository
-except ImportError:
-    from engine_adapter import CodexEngineAdapter, EngineAdapter
-    from handler_models import DocumentPayload, PromptRequest
-    from state_store import StateRepository
+from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
+from telegram_bridge.handler_models import DocumentPayload, PromptRequest
+from telegram_bridge.state_store import StateRepository
 
 def emit_phase_timing(
     *,
@@ -30,7 +25,6 @@ def emit_phase_timing(
         if value is not None:
             fields[key] = value
     emit_event_fn("bridge.request_phase_timing", fields=fields)
-
 
 def emit_request_processing_started(
     *,
@@ -57,7 +51,6 @@ def emit_request_processing_started(
         },
     )
 
-
 def build_progress_reporter(
     client,
     config,
@@ -80,7 +73,6 @@ def build_progress_reporter(
         getattr(config, "progress_elapsed_prefix", "Already"),
         getattr(config, "progress_elapsed_suffix", "s"),
     )
-
 
 def build_prompt_progress_reporter(
     request: PromptRequest,
@@ -110,7 +102,6 @@ def build_prompt_progress_reporter(
         progress_reporter_cls=progress_reporter_cls,
         assistant_label_fn=assistant_label_fn,
     )
-
 
 def begin_affective_turn(
     affective_runtime,
@@ -152,7 +143,6 @@ def begin_affective_turn(
                     chat_id,
                 )
         return prompt_text, False
-
 
 def process_prompt_request(
     request: PromptRequest,

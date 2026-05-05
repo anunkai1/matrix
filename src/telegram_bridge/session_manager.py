@@ -7,45 +7,25 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional
 
-try:
-    from .background_tasks import start_daemon_thread
-    from .conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
-    from .runtime_paths import build_shared_core_root, shared_core_path
-    from .state_store import (
-        CanonicalSession,
-        State,
-        StateRepository,
-        WorkerSession,
-        canonical_session_is_empty,
-        mirror_legacy_from_canonical,
-        persist_canonical_sessions,
-        persist_chat_threads,
-        persist_worker_sessions,
-        sync_canonical_session,
-    )
-    from .structured_logging import emit_event
-except ImportError:
-    from background_tasks import start_daemon_thread
-    from conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
-    from runtime_paths import build_shared_core_root, shared_core_path
-    from state_store import (
-        CanonicalSession,
-        State,
-        StateRepository,
-        WorkerSession,
-        canonical_session_is_empty,
-        mirror_legacy_from_canonical,
-        persist_canonical_sessions,
-        persist_chat_threads,
-        persist_worker_sessions,
-        sync_canonical_session,
-    )
-    from structured_logging import emit_event
-
+from telegram_bridge.background_tasks import start_daemon_thread
+from telegram_bridge.conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
+from telegram_bridge.runtime_paths import build_shared_core_root, shared_core_path
+from telegram_bridge.state_store import (
+    CanonicalSession,
+    State,
+    StateRepository,
+    WorkerSession,
+    canonical_session_is_empty,
+    mirror_legacy_from_canonical,
+    persist_canonical_sessions,
+    persist_chat_threads,
+    persist_worker_sessions,
+    sync_canonical_session,
+)
+from telegram_bridge.structured_logging import emit_event
 
 def build_repo_root() -> str:
     return build_shared_core_root()
-
 
 def _legacy_scope_alias(scope_key: str) -> Optional[int]:
     try:
@@ -56,7 +36,6 @@ def _legacy_scope_alias(scope_key: str) -> Optional[int]:
         return None
     return target.chat_id
 
-
 def _resolve_scope_key(
     scope_key: Optional[str],
     chat_id: int,
@@ -66,12 +45,10 @@ def _resolve_scope_key(
         return scope_key
     return build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
 
-
 def _normalize_scope_key(scope_key: object) -> str:
     if isinstance(scope_key, int):
         return build_telegram_scope_key(scope_key)
     return str(scope_key or "").strip()
-
 
 def _scope_is_busy(state: State, scope_key: object) -> bool:
     normalized_scope_key = _normalize_scope_key(scope_key)
@@ -80,13 +57,11 @@ def _scope_is_busy(state: State, scope_key: object) -> bool:
         legacy_alias is not None and legacy_alias in state.busy_chats
     )
 
-
 def build_restart_script_path() -> str:
     configured = os.getenv("TELEGRAM_RESTART_SCRIPT", "").strip()
     if configured:
         return configured
     return shared_core_path("ops", "telegram-bridge", "restart_and_verify.sh")
-
 
 def build_restart_unit_name() -> str:
     for env_name in ("TELEGRAM_RESTART_UNIT", "UNIT_NAME"):
@@ -94,7 +69,6 @@ def build_restart_unit_name() -> str:
         if configured:
             return configured
     return "telegram-architect-bridge.service"
-
 
 def compute_policy_fingerprint(paths: List[str]) -> str:
     hasher = hashlib.sha256()
@@ -110,7 +84,6 @@ def compute_policy_fingerprint(paths: List[str]) -> str:
             hasher.update(b"missing")
         hasher.update(b"\0")
     return hasher.hexdigest()
-
 
 def is_rate_limited(state: State, config, scope_key: str) -> bool:
     now = time.time()
@@ -130,7 +103,6 @@ def is_rate_limited(state: State, config, scope_key: str) -> bool:
         entries.append(now)
     return False
 
-
 def mark_busy(state: State, scope_key: str) -> bool:
     legacy_alias = _legacy_scope_alias(scope_key)
     with state.lock:
@@ -143,7 +115,6 @@ def mark_busy(state: State, scope_key: str) -> bool:
             state.busy_chats.discard(legacy_alias)
     return True
 
-
 def clear_busy(state: State, scope_key: str) -> None:
     legacy_alias = _legacy_scope_alias(scope_key)
     with state.lock:
@@ -151,14 +122,12 @@ def clear_busy(state: State, scope_key: str) -> None:
         if legacy_alias is not None:
             state.busy_chats.discard(legacy_alias)
 
-
 def _has_active_worker(session: Optional[CanonicalSession]) -> bool:
     return (
         session is not None
         and session.worker_created_at is not None
         and session.worker_last_used_at is not None
     )
-
 
 WORKER_EVICTED_MESSAGE = (
     "Your session was closed to free worker capacity. "
@@ -174,17 +143,14 @@ POLICY_FINGERPRINT_CACHE_TTL_SECONDS = 10.0
 _policy_fingerprint_cache_lock = threading.Lock()
 _policy_fingerprint_cache: dict[tuple[str, ...], tuple[float, str]] = {}
 
-
 @dataclass
 class WorkerSessionEnsureOutcome:
     allowed: bool
     evicted_idle_scope_key: Optional[str] = None
     session_replaced_for_policy: bool = False
 
-
 def _normalize_policy_fingerprint_paths(paths: List[str]) -> tuple[str, ...]:
     return tuple(sorted({str(path) for path in paths if str(path).strip()}))
-
 
 def _send_worker_eviction_notice(client, scope_key: str) -> None:
     try:
@@ -201,7 +167,6 @@ def _send_worker_eviction_notice(client, scope_key: str) -> None:
     except Exception:
         logging.exception("Failed to send worker-eviction notice for scope=%s", scope_key)
 
-
 def _send_policy_refresh_notice(
     client,
     chat_id: int,
@@ -217,7 +182,6 @@ def _send_policy_refresh_notice(
         )
     except Exception:
         logging.exception("Failed to send policy-refresh notice for chat_id=%s", chat_id)
-
 
 def get_cached_policy_fingerprint(paths: List[str], now: Optional[float] = None) -> str:
     if not paths:
@@ -243,7 +207,6 @@ def get_cached_policy_fingerprint(paths: List[str], now: Optional[float] = None)
             value,
         )
     return value
-
 
 def _ensure_chat_worker_session_canonical(
     state: State,
@@ -338,7 +301,6 @@ def _ensure_chat_worker_session_canonical(
         session_replaced_for_policy=session_replaced_for_policy,
     )
 
-
 def _ensure_chat_worker_session_legacy(
     state: State,
     config,
@@ -418,7 +380,6 @@ def _ensure_chat_worker_session_legacy(
         session_replaced_for_policy=session_replaced_for_policy,
     )
 
-
 def ensure_chat_worker_session(
     state: State,
     config,
@@ -495,14 +456,12 @@ def ensure_chat_worker_session(
         return False
     return True
 
-
 def expire_idle_worker_sessions(
     state: State,
     config,
     client,
 ) -> None:
     return
-
 
 def request_safe_restart(
     state: State,
@@ -543,7 +502,6 @@ def request_safe_restart(
         )
         return "run_now", busy_count
 
-
 def pop_ready_restart_request(state: State) -> Optional[tuple[int, Optional[int], Optional[int]]]:
     with state.lock:
         if state.restart_in_progress:
@@ -563,11 +521,9 @@ def pop_ready_restart_request(state: State) -> Optional[tuple[int, Optional[int]
             state.restart_reply_to_message_id,
         )
 
-
 def finish_restart_attempt(state: State) -> None:
     with state.lock:
         state.restart_in_progress = False
-
 
 def run_restart_script(
     state: State,
@@ -652,7 +608,6 @@ def run_restart_script(
     )
     finish_restart_attempt(state)
 
-
 def trigger_restart_async(
     state: State,
     client,
@@ -664,7 +619,6 @@ def trigger_restart_async(
         target=run_restart_script,
         *(state, client, chat_id, message_thread_id, reply_to_message_id),
     )
-
 
 def finalize_chat_work(
     state: State,

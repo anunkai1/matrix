@@ -8,27 +8,15 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
-BRIDGE_MAIN = ROOT / "src" / "telegram_bridge" / "main.py"
-BRIDGE_DIR = BRIDGE_MAIN.parent
+SRC_ROOT = ROOT / "src"
 
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
-def load_module(module_name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Failed to load module spec for {module_name}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-if str(BRIDGE_DIR) not in sys.path:
-    sys.path.insert(0, str(BRIDGE_DIR))
-
-bridge_main = load_module("telegram_bridge_main_diary_tests", BRIDGE_DIR / "main.py")
-bridge_handlers = sys.modules["handlers"]
-bridge_state_store = sys.modules["state_store"]
-diary_store = sys.modules["diary_store"]
+import telegram_bridge.main as bridge_main
+import telegram_bridge.handlers as bridge_handlers
+import telegram_bridge.state_store as bridge_state_store
+import telegram_bridge.diary_store as diary_store
 
 
 class FakeDiaryClient:

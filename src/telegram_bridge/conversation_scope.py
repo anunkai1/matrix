@@ -4,9 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-
 _TELEGRAM_SCOPE_PATTERN = re.compile(r"^tg:(-?\d+)(?::topic:(\d+))?$")
-
 
 @dataclass(frozen=True)
 class ConversationScope:
@@ -24,14 +22,12 @@ class ConversationScope:
     def is_topic(self) -> bool:
         return self.message_thread_id is not None
 
-
 def normalize_message_thread_id(value: object) -> Optional[int]:
     if not isinstance(value, int):
         return None
     if value <= 0:
         return None
     return value
-
 
 def build_telegram_scope_key(
     chat_id: int,
@@ -42,10 +38,8 @@ def build_telegram_scope_key(
         return f"tg:{chat_id}"
     return f"tg:{chat_id}:topic:{normalized_thread_id}"
 
-
 def scope_key_from_legacy_chat_id(chat_id: int) -> str:
     return build_telegram_scope_key(chat_id)
-
 
 def parse_telegram_scope_key(scope_key: str) -> ConversationScope:
     normalized = (scope_key or "").strip()
@@ -59,7 +53,6 @@ def parse_telegram_scope_key(scope_key: str) -> ConversationScope:
         message_thread_id=int(message_thread_id) if message_thread_id is not None else None,
     )
 
-
 def normalize_scope_storage_key(raw_key: object) -> Optional[str]:
     if raw_key is None:
         return None
@@ -72,7 +65,6 @@ def normalize_scope_storage_key(raw_key: object) -> Optional[str]:
         return scope_key_from_legacy_chat_id(int(normalized))
     except (TypeError, ValueError):
         return normalized
-
 
 def scope_from_message(message: object) -> Optional[ConversationScope]:
     if not isinstance(message, dict):

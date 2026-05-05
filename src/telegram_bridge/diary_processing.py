@@ -6,69 +6,37 @@ import subprocess
 import time
 from typing import Dict, List, Optional
 
-try:
-    from .attachment_processing import download_photo_to_temp, download_voice_to_temp, transcribe_voice
-    from .channel_adapter import ChannelAdapter
-    from .engine_controls import build_engine_runtime_config, configured_default_engine
-    from .diary_store import (
-        DiaryEntry,
-        DiaryPhoto,
-        append_day_entry,
-        copy_photo_to_day_assets,
-        diary_day_docx_path,
-        diary_day_remote_docx_path,
-        diary_nextcloud_enabled,
-        diary_timezone,
-        read_day_entries,
-        upload_to_nextcloud,
-    )
-    from .message_inputs import extract_message_media_payload, extract_message_photo_file_ids, normalize_optional_text
-    from .request_processing import build_progress_reporter
-    from .response_delivery import (
-        finalize_request_progress,
-        register_cancel_event,
-        send_generic_worker_error_response,
-        start_background_worker,
-    )
-    from .runtime_profile import build_engine_progress_context_label
-    from .session_manager import finalize_chat_work, mark_busy
-    from .handler_models import DocumentPayload
-    from .state_store import PendingDiaryBatch, State, StateRepository
-    from .structured_logging import emit_event
-except ImportError:
-    from attachment_processing import download_photo_to_temp, download_voice_to_temp, transcribe_voice
-    from channel_adapter import ChannelAdapter
-    from engine_controls import build_engine_runtime_config, configured_default_engine
-    from diary_store import (
-        DiaryEntry,
-        DiaryPhoto,
-        append_day_entry,
-        copy_photo_to_day_assets,
-        diary_day_docx_path,
-        diary_day_remote_docx_path,
-        diary_nextcloud_enabled,
-        diary_timezone,
-        read_day_entries,
-        upload_to_nextcloud,
-    )
-    from message_inputs import extract_message_media_payload, extract_message_photo_file_ids, normalize_optional_text
-    from request_processing import build_progress_reporter
-    from response_delivery import (
-        finalize_request_progress,
-        register_cancel_event,
-        send_generic_worker_error_response,
-        start_background_worker,
-    )
-    from runtime_profile import build_engine_progress_context_label
-    from session_manager import finalize_chat_work, mark_busy
-    from handler_models import DocumentPayload
-    from state_store import PendingDiaryBatch, State, StateRepository
-    from structured_logging import emit_event
-
+from telegram_bridge.attachment_processing import download_photo_to_temp, download_voice_to_temp, transcribe_voice
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.engine_controls import build_engine_runtime_config, configured_default_engine
+from telegram_bridge.diary_store import (
+    DiaryEntry,
+    DiaryPhoto,
+    append_day_entry,
+    copy_photo_to_day_assets,
+    diary_day_docx_path,
+    diary_day_remote_docx_path,
+    diary_nextcloud_enabled,
+    diary_timezone,
+    read_day_entries,
+    upload_to_nextcloud,
+)
+from telegram_bridge.message_inputs import extract_message_media_payload, extract_message_photo_file_ids, normalize_optional_text
+from telegram_bridge.request_processing import build_progress_reporter
+from telegram_bridge.response_delivery import (
+    finalize_request_progress,
+    register_cancel_event,
+    send_generic_worker_error_response,
+    start_background_worker,
+)
+from telegram_bridge.runtime_profile import build_engine_progress_context_label
+from telegram_bridge.session_manager import finalize_chat_work, mark_busy
+from telegram_bridge.handler_models import DocumentPayload
+from telegram_bridge.state_store import PendingDiaryBatch, State, StateRepository
+from telegram_bridge.structured_logging import emit_event
 
 def diary_control_command(command: Optional[str]) -> bool:
     return command in {"/today", "/queue"}
-
 
 def build_diary_entry_title(
     text_blocks: List[str],
@@ -89,13 +57,11 @@ def build_diary_entry_title(
         return "Voice note"
     return "Diary entry"
 
-
 def build_diary_photo_caption(message: Dict[str, object], photo_index: int) -> str:
     caption = normalize_optional_text(message.get("caption"))
     if caption:
         return caption
     return f"Photo {photo_index}"
-
 
 def build_diary_queue_status(state: State, scope_key: str) -> str:
     with state.lock:
@@ -113,7 +79,6 @@ def build_diary_queue_status(state: State, scope_key: str) -> str:
         ahead = queued_batches[0]
         lines.append(f"Next queued batch messages: {len(ahead.messages)}")
     return "\n".join(lines)
-
 
 def build_diary_today_status(state: State, config, scope_key: str) -> str:
     now = dt.datetime.now(diary_timezone(config))
@@ -133,13 +98,11 @@ def build_diary_today_status(state: State, config, scope_key: str) -> str:
     lines.append(build_diary_queue_status(state, scope_key))
     return "\n".join(lines)
 
-
 def build_diary_progress_context_label(state: State, config, scope_key: str) -> str:
     selected_engine = StateRepository(state).get_chat_engine(scope_key)
     engine_name = selected_engine or configured_default_engine(config)
     display_config = build_engine_runtime_config(state, config, scope_key, engine_name)
     return build_engine_progress_context_label(display_config, selected_engine)
-
 
 def transcribe_voice_for_diary_batch(
     config,
@@ -163,7 +126,6 @@ def transcribe_voice_for_diary_batch(
                 os.remove(voice_path)
             except OSError:
                 logging.warning("Failed to remove temp diary voice file: %s", voice_path)
-
 
 def process_diary_batch(
     state: State,
@@ -342,7 +304,6 @@ def process_diary_batch(
             finish_event_name="bridge.diary_batch_finished",
         )
 
-
 def ensure_diary_queue_processor(
     state: State,
     config,
@@ -357,7 +318,6 @@ def ensure_diary_queue_processor(
     if not should_start_worker:
         return
     start_background_worker(diary_queue_worker, state, config, client, scope_key)
-
 
 def diary_capture_batch_worker(
     state: State,
@@ -403,7 +363,6 @@ def diary_capture_batch_worker(
         ensure_diary_queue_processor(state, config, client, scope_key)
         return
 
-
 def diary_queue_worker(
     state: State,
     config,
@@ -441,7 +400,6 @@ def diary_queue_worker(
             has_more = bool(state.queued_diary_batches.get(scope_key))
         if has_more:
             ensure_diary_queue_processor(state, config, client, scope_key)
-
 
 def queue_diary_capture(
     state: State,

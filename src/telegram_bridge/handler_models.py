@@ -2,22 +2,15 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-try:
-    from .channel_adapter import ChannelAdapter
-    from .engine_adapter import EngineAdapter
-    from .state_store import State
-except ImportError:
-    from channel_adapter import ChannelAdapter
-    from engine_adapter import EngineAdapter
-    from state_store import State
-
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.engine_adapter import EngineAdapter
+from telegram_bridge.state_store import State
 
 @dataclass
 class DocumentPayload:
     file_id: str
     file_name: str
     mime_type: str
-
 
 @dataclass
 class PreparedPromptInput:
@@ -28,12 +21,10 @@ class PreparedPromptInput:
     cleanup_paths: List[str] = field(default_factory=list)
     attachment_file_ids: List[str] = field(default_factory=list)
 
-
 @dataclass
 class OutboundMediaDirective:
     media_ref: str
     as_voice: bool
-
 
 @dataclass(frozen=True)
 class KnownCommandContext:
@@ -45,7 +36,6 @@ class KnownCommandContext:
     message_thread_id: Optional[int]
     message_id: Optional[int]
     raw_text: str
-
 
 @dataclass(frozen=True)
 class CallbackActionContext:
@@ -62,13 +52,11 @@ class CallbackActionContext:
     action: str
     value: str
 
-
 @dataclass(frozen=True)
 class CallbackActionResult:
     text: str
     reply_markup: Optional[Dict[str, object]] = None
     toast_text: str = "Updated."
-
 
 @dataclass(frozen=True)
 class PromptRequest:
@@ -91,7 +79,6 @@ class PromptRequest:
     actor_user_id: Optional[int] = None
     enforce_voice_prefix_from_transcript: bool = False
 
-
 @dataclass(frozen=True)
 class YoutubeRequest:
     state: State
@@ -107,7 +94,6 @@ class YoutubeRequest:
     actor_user_id: Optional[int] = None
     cancel_event: Optional[threading.Event] = None
 
-
 @dataclass(frozen=True)
 class DishframedRequest:
     state: State
@@ -119,7 +105,6 @@ class DishframedRequest:
     message_id: Optional[int]
     photo_file_ids: List[str]
     cancel_event: Optional[threading.Event] = None
-
 
 @dataclass(frozen=True)
 class UpdateDispatchRequest:
@@ -143,7 +128,6 @@ class UpdateDispatchRequest:
     youtube_route_url: Optional[str] = None
     handle_update_started_at: Optional[float] = None
 
-
 @dataclass(frozen=True)
 class IncomingUpdateContext:
     update: Dict[str, object]
@@ -155,7 +139,6 @@ class IncomingUpdateContext:
     actor_user_id: Optional[int]
     is_private_chat: bool
     update_id: Optional[int]
-
 
 @dataclass(frozen=True)
 class PreparedUpdateRequest:
@@ -169,7 +152,6 @@ class PreparedUpdateRequest:
     enforce_voice_prefix_from_transcript: bool
     sender_name: str
     command: Optional[str]
-
 
 @dataclass
 class UpdateFlowState:
@@ -190,7 +172,6 @@ class UpdateFlowState:
     stateless: bool = False
     priority_keyword_mode: bool = False
     youtube_route_url: Optional[str] = None
-
 
 def build_prompt_request(
     state: State,
@@ -233,7 +214,6 @@ def build_prompt_request(
         enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
     )
 
-
 def build_youtube_request(
     state: State,
     config,
@@ -262,7 +242,6 @@ def build_youtube_request(
         actor_user_id=actor_user_id,
         cancel_event=cancel_event,
     )
-
 
 def build_dishframed_request(
     state: State,

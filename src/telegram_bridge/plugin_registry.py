@@ -1,22 +1,14 @@
 from typing import Callable, Dict, List
 
-try:
-    from .channel_adapter import ChannelAdapter, TelegramChannelAdapter
-    from .engine_adapter import ChatGPTWebEngineAdapter, CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter, PiEngineAdapter, VeniceEngineAdapter
-    from .signal_channel import SignalChannelAdapter
-    from .transport import TelegramClient
-    from .whatsapp_channel import WhatsAppChannelAdapter
-except ImportError:
-    from channel_adapter import ChannelAdapter, TelegramChannelAdapter
-    from engine_adapter import ChatGPTWebEngineAdapter, CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter, PiEngineAdapter, VeniceEngineAdapter
-    from signal_channel import SignalChannelAdapter
-    from transport import TelegramClient
-    from whatsapp_channel import WhatsAppChannelAdapter
+from telegram_bridge.channel_adapter import ChannelAdapter, TelegramChannelAdapter
+from telegram_bridge.engine_adapter import ChatGPTWebEngineAdapter, CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter, PiEngineAdapter, VeniceEngineAdapter
+from telegram_bridge.signal_channel import SignalChannelAdapter
+from telegram_bridge.transport import TelegramClient
+from telegram_bridge.whatsapp_channel import WhatsAppChannelAdapter
 
 ChannelFactory = Callable[[object], ChannelAdapter]
 EngineFactory = Callable[[], EngineAdapter]
 _DEFAULT_PLUGIN_REGISTRY: "PluginRegistry | None" = None
-
 
 class PluginRegistry:
     def __init__(self) -> None:
@@ -56,7 +48,6 @@ class PluginRegistry:
 
     def list_engines(self) -> List[str]:
         return sorted(self._engine_factories.keys())
-
 
 def build_default_plugin_registry() -> PluginRegistry:
     global _DEFAULT_PLUGIN_REGISTRY

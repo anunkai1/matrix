@@ -5,49 +5,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-try:
-    from .runtime_profile import (
-        BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
-        HA_KEYWORD_HELP_MESSAGE,
-        NEXTCLOUD_KEYWORD_HELP_MESSAGE,
-        PREFIX_HELP_MESSAGE,
-        SRO_KEYWORD_HELP_MESSAGE,
-        SERVER3_KEYWORD_HELP_MESSAGE,
-        build_browser_brain_keyword_prompt,
-        build_ha_keyword_prompt,
-        build_nextcloud_keyword_prompt,
-        build_sro_keyword_prompt,
-        build_server3_keyword_prompt,
-        command_bypasses_required_prefix,
-        extract_browser_brain_keyword_request,
-        extract_ha_keyword_request,
-        extract_nextcloud_keyword_request,
-        extract_sro_keyword_request,
-        extract_server3_keyword_request,
-        extract_youtube_link_request,
-    )
-except ImportError:
-    from runtime_profile import (
-        BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
-        HA_KEYWORD_HELP_MESSAGE,
-        NEXTCLOUD_KEYWORD_HELP_MESSAGE,
-        PREFIX_HELP_MESSAGE,
-        SRO_KEYWORD_HELP_MESSAGE,
-        SERVER3_KEYWORD_HELP_MESSAGE,
-        build_browser_brain_keyword_prompt,
-        build_ha_keyword_prompt,
-        build_nextcloud_keyword_prompt,
-        build_sro_keyword_prompt,
-        build_server3_keyword_prompt,
-        command_bypasses_required_prefix,
-        extract_browser_brain_keyword_request,
-        extract_ha_keyword_request,
-        extract_nextcloud_keyword_request,
-        extract_sro_keyword_request,
-        extract_server3_keyword_request,
-        extract_youtube_link_request,
-    )
-
+from telegram_bridge.runtime_profile import (
+    BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
+    HA_KEYWORD_HELP_MESSAGE,
+    NEXTCLOUD_KEYWORD_HELP_MESSAGE,
+    PREFIX_HELP_MESSAGE,
+    SRO_KEYWORD_HELP_MESSAGE,
+    SERVER3_KEYWORD_HELP_MESSAGE,
+    build_browser_brain_keyword_prompt,
+    build_ha_keyword_prompt,
+    build_nextcloud_keyword_prompt,
+    build_sro_keyword_prompt,
+    build_server3_keyword_prompt,
+    command_bypasses_required_prefix,
+    extract_browser_brain_keyword_request,
+    extract_ha_keyword_request,
+    extract_nextcloud_keyword_request,
+    extract_sro_keyword_request,
+    extract_server3_keyword_request,
+    extract_youtube_link_request,
+)
 
 @dataclass(frozen=True)
 class PrefixGateResult:
@@ -56,7 +33,6 @@ class PrefixGateResult:
     ignored: bool = False
     rejection_reason: Optional[str] = None
     rejection_message: Optional[str] = None
-
 
 @dataclass(frozen=True)
 class KeywordRouteResult:
@@ -69,7 +45,6 @@ class KeywordRouteResult:
     routed_event: Optional[str] = None
     rejection_reason: Optional[str] = None
     rejection_message: Optional[str] = None
-
 
 def apply_required_prefix_gate(
     *,
@@ -120,7 +95,6 @@ def apply_required_prefix_gate(
             rejection_message=PREFIX_HELP_MESSAGE,
         )
     return PrefixGateResult(prompt_input=stripped_prompt)
-
 
 def apply_priority_keyword_routing(
     *,

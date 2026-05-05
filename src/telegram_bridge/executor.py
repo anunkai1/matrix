@@ -7,18 +7,13 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
-try:
-    from .stream_buffer import BoundedTextBuffer
-    from .structured_logging import emit_event
-except ImportError:
-    from stream_buffer import BoundedTextBuffer
-    from structured_logging import emit_event
+from telegram_bridge.stream_buffer import BoundedTextBuffer
+from telegram_bridge.structured_logging import emit_event
 
 OUTPUT_BEGIN_MARKER = "OUTPUT_BEGIN"
 EXECUTOR_STREAM_BUFFER_MAX_CHARS = 2 * 1024 * 1024
 EXECUTOR_STREAM_BUFFER_HEAD_CHARS = 32 * 1024
 EXECUTOR_STREAM_TRUNCATION_MARKER = "\n...[executor stream truncated]...\n"
-
 
 @dataclass
 class ExecutorProgressEvent:
@@ -26,10 +21,8 @@ class ExecutorProgressEvent:
     detail: str = ""
     exit_code: Optional[int] = None
 
-
 class ExecutorCancelledError(Exception):
     """Raised when a running executor subprocess is canceled by user request."""
-
 
 def _build_executor_env(config) -> Dict[str, str]:
     env = os.environ.copy()
@@ -40,7 +33,6 @@ def _build_executor_env(config) -> Dict[str, str]:
     if effort:
         env["CODEX_REASONING_EFFORT"] = effort
     return env
-
 
 def parse_stream_json_line(raw_line: str) -> Optional[Dict[str, object]]:
     line = (raw_line or "").strip()
@@ -53,7 +45,6 @@ def parse_stream_json_line(raw_line: str) -> Optional[Dict[str, object]]:
     if not isinstance(payload, dict):
         return None
     return payload
-
 
 def extract_executor_progress_event(payload: Dict[str, object]) -> Optional[ExecutorProgressEvent]:
     payload_type = payload.get("type")
@@ -91,7 +82,6 @@ def extract_executor_progress_event(payload: Dict[str, object]) -> Optional[Exec
 
     return None
 
-
 def extract_executor_phase_timing(payload: Dict[str, object]) -> Optional[Dict[str, object]]:
     if payload.get("type") != "executor.phase_timing":
         return None
@@ -109,7 +99,6 @@ def extract_executor_phase_timing(payload: Dict[str, object]) -> Optional[Dict[s
     if isinstance(payload_mode, str) and payload_mode:
         result["mode"] = payload_mode
     return result
-
 
 def run_executor(
     config,
@@ -292,7 +281,6 @@ def run_executor(
         stderr=stderr_buffer.render(),
     )
 
-
 def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
     lines = (stdout or "").splitlines()
     thread_id: Optional[str] = None
@@ -333,7 +321,6 @@ def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
     else:
         output = (stdout or "").strip()
     return thread_id, output
-
 
 def should_reset_thread_after_resume_failure(
     stderr: str,

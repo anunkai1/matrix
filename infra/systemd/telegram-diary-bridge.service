@@ -9,6 +9,7 @@ User=diary
 Group=diary
 WorkingDirectory=/home/diary/diarybot
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/diary/diarybot/src
 Environment=UNIT_NAME=telegram-diary-bridge.service
 Environment=TELEGRAM_RUNTIME_ROOT=/home/diary/diarybot
 Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix

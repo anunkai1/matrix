@@ -9,6 +9,7 @@ User=sentinel
 Group=sentinel
 WorkingDirectory=/home/sentinel/sentinelbot
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/sentinel/sentinelbot/src
 Environment=UNIT_NAME=telegram-sentinel-bridge.service
 Environment=TELEGRAM_RUNTIME_ROOT=/home/sentinel/sentinelbot
 Environment=TELEGRAM_EXECUTOR_CMD=/home/sentinel/sentinelbot/src/telegram_bridge/executor.sh

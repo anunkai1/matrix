@@ -1,23 +1,13 @@
 import logging
 from typing import Optional
 
-try:
-    from .channel_adapter import ChannelAdapter
-    from .engine_adapter import PiEngineAdapter
-    from .session_manager import request_safe_restart, trigger_restart_async
-    from .state_store import State, StateRepository
-    from .structured_logging import emit_event
-    from . import response_delivery
-    from . import prompt_execution
-except ImportError:
-    from channel_adapter import ChannelAdapter
-    from engine_adapter import PiEngineAdapter
-    from session_manager import request_safe_restart, trigger_restart_async
-    from state_store import State, StateRepository
-    from structured_logging import emit_event
-    import response_delivery
-    import prompt_execution
-
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.engine_adapter import PiEngineAdapter
+from telegram_bridge.session_manager import request_safe_restart, trigger_restart_async
+from telegram_bridge.state_store import State, StateRepository
+from telegram_bridge.structured_logging import emit_event
+from telegram_bridge import response_delivery
+from telegram_bridge import prompt_execution
 
 CANCEL_REQUESTED_MESSAGE = "Cancel requested. Stopping current request."
 CANCEL_ALREADY_REQUESTED_MESSAGE = (
@@ -26,7 +16,6 @@ CANCEL_ALREADY_REQUESTED_MESSAGE = (
 CANCEL_NO_ACTIVE_MESSAGE = "No active request to cancel."
 
 request_chat_cancel = response_delivery.request_chat_cancel
-
 
 def handle_reset_command(
     state: State,
@@ -58,7 +47,6 @@ def handle_reset_command(
         reply_to_message_id=message_id,
         message_thread_id=message_thread_id,
     )
-
 
 def handle_restart_command(
     state: State,
@@ -109,7 +97,6 @@ def handle_restart_command(
         message_thread_id=message_thread_id,
     )
     trigger_restart_async(state, client, chat_id, message_thread_id, message_id)
-
 
 def handle_cancel_command(
     state: State,

@@ -9,6 +9,7 @@ User=trinity
 Group=trinity
 WorkingDirectory=/home/trinity/trinitybot
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/trinity/trinitybot/src
 Environment=UNIT_NAME=telegram-trinity-bridge.service
 Environment=TELEGRAM_RUNTIME_ROOT=/home/trinity/trinitybot
 Environment=TELEGRAM_EXECUTOR_CMD=/home/trinity/trinitybot/src/telegram_bridge/executor.sh

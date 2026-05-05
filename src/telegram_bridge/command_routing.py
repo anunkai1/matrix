@@ -2,33 +2,19 @@ import logging
 import subprocess
 from typing import Callable, Dict, Optional, Tuple
 
-try:
-    from .channel_adapter import ChannelAdapter
-    from . import control_commands
-    from .diary_processing import build_diary_queue_status, build_diary_today_status
-    from .diary_store import diary_mode_enabled
-    from . import engine_controls
-    from .handler_common import build_help_text, build_status_text, extract_callback_query_context
-    from .handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
-    from .runtime_profile import CANCEL_COMMAND_ALIASES, HELP_COMMAND_ALIASES, start_command_message
-    from .state_store import State
-    from . import voice_alias_commands
-except ImportError:
-    from channel_adapter import ChannelAdapter
-    import control_commands
-    from diary_processing import build_diary_queue_status, build_diary_today_status
-    from diary_store import diary_mode_enabled
-    import engine_controls
-    from handler_common import build_help_text, build_status_text, extract_callback_query_context
-    from handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
-    from runtime_profile import CANCEL_COMMAND_ALIASES, HELP_COMMAND_ALIASES, start_command_message
-    from state_store import State
-    import voice_alias_commands
-
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge import control_commands
+from telegram_bridge.diary_processing import build_diary_queue_status, build_diary_today_status
+from telegram_bridge.diary_store import diary_mode_enabled
+from telegram_bridge import engine_controls
+from telegram_bridge.handler_common import build_help_text, build_status_text, extract_callback_query_context
+from telegram_bridge.handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
+from telegram_bridge.runtime_profile import CANCEL_COMMAND_ALIASES, HELP_COMMAND_ALIASES, start_command_message
+from telegram_bridge.state_store import State
+from telegram_bridge import voice_alias_commands
 
 KnownCommandFn = Callable[[KnownCommandContext], bool]
 CallbackActionFn = Callable[[CallbackActionContext], CallbackActionResult]
-
 
 def _handle_start_known_command(ctx: KnownCommandContext) -> bool:
     ctx.client.send_message(
@@ -38,7 +24,6 @@ def _handle_start_known_command(ctx: KnownCommandContext) -> bool:
     )
     return True
 
-
 def _handle_help_known_command(ctx: KnownCommandContext) -> bool:
     ctx.client.send_message(
         ctx.chat_id,
@@ -46,7 +31,6 @@ def _handle_help_known_command(ctx: KnownCommandContext) -> bool:
         reply_to_message_id=ctx.message_id,
     )
     return True
-
 
 def _handle_status_known_command(ctx: KnownCommandContext) -> bool:
     ctx.client.send_message(
@@ -56,7 +40,6 @@ def _handle_status_known_command(ctx: KnownCommandContext) -> bool:
         message_thread_id=ctx.message_thread_id,
     )
     return True
-
 
 def _handle_restart_known_command(ctx: KnownCommandContext) -> bool:
     control_commands.handle_restart_command(
@@ -68,7 +51,6 @@ def _handle_restart_known_command(ctx: KnownCommandContext) -> bool:
     )
     return True
 
-
 def _handle_cancel_known_command(ctx: KnownCommandContext) -> bool:
     control_commands.handle_cancel_command(
         ctx.state,
@@ -79,7 +61,6 @@ def _handle_cancel_known_command(ctx: KnownCommandContext) -> bool:
         ctx.message_id,
     )
     return True
-
 
 def _handle_engine_known_command(ctx: KnownCommandContext) -> bool:
     return engine_controls.handle_engine_command(
@@ -93,7 +74,6 @@ def _handle_engine_known_command(ctx: KnownCommandContext) -> bool:
         raw_text=ctx.raw_text,
     )
 
-
 def _handle_model_known_command(ctx: KnownCommandContext) -> bool:
     return engine_controls.handle_model_command(
         state=ctx.state,
@@ -105,7 +85,6 @@ def _handle_model_known_command(ctx: KnownCommandContext) -> bool:
         message_id=ctx.message_id,
         raw_text=ctx.raw_text,
     )
-
 
 def _handle_effort_known_command(ctx: KnownCommandContext) -> bool:
     return engine_controls.handle_effort_command(
@@ -119,7 +98,6 @@ def _handle_effort_known_command(ctx: KnownCommandContext) -> bool:
         raw_text=ctx.raw_text,
     )
 
-
 def _handle_pi_known_command(ctx: KnownCommandContext) -> bool:
     return engine_controls.handle_pi_command(
         state=ctx.state,
@@ -131,7 +109,6 @@ def _handle_pi_known_command(ctx: KnownCommandContext) -> bool:
         message_id=ctx.message_id,
         raw_text=ctx.raw_text,
     )
-
 
 def _handle_reset_known_command(ctx: KnownCommandContext) -> bool:
     control_commands.handle_reset_command(
@@ -145,7 +122,6 @@ def _handle_reset_known_command(ctx: KnownCommandContext) -> bool:
     )
     return True
 
-
 def _handle_voice_alias_known_command(ctx: KnownCommandContext) -> bool:
     return voice_alias_commands.handle_voice_alias_command(
         state=ctx.state,
@@ -156,7 +132,6 @@ def _handle_voice_alias_known_command(ctx: KnownCommandContext) -> bool:
         raw_text=ctx.raw_text,
     )
 
-
 def _handle_diary_today_known_command(ctx: KnownCommandContext) -> bool:
     ctx.client.send_message(
         ctx.chat_id,
@@ -165,7 +140,6 @@ def _handle_diary_today_known_command(ctx: KnownCommandContext) -> bool:
     )
     return True
 
-
 def _handle_diary_queue_known_command(ctx: KnownCommandContext) -> bool:
     ctx.client.send_message(
         ctx.chat_id,
@@ -173,7 +147,6 @@ def _handle_diary_queue_known_command(ctx: KnownCommandContext) -> bool:
         reply_to_message_id=ctx.message_id,
     )
     return True
-
 
 KNOWN_COMMAND_HANDLERS: Dict[str, KnownCommandFn] = {
     "/start": _handle_start_known_command,
@@ -191,7 +164,6 @@ DIARY_COMMAND_HANDLERS: Dict[str, KnownCommandFn] = {
     "/today": _handle_diary_today_known_command,
     "/queue": _handle_diary_queue_known_command,
 }
-
 
 def handle_known_command(
     state: State,
@@ -234,7 +206,6 @@ def handle_known_command(
 
     return False
 
-
 def _handle_engine_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
     if ctx.action == "reset":
         text = engine_controls._reset_engine_for_scope(ctx.state, ctx.config, ctx.scope_key)
@@ -247,7 +218,6 @@ def _handle_engine_callback_action(ctx: CallbackActionContext) -> CallbackAction
         reply_markup=engine_controls._build_engine_picker_markup(ctx.state, ctx.config, ctx.scope_key),
     )
 
-
 def _handle_pi_provider_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
     if ctx.action == "set":
         text = engine_controls._set_pi_provider_for_scope(ctx.state, ctx.config, ctx.scope_key, ctx.value)
@@ -256,7 +226,6 @@ def _handle_pi_provider_callback_action(ctx: CallbackActionContext) -> CallbackA
         text = engine_controls.build_pi_providers_text(ctx.state, ctx.config, ctx.scope_key)
         reply_markup = engine_controls._build_provider_picker_markup(ctx.state, ctx.config, ctx.scope_key)
     return CallbackActionResult(text=text, reply_markup=reply_markup)
-
 
 def _handle_model_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
     requested_page = engine_controls._parse_page_index(ctx.value)
@@ -281,7 +250,6 @@ def _handle_model_callback_action(ctx: CallbackActionContext) -> CallbackActionR
         ),
     )
 
-
 def _handle_codex_effort_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
     if ctx.action == "reset":
         text = engine_controls._reset_codex_effort_for_scope(ctx.state, ctx.config, ctx.scope_key)
@@ -294,7 +262,6 @@ def _handle_codex_effort_callback_action(ctx: CallbackActionContext) -> Callback
         reply_markup=engine_controls._build_effort_picker_markup(ctx.state, ctx.config, ctx.scope_key),
     )
 
-
 CALLBACK_ACTION_HANDLERS: Dict[Tuple[str, Optional[str]], CallbackActionFn] = {
     ("engine", None): _handle_engine_callback_action,
     ("provider", "pi"): _handle_pi_provider_callback_action,
@@ -302,13 +269,11 @@ CALLBACK_ACTION_HANDLERS: Dict[Tuple[str, Optional[str]], CallbackActionFn] = {
     ("effort", "codex"): _handle_codex_effort_callback_action,
 }
 
-
 def _resolve_callback_action_handler(
     kind: str,
     engine_name: str,
 ):
     return CALLBACK_ACTION_HANDLERS.get((kind, engine_name)) or CALLBACK_ACTION_HANDLERS.get((kind, None))
-
 
 def handle_callback_query(
     state: State,

@@ -8,27 +8,15 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
-try:
-    from .background_tasks import start_daemon_thread
-    from .channel_adapter import ChannelAdapter
-    from .conversation_scope import parse_telegram_scope_key
-    from .handler_models import OutboundMediaDirective
-    from .runtime_profile import apply_outbound_reply_prefix
-    from .session_manager import finalize_chat_work
-    from .state_store import State
-    from .structured_logging import emit_event
-    from .transport import TELEGRAM_CAPTION_LIMIT
-except ImportError:
-    from background_tasks import start_daemon_thread
-    from channel_adapter import ChannelAdapter
-    from conversation_scope import parse_telegram_scope_key
-    from handler_models import OutboundMediaDirective
-    from runtime_profile import apply_outbound_reply_prefix
-    from session_manager import finalize_chat_work
-    from state_store import State
-    from structured_logging import emit_event
-    from transport import TELEGRAM_CAPTION_LIMIT
-
+from telegram_bridge.background_tasks import start_daemon_thread
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.conversation_scope import parse_telegram_scope_key
+from telegram_bridge.handler_models import OutboundMediaDirective
+from telegram_bridge.runtime_profile import apply_outbound_reply_prefix
+from telegram_bridge.session_manager import finalize_chat_work
+from telegram_bridge.state_store import State
+from telegram_bridge.structured_logging import emit_event
+from telegram_bridge.transport import TELEGRAM_CAPTION_LIMIT
 
 MEDIA_DIRECTIVE_TAG_RE = re.compile(r"\[\[\s*media\s*:\s*(?P<value>.+?)\s*\]\]", re.IGNORECASE)
 MEDIA_DIRECTIVE_LINE_RE = re.compile(r"(?im)^\s*media\s*:\s*(?P<value>.+?)\s*$")
@@ -42,7 +30,6 @@ REQUEST_CANCELED_MESSAGE = "Request canceled."
 
 EXECUTOR_USAGE_LIMIT_RE = re.compile(r"\bhit your usage limit\b", re.IGNORECASE)
 EXECUTOR_RETRY_AT_RE = re.compile(r"\btry again at ([0-9]{1,2}:\d{2}\s*[AP]M)\b", re.IGNORECASE)
-
 
 def parse_outbound_media_directive(output: str) -> tuple[str, Optional[OutboundMediaDirective]]:
     text = output or ""
@@ -60,7 +47,6 @@ def parse_outbound_media_directive(output: str) -> tuple[str, Optional[OutboundM
     if not media_ref:
         return without_directive, None
     return without_directive, OutboundMediaDirective(media_ref=media_ref, as_voice=as_voice)
-
 
 def parse_structured_outbound_payload(
     output: str,
@@ -106,7 +92,6 @@ def parse_structured_outbound_payload(
         directive = OutboundMediaDirective(media_ref=media_ref, as_voice=as_voice)
     return (payload_text.strip(), directive), None
 
-
 def output_contains_control_directive(output: str) -> bool:
     text = output or ""
     if not text:
@@ -117,7 +102,6 @@ def output_contains_control_directive(output: str) -> bool:
         or '"telegram_outbound"' in text
     )
 
-
 def media_extension(media_ref: str) -> str:
     ref = media_ref.strip()
     if not ref:
@@ -127,7 +111,6 @@ def media_extension(media_ref: str) -> str:
         return Path(parsed.path).suffix.lower()
     return Path(ref).suffix.lower()
 
-
 def infer_media_kind(media_ref: str) -> str:
     extension = media_extension(media_ref)
     if extension in PHOTO_EXTENSIONS:
@@ -136,14 +119,11 @@ def infer_media_kind(media_ref: str) -> str:
         return "audio"
     return "document"
 
-
 def is_voice_compatible_media(media_ref: str) -> bool:
     return media_extension(media_ref) in VOICE_COMPATIBLE_EXTENSIONS
 
-
 def is_voice_messages_forbidden_error(exc: Exception) -> bool:
     return "VOICE_MESSAGES_FORBIDDEN" in str(exc).upper()
-
 
 def send_chat_action_safe(
     client: ChannelAdapter,
@@ -155,7 +135,6 @@ def send_chat_action_safe(
         client.send_chat_action(chat_id, action=action, message_thread_id=message_thread_id)
     except Exception:
         logging.debug("Failed to send %s action for chat_id=%s", action, chat_id)
-
 
 def send_executor_output(
     client: ChannelAdapter,
@@ -385,14 +364,12 @@ def send_executor_output(
         return rendered_text
     return f"[media sent: {directive.media_ref}]"
 
-
 def compact_progress_text(text: str, max_chars: int = 120) -> str:
     cleaned = " ".join(text.replace("\n", " ").split())
     cleaned = cleaned.replace("**", "").replace("`", "")
     if len(cleaned) <= max_chars:
         return cleaned
     return cleaned[: max_chars - 3].rstrip() + "..."
-
 
 def send_input_too_long(
     client: ChannelAdapter,
@@ -407,7 +384,6 @@ def send_input_too_long(
         reply_to_message_id=message_id,
     )
 
-
 def send_canceled_response(
     client: ChannelAdapter,
     chat_id: int,
@@ -420,7 +396,6 @@ def send_canceled_response(
         reply_to_message_id=message_id,
         message_thread_id=message_thread_id,
     )
-
 
 def send_generic_worker_error_response(
     client: ChannelAdapter,
@@ -436,7 +411,6 @@ def send_generic_worker_error_response(
         message_thread_id=message_thread_id,
     )
 
-
 def send_timeout_response(
     client: ChannelAdapter,
     config,
@@ -450,7 +424,6 @@ def send_timeout_response(
         reply_to_message_id=message_id,
         message_thread_id=message_thread_id,
     )
-
 
 def emit_worker_exception_and_reply(
     *,
@@ -480,7 +453,6 @@ def emit_worker_exception_and_reply(
     except Exception:
         logging.exception(failure_log_message, chat_id)
 
-
 def normalize_known_executor_failure_message(message: str) -> Optional[str]:
     cleaned = " ".join((message or "").split())
     if not cleaned:
@@ -492,7 +464,6 @@ def normalize_known_executor_failure_message(message: str) -> Optional[str]:
             return f"The runtime has hit its usage limit. Try again after {retry_at}."
         return "The runtime has hit its usage limit. Try again later."
     return None
-
 
 def extract_executor_failure_message(stdout: str, stderr: str) -> Optional[str]:
     candidates: List[str] = []
@@ -526,7 +497,6 @@ def extract_executor_failure_message(stdout: str, stderr: str) -> Optional[str]:
             return normalized
     return None
 
-
 def send_executor_failure_message(
     client: ChannelAdapter,
     config,
@@ -559,13 +529,11 @@ def send_executor_failure_message(
         message_thread_id=message_thread_id,
     )
 
-
 def register_cancel_event(state: State, scope_key: str) -> threading.Event:
     cancel_event = threading.Event()
     with state.lock:
         state.cancel_events[scope_key] = cancel_event
     return cancel_event
-
 
 def clear_cancel_event(
     state: State,
@@ -580,7 +548,6 @@ def clear_cancel_event(
             return
         del state.cancel_events[scope_key]
 
-
 def cleanup_temp_files(paths: List[str]) -> None:
     for cleanup_path in paths:
         try:
@@ -588,11 +555,9 @@ def cleanup_temp_files(paths: List[str]) -> None:
         except OSError:
             logging.warning("Failed to remove temp file: %s", cleanup_path)
 
-
 def cleanup_temp_dirs(paths: List[str]) -> None:
     for cleanup_dir in paths:
         shutil.rmtree(cleanup_dir, ignore_errors=True)
-
 
 def finalize_request_progress(
     *,
@@ -618,10 +583,8 @@ def finalize_request_progress(
         fields.update(finish_event_fields)
     emit_event(finish_event_name, fields=fields)
 
-
 def start_background_worker(target: Callable[..., None], *args: object) -> None:
     start_daemon_thread(target, *args)
-
 
 def request_chat_cancel(state: State, scope_key: str) -> str:
     try:

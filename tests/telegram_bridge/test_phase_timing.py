@@ -10,18 +10,13 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
-BRIDGE_MAIN = ROOT / "src" / "telegram_bridge" / "main.py"
-BRIDGE_DIR = BRIDGE_MAIN.parent
+SRC_ROOT = ROOT / "src"
 
-spec = importlib.util.spec_from_file_location("telegram_bridge_main_phase_timing", BRIDGE_MAIN)
-if spec is None or spec.loader is None:
-    raise RuntimeError("Failed to load telegram bridge module spec")
-bridge = importlib.util.module_from_spec(spec)
-if str(BRIDGE_DIR) not in sys.path:
-    sys.path.insert(0, str(BRIDGE_DIR))
-sys.modules[spec.name] = bridge
-spec.loader.exec_module(bridge)
-import handlers as bridge_handlers
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+import telegram_bridge.main as bridge
+import telegram_bridge.handlers as bridge_handlers
 
 
 class FakeTelegramClient:

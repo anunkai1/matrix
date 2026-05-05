@@ -6,39 +6,22 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
-try:
-    from .conversation_scope import normalize_scope_storage_key, parse_telegram_scope_key
-    from . import request_state
-    from . import session_state
-    from .state_models import (
-        CanonicalSession,
-        PendingDiaryBatch,
-        PendingMediaGroup,
-        RecentPhotoSelection,
-        ScopeKey,
-        State,
-        WorkerSession,
-        normalize_scope_key,
-    )
-except ImportError:
-    from conversation_scope import normalize_scope_storage_key, parse_telegram_scope_key
-    import request_state
-    import session_state
-    from state_models import (
-        CanonicalSession,
-        PendingDiaryBatch,
-        PendingMediaGroup,
-        RecentPhotoSelection,
-        ScopeKey,
-        State,
-        WorkerSession,
-        normalize_scope_key,
-    )
-
+from telegram_bridge.conversation_scope import normalize_scope_storage_key, parse_telegram_scope_key
+from telegram_bridge import request_state
+from telegram_bridge import session_state
+from telegram_bridge.state_models import (
+    CanonicalSession,
+    PendingDiaryBatch,
+    PendingMediaGroup,
+    RecentPhotoSelection,
+    ScopeKey,
+    State,
+    WorkerSession,
+    normalize_scope_key,
+)
 
 def ensure_state_dir(path: str) -> None:
     Path(path).mkdir(parents=True, exist_ok=True)
-
 
 def quarantine_corrupt_state_file(path: str) -> Optional[str]:
     data_path = Path(path)
@@ -48,7 +31,6 @@ def quarantine_corrupt_state_file(path: str) -> Optional[str]:
     quarantined = data_path.with_name(f"{data_path.name}.corrupt.{timestamp}")
     data_path.replace(quarantined)
     return str(quarantined)
-
 
 def _load_json_object(path: str, *, state_label: str) -> Dict[object, object]:
     data_path = Path(path)
@@ -61,7 +43,6 @@ def _load_json_object(path: str, *, state_label: str) -> Dict[object, object]:
     if not isinstance(raw, dict):
         raise ValueError(f"Invalid {state_label} state {path}: root is not object")
     return raw
-
 
 def _load_scope_string_map(
     path: str,
@@ -82,14 +63,12 @@ def _load_scope_string_map(
             parsed[scope_key] = normalized_value
     return parsed
 
-
 def load_chat_threads(path: str) -> Dict[ScopeKey, str]:
     return _load_scope_string_map(
         path,
         state_label="chat thread",
         normalize_value=lambda value: value,
     )
-
 
 def load_chat_engines(path: str) -> Dict[ScopeKey, str]:
     return _load_scope_string_map(
@@ -98,14 +77,12 @@ def load_chat_engines(path: str) -> Dict[ScopeKey, str]:
         normalize_value=lambda value: value.lower(),
     )
 
-
 def load_chat_codex_models(path: str) -> Dict[ScopeKey, str]:
     return _load_scope_string_map(
         path,
         state_label="chat Codex model",
         normalize_value=lambda value: value,
     )
-
 
 def load_chat_codex_efforts(path: str) -> Dict[ScopeKey, str]:
     return _load_scope_string_map(
@@ -114,7 +91,6 @@ def load_chat_codex_efforts(path: str) -> Dict[ScopeKey, str]:
         normalize_value=lambda value: value.lower(),
     )
 
-
 def load_chat_pi_models(path: str) -> Dict[ScopeKey, str]:
     return _load_scope_string_map(
         path,
@@ -122,14 +98,12 @@ def load_chat_pi_models(path: str) -> Dict[ScopeKey, str]:
         normalize_value=lambda value: value,
     )
 
-
 def load_chat_pi_providers(path: str) -> Dict[ScopeKey, str]:
     return _load_scope_string_map(
         path,
         state_label="chat Pi provider",
         normalize_value=lambda value: value.lower(),
     )
-
 
 def load_worker_sessions(path: str) -> Dict[ScopeKey, WorkerSession]:
     raw = _load_json_object(path, state_label="worker session")
@@ -160,7 +134,6 @@ def load_worker_sessions(path: str) -> Dict[ScopeKey, WorkerSession]:
         )
     return parsed
 
-
 def load_in_flight_requests(path: str) -> Dict[ScopeKey, Dict[str, object]]:
     raw = _load_json_object(path, state_label="in-flight")
     out: Dict[ScopeKey, Dict[str, object]] = {}
@@ -179,7 +152,6 @@ def load_in_flight_requests(path: str) -> Dict[ScopeKey, Dict[str, object]]:
             payload["message_id"] = message_id
         out[scope_key] = payload
     return out
-
 
 def load_canonical_sessions(path: str) -> Dict[ScopeKey, CanonicalSession]:
     raw = _load_json_object(path, state_label="canonical session")
@@ -227,7 +199,6 @@ def load_canonical_sessions(path: str) -> Dict[ScopeKey, CanonicalSession]:
         )
 
     return parsed
-
 
 def ensure_canonical_sessions_sqlite(path: str) -> None:
     if not path:
@@ -308,7 +279,6 @@ def ensure_canonical_sessions_sqlite(path: str) -> None:
         )
         conn.commit()
 
-
 def load_canonical_sessions_sqlite(path: str) -> Dict[ScopeKey, CanonicalSession]:
     if not path:
         return {}
@@ -348,7 +318,6 @@ def load_canonical_sessions_sqlite(path: str) -> Dict[ScopeKey, CanonicalSession
             in_flight_message_id=in_flight_message_id,
         )
     return parsed
-
 
 def persist_canonical_sessions_sqlite(
     path: str,
@@ -400,7 +369,6 @@ def persist_canonical_sessions_sqlite(
             )
         conn.commit()
 
-
 def load_or_import_canonical_sessions_sqlite(
     path: str,
     import_sessions: Optional[Dict[ScopeKey, CanonicalSession]] = None,
@@ -417,7 +385,6 @@ def load_or_import_canonical_sessions_sqlite(
         return {}, False
     persist_canonical_sessions_sqlite(path, import_sessions)
     return load_canonical_sessions_sqlite(path), True
-
 
 def _build_canonical_session_for_scope(
     scope_key: ScopeKey,
@@ -451,7 +418,6 @@ def _build_canonical_session_for_scope(
         in_flight_message_id=in_flight_message_id,
     )
 
-
 def build_canonical_sessions_from_legacy(
     chat_threads: Dict[ScopeKey, str],
     worker_sessions: Dict[ScopeKey, WorkerSession],
@@ -469,7 +435,6 @@ def build_canonical_sessions_from_legacy(
         if session is not None:
             out[scope_key] = session
     return out
-
 
 def _canonical_session_to_legacy(
     session: CanonicalSession,
@@ -494,7 +459,6 @@ def _canonical_session_to_legacy(
 
     return thread_value, worker_value, in_flight_value
 
-
 def build_legacy_from_canonical(
     canonical_sessions: Dict[ScopeKey, CanonicalSession],
 ) -> tuple[Dict[ScopeKey, str], Dict[ScopeKey, WorkerSession], Dict[ScopeKey, Dict[str, object]]]:
@@ -511,7 +475,6 @@ def build_legacy_from_canonical(
             in_flight_requests[scope_key] = in_flight_value
     return chat_threads, worker_sessions, in_flight_requests
 
-
 def canonical_session_is_empty(session: CanonicalSession) -> bool:
     return (
         not session.thread_id.strip()
@@ -521,7 +484,6 @@ def canonical_session_is_empty(session: CanonicalSession) -> bool:
         and session.in_flight_started_at is None
         and session.in_flight_message_id is None
     )
-
 
 def persist_json_state_file(path_value: str, serialized: Dict[str, object]) -> None:
     if not path_value:
@@ -552,7 +514,6 @@ def persist_json_state_file(path_value: str, serialized: Dict[str, object]) -> N
             pass
         raise
 
-
 def persist_chat_threads(state: State) -> None:
     with state.lock:
         serialized = {
@@ -560,7 +521,6 @@ def persist_chat_threads(state: State) -> None:
             for scope_key, thread_id in state.chat_threads.items()
         }
     persist_json_state_file(state.chat_thread_path, serialized)
-
 
 def persist_chat_engines(state: State) -> None:
     with state.lock:
@@ -570,7 +530,6 @@ def persist_chat_engines(state: State) -> None:
         }
     persist_json_state_file(state.chat_engine_path, serialized)
 
-
 def persist_chat_codex_models(state: State) -> None:
     with state.lock:
         serialized = {
@@ -578,7 +537,6 @@ def persist_chat_codex_models(state: State) -> None:
             for scope_key, model_name in state.chat_codex_models.items()
         }
     persist_json_state_file(state.chat_codex_model_path, serialized)
-
 
 def persist_chat_codex_efforts(state: State) -> None:
     with state.lock:
@@ -588,7 +546,6 @@ def persist_chat_codex_efforts(state: State) -> None:
         }
     persist_json_state_file(state.chat_codex_effort_path, serialized)
 
-
 def persist_chat_pi_models(state: State) -> None:
     with state.lock:
         serialized = {
@@ -597,7 +554,6 @@ def persist_chat_pi_models(state: State) -> None:
         }
     persist_json_state_file(state.chat_pi_model_path, serialized)
 
-
 def persist_chat_pi_providers(state: State) -> None:
     with state.lock:
         serialized = {
@@ -605,7 +561,6 @@ def persist_chat_pi_providers(state: State) -> None:
             for scope_key, provider_name in state.chat_pi_providers.items()
         }
     persist_json_state_file(state.chat_pi_provider_path, serialized)
-
 
 def _get_string_override(
     state: State,
@@ -618,7 +573,6 @@ def _get_string_override(
     with state.lock:
         value = normalize(values.get(scope_key, ""))
     return value or None
-
 
 def _set_string_override(
     state: State,
@@ -634,7 +588,6 @@ def _set_string_override(
     with state.lock:
         values[scope_key] = normalized_value
     persist_fn(state)
-
 
 def _clear_string_override(
     state: State,
@@ -652,7 +605,6 @@ def _clear_string_override(
         persist_fn(state)
     return removed
 
-
 def _persist_legacy_state(
     state: State,
     *,
@@ -667,7 +619,6 @@ def _persist_legacy_state(
     if in_flight_requests:
         persist_in_flight_requests(state)
 
-
 def get_chat_engine(state: State, scope_key: ScopeKey) -> Optional[str]:
     return _get_string_override(
         state,
@@ -675,7 +626,6 @@ def get_chat_engine(state: State, scope_key: ScopeKey) -> Optional[str]:
         state.chat_engines,
         normalize=lambda value: value.strip().lower(),
     )
-
 
 def set_chat_engine(state: State, scope_key: ScopeKey, engine_name: str) -> None:
     _set_string_override(
@@ -687,7 +637,6 @@ def set_chat_engine(state: State, scope_key: ScopeKey, engine_name: str) -> None
         normalize=lambda value: value.strip().lower(),
     )
 
-
 def clear_chat_engine(state: State, scope_key: ScopeKey) -> bool:
     return _clear_string_override(
         state,
@@ -696,10 +645,8 @@ def clear_chat_engine(state: State, scope_key: ScopeKey) -> bool:
         persist_chat_engines,
     )
 
-
 def get_chat_codex_model(state: State, scope_key: ScopeKey) -> Optional[str]:
     return _get_string_override(state, scope_key, state.chat_codex_models)
-
 
 def set_chat_codex_model(state: State, scope_key: ScopeKey, model_name: str) -> None:
     _set_string_override(
@@ -710,7 +657,6 @@ def set_chat_codex_model(state: State, scope_key: ScopeKey, model_name: str) -> 
         persist_chat_codex_models,
     )
 
-
 def clear_chat_codex_model(state: State, scope_key: ScopeKey) -> bool:
     return _clear_string_override(
         state,
@@ -719,7 +665,6 @@ def clear_chat_codex_model(state: State, scope_key: ScopeKey) -> bool:
         persist_chat_codex_models,
     )
 
-
 def get_chat_codex_effort(state: State, scope_key: ScopeKey) -> Optional[str]:
     return _get_string_override(
         state,
@@ -727,7 +672,6 @@ def get_chat_codex_effort(state: State, scope_key: ScopeKey) -> Optional[str]:
         state.chat_codex_efforts,
         normalize=lambda value: value.strip().lower(),
     )
-
 
 def set_chat_codex_effort(state: State, scope_key: ScopeKey, effort_name: str) -> None:
     _set_string_override(
@@ -739,7 +683,6 @@ def set_chat_codex_effort(state: State, scope_key: ScopeKey, effort_name: str) -
         normalize=lambda value: value.strip().lower(),
     )
 
-
 def clear_chat_codex_effort(state: State, scope_key: ScopeKey) -> bool:
     return _clear_string_override(
         state,
@@ -748,7 +691,6 @@ def clear_chat_codex_effort(state: State, scope_key: ScopeKey) -> bool:
         persist_chat_codex_efforts,
     )
 
-
 def get_chat_pi_provider(state: State, scope_key: ScopeKey) -> Optional[str]:
     return _get_string_override(
         state,
@@ -756,7 +698,6 @@ def get_chat_pi_provider(state: State, scope_key: ScopeKey) -> Optional[str]:
         state.chat_pi_providers,
         normalize=lambda value: value.strip().lower(),
     )
-
 
 def set_chat_pi_provider(state: State, scope_key: ScopeKey, provider_name: str) -> None:
     _set_string_override(
@@ -768,7 +709,6 @@ def set_chat_pi_provider(state: State, scope_key: ScopeKey, provider_name: str) 
         normalize=lambda value: value.strip().lower(),
     )
 
-
 def clear_chat_pi_provider(state: State, scope_key: ScopeKey) -> bool:
     return _clear_string_override(
         state,
@@ -777,10 +717,8 @@ def clear_chat_pi_provider(state: State, scope_key: ScopeKey) -> bool:
         persist_chat_pi_providers,
     )
 
-
 def get_chat_pi_model(state: State, scope_key: ScopeKey) -> Optional[str]:
     return _get_string_override(state, scope_key, state.chat_pi_models)
-
 
 def set_chat_pi_model(state: State, scope_key: ScopeKey, model_name: str) -> None:
     _set_string_override(
@@ -791,7 +729,6 @@ def set_chat_pi_model(state: State, scope_key: ScopeKey, model_name: str) -> Non
         persist_chat_pi_models,
     )
 
-
 def clear_chat_pi_model(state: State, scope_key: ScopeKey) -> bool:
     return _clear_string_override(
         state,
@@ -799,7 +736,6 @@ def clear_chat_pi_model(state: State, scope_key: ScopeKey) -> bool:
         state.chat_pi_models,
         persist_chat_pi_models,
     )
-
 
 def persist_worker_sessions(state: State) -> None:
     with state.lock:
@@ -814,7 +750,6 @@ def persist_worker_sessions(state: State) -> None:
         }
     persist_json_state_file(state.worker_sessions_path, serialized)
 
-
 def persist_in_flight_requests(state: State) -> None:
     with state.lock:
         serialized = {
@@ -822,7 +757,6 @@ def persist_in_flight_requests(state: State) -> None:
             for scope_key, payload in state.in_flight_requests.items()
         }
     persist_json_state_file(state.in_flight_path, serialized)
-
 
 def persist_canonical_sessions(state: State) -> None:
     if not state.canonical_sessions_enabled:
@@ -857,7 +791,6 @@ def persist_canonical_sessions(state: State) -> None:
         return
     persist_json_state_file(state.chat_sessions_path, serialized)
 
-
 def mirror_legacy_from_canonical(state: State, persist: bool = True) -> None:
     if not state.canonical_sessions_enabled:
         return
@@ -877,14 +810,12 @@ def mirror_legacy_from_canonical(state: State, persist: bool = True) -> None:
             in_flight_requests=True,
         )
 
-
 def persist_canonical_and_mirror_legacy(state: State) -> None:
     persist_canonical_sessions(state)
     mirror_legacy_from_canonical(
         state,
         persist=state.canonical_legacy_mirror_enabled,
     )
-
 
 def sync_canonical_session(state: State, scope_key: ScopeKey) -> None:
     if not state.canonical_sessions_enabled:
@@ -909,7 +840,6 @@ def sync_canonical_session(state: State, scope_key: ScopeKey) -> None:
     if changed:
         persist_canonical_and_mirror_legacy(state)
 
-
 def sync_all_canonical_sessions(state: State) -> None:
     if not state.canonical_sessions_enabled:
         return
@@ -920,7 +850,6 @@ def sync_all_canonical_sessions(state: State) -> None:
             state.in_flight_requests,
         )
     persist_canonical_sessions(state)
-
 
 def clear_worker_session(state: State, scope_key: ScopeKey) -> bool:
     return session_state.clear_worker_session(
@@ -933,14 +862,12 @@ def clear_worker_session(state: State, scope_key: ScopeKey) -> bool:
         sync_canonical_session_fn=sync_canonical_session,
     )
 
-
 def get_thread_id(state: State, scope_key: ScopeKey) -> Optional[str]:
     return session_state.get_thread_id(
         state,
         scope_key,
         normalize_scope_key_fn=normalize_scope_key,
     )
-
 
 def set_thread_id(state: State, scope_key: ScopeKey, thread_id: str) -> None:
     session_state.set_thread_id(
@@ -954,7 +881,6 @@ def set_thread_id(state: State, scope_key: ScopeKey, thread_id: str) -> None:
         sync_canonical_session_fn=sync_canonical_session,
     )
 
-
 def clear_thread_id(state: State, scope_key: ScopeKey) -> bool:
     return session_state.clear_thread_id(
         state,
@@ -965,7 +891,6 @@ def clear_thread_id(state: State, scope_key: ScopeKey) -> bool:
         persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
         sync_canonical_session_fn=sync_canonical_session,
     )
-
 
 def mark_in_flight_request(state: State, scope_key: ScopeKey, message_id: Optional[int]) -> None:
     request_state.mark_in_flight_request(
@@ -979,7 +904,6 @@ def mark_in_flight_request(state: State, scope_key: ScopeKey, message_id: Option
         sync_canonical_session_fn=sync_canonical_session,
     )
 
-
 def clear_in_flight_request(state: State, scope_key: ScopeKey) -> None:
     request_state.clear_in_flight_request(
         state,
@@ -991,7 +915,6 @@ def clear_in_flight_request(state: State, scope_key: ScopeKey) -> None:
         sync_canonical_session_fn=sync_canonical_session,
     )
 
-
 def pop_interrupted_requests(state: State) -> Dict[ScopeKey, Dict[str, object]]:
     return request_state.pop_interrupted_requests(
         state,
@@ -1000,7 +923,6 @@ def pop_interrupted_requests(state: State) -> Dict[ScopeKey, Dict[str, object]]:
         persist_in_flight_requests_fn=persist_in_flight_requests,
         sync_canonical_session_fn=sync_canonical_session,
     )
-
 
 class StateRepository:
     """State operations adapter used by handlers/workers."""

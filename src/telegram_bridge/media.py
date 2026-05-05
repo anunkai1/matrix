@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Protocol, Tuple
 
-
 class TelegramFileClientProtocol(Protocol):
     def get_file(self, file_id: str) -> Dict[str, object]:
         ...
@@ -18,7 +17,6 @@ class TelegramFileClientProtocol(Protocol):
     ) -> None:
         ...
 
-
 @dataclass(frozen=True)
 class TelegramFileDownloadSpec:
     file_id: str
@@ -28,7 +26,6 @@ class TelegramFileDownloadSpec:
     default_suffix: str
     too_large_label: str
     suffix_hint: str = ""
-
 
 def download_telegram_file_to_temp(
     client: TelegramFileClientProtocol,

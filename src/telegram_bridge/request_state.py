@@ -1,11 +1,7 @@
 import time
 from typing import Dict, Optional
 
-try:
-    from .state_models import ScopeKey, State
-except ImportError:
-    from state_models import ScopeKey, State
-
+from telegram_bridge.state_models import ScopeKey, State
 
 def _build_in_flight_payload(
     *,
@@ -16,7 +12,6 @@ def _build_in_flight_payload(
     if isinstance(message_id, int):
         payload["message_id"] = message_id
     return payload
-
 
 def mark_in_flight_request(
     state: State,
@@ -46,7 +41,6 @@ def mark_in_flight_request(
         state.in_flight_requests[scope_key] = payload
     persist_in_flight_requests_fn(state)
     sync_canonical_session_fn(state, scope_key)
-
 
 def clear_in_flight_request(
     state: State,
@@ -84,7 +78,6 @@ def clear_in_flight_request(
     if removed:
         persist_in_flight_requests_fn(state)
         sync_canonical_session_fn(state, scope_key)
-
 
 def pop_interrupted_requests(
     state: State,

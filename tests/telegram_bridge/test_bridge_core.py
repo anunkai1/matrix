@@ -1,4 +1,3 @@
-import importlib.util
 import io
 import json
 import logging
@@ -11,37 +10,31 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-BRIDGE_MAIN = ROOT / "src" / "telegram_bridge" / "main.py"
-BRIDGE_DIR = BRIDGE_MAIN.parent
+SRC_ROOT = ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
-spec = importlib.util.spec_from_file_location("telegram_bridge_main", BRIDGE_MAIN)
-if spec is None or spec.loader is None:
-    raise RuntimeError("Failed to load telegram bridge module spec")
-bridge = importlib.util.module_from_spec(spec)
-import sys
-if str(BRIDGE_DIR) not in sys.path:
-    sys.path.insert(0, str(BRIDGE_DIR))
-spec.loader.exec_module(bridge)
-import executor as bridge_executor
-import handlers as bridge_handlers
-import prompt_execution as bridge_prompt_execution
-import special_request_processing as bridge_special_request_processing
-import auth_state as bridge_auth_state
-import channel_adapter as bridge_channel_adapter
-import command_routing as bridge_command_routing
-import control_commands as bridge_control_commands
-import engine_adapter as bridge_engine_adapter
-import http_channel as bridge_http_channel
-import plugin_registry as bridge_plugin_registry
-import signal_channel as bridge_signal_channel
-import whatsapp_channel as bridge_whatsapp_channel
-import session_manager as bridge_session_manager
-import structured_logging as bridge_structured_logging
-import transport as bridge_transport
-import voice_alias_commands as bridge_voice_alias_commands
-
+import telegram_bridge.executor as bridge_executor
+import telegram_bridge.handlers as bridge_handlers
+import telegram_bridge.prompt_execution as bridge_prompt_execution
+import telegram_bridge.special_request_processing as bridge_special_request_processing
+import telegram_bridge.auth_state as bridge_auth_state
+import telegram_bridge.channel_adapter as bridge_channel_adapter
+import telegram_bridge.command_routing as bridge_command_routing
+import telegram_bridge.control_commands as bridge_control_commands
+import telegram_bridge.engine_adapter as bridge_engine_adapter
+import telegram_bridge.main as bridge
+import telegram_bridge.http_channel as bridge_http_channel
+import telegram_bridge.plugin_registry as bridge_plugin_registry
+import telegram_bridge.signal_channel as bridge_signal_channel
+import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
+import telegram_bridge.session_manager as bridge_session_manager
+import telegram_bridge.structured_logging as bridge_structured_logging
+import telegram_bridge.transport as bridge_transport
+import telegram_bridge.voice_alias_commands as bridge_voice_alias_commands
 
 class FakeTelegramClient:
     def __init__(self, channel_name: str = "telegram") -> None:
@@ -140,7 +133,6 @@ class FakeTelegramClient:
         del message_thread_id
         self.chat_actions.append((chat_id, action))
 
-
 class FakeDownloadClient:
     def __init__(self, file_meta):
         self.file_meta = file_meta
@@ -152,7 +144,6 @@ class FakeDownloadClient:
     def download_file_to_path(self, file_path, target_path, max_bytes, size_label="File"):
         self.download_calls += 1
         Path(target_path).write_bytes(b"x")
-
 
 class FakeProgressEditClient:
     channel_name = "whatsapp"
@@ -179,7 +170,6 @@ class FakeProgressEditClient:
         self.last_thread_id = message_thread_id
         return None
 
-
 class FakeSignalProgressClient:
     channel_name = "signal"
     supports_message_edits = False
@@ -199,7 +189,6 @@ class FakeSignalProgressClient:
 
     def send_chat_action(self, chat_id, action="typing", message_thread_id=None):
         return None
-
 
 def make_config(**overrides):
     base = {
@@ -311,7 +300,6 @@ def make_config(**overrides):
     }
     base.update(overrides)
     return bridge.Config(**base)
-
 
 class BridgeCoreTests(unittest.TestCase):
     def test_parse_executor_output_json_stream(self):
@@ -657,12 +645,6 @@ class BridgeCoreTests(unittest.TestCase):
                 bridge.parse_plugin_name_env("PLUGIN_TEST", "telegram"),
                 "whatsapp",
             )
-
-    def test_memory_engine_channel_key_namespaces_channels(self):
-        self.assertEqual(bridge.MemoryEngine.channel_key("telegram", 42), "tg:42")
-        self.assertEqual(bridge.MemoryEngine.channel_key("whatsapp", 42), "wa:42")
-        self.assertEqual(bridge.MemoryEngine.channel_key("signal", 42), "sig:42")
-        self.assertEqual(bridge.MemoryEngine.channel_key("custom-bridge", 42), "custom_bridge:42")
 
     def test_load_config_defaults_plugin_selection(self):
         with mock.patch.dict(
@@ -3309,53 +3291,6 @@ class BridgeCoreTests(unittest.TestCase):
             threads_after = json.loads(Path(state.chat_thread_path).read_text(encoding="utf-8"))
             self.assertEqual(threads_after, {})
 
-    def test_handle_reset_command_archives_live_memory_before_clearing_session(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
-            live_key = "shared:architect:main:session:tg:1"
-            archive_key = "shared:architect:main"
-
-            turn = memory_engine.begin_turn(
-                conversation_key=live_key,
-                channel="telegram",
-                sender_name="User",
-                user_input="remember this before reset",
-            )
-            memory_engine.finish_turn(
-                turn,
-                channel="telegram",
-                assistant_text="stored locally",
-                new_thread_id="thread-live",
-            )
-
-            state = bridge.State(
-                memory_engine=memory_engine,
-                chat_threads={"tg:1": "thread-live"},
-                chat_thread_path=str(Path(tmpdir) / "chat_threads.json"),
-                worker_sessions_path=str(Path(tmpdir) / "worker_sessions.json"),
-            )
-            Path(state.chat_thread_path).write_text('{"tg:1":"thread-live"}', encoding="utf-8")
-            client = FakeTelegramClient(channel_name="telegram")
-            config = make_config(shared_memory_key=archive_key)
-
-            bridge_handlers.handle_reset_command(
-                state=state,
-                config=config,
-                client=client,
-                scope_key="tg:1",
-                chat_id=1,
-                message_thread_id=None,
-                message_id=50,
-            )
-
-            live_status = memory_engine.get_status(live_key)
-            archive_status = memory_engine.get_status(archive_key)
-            self.assertEqual(live_status.message_count, 0)
-            self.assertGreaterEqual(archive_status.summary_count, 1)
-            self.assertEqual(archive_status.message_count, 0)
-            self.assertEqual(len(client.messages), 1)
-            self.assertIn("Context reset.", client.messages[0][1])
-
     def test_handle_known_command_routes_reset_to_control_commands(self):
         client = FakeTelegramClient()
         state = bridge.State()
@@ -3431,38 +3366,6 @@ class BridgeCoreTests(unittest.TestCase):
             (1, "Added manual voice alias: `foo` => `bar`", 90),
         )
 
-    def test_begin_memory_turn_uses_state_repo_thread_as_authority(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
-            conversation_key = "shared:architect:main:session:tg:1"
-            memory_engine.set_session_thread_id(conversation_key, "thread-from-memory")
-
-            state = bridge.State(
-                memory_engine=memory_engine,
-                chat_threads={"tg:1": "thread-from-state"},
-                chat_thread_path=str(Path(tmpdir) / "chat_threads.json"),
-            )
-            Path(state.chat_thread_path).write_text('{"tg:1":"thread-from-state"}', encoding="utf-8")
-            repo = bridge.StateRepository(state)
-            config = make_config(shared_memory_key="shared:architect:main")
-
-            prompt_text, previous_thread_id, turn_context = bridge_handlers.begin_memory_turn(
-                memory_engine=memory_engine,
-                state_repo=repo,
-                config=config,
-                channel_name="telegram",
-                scope_key="tg:1",
-                prompt_text="hello",
-                sender_name="User",
-                stateless=False,
-                chat_id=1,
-            )
-
-            self.assertEqual(prompt_text.splitlines()[-1], "hello")
-            self.assertEqual(previous_thread_id, "thread-from-state")
-            self.assertIsNotNone(turn_context)
-            self.assertEqual(turn_context.thread_id, "thread-from-state")
-
     def test_ensure_chat_worker_session_rejects_when_all_workers_busy(self):
         state = bridge.State(
             chat_threads={2: "thread-busy"},
@@ -3487,56 +3390,6 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertFalse(allowed)
         self.assertTrue(client.messages)
         self.assertIn("workers are currently in use", client.messages[-1][1])
-
-    def test_expire_idle_worker_sessions_leaves_live_shared_memory_intact(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
-            live_key = "shared:architect:main:session:tg:1"
-            archive_key = "shared:architect:main"
-
-            turn = memory_engine.begin_turn(
-                conversation_key=live_key,
-                channel="telegram",
-                sender_name="User",
-                user_input="remember this topic",
-            )
-            memory_engine.finish_turn(
-                turn,
-                channel="telegram",
-                assistant_text="stored",
-                new_thread_id="thread-live",
-            )
-            memory_engine.remember_explicit(live_key, "topic: separate")
-
-            state = bridge.State(
-                chat_threads={"tg:1": "thread-live"},
-                worker_sessions={
-                    "tg:1": bridge.WorkerSession(
-                        created_at=1.0,
-                        last_used_at=1.0,
-                        thread_id="thread-live",
-                        policy_fingerprint="fp",
-                    )
-                },
-                memory_engine=memory_engine,
-            )
-            client = FakeTelegramClient(channel_name="telegram")
-            config = make_config(
-                allowed_chat_ids={1},
-                persistent_workers_enabled=True,
-                persistent_workers_idle_timeout_seconds=1,
-                shared_memory_key=archive_key,
-            )
-
-            with mock.patch.object(bridge_session_manager.time, "time", return_value=100.0):
-                bridge.expire_idle_worker_sessions(state, config, client)
-
-            self.assertEqual(memory_engine.get_status(live_key).message_count, 2)
-            archive_status = memory_engine.get_status(archive_key)
-            self.assertEqual(archive_status.message_count, 0)
-            self.assertEqual(archive_status.summary_count, 0)
-            self.assertIn("tg:1", state.worker_sessions)
-            self.assertFalse(client.messages)
 
     def test_policy_fingerprint_cache_reuses_value_within_ttl(self):
         bridge_session_manager._policy_fingerprint_cache.clear()
@@ -3629,145 +3482,6 @@ class BridgeCoreTests(unittest.TestCase):
                 "new-fingerprint",
             )
 
-    def test_apply_auth_change_thread_reset_clears_stale_threads_and_memory_sessions(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            state_dir = Path(tmpdir)
-            fingerprint_path = Path(bridge.build_auth_fingerprint_state_path(str(state_dir)))
-            fingerprint_path.write_text("old-auth\n", encoding="utf-8")
-            memory_engine = bridge.MemoryEngine(str(state_dir / "memory.sqlite3"))
-            memory_engine.set_session_thread_id("tg:1", "thread-memory")
-            loaded_threads = {1: "thread-1", 2: "thread-2"}
-            loaded_worker_sessions = {
-                2: bridge.WorkerSession(
-                    created_at=1.0,
-                    last_used_at=2.0,
-                    thread_id="thread-2",
-                    policy_fingerprint="old-policy",
-                )
-            }
-            loaded_canonical_sessions = {
-                1: bridge.CanonicalSession(thread_id="thread-1"),
-                2: bridge.CanonicalSession(
-                    thread_id="thread-2",
-                    worker_created_at=10.0,
-                    worker_last_used_at=20.0,
-                    worker_policy_fingerprint="old-policy",
-                ),
-                3: bridge.CanonicalSession(in_flight_started_at=30.0, in_flight_message_id=300),
-            }
-
-            result = bridge.apply_auth_change_thread_reset(
-                state_dir=str(state_dir),
-                current_auth_fingerprint="new-auth",
-                loaded_threads=loaded_threads,
-                loaded_worker_sessions=loaded_worker_sessions,
-                loaded_canonical_sessions=loaded_canonical_sessions,
-                memory_engine=memory_engine,
-            )
-
-            self.assertTrue(result["applied"])
-            self.assertEqual(result["counts"]["threads"], 2)
-            self.assertEqual(result["counts"]["worker_sessions"], 1)
-            self.assertEqual(result["counts"]["canonical_sessions"], 2)
-            self.assertEqual(result["counts"]["memory_sessions"], 1)
-            self.assertEqual(loaded_threads, {})
-            self.assertEqual(loaded_worker_sessions, {})
-            self.assertNotIn(1, loaded_canonical_sessions)
-            self.assertNotIn(2, loaded_canonical_sessions)
-            self.assertIn(3, loaded_canonical_sessions)
-            self.assertIsNone(memory_engine.get_session_thread_id("tg:1"))
-            self.assertEqual(fingerprint_path.read_text(encoding="utf-8").strip(), "new-auth")
-
-    def test_apply_auth_change_thread_reset_bootstrap_clears_legacy_threads_without_prior_fingerprint(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            state_dir = Path(tmpdir)
-            memory_engine = bridge.MemoryEngine(str(state_dir / "memory.sqlite3"))
-            memory_engine.set_session_thread_id("tg:1", "thread-memory")
-            loaded_threads = {1: "thread-1"}
-            loaded_worker_sessions = {}
-            loaded_canonical_sessions = {}
-
-            result = bridge.apply_auth_change_thread_reset(
-                state_dir=str(state_dir),
-                current_auth_fingerprint="bootstrap-auth",
-                loaded_threads=loaded_threads,
-                loaded_worker_sessions=loaded_worker_sessions,
-                loaded_canonical_sessions=loaded_canonical_sessions,
-                memory_engine=memory_engine,
-            )
-
-            self.assertTrue(result["applied"])
-            self.assertEqual(result["counts"]["threads"], 1)
-            self.assertEqual(result["counts"]["memory_sessions"], 1)
-            self.assertEqual(loaded_threads, {})
-            self.assertIsNone(memory_engine.get_session_thread_id("tg:1"))
-            self.assertEqual(
-                (state_dir / "auth_fingerprint.txt").read_text(encoding="utf-8").strip(),
-                "bootstrap-auth",
-            )
-
-    def test_begin_memory_turn_clears_stale_memory_thread_when_bridge_state_is_empty(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            state_dir = Path(tmpdir)
-            conversation_key = "tg:-1003706836145:topic:2504"
-            memory_engine = bridge.MemoryEngine(str(state_dir / "memory.sqlite3"))
-            memory_engine.set_session_thread_id(conversation_key, "stale-thread")
-            state = bridge.State(
-                canonical_sessions_enabled=True,
-                memory_engine=memory_engine,
-            )
-            repo = bridge.StateRepository(state)
-            config = make_config(shared_memory_key="")
-
-            prompt_text, previous_thread_id, turn_context = bridge_handlers.begin_memory_turn(
-                memory_engine=memory_engine,
-                state_repo=repo,
-                config=config,
-                channel_name="telegram",
-                scope_key=conversation_key,
-                prompt_text="Solve the problem to get access",
-                sender_name="anunakii",
-                stateless=False,
-                chat_id=-1003706836145,
-            )
-
-            self.assertEqual(prompt_text, turn_context.prompt_text)
-            self.assertIsNone(previous_thread_id)
-            self.assertIsNone(turn_context.thread_id)
-            self.assertIsNone(memory_engine.get_session_thread_id(conversation_key))
-
-    def test_begin_memory_turn_syncs_memory_thread_from_bridge_state(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            state_dir = Path(tmpdir)
-            conversation_key = "tg:-1003706836145:topic:2504"
-            memory_engine = bridge.MemoryEngine(str(state_dir / "memory.sqlite3"))
-            memory_engine.set_session_thread_id(conversation_key, "stale-thread")
-            state = bridge.State(
-                canonical_sessions_enabled=True,
-                chat_sessions={
-                    conversation_key: bridge.CanonicalSession(thread_id="bridge-thread"),
-                },
-                memory_engine=memory_engine,
-            )
-            repo = bridge.StateRepository(state)
-            config = make_config(shared_memory_key="")
-
-            _, previous_thread_id, turn_context = bridge_handlers.begin_memory_turn(
-                memory_engine=memory_engine,
-                state_repo=repo,
-                config=config,
-                channel_name="telegram",
-                scope_key=conversation_key,
-                prompt_text="Solve the problem to get access",
-                sender_name="anunakii",
-                stateless=False,
-                chat_id=-1003706836145,
-            )
-
-            self.assertEqual(previous_thread_id, "bridge-thread")
-            self.assertEqual(turn_context.thread_id, "bridge-thread")
-            self.assertEqual(memory_engine.get_session_thread_id(conversation_key), "bridge-thread")
-
     def test_handle_update_routes_status_command(self):
         state = bridge.State()
         client = FakeTelegramClient()
@@ -3809,9 +3523,6 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIn("Use `SRO ...`", client.messages[-1][1])
         self.assertIn("/cancel or /c", client.messages[-1][1])
         self.assertIn("/voice-alias add <source> => <target>", client.messages[-1][1])
-        self.assertIn("/memory mode", client.messages[-1][1])
-        self.assertNotIn("/memory mode full - legacy alias for all_context", client.messages[-1][1])
-        self.assertIn("/ask <prompt>", client.messages[-1][1])
 
     def test_handle_update_routes_cancel_when_no_active_request(self):
         state = bridge.State()
@@ -3983,7 +3694,7 @@ class BridgeCoreTests(unittest.TestCase):
     @mock.patch.object(bridge_handlers, "start_message_worker")
     @mock.patch.object(bridge_handlers, "archive_media_path", return_value="/tmp/archive.jpg")
     @mock.patch.object(bridge_handlers, "download_photo_to_temp", return_value="/tmp/incoming.jpg")
-    @mock.patch("handlers.os.remove")
+    @mock.patch("telegram_bridge.handlers.os.remove")
     def test_handle_update_prewarms_attachment_archive_for_unprefixed_photo(
         self,
         remove_mock,
@@ -4687,117 +4398,6 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertEqual(len(client.messages), 1)
         self.assertIn("HA mode needs an action.", client.messages[0][1])
 
-    def test_handle_update_routes_memory_status_command(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            state = bridge.State(
-                memory_engine=bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3")),
-            )
-            client = FakeTelegramClient()
-            config = make_config()
-            update = {
-                "update_id": 1,
-                "message": {
-                    "message_id": 21,
-                    "chat": {"id": 1},
-                    "text": "/memory status",
-                },
-            }
-
-            bridge.handle_update(state, config, client, update)
-            self.assertTrue(client.messages)
-            self.assertIn("Memory status:", client.messages[-1][1])
-
-    @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_routes_ask_without_memory_engine(self, start_message_worker):
-        state = bridge.State(memory_engine=None)
-        client = FakeTelegramClient()
-        config = make_config()
-        update = {
-            "update_id": 47,
-            "message": {
-                "message_id": 454,
-                "chat": {"id": 1},
-                "text": "/ask be stateless",
-            },
-        }
-
-        bridge.handle_update(state, config, client, update)
-
-        self.assertTrue(start_message_worker.called)
-        started_request = start_message_worker.call_args.kwargs
-        self.assertTrue(started_request["stateless"])
-        self.assertIn("Current User Message:\nbe stateless", started_request["prompt"])
-
-    def test_status_reports_disabled_memory(self):
-        state = bridge.State(memory_engine=None)
-        client = FakeTelegramClient()
-        config = make_config(memory_enabled=False)
-        update = {
-            "update_id": 48,
-            "message": {
-                "message_id": 455,
-                "chat": {"id": 1},
-                "text": "/status",
-            },
-        }
-
-        bridge.handle_update(state, config, client, update)
-
-        self.assertTrue(client.messages)
-        status_text = client.messages[-1][1]
-        self.assertIn("SQLite memory: disabled", status_text)
-        self.assertIn("Memory messages (last 5000 tokens): disabled", status_text)
-
-    @mock.patch.object(bridge_handlers, "start_message_worker")
-    def test_handle_update_routes_natural_language_memory_recall(self, start_message_worker):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
-            key = bridge.MemoryEngine.telegram_key(1)
-            turn = memory_engine.begin_turn(
-                conversation_key=key,
-                channel="telegram",
-                sender_name="User",
-                user_input="first note",
-            )
-            memory_engine.finish_turn(
-                turn,
-                channel="telegram",
-                assistant_text="reply one",
-                new_thread_id="thread-1",
-            )
-            turn = memory_engine.begin_turn(
-                conversation_key=key,
-                channel="telegram",
-                sender_name="User",
-                user_input="second note",
-            )
-            memory_engine.finish_turn(
-                turn,
-                channel="telegram",
-                assistant_text="reply two",
-                new_thread_id="thread-1",
-            )
-
-            state = bridge.State(memory_engine=memory_engine)
-            client = FakeTelegramClient()
-            config = make_config()
-            update = {
-                "update_id": 46,
-                "message": {
-                    "message_id": 453,
-                    "chat": {"id": 1, "type": "private"},
-                    "text": "what were the last 2 messages i sent you?",
-                },
-            }
-
-            bridge.handle_update(state, config, client, update)
-
-            self.assertFalse(start_message_worker.called)
-            self.assertTrue(client.messages)
-            self.assertIn("Your last 2 messages in memory are:", client.messages[-1][1])
-            self.assertIn("first note", client.messages[-1][1])
-            self.assertIn("second note", client.messages[-1][1])
-
     def test_handle_update_rejects_too_long_input_before_worker_dispatch(self):
         state = bridge.State()
         client = FakeTelegramClient()
@@ -4853,105 +4453,6 @@ class BridgeCoreTests(unittest.TestCase):
 
         self.assertTrue(start_message_worker.called)
         self.assertEqual(client.messages, [])
-
-    def test_handle_update_uses_whatsapp_memory_conversation_key(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
-            state = bridge.State(memory_engine=memory_engine)
-            client = FakeTelegramClient(channel_name="whatsapp")
-            config = make_config(
-                channel_plugin="whatsapp",
-                allowed_chat_ids={2},
-            )
-            update = {
-                "update_id": 44,
-                "message": {
-                    "message_id": 451,
-                    "chat": {"id": 2, "type": "private"},
-                    "text": "/memory status",
-                },
-            }
-            captured = {}
-
-            def fake_memory_command(engine, conversation_key, text):
-                captured["conversation_key"] = conversation_key
-                return SimpleNamespace(
-                    handled=True,
-                    response="memory ok",
-                    run_prompt=None,
-                    stateless=False,
-                )
-
-            with mock.patch.object(
-                bridge_handlers,
-                "handle_memory_command",
-                side_effect=fake_memory_command,
-            ):
-                bridge.handle_update(state, config, client, update)
-
-            self.assertEqual(captured.get("conversation_key"), "wa:2")
-            self.assertEqual(client.messages[-1][1], "memory ok")
-
-    def test_handle_update_uses_configured_shared_memory_key_for_telegram(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
-            state = bridge.State(memory_engine=memory_engine)
-            client = FakeTelegramClient(channel_name="telegram")
-            config = make_config(
-                allowed_chat_ids={2},
-                shared_memory_key="shared:architect:main",
-            )
-            update = {
-                "update_id": 45,
-                "message": {
-                    "message_id": 452,
-                    "chat": {"id": 2, "type": "private"},
-                    "text": "/memory status",
-                },
-            }
-            captured = {}
-
-            def fake_memory_command(engine, conversation_key, text):
-                captured["conversation_key"] = conversation_key
-                return SimpleNamespace(
-                    handled=True,
-                    response="memory ok",
-                    run_prompt=None,
-                    stateless=False,
-                )
-
-            with mock.patch.object(
-                bridge_handlers,
-                "handle_memory_command",
-                side_effect=fake_memory_command,
-            ):
-                bridge.handle_update(state, config, client, update)
-
-            self.assertEqual(
-                captured.get("conversation_key"),
-                "shared:architect:main:session:tg:2",
-            )
-            self.assertEqual(client.messages[-1][1], "memory ok")
-
-    def test_build_status_text_uses_configured_channel_memory_namespace(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
-            memory_engine.set_mode("wa:9", "session_only")
-            memory_engine.begin_turn("wa:9", "whatsapp", "owner", "hello")
-            state = bridge.State(memory_engine=memory_engine)
-            config = make_config(channel_plugin="whatsapp")
-            status_text = bridge_handlers.build_status_text(state, config, chat_id=9)
-            self.assertIn("Memory mode: session_only", status_text)
-            self.assertIn("Memory messages: 1", status_text)
-
-    def test_build_status_text_uses_live_shared_memory_scope_when_configured(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            memory_engine = bridge.MemoryEngine(str(Path(tmpdir) / "memory.sqlite3"))
-            memory_engine.set_mode("shared:architect:main:session:tg:9", "session_only")
-            state = bridge.State(memory_engine=memory_engine)
-            config = make_config(shared_memory_key="shared:architect:main")
-            status_text = bridge_handlers.build_status_text(state, config, chat_id=9)
-            self.assertIn("Memory mode: session_only", status_text)
 
     def test_build_status_text_uses_current_session_labels(self):
         state = bridge.State(
@@ -5225,108 +4726,6 @@ class BridgeCoreTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.returncode, 0)
         self.assertEqual(engine.calls, 1)
-
-    def test_process_prompt_resets_stale_threads_when_auth_fingerprint_changes(self):
-        class RecordingEngine:
-            engine_name = "codex"
-
-            def __init__(self):
-                self.thread_ids = []
-
-            def run(
-                self,
-                config,
-                prompt,
-                thread_id,
-                session_key=None,
-                channel_name=None,
-                actor_chat_id=None,
-                actor_user_id=None,
-                image_path=None,
-                image_paths=None,
-                progress_callback=None,
-                cancel_event=None,
-            ):
-                del (
-                    config,
-                    prompt,
-                    session_key,
-                    channel_name,
-                    actor_chat_id,
-                    actor_user_id,
-                    image_path,
-                    image_paths,
-                    progress_callback,
-                    cancel_event,
-                )
-                self.thread_ids.append(thread_id)
-                stdout = json.dumps(
-                    {
-                        "type": "item.completed",
-                        "item": {"type": "agent_message", "text": "fresh-session"},
-                    }
-                )
-                return subprocess.CompletedProcess(
-                    args=["codex", "exec"],
-                    returncode=0,
-                    stdout=stdout,
-                    stderr="",
-                )
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            state_dir = Path(tmpdir)
-            memory_engine = bridge.MemoryEngine(str(state_dir / "memory.sqlite3"))
-            conversation_key = "tg:1"
-            memory_engine.set_session_thread_id(conversation_key, "thread-memory-old")
-            state = bridge.State(
-                chat_threads={conversation_key: "thread-bridge-old"},
-                chat_thread_path=str(state_dir / "chat_threads.json"),
-                worker_sessions={
-                    conversation_key: bridge.WorkerSession(
-                        created_at=1.0,
-                        last_used_at=2.0,
-                        thread_id="thread-bridge-old",
-                        policy_fingerprint="policy",
-                    )
-                },
-                worker_sessions_path=str(state_dir / "worker_sessions.json"),
-                in_flight_requests={},
-                in_flight_path=str(state_dir / "in_flight_requests.json"),
-                memory_engine=memory_engine,
-                auth_fingerprint_path=str(state_dir / "auth_fingerprint.txt"),
-                auth_fingerprint="old-auth",
-            )
-            Path(state.auth_fingerprint_path).write_text("old-auth\n", encoding="utf-8")
-            client = FakeTelegramClient()
-            config = make_config(state_dir=str(state_dir), shared_memory_key="")
-            engine = RecordingEngine()
-
-            with mock.patch.object(
-                bridge_auth_state,
-                "compute_current_auth_fingerprint",
-                return_value="new-auth",
-            ):
-                bridge_handlers.process_prompt(
-                    state=state,
-                    config=config,
-                    client=client,
-                    engine=engine,
-                    scope_key=conversation_key,
-                    chat_id=1,
-                    message_thread_id=None,
-                    message_id=99,
-                    prompt="hello after login switch",
-                    photo_file_id=None,
-                    voice_file_id=None,
-                    document=None,
-                )
-
-            self.assertEqual(engine.thread_ids, [None])
-            self.assertEqual(state.chat_threads, {})
-            self.assertEqual(state.worker_sessions, {})
-            self.assertIsNone(memory_engine.get_session_thread_id(conversation_key))
-            self.assertTrue(client.messages)
-            self.assertIn("fresh-session", client.messages[-1][1])
 
     def test_restart_helper_uses_shared_run_status_dir_by_default(self):
         script_text = (ROOT / "ops" / "telegram-bridge" / "restart_and_verify.sh").read_text(
@@ -5786,6 +5185,6 @@ class BridgeCoreTests(unittest.TestCase):
             bridge_session_manager.finalize_chat_work(state, client, chat_id=1)
         self.assertNotIn("tg:1", state.busy_chats)
 
-
 if __name__ == "__main__":
     unittest.main()
+

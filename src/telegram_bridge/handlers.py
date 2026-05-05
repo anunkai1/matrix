@@ -17,292 +17,148 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
-try:
-    from .auth_state import refresh_runtime_auth_fingerprint
-    from . import attachment_processing
-    from .background_tasks import start_daemon_thread
-    from . import engine_controls
-    from . import response_delivery
-    from .conversation_scope import (
-        ConversationScope,
-        build_telegram_scope_key,
-        parse_telegram_scope_key,
-        scope_from_message,
-    )
-    from .executor import (
-        ExecutorCancelledError,
-        parse_executor_output,
-        should_reset_thread_after_resume_failure,
-    )
-    from .handler_common import (
-        ProgressReporter,
-        RATE_LIMIT_MESSAGE,
-        build_help_text,
-        build_status_text,
-        extract_callback_query_context,
-        extract_chat_context,
-        normalize_command,
-        strip_required_prefix,
-        trim_output,
-    )
-    from .channel_adapter import ChannelAdapter
-    from .command_routing import handle_callback_query, handle_known_command
-    from . import control_commands
-    from . import dishframed_processing
-    from .diary_processing import (
-        build_diary_entry_title,
-        build_diary_photo_caption,
-        build_diary_progress_context_label,
-        build_diary_queue_status,
-        build_diary_today_status,
-        diary_capture_batch_worker,
-        diary_control_command,
-        diary_queue_worker,
-        ensure_diary_queue_processor,
-        process_diary_batch,
-        queue_diary_capture,
-        transcribe_voice_for_diary_batch,
-    )
-    from .diary_store import (
-        DiaryEntry,
-        DiaryPhoto,
-        append_day_entry,
-        copy_photo_to_day_assets,
-        diary_day_docx_path,
-        diary_day_remote_docx_path,
-        diary_mode_enabled,
-        diary_nextcloud_enabled,
-        diary_timezone,
-        read_day_entries,
-        upload_to_nextcloud,
-    )
-    from .engine_adapter import CodexEngineAdapter, EngineAdapter
-    from .handler_models import (
-        CallbackActionContext,
-        CallbackActionResult,
-        DishframedRequest,
-        DocumentPayload,
-        IncomingUpdateContext,
-        KnownCommandContext,
-        OutboundMediaDirective,
-        PreparedPromptInput,
-        PreparedUpdateRequest,
-        PromptRequest,
-        UpdateDispatchRequest,
-        UpdateFlowState,
-        YoutubeRequest,
-        build_dishframed_request,
-        build_prompt_request,
-        build_youtube_request,
-    )
-    from . import message_inputs
-    from . import youtube_processing
-    from .plugin_registry import build_default_plugin_registry
-    from . import prompt_execution
-    from . import prompt_inputs
-    from . import prompt_runtime
-    from . import prompt_preparation
-    from .runtime_profile import (
-        BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
-        HA_KEYWORD_HELP_MESSAGE,
-        HELP_COMMAND_ALIASES,
-        CANCEL_COMMAND_ALIASES,
-        NEXTCLOUD_KEYWORD_HELP_MESSAGE,
-        PREFIX_HELP_MESSAGE,
-        RETRY_WITH_NEW_SESSION_PHASE,
-        SERVER3_KEYWORD_HELP_MESSAGE,
-        WHATSAPP_REPLY_PREFIX,
-        WHATSAPP_REPLY_PREFIX_RE,
-        apply_outbound_reply_prefix,
-        assistant_label,
-        build_engine_progress_context_label,
-        build_browser_brain_keyword_prompt,
-        build_browser_brain_routing_script_allowlist,
-        build_ha_keyword_prompt,
-        build_ha_routing_script_allowlist,
-        build_nextcloud_keyword_prompt,
-        build_nextcloud_routing_script_allowlist,
-        build_server3_keyword_prompt,
-        build_server3_routing_script_allowlist,
-        command_bypasses_required_prefix,
-        extract_browser_brain_keyword_request,
-        extract_ha_keyword_request,
-        extract_nextcloud_keyword_request,
-        extract_server3_keyword_request,
-        is_signal_channel,
-        is_whatsapp_channel,
-        resume_retry_phase,
-        start_command_message,
-    )
-    from .runtime_routing import apply_priority_keyword_routing, apply_required_prefix_gate
-    from .session_manager import (
-        ensure_chat_worker_session,
-        finalize_chat_work,
-        is_rate_limited,
-        mark_busy,
-        request_safe_restart,
-        trigger_restart_async,
-    )
-    from .state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
-    from .structured_logging import emit_event
-    from . import request_starts
-    from . import request_processing
-    from . import special_request_processing
-    from .transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
-    from .update_flow import (
-        allow_update_chat,
-        build_update_flow_state,
-        extract_incoming_update_context,
-        maybe_handle_diary_update_flow,
-        prepare_update_dispatch_request,
-        prepare_update_request,
-        start_dishframed_dispatch,
-        start_standard_dispatch,
-    )
-    from . import voice_alias_commands
-except ImportError:
-    from auth_state import refresh_runtime_auth_fingerprint
-    import attachment_processing
-    from background_tasks import start_daemon_thread
-    import engine_controls
-    import response_delivery
-    from conversation_scope import (
-        ConversationScope,
-        build_telegram_scope_key,
-        parse_telegram_scope_key,
-        scope_from_message,
-    )
-    from executor import (
-        ExecutorCancelledError,
-        parse_executor_output,
-        should_reset_thread_after_resume_failure,
-    )
-    from handler_common import (
-        ProgressReporter,
-        RATE_LIMIT_MESSAGE,
-        build_help_text,
-        build_status_text,
-        extract_callback_query_context,
-        extract_chat_context,
-        normalize_command,
-        strip_required_prefix,
-        trim_output,
-    )
-    from channel_adapter import ChannelAdapter
-    from command_routing import handle_callback_query, handle_known_command
-    import control_commands
-    import dishframed_processing
-    from diary_processing import (
-        build_diary_entry_title,
-        build_diary_photo_caption,
-        build_diary_progress_context_label,
-        build_diary_queue_status,
-        build_diary_today_status,
-        diary_capture_batch_worker,
-        diary_control_command,
-        diary_queue_worker,
-        ensure_diary_queue_processor,
-        process_diary_batch,
-        queue_diary_capture,
-        transcribe_voice_for_diary_batch,
-    )
-    from diary_store import (
-        DiaryEntry,
-        DiaryPhoto,
-        append_day_entry,
-        copy_photo_to_day_assets,
-        diary_day_docx_path,
-        diary_day_remote_docx_path,
-        diary_mode_enabled,
-        diary_nextcloud_enabled,
-        diary_timezone,
-        read_day_entries,
-        upload_to_nextcloud,
-    )
-    from engine_adapter import CodexEngineAdapter, EngineAdapter
-    from handler_models import (
-        CallbackActionContext,
-        CallbackActionResult,
-        DishframedRequest,
-        DocumentPayload,
-        IncomingUpdateContext,
-        KnownCommandContext,
-        OutboundMediaDirective,
-        PreparedPromptInput,
-        PreparedUpdateRequest,
-        PromptRequest,
-        UpdateDispatchRequest,
-        UpdateFlowState,
-        YoutubeRequest,
-        build_dishframed_request,
-        build_prompt_request,
-        build_youtube_request,
-    )
-    import message_inputs
-    import youtube_processing
-    from plugin_registry import build_default_plugin_registry
-    import prompt_execution
-    import prompt_inputs
-    import prompt_runtime
-    import prompt_preparation
-    from runtime_profile import (
-        BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
-        HA_KEYWORD_HELP_MESSAGE,
-        HELP_COMMAND_ALIASES,
-        CANCEL_COMMAND_ALIASES,
-        NEXTCLOUD_KEYWORD_HELP_MESSAGE,
-        PREFIX_HELP_MESSAGE,
-        RETRY_WITH_NEW_SESSION_PHASE,
-        SERVER3_KEYWORD_HELP_MESSAGE,
-        WHATSAPP_REPLY_PREFIX,
-        WHATSAPP_REPLY_PREFIX_RE,
-        apply_outbound_reply_prefix,
-        assistant_label,
-        build_engine_progress_context_label,
-        build_browser_brain_keyword_prompt,
-        build_browser_brain_routing_script_allowlist,
-        build_ha_keyword_prompt,
-        build_ha_routing_script_allowlist,
-        build_nextcloud_keyword_prompt,
-        build_nextcloud_routing_script_allowlist,
-        build_server3_keyword_prompt,
-        build_server3_routing_script_allowlist,
-        command_bypasses_required_prefix,
-        extract_browser_brain_keyword_request,
-        extract_ha_keyword_request,
-        extract_nextcloud_keyword_request,
-        extract_server3_keyword_request,
-        is_signal_channel,
-        is_whatsapp_channel,
-        resume_retry_phase,
-        start_command_message,
-    )
-    from runtime_routing import apply_priority_keyword_routing, apply_required_prefix_gate
-    from session_manager import (
-        ensure_chat_worker_session,
-        finalize_chat_work,
-        is_rate_limited,
-        mark_busy,
-        request_safe_restart,
-        trigger_restart_async,
-    )
-    from state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
-    from structured_logging import emit_event
-    import request_starts
-    import request_processing
-    import special_request_processing
-    from transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
-    from update_flow import (
-        allow_update_chat,
-        build_update_flow_state,
-        extract_incoming_update_context,
-        maybe_handle_diary_update_flow,
-        prepare_update_dispatch_request,
-        prepare_update_request,
-        start_dishframed_dispatch,
-        start_standard_dispatch,
-    )
-    import voice_alias_commands
+from telegram_bridge.auth_state import refresh_runtime_auth_fingerprint
+from telegram_bridge import attachment_processing
+from telegram_bridge.background_tasks import start_daemon_thread
+from telegram_bridge import engine_controls
+from telegram_bridge import response_delivery
+from telegram_bridge.conversation_scope import (
+    ConversationScope,
+    build_telegram_scope_key,
+    parse_telegram_scope_key,
+    scope_from_message,
+)
+from telegram_bridge.executor import (
+    ExecutorCancelledError,
+    parse_executor_output,
+    should_reset_thread_after_resume_failure,
+)
+from telegram_bridge.handler_common import (
+    ProgressReporter,
+    RATE_LIMIT_MESSAGE,
+    build_help_text,
+    build_status_text,
+    extract_callback_query_context,
+    extract_chat_context,
+    normalize_command,
+    strip_required_prefix,
+    trim_output,
+)
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.command_routing import handle_callback_query, handle_known_command
+from telegram_bridge import control_commands
+from telegram_bridge import dishframed_processing
+from telegram_bridge.diary_processing import (
+    build_diary_entry_title,
+    build_diary_photo_caption,
+    build_diary_progress_context_label,
+    build_diary_queue_status,
+    build_diary_today_status,
+    diary_capture_batch_worker,
+    diary_control_command,
+    diary_queue_worker,
+    ensure_diary_queue_processor,
+    process_diary_batch,
+    queue_diary_capture,
+    transcribe_voice_for_diary_batch,
+)
+from telegram_bridge.diary_store import (
+    DiaryEntry,
+    DiaryPhoto,
+    append_day_entry,
+    copy_photo_to_day_assets,
+    diary_day_docx_path,
+    diary_day_remote_docx_path,
+    diary_mode_enabled,
+    diary_nextcloud_enabled,
+    diary_timezone,
+    read_day_entries,
+    upload_to_nextcloud,
+)
+from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
+from telegram_bridge.handler_models import (
+    CallbackActionContext,
+    CallbackActionResult,
+    DishframedRequest,
+    DocumentPayload,
+    IncomingUpdateContext,
+    KnownCommandContext,
+    OutboundMediaDirective,
+    PreparedPromptInput,
+    PreparedUpdateRequest,
+    PromptRequest,
+    UpdateDispatchRequest,
+    UpdateFlowState,
+    YoutubeRequest,
+    build_dishframed_request,
+    build_prompt_request,
+    build_youtube_request,
+)
+from telegram_bridge import message_inputs
+from telegram_bridge import youtube_processing
+from telegram_bridge.plugin_registry import build_default_plugin_registry
+from telegram_bridge import prompt_execution
+from telegram_bridge import prompt_inputs
+from telegram_bridge import prompt_runtime
+from telegram_bridge import prompt_preparation
+from telegram_bridge.runtime_profile import (
+    BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
+    HA_KEYWORD_HELP_MESSAGE,
+    HELP_COMMAND_ALIASES,
+    CANCEL_COMMAND_ALIASES,
+    NEXTCLOUD_KEYWORD_HELP_MESSAGE,
+    PREFIX_HELP_MESSAGE,
+    RETRY_WITH_NEW_SESSION_PHASE,
+    SERVER3_KEYWORD_HELP_MESSAGE,
+    WHATSAPP_REPLY_PREFIX,
+    WHATSAPP_REPLY_PREFIX_RE,
+    apply_outbound_reply_prefix,
+    assistant_label,
+    build_engine_progress_context_label,
+    build_browser_brain_keyword_prompt,
+    build_browser_brain_routing_script_allowlist,
+    build_ha_keyword_prompt,
+    build_ha_routing_script_allowlist,
+    build_nextcloud_keyword_prompt,
+    build_nextcloud_routing_script_allowlist,
+    build_server3_keyword_prompt,
+    build_server3_routing_script_allowlist,
+    command_bypasses_required_prefix,
+    extract_browser_brain_keyword_request,
+    extract_ha_keyword_request,
+    extract_nextcloud_keyword_request,
+    extract_server3_keyword_request,
+    is_signal_channel,
+    is_whatsapp_channel,
+    resume_retry_phase,
+    start_command_message,
+)
+from telegram_bridge.runtime_routing import apply_priority_keyword_routing, apply_required_prefix_gate
+from telegram_bridge.session_manager import (
+    ensure_chat_worker_session,
+    finalize_chat_work,
+    is_rate_limited,
+    mark_busy,
+    request_safe_restart,
+    trigger_restart_async,
+)
+from telegram_bridge.state_store import PendingDiaryBatch, RecentPhotoSelection, State, StateRepository
+from telegram_bridge.structured_logging import emit_event
+from telegram_bridge import request_starts
+from telegram_bridge import request_processing
+from telegram_bridge import special_request_processing
+from telegram_bridge.transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
+from telegram_bridge.update_flow import (
+    allow_update_chat,
+    build_update_flow_state,
+    extract_incoming_update_context,
+    maybe_handle_diary_update_flow,
+    prepare_update_dispatch_request,
+    prepare_update_request,
+    start_dishframed_dispatch,
+    start_standard_dispatch,
+)
+from telegram_bridge import voice_alias_commands
 
 GEMMA_HEALTH_TIMEOUT_SECONDS = engine_controls.GEMMA_HEALTH_TIMEOUT_SECONDS
 GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = engine_controls.GEMMA_HEALTH_CURL_TIMEOUT_SECONDS
@@ -416,8 +272,6 @@ _prepare_prompt_input_request = prompt_inputs._prepare_prompt_input_request
 prepare_prompt_input = prompt_inputs.prepare_prompt_input
 prewarm_attachment_archive_for_message = prompt_inputs.prewarm_attachment_archive_for_message
 
-
-
 ENGINE_NAME_ALIASES = engine_controls.ENGINE_NAME_ALIASES
 PI_PROVIDER_ALIASES = engine_controls.PI_PROVIDER_ALIASES
 
@@ -466,7 +320,6 @@ _reset_codex_effort_for_scope = engine_controls._reset_codex_effort_for_scope
 _parse_page_index = engine_controls._parse_page_index
 handle_model_command = engine_controls.handle_model_command
 handle_effort_command = engine_controls.handle_effort_command
-
 
 def handle_update(
     state: State,

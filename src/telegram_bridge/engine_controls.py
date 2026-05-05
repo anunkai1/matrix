@@ -6,19 +6,11 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-try:
-    from .channel_adapter import ChannelAdapter
-    from .engine_adapter import EngineAdapter
-    from . import engine_health
-    from .plugin_registry import build_default_plugin_registry
-    from .state_store import State, StateRepository
-except ImportError:
-    from channel_adapter import ChannelAdapter
-    from engine_adapter import EngineAdapter
-    import engine_health
-    from plugin_registry import build_default_plugin_registry
-    from state_store import State, StateRepository
-
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.engine_adapter import EngineAdapter
+from telegram_bridge import engine_health
+from telegram_bridge.plugin_registry import build_default_plugin_registry
+from telegram_bridge.state_store import State, StateRepository
 
 GEMMA_HEALTH_TIMEOUT_SECONDS = 6
 GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = 5
@@ -40,15 +32,12 @@ PI_PROVIDER_CHOICES = (
 PI_MODEL_PICKER_PAGE_SIZE = 16
 _brief_health_error = engine_health._brief_health_error
 
-
 def normalize_engine_name(engine_name: str) -> str:
     normalized = str(engine_name or "").strip().lower()
     return ENGINE_NAME_ALIASES.get(normalized, normalized)
 
-
 def configured_default_engine(config) -> str:
     return normalize_engine_name(getattr(config, "engine_plugin", "codex") or "codex")
-
 
 def selectable_engine_plugins(config) -> List[str]:
     configured: List[str] = []
@@ -61,39 +50,31 @@ def selectable_engine_plugins(config) -> List[str]:
         configured.insert(0, default_engine)
     return configured
 
-
 def configured_pi_provider(config) -> str:
     provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip().lower()
     return PI_PROVIDER_ALIASES.get(provider, provider) or "ollama"
-
 
 def normalize_pi_provider_name(provider_name: str) -> str:
     provider = str(provider_name or "").strip().lower()
     return PI_PROVIDER_ALIASES.get(provider, provider)
 
-
 def configured_pi_model(config) -> str:
     return str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip() or "qwen3-coder:30b"
-
 
 def pi_provider_uses_ollama_tunnel(config) -> bool:
     return configured_pi_provider(config) == "ollama"
 
-
 def configured_codex_model(config) -> str:
     return str(getattr(config, "codex_model", "") or "").strip()
 
-
 def configured_codex_reasoning_effort(config) -> str:
     return str(getattr(config, "codex_reasoning_effort", "") or "").strip().lower()
-
 
 def _codex_models_cache_path() -> Path:
     codex_home = str(os.getenv("CODEX_HOME", "") or "").strip()
     if codex_home:
         return Path(codex_home).expanduser() / "models_cache.json"
     return Path.home() / ".codex" / "models_cache.json"
-
 
 def _load_codex_model_catalog() -> List[Dict[str, object]]:
     cache_path = _codex_models_cache_path()
@@ -139,7 +120,6 @@ def _load_codex_model_catalog() -> List[Dict[str, object]]:
         )
     return catalog
 
-
 def _load_codex_model_choices() -> List[Tuple[str, str]]:
     choices: List[Tuple[str, str]] = []
     for item in _load_codex_model_catalog():
@@ -149,7 +129,6 @@ def _load_codex_model_choices() -> List[Tuple[str, str]]:
         display_name = str(item.get("display_name", "") or "").strip() or slug
         choices.append((slug, display_name))
     return choices
-
 
 def _supported_codex_efforts_for_model(model_name: str) -> List[str]:
     normalized_model = str(model_name or "").strip()
@@ -170,7 +149,6 @@ def _supported_codex_efforts_for_model(model_name: str) -> List[str]:
         return efforts or default_efforts
     return default_efforts
 
-
 def _resolve_codex_effort_candidate(model_name: str, requested_effort: str) -> Optional[str]:
     normalized_effort = str(requested_effort or "").strip().lower()
     if not normalized_effort:
@@ -179,7 +157,6 @@ def _resolve_codex_effort_candidate(model_name: str, requested_effort: str) -> O
         if effort == normalized_effort:
             return effort
     return None
-
 
 def _resolve_codex_model_candidate(requested_model: str) -> str:
     requested = str(requested_model or "").strip()
@@ -190,7 +167,6 @@ def _resolve_codex_model_candidate(requested_model: str) -> str:
         if slug.casefold() == folded or display_name.casefold() == folded:
             return slug
     return requested
-
 
 def build_engine_runtime_config(state, config, scope_key: str, engine_name: str):
     runtime_config = copy.copy(config)
@@ -217,30 +193,25 @@ def build_engine_runtime_config(state, config, scope_key: str, engine_name: str)
         runtime_config.pi_model = override_model
     return runtime_config
 
-
 def _build_codex_model_source_text(state: State, scope_key: str) -> str:
     if StateRepository(state).get_chat_codex_model(scope_key):
         return "chat override"
     return "global default"
-
 
 def _build_codex_effort_source_text(state: State, scope_key: str) -> str:
     if StateRepository(state).get_chat_codex_effort(scope_key):
         return "chat override"
     return "global default"
 
-
 def _build_pi_provider_source_text(state: State, scope_key: str) -> str:
     if StateRepository(state).get_chat_pi_provider(scope_key):
         return "chat override"
     return "global default"
 
-
 def _build_pi_model_source_text(state: State, scope_key: str) -> str:
     if StateRepository(state).get_chat_pi_model(scope_key):
         return "chat override"
     return "global default"
-
 
 def _pi_provider_choice_lines(current_provider: str) -> List[str]:
     lines: List[str] = []
@@ -249,7 +220,6 @@ def _pi_provider_choice_lines(current_provider: str) -> List[str]:
         lines.append(f"- {provider}{marker} - {description}")
     return lines
 
-
 def _pi_provider_description(provider_name: str) -> str:
     normalized = normalize_pi_provider_name(provider_name)
     for provider, description in PI_PROVIDER_CHOICES:
@@ -257,14 +227,12 @@ def _pi_provider_description(provider_name: str) -> str:
             return description
     return "custom Pi provider"
 
-
 def _pi_provider_sort_key(provider_name: str) -> Tuple[int, str]:
     normalized = normalize_pi_provider_name(provider_name)
     for index, (provider, _description) in enumerate(PI_PROVIDER_CHOICES):
         if provider == normalized:
             return (index, normalized)
     return (len(PI_PROVIDER_CHOICES), normalized)
-
 
 def _pi_available_provider_names(config) -> List[str]:
     names = {
@@ -275,7 +243,6 @@ def _pi_available_provider_names(config) -> List[str]:
     if not names:
         return []
     return sorted(names, key=_pi_provider_sort_key)
-
 
 def build_pi_providers_text(state: State, config, scope_key: str) -> str:
     display_config = build_engine_runtime_config(state, config, scope_key, "pi")
@@ -297,7 +264,6 @@ def build_pi_providers_text(state: State, config, scope_key: str) -> str:
         lines.extend(_pi_provider_choice_lines(provider))
     lines.append("Use /pi provider <name> to switch this chat.")
     return "\n".join(lines)
-
 
 def _run_pi_command(config, command: str) -> subprocess.CompletedProcess[str]:
     pi_bin = str(getattr(config, "pi_bin", "pi") or "pi").strip() or "pi"
@@ -337,7 +303,6 @@ def _run_pi_command(config, command: str) -> subprocess.CompletedProcess[str]:
         timeout=timeout,
     )
 
-
 def _parse_pi_model_rows(payload: str) -> List[Tuple[str, str]]:
     rows: List[Tuple[str, str]] = []
     for raw_line in str(payload or "").splitlines():
@@ -352,7 +317,6 @@ def _parse_pi_model_rows(payload: str) -> List[Tuple[str, str]]:
         rows.append((parts[0], parts[1]))
     return rows
 
-
 def _pi_model_rows(config) -> List[Tuple[str, str]]:
     completed = _run_pi_command(config, "pi --list-models")
     if completed.returncode != 0:
@@ -364,7 +328,6 @@ def _pi_model_rows(config) -> List[Tuple[str, str]]:
     payload = completed.stdout.strip() or completed.stderr.strip()
     return _parse_pi_model_rows(payload)
 
-
 def _pi_provider_model_names(config) -> List[str]:
     provider = configured_pi_provider(config)
     model_names = [
@@ -373,7 +336,6 @@ def _pi_provider_model_names(config) -> List[str]:
         if row_provider.strip().lower() == provider
     ]
     return sorted(dict.fromkeys(model_names), key=str.casefold)
-
 
 def _resolve_pi_model_candidate(available_models: List[str], requested_model: str) -> Optional[str]:
     requested = requested_model.strip()
@@ -387,7 +349,6 @@ def _resolve_pi_model_candidate(available_models: List[str], requested_model: st
     if len(matches) == 1:
         return matches[0]
     return None
-
 
 def build_pi_models_text(state: State, config, scope_key: str) -> str:
     display_config = build_engine_runtime_config(state, config, scope_key, "pi")
@@ -414,7 +375,6 @@ def build_pi_models_text(state: State, config, scope_key: str) -> str:
     lines.extend(f"- {model_name}" for model_name in model_names)
     return "\n".join(lines)
 
-
 def build_pi_status_text(state: State, config, scope_key: str) -> str:
     display_config = build_engine_runtime_config(state, config, scope_key, "pi")
     provider = configured_pi_provider(display_config)
@@ -437,7 +397,6 @@ def build_pi_status_text(state: State, config, scope_key: str) -> str:
     lines.append("Use /model list and /model <name> to view or change the Pi model.")
     return "\n".join(lines)
 
-
 def check_gemma_health(config) -> Dict[str, object]:
     return engine_health.check_gemma_health(
         config,
@@ -445,13 +404,11 @@ def check_gemma_health(config) -> Dict[str, object]:
         curl_timeout_seconds=GEMMA_HEALTH_CURL_TIMEOUT_SECONDS,
     )
 
-
 def check_venice_health(config) -> Dict[str, object]:
     return engine_health.check_venice_health(
         config,
         health_timeout_seconds=GEMMA_HEALTH_TIMEOUT_SECONDS,
     )
-
 
 def check_pi_health(config) -> Dict[str, object]:
     return engine_health.check_pi_health(
@@ -461,10 +418,8 @@ def check_pi_health(config) -> Dict[str, object]:
         parse_pi_model_rows_fn=_parse_pi_model_rows,
     )
 
-
 def check_chatgpt_web_health(config) -> Dict[str, object]:
     return engine_health.check_chatgpt_web_health(config)
-
 
 def build_engine_status_text(state: State, config, scope_key: str) -> str:
     selected = StateRepository(state).get_chat_engine(scope_key)
@@ -542,15 +497,12 @@ def build_engine_status_text(state: State, config, scope_key: str) -> str:
         lines.append(f"ChatGPT web last check error: {health['error'] or '(none)'}")
     return "\n".join(lines)
 
-
 def _engine_callback_data(engine_name: str, action: str) -> str:
     return f"cfg|engine|{engine_name}|{action}"
-
 
 def _model_active_engine_name(state: State, config, scope_key: str) -> str:
     selected = StateRepository(state).get_chat_engine(scope_key)
     return normalize_engine_name(selected or configured_default_engine(config))
-
 
 def _compact_inline_keyboard(
     buttons: List[Tuple[str, str]],
@@ -570,7 +522,6 @@ def _compact_inline_keyboard(
         rows.append(current_row)
     return {"inline_keyboard": rows}
 
-
 def _model_callback_data(engine_name: str, action: str, value: str = "") -> str:
     if action == "reset":
         return f"cfg|model|{engine_name}|reset"
@@ -580,7 +531,6 @@ def _model_callback_data(engine_name: str, action: str, value: str = "") -> str:
         return f"cfg|model|{engine_name}|page|{value}"
     return f"cfg|model|{engine_name}|set|{value}"
 
-
 def _provider_callback_data(action: str, value: str = "") -> str:
     if action == "menu":
         return "cfg|provider|pi|menu"
@@ -588,14 +538,12 @@ def _provider_callback_data(action: str, value: str = "") -> str:
         return f"cfg|provider|pi|set|{value}"
     return f"cfg|provider|pi|{action}"
 
-
 def _effort_callback_data(action: str, value: str = "") -> str:
     if action == "reset":
         return "cfg|effort|codex|reset"
     if action == "menu":
         return "cfg|effort|codex|menu"
     return f"cfg|effort|codex|set|{value}"
-
 
 def _pi_model_page_for_selection(model_names: List[str], current_model: str, page_size: int) -> int:
     if not model_names or page_size <= 0:
@@ -606,7 +554,6 @@ def _pi_model_page_for_selection(model_names: List[str], current_model: str, pag
         return 0
     return max(index // page_size, 0)
 
-
 def _clamp_page_index(page_index: Optional[int], total_items: int, page_size: int) -> int:
     if total_items <= 0 or page_size <= 0:
         return 0
@@ -614,7 +561,6 @@ def _clamp_page_index(page_index: Optional[int], total_items: int, page_size: in
     if page_index is None:
         return 0
     return min(max(page_index, 0), last_page)
-
 
 def _build_engine_picker_markup(state: State, config, scope_key: str) -> Optional[Dict[str, object]]:
     current_engine = _model_active_engine_name(state, config, scope_key)
@@ -631,7 +577,6 @@ def _build_engine_picker_markup(state: State, config, scope_key: str) -> Optiona
     markup = _compact_inline_keyboard(buttons, columns=2)
     return markup if markup.get("inline_keyboard") else None
 
-
 def _set_engine_for_scope(state: State, config, scope_key: str, engine_name: str) -> str:
     normalized_engine = normalize_engine_name(engine_name)
     if normalized_engine == "venice" and not str(getattr(config, "venice_api_key", "") or "").strip():
@@ -642,12 +587,10 @@ def _set_engine_for_scope(state: State, config, scope_key: str, engine_name: str
     StateRepository(state).set_chat_engine(scope_key, normalized_engine)
     return f"This chat now uses engine: {normalized_engine}"
 
-
 def _reset_engine_for_scope(state: State, config, scope_key: str) -> str:
     removed = StateRepository(state).clear_chat_engine(scope_key)
     suffix = "removed" if removed else "already using default"
     return f"Engine override {suffix}. This chat now uses {configured_default_engine(config)}."
-
 
 def handle_engine_command(
     state: State,
@@ -680,7 +623,6 @@ def handle_engine_command(
         reply_markup=reply_markup,
     )
     return True
-
 
 def handle_pi_command(
     state: State,
@@ -834,7 +776,6 @@ def handle_pi_command(
     )
     return True
 
-
 def _build_model_picker_markup(
     state: State,
     config,
@@ -904,7 +845,6 @@ def _build_model_picker_markup(
     markup = _compact_inline_keyboard(buttons, columns=2)
     return markup if markup.get("inline_keyboard") else None
 
-
 def _build_provider_picker_markup(state: State, config, scope_key: str) -> Optional[Dict[str, object]]:
     display_config = build_engine_runtime_config(state, config, scope_key, "pi")
     current_provider = configured_pi_provider(display_config)
@@ -926,7 +866,6 @@ def _build_provider_picker_markup(state: State, config, scope_key: str) -> Optio
     )
     return {"inline_keyboard": rows} if rows else None
 
-
 def _build_effort_picker_markup(state: State, config, scope_key: str) -> Optional[Dict[str, object]]:
     active_engine = _model_active_engine_name(state, config, scope_key)
     if active_engine != "codex":
@@ -942,7 +881,6 @@ def _build_effort_picker_markup(state: State, config, scope_key: str) -> Optiona
     buttons.append(("Back to Models", "cfg|model|codex|menu"))
     markup = _compact_inline_keyboard(buttons, columns=2)
     return markup if markup.get("inline_keyboard") else None
-
 
 def build_model_status_text(state: State, config, scope_key: str) -> str:
     active_engine = _model_active_engine_name(state, config, scope_key)
@@ -974,7 +912,6 @@ def build_model_status_text(state: State, config, scope_key: str) -> str:
         "Use `/engine codex` or `/engine pi` first."
     )
 
-
 def build_effort_status_text(state: State, config, scope_key: str) -> str:
     active_engine = _model_active_engine_name(state, config, scope_key)
     if active_engine != "codex":
@@ -996,7 +933,6 @@ def build_effort_status_text(state: State, config, scope_key: str) -> str:
             "Use /effort reset to clear the chat override.",
         ]
     )
-
 
 def build_effort_list_text(state: State, config, scope_key: str) -> str:
     active_engine = _model_active_engine_name(state, config, scope_key)
@@ -1020,7 +956,6 @@ def build_effort_list_text(state: State, config, scope_key: str) -> str:
         lines.append(f"- {effort}{marker}")
     return "\n".join(lines)
 
-
 def _set_codex_model_for_scope(state: State, config, scope_key: str, model_name: str) -> str:
     state_repo = StateRepository(state)
     resolved_model = _resolve_codex_model_candidate(model_name)
@@ -1036,7 +971,6 @@ def _set_codex_model_for_scope(state: State, config, scope_key: str, model_name:
         f"Codex model for this chat is now {configured_codex_model(updated_config) or '(default)'} "
         f"({_build_codex_model_source_text(state, scope_key)})."
     )
-
 
 def _reset_model_for_scope(state: State, config, scope_key: str, active_engine: str) -> str:
     state_repo = StateRepository(state)
@@ -1057,7 +991,6 @@ def _reset_model_for_scope(state: State, config, scope_key: str, active_engine: 
             f"({_build_pi_model_source_text(state, scope_key)})."
         )
     return build_model_status_text(state, config, scope_key)
-
 
 def _set_pi_provider_for_scope(state: State, config, scope_key: str, provider_name: str) -> str:
     normalized_provider = normalize_pi_provider_name(provider_name)
@@ -1081,7 +1014,6 @@ def _set_pi_provider_for_scope(state: State, config, scope_key: str, provider_na
         f"Pi model is now {resolved_model}."
     )
 
-
 def _set_pi_model_for_scope(state: State, config, scope_key: str, model_name: str) -> str:
     display_config = build_engine_runtime_config(state, config, scope_key, "pi")
     available_models = _pi_provider_model_names(display_config)
@@ -1098,7 +1030,6 @@ def _set_pi_model_for_scope(state: State, config, scope_key: str, model_name: st
         f"Pi model for this chat is now {configured_pi_model(updated_config)} "
         f"({_build_pi_model_source_text(state, scope_key)})."
     )
-
 
 def _set_codex_effort_for_scope(state: State, config, scope_key: str, effort_name: str) -> str:
     display_config = build_engine_runtime_config(state, config, scope_key, "codex")
@@ -1117,7 +1048,6 @@ def _set_codex_effort_for_scope(state: State, config, scope_key: str, effort_nam
         f"({_build_codex_effort_source_text(state, scope_key)})."
     )
 
-
 def _reset_codex_effort_for_scope(state: State, config, scope_key: str) -> str:
     removed = StateRepository(state).clear_chat_codex_effort(scope_key)
     updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
@@ -1128,7 +1058,6 @@ def _reset_codex_effort_for_scope(state: State, config, scope_key: str) -> str:
         f"({_build_codex_effort_source_text(state, scope_key)})."
     )
 
-
 def _parse_page_index(raw_value: str) -> Optional[int]:
     value = str(raw_value or "").strip()
     if not value:
@@ -1138,7 +1067,6 @@ def _parse_page_index(raw_value: str) -> Optional[int]:
     except ValueError:
         return None
     return page_index if page_index >= 0 else None
-
 
 def build_model_list_text(state: State, config, scope_key: str) -> str:
     active_engine = _model_active_engine_name(state, config, scope_key)
@@ -1172,7 +1100,6 @@ def build_model_list_text(state: State, config, scope_key: str) -> str:
         "Model listing is currently supported for `codex` and `pi`.\n"
         "Use `/engine codex` or `/engine pi` first."
     )
-
 
 def handle_model_command(
     state: State,
@@ -1223,7 +1150,6 @@ def handle_model_command(
     )
     return True
 
-
 def handle_effort_command(
     state: State,
     config,
@@ -1262,7 +1188,6 @@ def handle_effort_command(
         reply_markup=reply_markup,
     )
     return True
-
 
 def resolve_engine_for_scope(
     state: State,

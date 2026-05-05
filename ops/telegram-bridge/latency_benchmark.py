@@ -26,13 +26,13 @@ from typing import Any, Dict, Iterable, List, Optional
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-BRIDGE_DIR = REPO_ROOT / "src" / "telegram_bridge"
-if str(BRIDGE_DIR) not in sys.path:
-    sys.path.insert(0, str(BRIDGE_DIR))
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
 
-import handlers as bridge_handlers
-import auth_state as bridge_auth_state
-import state_store as bridge_state_store
+import telegram_bridge.handlers as bridge_handlers
+import telegram_bridge.auth_state as bridge_auth_state
+import telegram_bridge.state_store as bridge_state_store
 
 
 CHUNK_PREFIX_RE = re.compile(r"^\[\d+/\d+\]\n", re.MULTILINE)

@@ -10,9 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-
 SUMMARY_MAX_CHARS = 4000
-
 
 @dataclass(frozen=True)
 class AttachmentRecord:
@@ -26,7 +24,6 @@ class AttachmentRecord:
     created_at: float
     expires_at: float
     summary: str
-
 
 class AttachmentStore:
     def __init__(

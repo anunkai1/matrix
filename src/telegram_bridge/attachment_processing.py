@@ -5,21 +5,12 @@ import subprocess
 from difflib import SequenceMatcher
 from typing import Dict, List, Optional, Tuple
 
-try:
-    from .channel_adapter import ChannelAdapter
-    from .handler_models import DocumentPayload
-    from .media import TelegramFileDownloadSpec, download_telegram_file_to_temp
-    from .runtime_profile import is_whatsapp_channel
-    from .state_store import State
-    from .structured_logging import emit_event
-except ImportError:
-    from channel_adapter import ChannelAdapter
-    from handler_models import DocumentPayload
-    from media import TelegramFileDownloadSpec, download_telegram_file_to_temp
-    from runtime_profile import is_whatsapp_channel
-    from state_store import State
-    from structured_logging import emit_event
-
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.handler_models import DocumentPayload
+from telegram_bridge.media import TelegramFileDownloadSpec, download_telegram_file_to_temp
+from telegram_bridge.runtime_profile import is_whatsapp_channel
+from telegram_bridge.state_store import State
+from telegram_bridge.structured_logging import emit_event
 
 def download_photo_to_temp(
     client: ChannelAdapter,
@@ -37,7 +28,6 @@ def download_photo_to_temp(
     tmp_path, _ = download_telegram_file_to_temp(client, spec)
     return tmp_path
 
-
 def download_voice_to_temp(
     client: ChannelAdapter,
     config,
@@ -53,7 +43,6 @@ def download_voice_to_temp(
     )
     tmp_path, _ = download_telegram_file_to_temp(client, spec)
     return tmp_path
-
 
 def download_document_to_temp(
     client: ChannelAdapter,
@@ -71,7 +60,6 @@ def download_document_to_temp(
     )
     return download_telegram_file_to_temp(client, spec)
 
-
 def build_document_analysis_context(
     document_path: str,
     document: DocumentPayload,
@@ -86,7 +74,6 @@ def build_document_analysis_context(
         "Read and analyze the file from the local path."
     )
 
-
 def build_archived_attachment_summary_context(media_label: str, summary: str) -> str:
     clean_summary = (summary or "").strip()
     if not clean_summary:
@@ -96,7 +83,6 @@ def build_archived_attachment_summary_context(media_label: str, summary: str) ->
         f"- Fresh {media_label} bytes are no longer available.\n"
         f"- Prior analysis summary: {clean_summary}"
     )
-
 
 def archive_media_path(
     attachment_store,
@@ -129,7 +115,6 @@ def archive_media_path(
         return None
     return record.local_path
 
-
 def resolve_attachment_binary_or_summary(
     attachment_store,
     *,
@@ -147,7 +132,6 @@ def resolve_attachment_binary_or_summary(
         return None, ""
     return None, build_archived_attachment_summary_context(media_label, summary)
 
-
 def build_voice_transcribe_command(cmd_template: List[str], voice_path: str) -> List[str]:
     cmd: List[str] = []
     used_placeholder = False
@@ -161,7 +145,6 @@ def build_voice_transcribe_command(cmd_template: List[str], voice_path: str) -> 
         cmd.append(voice_path)
     return cmd
 
-
 def parse_voice_confidence(stderr_text: str) -> Optional[float]:
     matches = re.findall(r"VOICE_CONFIDENCE=([0-9]*\.?[0-9]+)", stderr_text or "")
     if not matches:
@@ -171,7 +154,6 @@ def parse_voice_confidence(stderr_text: str) -> Optional[float]:
     except ValueError:
         return None
     return max(0.0, min(1.0, value))
-
 
 def apply_voice_alias_replacements(
     transcript: str,
@@ -193,7 +175,6 @@ def apply_voice_alias_replacements(
             updated = replaced
             changed = True
     return updated, changed
-
 
 def build_active_voice_alias_replacements(
     config,
@@ -223,7 +204,6 @@ def build_active_voice_alias_replacements(
                 merged[source_value.casefold()] = (source_value, target_value)
     return list(merged.values())
 
-
 def build_low_confidence_voice_message(
     config,
     transcript: str,
@@ -233,7 +213,6 @@ def build_low_confidence_voice_message(
     _ = confidence
     message = getattr(config, "voice_low_confidence_message", "")
     return (message or "Voice transcript confidence is low, resend").strip()
-
 
 def build_voice_alias_suggestions_message(suggestions: List[object]) -> Optional[str]:
     if not suggestions:
@@ -255,7 +234,6 @@ def build_voice_alias_suggestions_message(suggestions: List[object]) -> Optional
     lines.append("Approve with: `/voice-alias approve <id>`")
     lines.append("Reject with: `/voice-alias reject <id>`")
     return "\n".join(lines)
-
 
 def suggest_required_prefix_alias_candidate(
     transcript: str,
@@ -294,7 +272,6 @@ def suggest_required_prefix_alias_candidate(
     if best_similarity < min_similarity:
         return None
     return best_source, best_target, best_similarity
-
 
 def maybe_suggest_voice_prefix_alias(
     state: State,
@@ -352,7 +329,6 @@ def maybe_suggest_voice_prefix_alias(
             suggestion_text,
             reply_to_message_id=message_id,
         )
-
 
 def transcribe_voice(config, voice_path: str) -> Tuple[str, Optional[float]]:
     if not config.voice_transcribe_cmd:

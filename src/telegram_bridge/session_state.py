@@ -1,11 +1,7 @@
 import time
 from typing import Optional
 
-try:
-    from .state_models import ScopeKey, State
-except ImportError:
-    from state_models import ScopeKey, State
-
+from telegram_bridge.state_models import ScopeKey, State
 
 def clear_worker_session(
     state: State,
@@ -47,7 +43,6 @@ def clear_worker_session(
         sync_canonical_session_fn(state, scope_key)
     return removed
 
-
 def get_thread_id(
     state: State,
     scope_key: ScopeKey,
@@ -64,7 +59,6 @@ def get_thread_id(
             return thread_id or None
     with state.lock:
         return state.chat_threads.get(scope_key)
-
 
 def set_thread_id(
     state: State,
@@ -116,7 +110,6 @@ def set_thread_id(
         persist_legacy_state_fn(state, worker_sessions=True)
     if persist_threads or persist_sessions:
         sync_canonical_session_fn(state, scope_key)
-
 
 def clear_thread_id(
     state: State,

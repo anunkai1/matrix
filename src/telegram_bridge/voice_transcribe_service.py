@@ -13,7 +13,6 @@ import sys
 import time
 from typing import Iterable, Optional, Tuple
 
-
 def collect_transcript(segments: Iterable[object]) -> str:
     parts: list[str] = []
     for segment in segments:
@@ -21,7 +20,6 @@ def collect_transcript(segments: Iterable[object]) -> str:
         if text:
             parts.append(text)
     return " ".join(parts).strip()
-
 
 def collect_transcript_and_confidence(
     segments: Iterable[object],
@@ -51,7 +49,6 @@ def collect_transcript_and_confidence(
     if not confidence_parts:
         return transcript, None
     return transcript, sum(confidence_parts) / len(confidence_parts)
-
 
 class WhisperRuntime:
     def __init__(
@@ -206,7 +203,6 @@ class WhisperRuntime:
         self.last_confidence = confidence
         return transcript
 
-
 def _read_json_line(conn: socket.socket) -> dict:
     buffer = b""
     while b"\n" not in buffer:
@@ -222,10 +218,8 @@ def _read_json_line(conn: socket.socket) -> dict:
         raise ValueError("invalid request payload")
     return payload
 
-
 def _send_json_line(conn: socket.socket, payload: dict) -> None:
     conn.sendall((json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8"))
-
 
 def _is_socket_stale(socket_path: str) -> bool:
     try:
@@ -235,7 +229,6 @@ def _is_socket_stale(socket_path: str) -> bool:
             return False
     except OSError:
         return True
-
 
 def run_server(*, socket_path: str, idle_timeout_seconds: int) -> int:
     runtime = WhisperRuntime.from_env(idle_timeout_seconds=idle_timeout_seconds)
@@ -285,7 +278,6 @@ def run_server(*, socket_path: str, idle_timeout_seconds: int) -> int:
         if os.path.exists(socket_path):
             os.remove(socket_path)
 
-
 def _request(socket_path: str, payload: dict, *, timeout_seconds: float) -> dict:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
         conn.settimeout(timeout_seconds)
@@ -296,7 +288,6 @@ def _request(socket_path: str, payload: dict, *, timeout_seconds: float) -> dict
         if not isinstance(response.get("ok"), bool):
             raise RuntimeError("invalid response from transcribe service")
         return response
-
 
 def run_ping(*, socket_path: str, timeout_seconds: float) -> int:
     try:
@@ -313,7 +304,6 @@ def run_ping(*, socket_path: str, timeout_seconds: float) -> int:
         return 0
     print(response.get("error", "ping failed"), file=sys.stderr)
     return 1
-
 
 def run_client_transcribe(*, socket_path: str, audio_path: str, timeout_seconds: float) -> int:
     try:
@@ -341,7 +331,6 @@ def run_client_transcribe(*, socket_path: str, audio_path: str, timeout_seconds:
 
     print("Voice transcription output was empty", file=sys.stderr)
     return 1
-
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Persistent voice transcription service")
@@ -375,7 +364,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
     return parser.parse_args(argv)
 
-
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     if args.mode == "server":
@@ -389,7 +377,6 @@ def main(argv: Optional[list[str]] = None) -> int:
             timeout_seconds=args.timeout,
         )
     raise RuntimeError(f"Unknown mode: {args.mode}")
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

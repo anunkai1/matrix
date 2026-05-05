@@ -15,7 +15,6 @@ DEFAULT_BASE_URL = "http://127.0.0.1:18797"
 DEFAULT_TIMEOUT_SECONDS = 45.0
 DEFAULT_INTERVAL_SECONDS = 1.0
 
-
 def build_health_url(base_url: str) -> str:
     parsed = urlparse((base_url or "").strip() or DEFAULT_BASE_URL)
     path = parsed.path.rstrip("/")
@@ -24,7 +23,6 @@ def build_health_url(base_url: str) -> str:
     elif path != "/health":
         path = f"{path}/health"
     return urlunparse(parsed._replace(path=path, params="", query="", fragment=""))
-
 
 def wait_for_signal_transport(
     health_url: str,
@@ -47,7 +45,6 @@ def wait_for_signal_transport(
         sleep(max(0.0, interval_seconds))
     return False
 
-
 def main() -> int:
     base_url = os.getenv("SIGNAL_BRIDGE_API_BASE", DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
     health_url = build_health_url(base_url)
@@ -66,7 +63,6 @@ def main() -> int:
         file=sys.stderr,
     )
     return 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

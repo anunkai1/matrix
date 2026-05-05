@@ -5,7 +5,6 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-
 class HttpBridgeChannelAdapter:
     channel_name = "http"
     supports_message_edits = True

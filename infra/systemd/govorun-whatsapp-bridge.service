@@ -9,6 +9,7 @@ User=govorun
 Group=govorun
 WorkingDirectory=/home/govorun/govorunbot
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/govorun/govorunbot/src
 Environment=TELEGRAM_RUNTIME_ROOT=/home/govorun/govorunbot
 Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix
 Environment=TELEGRAM_EXECUTOR_CMD=/home/govorun/govorunbot/src/telegram_bridge/executor.sh

@@ -4,23 +4,12 @@ import threading
 import time
 from typing import List, Optional
 
-try:
-    from .channel_adapter import ChannelAdapter
-    from .engine_adapter import EngineAdapter
-    from .executor import ExecutorCancelledError
-    from .state_store import StateRepository
-except ImportError:
-    from channel_adapter import ChannelAdapter
-    from engine_adapter import EngineAdapter
-    from executor import ExecutorCancelledError
-    from state_store import StateRepository
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.engine_adapter import EngineAdapter
+from telegram_bridge.executor import ExecutorCancelledError
+from telegram_bridge.state_store import StateRepository
 
-
-try:
-    from . import bridge_deps as handlers
-except ImportError:
-    import bridge_deps as handlers
-
+from telegram_bridge import bridge_deps as handlers
 
 def execute_prompt_with_retry(
     state_repo: StateRepository,
@@ -338,7 +327,6 @@ def execute_prompt_with_retry(
             message_thread_id=message_thread_id,
         )
         return None
-
 
 def finalize_prompt_success(
     state_repo: StateRepository,

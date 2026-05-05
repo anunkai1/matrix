@@ -9,6 +9,7 @@ User=oracle
 Group=oracle
 WorkingDirectory=/home/oracle/oraclebot
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/oracle/oraclebot/src
 Environment=TELEGRAM_RUNTIME_ROOT=/home/oracle/oraclebot
 Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix
 Environment=TELEGRAM_EXECUTOR_CMD=/home/oracle/oraclebot/src/telegram_bridge/executor.sh

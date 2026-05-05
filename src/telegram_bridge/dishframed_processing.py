@@ -4,11 +4,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-try:
-    from .executor import ExecutorCancelledError
-except ImportError:
-    from executor import ExecutorCancelledError
-
+from telegram_bridge.executor import ExecutorCancelledError
 
 DISHFRAMED_REPO_ROOT = Path(
     os.getenv("DISHFRAMED_REPO_ROOT", "/home/architect/dishframed")
@@ -19,7 +15,6 @@ DISHFRAMED_PYTHON_BIN = Path(
 DISHFRAMED_USAGE_MESSAGE = (
     "Send `/dishframed` with a menu photo, or reply `/dishframed` to a menu photo."
 )
-
 
 def build_dishframed_command(image_paths: List[str], output_dir: str) -> List[str]:
     cmd = [
@@ -36,7 +31,6 @@ def build_dishframed_command(image_paths: List[str], output_dir: str) -> List[st
         cmd.extend(["--image", image_path])
     return cmd
 
-
 def parse_dishframed_cli_output(stdout: str) -> tuple[Optional[str], str]:
     output_path: Optional[str] = None
     preview_text = ""
@@ -50,7 +44,6 @@ def parse_dishframed_cli_output(stdout: str) -> tuple[Optional[str], str]:
         if line:
             preview_text = line
     return output_path, preview_text
-
 
 def run_dishframed_cli(
     *,

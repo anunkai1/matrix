@@ -1,30 +1,16 @@
 from typing import List, Optional
 
-try:
-    from .auth_state import refresh_runtime_auth_fingerprint
-    from .channel_adapter import ChannelAdapter
-    from .engine_adapter import CodexEngineAdapter, EngineAdapter
-    from .handler_models import DocumentPayload, DishframedRequest, PromptRequest, YoutubeRequest
-    from . import prompt_execution
-    from . import special_request_processing
-    from . import response_delivery
-    from .runtime_profile import assistant_label, build_engine_progress_context_label
-    from .state_store import StateRepository
-    from .structured_logging import emit_event
-    from .engine_controls import build_engine_runtime_config
-except ImportError:
-    from auth_state import refresh_runtime_auth_fingerprint
-    from channel_adapter import ChannelAdapter
-    from engine_adapter import CodexEngineAdapter, EngineAdapter
-    from handler_models import DocumentPayload, DishframedRequest, PromptRequest, YoutubeRequest
-    import prompt_execution
-    import special_request_processing
-    import response_delivery
-    from runtime_profile import assistant_label, build_engine_progress_context_label
-    from state_store import StateRepository
-    from structured_logging import emit_event
-    from engine_controls import build_engine_runtime_config
-
+from telegram_bridge.auth_state import refresh_runtime_auth_fingerprint
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
+from telegram_bridge.handler_models import DocumentPayload, DishframedRequest, PromptRequest, YoutubeRequest
+from telegram_bridge import prompt_execution
+from telegram_bridge import special_request_processing
+from telegram_bridge import response_delivery
+from telegram_bridge.runtime_profile import assistant_label, build_engine_progress_context_label
+from telegram_bridge.state_store import StateRepository
+from telegram_bridge.structured_logging import emit_event
+from telegram_bridge.engine_controls import build_engine_runtime_config
 
 finalize_request_progress = response_delivery.finalize_request_progress
 send_canceled_response = response_delivery.send_canceled_response
@@ -33,12 +19,7 @@ emit_worker_exception_and_reply = response_delivery.emit_worker_exception_and_re
 send_chat_action_safe = response_delivery.send_chat_action_safe
 infer_media_kind = response_delivery.infer_media_kind
 
-
-try:
-    from . import bridge_deps as handlers
-except ImportError:
-    import bridge_deps as handlers
-
+from telegram_bridge import bridge_deps as handlers
 
 def deliver_output_and_emit_success(
     client: ChannelAdapter,
@@ -66,7 +47,6 @@ def deliver_output_and_emit_success(
     )
     return delivered_output
 
-
 def begin_affective_turn(
     affective_runtime,
     prompt_text: str,
@@ -81,7 +61,6 @@ def begin_affective_turn(
         message_id=message_id,
         emit_event_fn=emit_event,
     )
-
 
 def emit_request_processing_started(
     *,
@@ -106,7 +85,6 @@ def emit_request_processing_started(
         emit_event_fn=emit_event,
     )
 
-
 def emit_phase_timing(
     *,
     chat_id: int,
@@ -123,7 +101,6 @@ def emit_phase_timing(
         emit_event_fn=emit_event,
         **extra_fields,
     )
-
 
 def build_progress_reporter(
     client: ChannelAdapter,
@@ -144,7 +121,6 @@ def build_progress_reporter(
         assistant_label_fn=assistant_label,
     )
 
-
 def _build_prompt_progress_reporter(
     request: PromptRequest,
     active_engine: EngineAdapter,
@@ -157,7 +133,6 @@ def _build_prompt_progress_reporter(
         progress_reporter_cls=handlers.ProgressReporter,
         assistant_label_fn=assistant_label,
     )
-
 
 def _process_prompt_request(request: PromptRequest) -> None:
     prompt_execution.process_prompt_request(
@@ -176,7 +151,6 @@ def _process_prompt_request(request: PromptRequest) -> None:
         emit_event_fn=emit_event,
     )
 
-
 def _process_message_worker_request(request: PromptRequest) -> None:
     try:
         _process_prompt_request(request)
@@ -191,7 +165,6 @@ def _process_message_worker_request(request: PromptRequest) -> None:
             message_id=request.message_id,
             message_thread_id=request.message_thread_id,
         )
-
 
 def _process_youtube_request(request: YoutubeRequest) -> None:
     special_request_processing.process_youtube_request(
@@ -211,7 +184,6 @@ def _process_youtube_request(request: YoutubeRequest) -> None:
         finalize_request_progress_fn=finalize_request_progress,
     )
 
-
 def _process_youtube_worker_request(request: YoutubeRequest) -> None:
     special_request_processing.process_youtube_worker_request(
         request,
@@ -220,7 +192,6 @@ def _process_youtube_worker_request(request: YoutubeRequest) -> None:
         send_timeout_response_fn=send_timeout_response,
         emit_worker_exception_and_reply_fn=emit_worker_exception_and_reply,
     )
-
 
 def _process_dishframed_request(request: DishframedRequest) -> None:
     special_request_processing.process_dishframed_request(
@@ -234,7 +205,6 @@ def _process_dishframed_request(request: DishframedRequest) -> None:
         send_chat_action_safe_fn=send_chat_action_safe,
         finalize_request_progress_fn=finalize_request_progress,
     )
-
 
 def _process_dishframed_worker_request(request: DishframedRequest) -> None:
     special_request_processing.process_dishframed_worker_request(

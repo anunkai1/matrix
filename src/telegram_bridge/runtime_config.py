@@ -9,25 +9,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-try:
-    from .runtime_paths import (
-        build_shared_core_root,
-        build_runtime_root,
-        dedupe_paths,
-        runtime_path,
-        shared_core_path,
-    )
-    from .transport import TELEGRAM_LIMIT
-except ImportError:
-    from runtime_paths import (
-        build_shared_core_root,
-        build_runtime_root,
-        dedupe_paths,
-        runtime_path,
-        shared_core_path,
-    )
-    from transport import TELEGRAM_LIMIT
-
+from telegram_bridge.env_parser import Env, build_voice_alias_replacements
+from telegram_bridge.runtime_paths import (
+    build_shared_core_root,
+    build_runtime_root,
+    dedupe_paths,
+    runtime_path,
+    shared_core_path,
+)
+from telegram_bridge.transport import TELEGRAM_LIMIT
 
 @dataclass
 class Config:
@@ -159,51 +149,32 @@ class Config:
     )
     empty_output_message: str = "(No output from assistant)"
 
+# -- backward-compatible wrappers (prefer Env in new code) -------------------
 
 def parse_int_env(name: str, default: int, minimum: int = 1) -> int:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    try:
-        parsed = int(value)
-    except ValueError as exc:
-        raise ValueError(f"{name} must be an integer") from exc
-    if parsed < minimum:
-        raise ValueError(f"{name} must be >= {minimum}")
-    return parsed
+    return Env(name).as_int(default, min=minimum)
 
 def parse_bool_env(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None:
+    return Env(name).as_bool(default)
+
+def parse_float_env(name: str, default: float, *, minimum: Optional[float] = None, maximum: Optional[float] = None) -> float:
+    return Env(name).as_float(default, min=minimum, max=maximum)
+
+def parse_prefixes_env(name: str) -> List[str]:
+    return Env(name).as_prefix_list()
+
+def parse_string_list_env(name: str) -> List[str]:
+    return Env(name).as_list([])
+
+def parse_plugin_name_env(name: str, default: str) -> str:
+    raw = os.getenv(name)
+    if raw is None:
         return default
-    normalized = value.strip().lower()
-    if normalized in ("1", "true", "yes", "on"):
-        return True
-    if normalized in ("0", "false", "no", "off"):
-        return False
-    raise ValueError(f"{name} must be a boolean value")
+    value = raw.strip().lower()
+    return value if value else default
 
-
-def parse_float_env(
-    name: str,
-    default: float,
-    *,
-    minimum: Optional[float] = None,
-    maximum: Optional[float] = None,
-) -> float:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    try:
-        parsed = float(value)
-    except ValueError as exc:
-        raise ValueError(f"{name} must be a float") from exc
-    if minimum is not None and parsed < minimum:
-        raise ValueError(f"{name} must be >= {minimum}")
-    if maximum is not None and parsed > maximum:
-        raise ValueError(f"{name} must be <= {maximum}")
-    return parsed
-
+def parse_plugin_list_env(name: str, default: List[str]) -> List[str]:
+    return Env(name).as_lower_list(default)
 
 def parse_allowed_chat_ids(raw: str) -> Set[int]:
     values = [item.strip() for item in raw.split(",") if item.strip()]
@@ -214,115 +185,15 @@ def parse_allowed_chat_ids(raw: str) -> Set[int]:
         try:
             parsed.add(int(value))
         except ValueError as exc:
-            raise ValueError(
-                f"Invalid TELEGRAM_ALLOWED_CHAT_IDS value: {value!r}"
-            ) from exc
+            raise ValueError(f"Invalid TELEGRAM_ALLOWED_CHAT_IDS value: {value!r}") from exc
     return parsed
-
-
-def parse_prefixes_env(name: str) -> List[str]:
-    raw = os.getenv(name, "").strip()
-    if not raw:
-        return []
-    values = [item.strip() for item in raw.split(",") if item.strip()]
-    seen: Set[str] = set()
-    parsed: List[str] = []
-    for value in values:
-        key = value.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        parsed.append(value)
-    return parsed
-
-
-def parse_string_list_env(name: str) -> List[str]:
-    raw = os.getenv(name, "").strip()
-    if not raw:
-        return []
-    values = [item.strip() for item in raw.split(",") if item.strip()]
-    seen: Set[str] = set()
-    parsed: List[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        parsed.append(value)
-    return parsed
-
-
-def parse_plugin_name_env(name: str, default: str) -> str:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    value = raw.strip().lower()
-    if not value:
-        return default
-    return value
-
-
-def parse_plugin_list_env(name: str, default: List[str]) -> List[str]:
-    raw = os.getenv(name)
-    if raw is None or not raw.strip():
-        return list(default)
-    values = [item.strip().lower() for item in raw.split(",") if item.strip()]
-    seen: Set[str] = set()
-    parsed: List[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        parsed.append(value)
-    return parsed or list(default)
-
 
 def default_voice_alias_replacements() -> List[Tuple[str, str]]:
-    return [
-        ("master broom", "master bedroom"),
-        ("master room", "master bedroom"),
-        ("air con", "aircon"),
-        ("air conditioner", "aircon"),
-        ("clode code", "claude code"),
-        ("hall way", "hallway"),
-    ]
-
-
-def parse_voice_alias_replacements_env(name: str) -> List[Tuple[str, str]]:
-    raw = os.getenv(name, "").strip()
-    if not raw:
-        return []
-    parsed: List[Tuple[str, str]] = []
-    entries = [item.strip() for item in raw.split(";") if item.strip()]
-    for entry in entries:
-        if "=>" not in entry:
-            raise ValueError(
-                f"{name} entry must use 'source=>target' format: {entry!r}"
-            )
-        source, target = entry.split("=>", 1)
-        source = source.strip()
-        target = target.strip()
-        if not source or not target:
-            raise ValueError(
-                f"{name} entry must include non-empty source and target: {entry!r}"
-            )
-        parsed.append((source, target))
-    return parsed
-
-
-def build_voice_alias_replacements() -> List[Tuple[str, str]]:
-    merged: Dict[str, Tuple[str, str]] = {}
-    for source, target in default_voice_alias_replacements():
-        merged[source.casefold()] = (source, target)
-    for source, target in parse_voice_alias_replacements_env(
-        "TELEGRAM_VOICE_ALIAS_REPLACEMENTS"
-    ):
-        merged[source.casefold()] = (source, target)
-    return list(merged.values())
-
+    """Deprecated: use telegram_bridge.env_parser.build_voice_alias_replacements."""
+    return build_voice_alias_replacements()
 
 def build_repo_root() -> str:
     return build_shared_core_root()
-
 
 def build_policy_watch_files() -> List[str]:
     raw_override = os.getenv("TELEGRAM_POLICY_WATCH_FILES")
@@ -341,10 +212,8 @@ def build_policy_watch_files() -> List[str]:
         ]
     )
 
-
 def build_default_executor() -> str:
     return shared_core_path("src", "telegram_bridge", "executor.sh")
-
 
 def parse_executor_cmd() -> List[str]:
     raw = os.getenv("TELEGRAM_EXECUTOR_CMD", "").strip()
@@ -355,7 +224,6 @@ def parse_executor_cmd() -> List[str]:
         return cmd
     return [build_default_executor()]
 
-
 def parse_optional_cmd_env(name: str) -> List[str]:
     raw = os.getenv(name, "").strip()
     if not raw:
@@ -364,7 +232,6 @@ def parse_optional_cmd_env(name: str) -> List[str]:
     if not cmd:
         raise ValueError(f"{name} cannot be blank")
     return cmd
-
 
 def load_codex_model() -> str:
     # Resolution order:
@@ -384,7 +251,6 @@ def load_codex_model() -> str:
     model = payload.get("model", "")
     return str(model).strip() if isinstance(model, str) else ""
 
-
 def load_codex_reasoning_effort() -> str:
     env_effort = os.getenv("CODEX_REASONING_EFFORT", "").strip().lower()
     if env_effort:
@@ -400,7 +266,6 @@ def load_codex_reasoning_effort() -> str:
     effort = payload.get("model_reasoning_effort", "")
     return str(effort).strip().lower() if isinstance(effort, str) else ""
 
-
 def resolve_state_paths(state_dir: str) -> tuple[str, str]:
     canonical_sqlite_path = os.getenv("TELEGRAM_CANONICAL_SQLITE_PATH", "").strip()
     if not canonical_sqlite_path:
@@ -412,7 +277,6 @@ def resolve_state_paths(state_dir: str) -> tuple[str, str]:
     ).strip() or os.path.join(state_dir, "affective_state.sqlite3")
 
     return canonical_sqlite_path, affective_runtime_db_path
-
 
 def resolve_runtime_identity() -> tuple[str, str, str, str, str]:
     assistant_name = os.getenv("TELEGRAM_ASSISTANT_NAME", "Architect").strip() or "Architect"
@@ -440,7 +304,6 @@ def resolve_runtime_identity() -> tuple[str, str, str, str, str]:
         progress_elapsed_suffix,
         busy_message,
     )
-
 
 def load_config() -> Config:
     channel_plugin = parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram")

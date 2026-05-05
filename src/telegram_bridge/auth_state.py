@@ -6,35 +6,20 @@ import os
 from pathlib import Path
 from typing import Dict
 
-try:
-    from .state_store import (
-        CanonicalSession,
-        ScopeKey,
-        State,
-        WorkerSession,
-        canonical_session_is_empty,
-        mirror_legacy_from_canonical,
-        persist_chat_threads,
-        persist_canonical_sessions,
-        persist_worker_sessions,
-    )
-except ImportError:
-    from state_store import (
-        CanonicalSession,
-        ScopeKey,
-        State,
-        WorkerSession,
-        canonical_session_is_empty,
-        mirror_legacy_from_canonical,
-        persist_chat_threads,
-        persist_canonical_sessions,
-        persist_worker_sessions,
-    )
-
+from telegram_bridge.state_store import (
+    CanonicalSession,
+    ScopeKey,
+    State,
+    WorkerSession,
+    canonical_session_is_empty,
+    mirror_legacy_from_canonical,
+    persist_chat_threads,
+    persist_canonical_sessions,
+    persist_worker_sessions,
+)
 
 def build_auth_fingerprint_state_path(state_dir: str) -> str:
     return os.path.join(state_dir, "auth_fingerprint.txt")
-
 
 def load_saved_auth_fingerprint(path: str) -> str:
     if not path:
@@ -46,7 +31,6 @@ def load_saved_auth_fingerprint(path: str) -> str:
         return ""
     except OSError:
         return ""
-
 
 def persist_saved_auth_fingerprint(path: str, fingerprint: str) -> None:
     if not path:
@@ -62,7 +46,6 @@ def persist_saved_auth_fingerprint(path: str, fingerprint: str) -> None:
         os.fsync(handle.fileno())
     os.replace(tmp_path, path)
 
-
 def _stable_auth_identity(payload: Dict[str, object]) -> str:
     auth_mode = str(payload.get("auth_mode") or "").strip().lower()
     tokens = payload.get("tokens") if isinstance(payload.get("tokens"), dict) else {}
@@ -77,7 +60,6 @@ def _stable_auth_identity(payload: Dict[str, object]) -> str:
         api_key_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
         return f"api_key:{api_key_hash}"
     return ""
-
 
 def compute_current_auth_fingerprint(auth_path: str | None = None) -> str:
     resolved_path = (
@@ -97,7 +79,6 @@ def compute_current_auth_fingerprint(auth_path: str | None = None) -> str:
     if not identity:
         return ""
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()
-
 
 def clear_loaded_thread_state(
     loaded_threads: Dict[ScopeKey, str],
@@ -138,7 +119,6 @@ def clear_loaded_thread_state(
         "worker_sessions": cleared_worker_session_count,
         "canonical_sessions": cleared_canonical_session_count,
     }
-
 
 def apply_auth_change_thread_reset(
     *,
@@ -182,7 +162,6 @@ def apply_auth_change_thread_reset(
         "previous_auth_fingerprint": previous_auth_fingerprint,
         "counts": reset_counts,
     }
-
 
 def clear_runtime_thread_state(state: State) -> Dict[str, int]:
     if state.canonical_sessions_enabled:
@@ -234,7 +213,6 @@ def clear_runtime_thread_state(state: State) -> Dict[str, int]:
         "worker_sessions": cleared_worker_session_count,
         "canonical_sessions": 0,
     }
-
 
 def refresh_runtime_auth_fingerprint(state: State) -> Dict[str, object]:
     current_auth_fingerprint = compute_current_auth_fingerprint()

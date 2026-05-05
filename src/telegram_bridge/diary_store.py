@@ -20,17 +20,14 @@ from zoneinfo import ZoneInfo
 
 from PIL import Image
 
-
 DEFAULT_DIARY_REMOTE_ROOT = "/Diary"
 WORD_EMUS_PER_INCH = 914400
 WORD_MAX_IMAGE_WIDTH_EMUS = int(6.0 * WORD_EMUS_PER_INCH)
-
 
 @dataclass
 class DiaryPhoto:
     relative_path: str
     caption: str
-
 
 @dataclass
 class DiaryEntry:
@@ -43,15 +40,12 @@ class DiaryEntry:
     notes: List[str]
     photos: List[DiaryPhoto]
 
-
 def diary_mode_enabled(config) -> bool:
     return bool(getattr(config, "diary_mode_enabled", False))
-
 
 def diary_timezone(config) -> ZoneInfo:
     name = (getattr(config, "diary_timezone", "") or "Australia/Brisbane").strip()
     return ZoneInfo(name)
-
 
 def diary_local_root(config) -> Path:
     root = (getattr(config, "diary_local_root", "") or "").strip()
@@ -60,33 +54,26 @@ def diary_local_root(config) -> Path:
     state_dir = (getattr(config, "state_dir", "") or "").strip()
     return Path(state_dir) / "diary"
 
-
 def diary_nextcloud_enabled(config) -> bool:
     return bool(getattr(config, "diary_nextcloud_enabled", False))
-
 
 def diary_day_slug(day: dt.date) -> str:
     return day.isoformat()
 
-
 def diary_docx_filename(day: dt.date) -> str:
     return f"{diary_day_slug(day)} - Diary.docx"
-
 
 def diary_day_json_path(config, day: dt.date) -> Path:
     root = diary_local_root(config)
     return root / "days" / day.strftime("%Y") / day.strftime("%m") / f"{diary_day_slug(day)}.json"
 
-
 def diary_day_assets_dir(config, day: dt.date) -> Path:
     root = diary_local_root(config)
     return root / "days" / day.strftime("%Y") / day.strftime("%m") / f"{diary_day_slug(day)}-assets"
 
-
 def diary_day_docx_path(config, day: dt.date) -> Path:
     root = diary_local_root(config)
     return root / "exports" / day.strftime("%Y") / day.strftime("%m") / diary_docx_filename(day)
-
 
 def diary_day_remote_docx_path(config, day: dt.date) -> Optional[str]:
     remote_root = (getattr(config, "diary_nextcloud_remote_root", "") or "").strip()
@@ -99,7 +86,6 @@ def diary_day_remote_docx_path(config, day: dt.date) -> Optional[str]:
         remote_root = DEFAULT_DIARY_REMOTE_ROOT
     return f"{remote_root}/{day.strftime('%Y')}/{day.strftime('%m')}/{diary_docx_filename(day)}"
 
-
 def sanitize_file_stem(value: str) -> str:
     out = []
     for char in value:
@@ -109,7 +95,6 @@ def sanitize_file_stem(value: str) -> str:
             out.append("-")
     cleaned = "".join(out).strip("-._")
     return cleaned or "item"
-
 
 def atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -121,7 +106,6 @@ def atomic_write_text(path: Path, text: str) -> None:
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
-
 
 def read_day_entries(config, day: dt.date) -> List[DiaryEntry]:
     path = diary_day_json_path(config, day)
@@ -174,7 +158,6 @@ def read_day_entries(config, day: dt.date) -> List[DiaryEntry]:
         )
     return out
 
-
 def write_day_entries(config, day: dt.date, entries: Sequence[DiaryEntry]) -> None:
     path = diary_day_json_path(config, day)
     payload = {
@@ -202,7 +185,6 @@ def write_day_entries(config, day: dt.date, entries: Sequence[DiaryEntry]) -> No
     }
     atomic_write_text(path, json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
 
-
 def copy_photo_to_day_assets(
     config,
     day: dt.date,
@@ -219,7 +201,6 @@ def copy_photo_to_day_assets(
     shutil.copy2(source, target)
     return str(target.relative_to(diary_local_root(config)))
 
-
 def append_day_entry(config, day: dt.date, entry: DiaryEntry) -> Path:
     entries = read_day_entries(config, day)
     entries.append(entry)
@@ -228,7 +209,6 @@ def append_day_entry(config, day: dt.date, entry: DiaryEntry) -> Path:
     render_day_docx(config, day, entries, output_path)
     verify_docx_contains(output_path, [entry.time_label, entry.title or "Diary entry"])
     return output_path
-
 
 def verify_docx_contains(path: Path, expected_snippets: Sequence[str]) -> None:
     if not path.exists() or path.stat().st_size <= 0:
@@ -239,7 +219,6 @@ def verify_docx_contains(path: Path, expected_snippets: Sequence[str]) -> None:
         clean = (snippet or "").strip()
         if clean and clean not in document_xml:
             raise RuntimeError(f"Diary document verification failed for {path}: missing {clean!r}")
-
 
 def _text_run_xml(text: str, *, bold: bool = False, italic: bool = False) -> str:
     escaped = escape(text)
@@ -255,7 +234,6 @@ def _text_run_xml(text: str, *, bold: bool = False, italic: bool = False) -> str
         return f"<w:r>{rpr}<w:t></w:t></w:r>"
     return f'<w:r>{rpr}<w:t xml:space="preserve">{escaped}</w:t></w:r>'
 
-
 def _paragraph_xml(text: str, *, bold: bool = False, italic: bool = False) -> str:
     lines = text.splitlines() or [""]
     runs: List[str] = []
@@ -264,7 +242,6 @@ def _paragraph_xml(text: str, *, bold: bool = False, italic: bool = False) -> st
             runs.append("<w:r><w:br/></w:r>")
         runs.append(_text_run_xml(line, bold=bold, italic=italic))
     return f"<w:p>{''.join(runs)}</w:p>"
-
 
 def _image_dimensions_emu(image_path: Path) -> tuple[int, int]:
     with Image.open(image_path) as image:
@@ -275,7 +252,6 @@ def _image_dimensions_emu(image_path: Path) -> tuple[int, int]:
     width_emu = max(1, int(math.floor(width_px * 9525 * scale)))
     height_emu = max(1, int(math.floor(height_px * 9525 * scale)))
     return width_emu, height_emu
-
 
 def _image_paragraph_xml(rel_id: str, image_name: str, width_emu: int, height_emu: int, doc_pr_id: int) -> str:
     image_name_xml = escape(image_name)
@@ -310,7 +286,6 @@ def _image_paragraph_xml(rel_id: str, image_name: str, width_emu: int, height_em
         "</w:r>"
         "</w:p>"
     )
-
 
 def render_day_docx(config, day: dt.date, entries: Sequence[DiaryEntry], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -442,11 +417,9 @@ def render_day_docx(config, day: dt.date, entries: Sequence[DiaryEntry], output_
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-
 def _nextcloud_auth_header(username: str, app_password: str) -> str:
     token = base64.b64encode(f"{username}:{app_password}".encode("utf-8")).decode("ascii")
     return f"Basic {token}"
-
 
 def _nextcloud_request(
     method: str,
@@ -469,7 +442,6 @@ def _nextcloud_request(
             return int(getattr(response, "status", 200))
     except HTTPError as exc:
         return int(exc.code)
-
 
 def upload_to_nextcloud(config, local_path: Path, remote_path: str) -> None:
     if not diary_nextcloud_enabled(config):

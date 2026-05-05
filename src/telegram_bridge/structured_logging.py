@@ -3,7 +3,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
-
 class JsonLogFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload: Dict[str, object] = {
@@ -27,7 +26,6 @@ class JsonLogFormatter(logging.Formatter):
 
         return json.dumps(payload, sort_keys=True, ensure_ascii=True)
 
-
 def configure_bridge_logging(level_name: str) -> None:
     level = getattr(logging, level_name.upper(), logging.INFO)
     root = logging.getLogger()
@@ -37,7 +35,6 @@ def configure_bridge_logging(level_name: str) -> None:
     handler = logging.StreamHandler()
     handler.setFormatter(JsonLogFormatter())
     root.addHandler(handler)
-
 
 def emit_event(
     event: str,

@@ -11,11 +11,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Optional
 
-try:
-    from .structured_logging import emit_event
-except ImportError:
-    from structured_logging import emit_event
-
+from telegram_bridge.structured_logging import emit_event
 
 @dataclass
 class AffectiveState:
@@ -34,7 +30,6 @@ class AffectiveState:
     def as_dict(self) -> Dict[str, float]:
         return asdict(self)
 
-
 @dataclass
 class HostSignals:
     cpu_util: float = 0.0
@@ -47,7 +42,6 @@ class HostSignals:
 
     def as_dict(self) -> Dict[str, float]:
         return asdict(self)
-
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS affective_state (
@@ -62,13 +56,11 @@ CREATE TABLE IF NOT EXISTS affective_state (
 )
 """
 
-
 def _safe_float(value: object, default: float = 0.0) -> float:
     try:
         return float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return default
-
 
 def _cpu_count() -> int:
     try:
@@ -78,14 +70,12 @@ def _cpu_count() -> int:
     except Exception:
         return 1
 
-
 def _read_loadavg() -> float:
     try:
         with open("/proc/loadavg", "r", encoding="utf-8") as handle:
             return _safe_float(handle.read().split()[0], 0.0)
     except Exception:
         return 0.0
-
 
 def _read_mem_util() -> float:
     try:
@@ -104,7 +94,6 @@ def _read_mem_util() -> float:
     except Exception:
         return 0.0
 
-
 def _read_disk_util(path: str) -> float:
     try:
         usage = shutil.disk_usage(path or "/")
@@ -113,7 +102,6 @@ def _read_disk_util(path: str) -> float:
         return max(0.0, min(1.0, usage.used / usage.total))
     except Exception:
         return 0.0
-
 
 def _read_network_rtt_ms(target: str) -> float:
     if not target.strip():
@@ -138,7 +126,6 @@ def _read_network_rtt_ms(target: str) -> float:
     except (IndexError, ValueError):
         return 0.0
     return max(0.0, _safe_float(average, 0.0))
-
 
 def _extract_user_feedback(text: str) -> float:
     lowered = (text or "").casefold()
@@ -178,7 +165,6 @@ def _extract_user_feedback(text: str) -> float:
     if "!" in lowered and score > 0:
         score += 0.05
     return max(-1.0, min(1.0, score))
-
 
 class AffectiveRuntime:
     """Small persistent affect model shaped by host state and turn outcomes."""
@@ -456,7 +442,6 @@ class AffectiveRuntime:
             "db_available": self._db_available,
             "ping_enabled": bool(self.ping_target),
         }
-
 
 def build_affective_runtime(config) -> Optional[AffectiveRuntime]:
     if not getattr(config, "affective_runtime_enabled", False):

@@ -3,33 +3,20 @@ import threading
 import time
 from typing import Dict, List, Optional
 
-try:
-    from .background_tasks import start_daemon_thread
-    from .conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
-    from .executor import ExecutorProgressEvent
-    from .runtime_profile import assistant_label
-    from .state_store import State, StateRepository
-    from .structured_logging import emit_event
-    from .transport import TELEGRAM_LIMIT
-    from .engine_controls import selectable_engine_plugins
-    from .response_delivery import compact_progress_text
-except ImportError:
-    from background_tasks import start_daemon_thread
-    from conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
-    from executor import ExecutorProgressEvent
-    from runtime_profile import assistant_label
-    from state_store import State, StateRepository
-    from structured_logging import emit_event
-    from transport import TELEGRAM_LIMIT
-    from engine_controls import selectable_engine_plugins
-    from response_delivery import compact_progress_text
-
+from telegram_bridge.background_tasks import start_daemon_thread
+from telegram_bridge.conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
+from telegram_bridge.executor import ExecutorProgressEvent
+from telegram_bridge.runtime_profile import assistant_label
+from telegram_bridge.state_store import State, StateRepository
+from telegram_bridge.structured_logging import emit_event
+from telegram_bridge.transport import TELEGRAM_LIMIT
+from telegram_bridge.engine_controls import selectable_engine_plugins
+from telegram_bridge.response_delivery import compact_progress_text
 
 PROGRESS_TYPING_INTERVAL_SECONDS = 4
 PROGRESS_EDIT_MIN_INTERVAL_SECONDS = 6
 PROGRESS_HEARTBEAT_EDIT_SECONDS = 30
 RATE_LIMIT_MESSAGE = "Rate limit exceeded. Please wait a minute and retry."
-
 
 def normalize_command(text: str) -> Optional[str]:
     stripped = text.strip()
@@ -45,7 +32,6 @@ def normalize_command(text: str) -> Optional[str]:
     if not head:
         return None
     return head.split("@", maxsplit=1)[0]
-
 
 def strip_required_prefix(
     text: str,
@@ -85,13 +71,11 @@ def strip_required_prefix(
         return True, strip_prefix_separators(remainder)
     return False, stripped
 
-
 def trim_output(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     marker = "\n\n[output truncated]"
     return text[: max(0, limit - len(marker))] + marker
-
 
 def extract_chat_context(
     update: Dict[str, object],
@@ -108,7 +92,6 @@ def extract_chat_context(
     if not isinstance(message_id, int):
         message_id = None
     return message, scope, message_id
-
 
 def extract_callback_query_context(
     update: Dict[str, object],
@@ -128,7 +111,6 @@ def extract_callback_query_context(
     if not isinstance(message_id, int):
         message_id = None
     return message, scope, message_id, callback_query_id, callback_data
-
 
 class ProgressReporter:
     def __init__(
@@ -365,7 +347,6 @@ class ProgressReporter:
         with self._lock:
             self.pending_update = False
 
-
 def build_help_text(config) -> str:
     selectable = selectable_engine_plugins(config)
     engine_help_choices = ["status", *selectable, "reset"]
@@ -420,7 +401,6 @@ def build_help_text(config) -> str:
         )
     )
     return base
-
 
 def build_status_text(
     state: State,

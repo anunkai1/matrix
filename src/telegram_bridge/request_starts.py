@@ -1,33 +1,18 @@
 import threading
 from typing import List, Optional
 
-try:
-    from . import engine_controls
-    from .handler_models import DocumentPayload
-    from .handler_models import build_dishframed_request, build_prompt_request, build_youtube_request
-    from .channel_adapter import ChannelAdapter
-    from .engine_adapter import EngineAdapter
-    from .state_store import State
-    from . import response_delivery
-except ImportError:
-    import engine_controls
-    from handler_models import DocumentPayload
-    from handler_models import build_dishframed_request, build_prompt_request, build_youtube_request
-    from channel_adapter import ChannelAdapter
-    from engine_adapter import EngineAdapter
-    from state_store import State
-    import response_delivery
-
+from telegram_bridge import engine_controls
+from telegram_bridge.handler_models import DocumentPayload
+from telegram_bridge.handler_models import build_dishframed_request, build_prompt_request, build_youtube_request
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.engine_adapter import EngineAdapter
+from telegram_bridge.state_store import State
+from telegram_bridge import response_delivery
 
 start_background_worker = response_delivery.start_background_worker
 resolve_engine_for_scope = engine_controls.resolve_engine_for_scope
 
-
-try:
-    from . import bridge_deps as handlers
-except ImportError:
-    import bridge_deps as handlers
-
+from telegram_bridge import bridge_deps as handlers
 
 def process_prompt(
     state: State,
@@ -72,7 +57,6 @@ def process_prompt(
         )
     )
 
-
 def process_message_worker(
     state: State,
     config,
@@ -116,7 +100,6 @@ def process_message_worker(
         )
     )
 
-
 def start_message_worker(
     state: State,
     config,
@@ -159,7 +142,6 @@ def start_message_worker(
     )
     start_background_worker(handlers._process_message_worker_request, request)
 
-
 def process_youtube_request(
     state: State,
     config,
@@ -193,7 +175,6 @@ def process_youtube_request(
         )
     )
 
-
 def process_youtube_worker(
     state: State,
     config,
@@ -224,7 +205,6 @@ def process_youtube_worker(
             cancel_event=cancel_event,
         )
     )
-
 
 def start_youtube_worker(
     state: State,
@@ -258,7 +238,6 @@ def start_youtube_worker(
         ),
     )
 
-
 def process_dishframed_request(
     state: State,
     config,
@@ -284,7 +263,6 @@ def process_dishframed_request(
         )
     )
 
-
 def process_dishframed_worker(
     state: State,
     config,
@@ -309,7 +287,6 @@ def process_dishframed_worker(
             cancel_event=cancel_event,
         )
     )
-
 
 def start_dishframed_worker(
     state: State,

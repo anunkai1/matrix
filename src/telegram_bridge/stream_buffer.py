@@ -1,7 +1,6 @@
 from collections import deque
 from typing import Deque, List
 
-
 class BoundedTextBuffer:
     """Keep bounded stream text while preserving head context and tail output."""
 

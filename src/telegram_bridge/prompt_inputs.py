@@ -3,19 +3,11 @@ import os
 import subprocess
 from typing import Dict, List, Optional
 
-try:
-    from . import bridge_deps as handlers
-    from .channel_adapter import ChannelAdapter
-    from .handler_models import DocumentPayload, PreparedPromptInput, PromptRequest
-    from .state_store import State
-    from . import prompt_preparation
-except ImportError:
-    import bridge_deps as handlers
-    from channel_adapter import ChannelAdapter
-    from handler_models import DocumentPayload, PreparedPromptInput, PromptRequest
-    from state_store import State
-    import prompt_preparation
-
+from telegram_bridge import bridge_deps as handlers
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.handler_models import DocumentPayload, PreparedPromptInput, PromptRequest
+from telegram_bridge.state_store import State
+from telegram_bridge import prompt_preparation
 
 def transcribe_voice_for_chat(
     state: State,
@@ -134,7 +126,6 @@ def transcribe_voice_for_chat(
             except OSError:
                 logging.warning("Failed to remove temp voice file: %s", voice_path)
 
-
 def _prepare_prompt_input_request(
     request: PromptRequest,
     progress,
@@ -149,7 +140,6 @@ def _prepare_prompt_input_request(
         emit_event_fn=handlers.emit_event,
         prefix_help_message=handlers.PREFIX_HELP_MESSAGE,
     )
-
 
 def prepare_prompt_input(
     state: State,
@@ -184,7 +174,6 @@ def prepare_prompt_input(
         ),
         progress,
     )
-
 
 def prewarm_attachment_archive_for_message(
     state: State,

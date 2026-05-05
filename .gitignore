@@ -43,3 +43,4 @@ infra/systemd/telegram-mavali-eth*
 infra/system/sudoers/mavali-eth*
 infra/env/telegram-mavali-eth*
 logs/changes/*mavali*
+tmp/

@@ -6,17 +6,11 @@ import sys
 import tempfile
 from typing import Dict, List
 
-try:
-    from .runtime_profile import build_repo_root
-    from .transport import TELEGRAM_LIMIT
-except ImportError:
-    from runtime_profile import build_repo_root
-    from transport import TELEGRAM_LIMIT
-
+from telegram_bridge.runtime_profile import build_repo_root
+from telegram_bridge.transport import TELEGRAM_LIMIT
 
 YOUTUBE_ANALYZER_TIMEOUT_SECONDS = 1800
 YOUTUBE_INLINE_TRANSCRIPT_LIMIT = 12000
-
 
 def build_youtube_analyzer_command(youtube_url: str, request_text: str) -> List[str]:
     analyzer_path = os.path.join(build_repo_root(), "ops", "youtube", "analyze_youtube.py")
@@ -28,7 +22,6 @@ def build_youtube_analyzer_command(youtube_url: str, request_text: str) -> List[
         "--request-text",
         request_text,
     ]
-
 
 def run_youtube_analyzer(youtube_url: str, request_text: str) -> Dict[str, object]:
     cmd = build_youtube_analyzer_command(youtube_url, request_text)
@@ -54,7 +47,6 @@ def run_youtube_analyzer(youtube_url: str, request_text: str) -> Dict[str, objec
     if not isinstance(payload, dict) or not payload.get("ok", False):
         raise RuntimeError("YouTube analysis did not complete successfully")
     return payload
-
 
 def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object]) -> str:
     title = str(analysis.get("title") or "").strip()
@@ -99,7 +91,6 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
         f"Transcript:\n{transcript_text}\n"
     )
 
-
 def build_youtube_unavailable_message(analysis: Dict[str, object]) -> str:
     title = str(analysis.get("title") or "").strip()
     channel = str(analysis.get("channel") or "").strip()
@@ -114,7 +105,6 @@ def build_youtube_unavailable_message(analysis: Dict[str, object]) -> str:
     if reason:
         parts.append(f"Reason: {reason}.")
     return " ".join(parts)
-
 
 def build_youtube_transcript_output(
     config,

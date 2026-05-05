@@ -3,17 +3,10 @@ import subprocess
 import tempfile
 from typing import List
 
-try:
-    from .engine_adapter import CodexEngineAdapter
-    from .executor import ExecutorCancelledError
-    from .handler_models import DishframedRequest, YoutubeRequest
-    from .state_store import StateRepository
-except ImportError:
-    from engine_adapter import CodexEngineAdapter
-    from executor import ExecutorCancelledError
-    from handler_models import DishframedRequest, YoutubeRequest
-    from state_store import StateRepository
-
+from telegram_bridge.engine_adapter import CodexEngineAdapter
+from telegram_bridge.executor import ExecutorCancelledError
+from telegram_bridge.handler_models import DishframedRequest, YoutubeRequest
+from telegram_bridge.state_store import StateRepository
 
 def process_youtube_request(
     request: YoutubeRequest,
@@ -140,7 +133,6 @@ def process_youtube_request(
             cleanup_paths=cleanup_paths,
         )
 
-
 def process_youtube_worker_request(
     request: YoutubeRequest,
     *,
@@ -190,7 +182,6 @@ def process_youtube_worker_request(
             message_id=request.message_id,
             message_thread_id=request.message_thread_id,
         )
-
 
 def process_dishframed_request(
     request: DishframedRequest,
@@ -296,7 +287,6 @@ def process_dishframed_request(
             cleanup_dirs=cleanup_dirs,
             finish_event_fields={"phase": "dishframed"},
         )
-
 
 def process_dishframed_worker_request(
     request: DishframedRequest,

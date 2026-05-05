@@ -1,10 +1,6 @@
 from typing import Dict, List, Optional, Protocol
 
-try:
-    from .transport import TelegramClient
-except ImportError:
-    from transport import TelegramClient
-
+from telegram_bridge.transport import TelegramClient
 
 class ChannelAdapter(Protocol):
     channel_name: str
@@ -112,7 +108,6 @@ class ChannelAdapter(Protocol):
         size_label: str = "File",
     ) -> None:
         ...
-
 
 class TelegramChannelAdapter:
     channel_name = "telegram"

@@ -1,33 +1,17 @@
 import logging
 from typing import Dict, Optional
 
-try:
-    from .channel_adapter import ChannelAdapter
-    from .engine_adapter import EngineAdapter
-    from .handler_models import (
-        IncomingUpdateContext,
-        PreparedUpdateRequest,
-        UpdateDispatchRequest,
-        UpdateFlowState,
-    )
-    from .state_store import State
-except ImportError:
-    from channel_adapter import ChannelAdapter
-    from engine_adapter import EngineAdapter
-    from handler_models import (
-        IncomingUpdateContext,
-        PreparedUpdateRequest,
-        UpdateDispatchRequest,
-        UpdateFlowState,
-    )
-    from state_store import State
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.engine_adapter import EngineAdapter
+from telegram_bridge.handler_models import (
+    IncomingUpdateContext,
+    PreparedUpdateRequest,
+    UpdateDispatchRequest,
+    UpdateFlowState,
+)
+from telegram_bridge.state_store import State
 
-
-try:
-    from . import bridge_deps as handlers
-except ImportError:
-    import bridge_deps as handlers
-
+from telegram_bridge import bridge_deps as handlers
 
 def start_dishframed_dispatch(request: UpdateDispatchRequest) -> bool:
     photo_file_ids = list(request.photo_file_ids)
@@ -89,7 +73,6 @@ def start_dishframed_dispatch(request: UpdateDispatchRequest) -> bool:
         fields={"chat_id": request.chat_id, "message_id": request.message_id, "route": "dishframed"},
     )
     return True
-
 
 def start_standard_dispatch(request: UpdateDispatchRequest) -> bool:
     try:
@@ -213,7 +196,6 @@ def start_standard_dispatch(request: UpdateDispatchRequest) -> bool:
         )
     return True
 
-
 def extract_incoming_update_context(update: Dict[str, object]) -> Optional[IncomingUpdateContext]:
     message, conversation_scope, message_id = handlers.extract_chat_context(update)
     if message is None or conversation_scope is None:
@@ -243,7 +225,6 @@ def extract_incoming_update_context(update: Dict[str, object]) -> Optional[Incom
         is_private_chat=is_private_chat,
         update_id=update_id_int,
     )
-
 
 def allow_update_chat(
     ctx: IncomingUpdateContext,
@@ -276,7 +257,6 @@ def allow_update_chat(
             reply_to_message_id=ctx.message_id,
         )
     return False
-
 
 def prepare_update_request(
     state: State,
@@ -372,7 +352,6 @@ def prepare_update_request(
         command=handlers.normalize_command(prompt_input or ""),
     )
 
-
 def build_update_flow_state(
     state: State,
     config,
@@ -396,7 +375,6 @@ def build_update_flow_state(
         sender_name=prepared.sender_name,
         command=prepared.command,
     )
-
 
 def maybe_handle_diary_update_flow(flow: UpdateFlowState) -> bool:
     if not handlers.diary_mode_enabled(flow.config):
@@ -434,7 +412,6 @@ def maybe_handle_diary_update_flow(flow: UpdateFlowState) -> bool:
         message=flow.ctx.message,
     )
     return True
-
 
 def prepare_update_dispatch_request(
     flow: UpdateFlowState,

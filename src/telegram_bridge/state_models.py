@@ -3,21 +3,15 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
 
-try:
-    from .conversation_scope import normalize_scope_storage_key
-except ImportError:
-    from conversation_scope import normalize_scope_storage_key
-
+from telegram_bridge.conversation_scope import normalize_scope_storage_key
 
 ScopeKey = str
-
 
 def normalize_scope_key(scope_key: object) -> ScopeKey:
     normalized = normalize_scope_storage_key(scope_key)
     if normalized is None:
         raise ValueError(f"Invalid scope key: {scope_key!r}")
     return normalized
-
 
 @dataclass
 class CanonicalSession:
@@ -28,14 +22,12 @@ class CanonicalSession:
     in_flight_started_at: Optional[float] = None
     in_flight_message_id: Optional[int] = None
 
-
 @dataclass
 class WorkerSession:
     created_at: float
     last_used_at: float
     thread_id: str
     policy_fingerprint: str
-
 
 @dataclass
 class PendingMediaGroup:
@@ -44,7 +36,6 @@ class PendingMediaGroup:
     updates: List[Dict[str, object]] = field(default_factory=list)
     started_at: float = field(default_factory=time.time)
     last_seen_at: float = field(default_factory=time.time)
-
 
 @dataclass
 class PendingDiaryBatch:
@@ -59,13 +50,11 @@ class PendingDiaryBatch:
     last_seen_at: float = field(default_factory=time.time)
     worker_started: bool = False
 
-
 @dataclass
 class RecentPhotoSelection:
     photo_file_ids: List[str] = field(default_factory=list)
     message_id: Optional[int] = None
     captured_at: float = field(default_factory=time.time)
-
 
 @dataclass
 class State:

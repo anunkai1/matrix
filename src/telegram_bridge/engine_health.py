@@ -6,7 +6,6 @@ from typing import Callable, Dict, List, Tuple
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
-
 def _brief_health_error(error: object, limit: int = 180) -> str:
     text = str(error).strip().replace("\n", " ")
     if not text:
@@ -14,7 +13,6 @@ def _brief_health_error(error: object, limit: int = 180) -> str:
     if len(text) > limit:
         return text[: limit - 3].rstrip() + "..."
     return text
-
 
 def _parse_ollama_tags(payload: str) -> List[str]:
     data = json.loads(payload)
@@ -30,7 +28,6 @@ def _parse_ollama_tags(payload: str) -> List[str]:
             names.append(name)
     return names
 
-
 def _parse_venice_model_ids(payload: str) -> List[str]:
     data = json.loads(payload)
     models = data.get("data", [])
@@ -44,7 +41,6 @@ def _parse_venice_model_ids(payload: str) -> List[str]:
         if model_id:
             names.append(model_id)
     return names
-
 
 def check_gemma_health(
     config,
@@ -127,7 +123,6 @@ def check_gemma_health(
             "error": _brief_health_error(exc),
         }
 
-
 def check_venice_health(config, *, health_timeout_seconds: int = 6) -> Dict[str, object]:
     api_key = str(getattr(config, "venice_api_key", "") or "").strip()
     base_url = str(getattr(config, "venice_base_url", "https://api.venice.ai/api/v1") or "").strip().rstrip("/")
@@ -171,7 +166,6 @@ def check_venice_health(config, *, health_timeout_seconds: int = 6) -> Dict[str,
             "model_available": False,
             "error": _brief_health_error(exc),
         }
-
 
 def check_pi_health(
     config,
@@ -232,7 +226,6 @@ def check_pi_health(
             "model_available": False,
             "error": _brief_health_error(exc),
         }
-
 
 def check_chatgpt_web_health(config) -> Dict[str, object]:
     script = str(

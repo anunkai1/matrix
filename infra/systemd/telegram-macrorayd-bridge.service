@@ -9,6 +9,7 @@ User=macrorayd
 Group=macrorayd
 WorkingDirectory=/home/macrorayd/macroraydbot
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/macrorayd/macroraydbot/src
 Environment=UNIT_NAME=telegram-macrorayd-bridge.service
 Environment=TELEGRAM_RUNTIME_ROOT=/home/macrorayd/macroraydbot
 Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix

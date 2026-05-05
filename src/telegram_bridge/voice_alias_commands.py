@@ -1,21 +1,13 @@
 import logging
 from typing import List, Optional
 
-try:
-    from . import attachment_processing
-    from .channel_adapter import ChannelAdapter
-    from .handler_models import DocumentPayload
-    from .state_store import State
-except ImportError:
-    import attachment_processing
-    from channel_adapter import ChannelAdapter
-    from handler_models import DocumentPayload
-    from state_store import State
-
+from telegram_bridge import attachment_processing
+from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.handler_models import DocumentPayload
+from telegram_bridge.state_store import State
 
 build_active_voice_alias_replacements = attachment_processing.build_active_voice_alias_replacements
 build_voice_alias_suggestions_message = attachment_processing.build_voice_alias_suggestions_message
-
 
 def build_voice_alias_help_text() -> str:
     return (
@@ -25,7 +17,6 @@ def build_voice_alias_help_text() -> str:
         "/voice-alias reject <id> - reject one suggestion\n"
         "/voice-alias add <source> => <target> - add approved alias manually"
     )
-
 
 def parse_voice_alias_suggestion_id(tail: str, action: str) -> Optional[int]:
     prefix = f"{action} "
@@ -38,7 +29,6 @@ def parse_voice_alias_suggestion_id(tail: str, action: str) -> Optional[int]:
         return int(value)
     except ValueError:
         return None
-
 
 def handle_voice_alias_command(
     state: State,
@@ -162,7 +152,6 @@ def handle_voice_alias_command(
         reply_to_message_id=message_id,
     )
     return True
-
 
 def maybe_process_voice_alias_learning_confirmation(
     state: State,

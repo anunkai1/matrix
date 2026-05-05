@@ -9,6 +9,7 @@ User=agentsmith
 Group=agentsmith
 WorkingDirectory=/home/agentsmith/agentsmithbot
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/agentsmith/agentsmithbot/src
 Environment=UNIT_NAME=telegram-agentsmith-bridge.service
 Environment=TELEGRAM_RUNTIME_ROOT=/home/agentsmith/agentsmithbot
 Environment=TELEGRAM_SHARED_CORE_ROOT=/home/architect/matrix
