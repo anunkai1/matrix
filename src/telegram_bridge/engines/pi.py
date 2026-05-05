@@ -1,7 +1,5 @@
 import base64
-import json
 import mimetypes
-import shlex
 import socket
 import subprocess
 import sys
@@ -26,58 +24,27 @@ from telegram_bridge.engines.pi_sessions import (
     clear_scope_session_files,
     sanitize_session_images,
 )
+from telegram_bridge.engines.pi_capabilities import (
+    IMAGE_CAPABLE_MODEL_SUGGESTIONS,
+    model_supports_images,
+)
+from telegram_bridge.engines.pi_command import (
+    build_pi_rpc_args,
+    build_pi_text_args,
+)
+from telegram_bridge.engines.pi_rpc import (
+    IMAGE_URL_ERROR_MARKERS,
+    build_rpc_prompt_json,
+    extract_rpc_response,
+    should_retry_pi_text_mode,
+)
 from telegram_bridge.engines import pi_transport
 
 class PiEngineAdapter(CompletedProcessOutputMixin):
     engine_name = "pi"
-    _RPC_EMPTY_OUTPUT_MARKER = "Pi RPC did not produce any output"
-    _IMAGE_URL_ERROR_MARKERS = ("unknown variant image_url", "image_url", "expected text")
-    _IMAGE_CAPABLE_MODEL_SUGGESTIONS = (
-        "claude-sonnet-4-5",
-        "gemini-3-flash-preview",
-        "grok-41-fast",
-        "qwen-3-6-plus",
-        "google-gemma-4-26b-a4b-it",
-        "kimi-k2-6",
-    )
-
-    @staticmethod
-    def _pi_models_path(config) -> Path:
-        home = Path.home()
-        return home / ".pi" / "agent" / "models.json"
 
     def _model_supports_images(self, config) -> bool:
-        provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip()
-        if provider.strip().lower() in {"ollama_ssh", "ssh"}:
-            provider = "ollama"
-        model = str(getattr(config, "pi_model", "") or "").strip()
-        if not model:
-            return True
-        models_path = self._pi_models_path(config)
-        if not models_path.is_file():
-            return True
-        try:
-            data = json.loads(models_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return True
-        providers = data.get("providers")
-        if not isinstance(providers, dict):
-            return True
-        provider_cfg = providers.get(provider)
-        if not isinstance(provider_cfg, dict):
-            return True
-        models = provider_cfg.get("models")
-        if not isinstance(models, list):
-            return True
-        for entry in models:
-            if not isinstance(entry, dict):
-                continue
-            if entry.get("id") == model:
-                supported_inputs = entry.get("input")
-                if isinstance(supported_inputs, list) and "image" in supported_inputs:
-                    return True
-                return False
-        return True
+        return model_supports_images(config)
 
     def _image_data_url(self, image_path: str) -> dict[str, str]:
         path = Path(image_path)
@@ -94,41 +61,12 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         include_no_context_files: bool,
         session_key: Optional[str] = None,
     ) -> list[str]:
-        provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip()
-        if provider.strip().lower() in {"ollama_ssh", "ssh"}:
-            provider = "ollama"
-        model = str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip()
-        tools_mode = (
-            str(getattr(config, "pi_tools_mode", "default") or "default")
-            .strip()
-            .lower()
+        return build_pi_rpc_args(
+            config,
+            include_no_context_files=include_no_context_files,
+            session_key=session_key,
+            build_session_args_fn=build_session_args,
         )
-        tools_allowlist = str(getattr(config, "pi_tools_allowlist", "") or "").strip()
-        extra_args = str(getattr(config, "pi_extra_args", "") or "").strip()
-
-        args = [
-            str(getattr(config, "pi_bin", "pi") or "pi").strip(),
-            "--provider",
-            provider,
-            "--model",
-            model,
-            "--mode",
-            "rpc",
-        ]
-        args.extend(build_session_args(config, session_key))
-        if include_no_context_files:
-            args.append("--no-context-files")
-        if tools_mode in {"none", "no_tools", "disabled", "off"}:
-            args.append("--no-tools")
-        elif tools_mode in {"no_builtin", "no_builtin_tools"}:
-            args.append("--no-builtin-tools")
-        elif tools_mode in {"allowlist", "tools"} and tools_allowlist:
-            args.extend(["--tools", tools_allowlist])
-        elif tools_mode not in {"", "default", "all"}:
-            raise RuntimeError(f"Unsupported Pi tools mode: {tools_mode}")
-        if extra_args:
-            args.extend(shlex.split(extra_args))
-        return args
 
     def _build_pi_text_args(
         self,
@@ -137,23 +75,12 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         include_no_context_files: bool,
         session_key: Optional[str] = None,
     ) -> list[str]:
-        args = self._build_pi_rpc_args(
+        return build_pi_text_args(
             config,
             include_no_context_files=include_no_context_files,
             session_key=session_key,
+            build_pi_rpc_args_fn=self._build_pi_rpc_args,
         )
-        normalized: list[str] = []
-        skip_next = False
-        for index, value in enumerate(args):
-            if skip_next:
-                skip_next = False
-                continue
-            if value == "--mode" and index + 1 < len(args):
-                skip_next = True
-                continue
-            normalized.append(value)
-        normalized.append("--print")
-        return normalized
 
     @staticmethod
     @classmethod
@@ -173,57 +100,15 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
     ) -> str:
-        normalized_image_paths: list[str] = []
-        for candidate in image_paths or []:
-            if candidate and candidate not in normalized_image_paths:
-                normalized_image_paths.append(candidate)
-        if image_path and image_path not in normalized_image_paths:
-            normalized_image_paths.insert(0, image_path)
-
-        if not normalized_image_paths:
-            return json.dumps({"type": "prompt", "message": prompt})
-
-        return json.dumps({
-            "type": "prompt",
-            "message": prompt.strip() or "Describe the attached image(s).",
-            "images": [self._image_data_url(p) for p in normalized_image_paths],
-        })
+        return build_rpc_prompt_json(
+            prompt,
+            image_path=image_path,
+            image_paths=image_paths,
+            image_data_builder=self._image_data_url,
+        )
 
     def _extract_rpc_response(self, stdout_lines: list[str]) -> str:
-        agent_end_event = None
-        text_parts: list[str] = []
-        for line in stdout_lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                event = json.loads(stripped)
-            except json.JSONDecodeError:
-                continue
-            if event.get("type") == "agent_end":
-                agent_end_event = event
-                break
-            if event.get("type") == "message_update":
-                delta = event.get("assistantMessageEvent", {})
-                if delta.get("type") == "text_delta":
-                    text_parts.append(str(delta.get("delta", "")))
-        if agent_end_event and isinstance(agent_end_event, dict):
-            messages = agent_end_event.get("messages") or []
-            for msg in reversed(messages):
-                if isinstance(msg, dict) and msg.get("role") == "assistant":
-                    content = msg.get("content") or []
-                    for block in reversed(content if isinstance(content, list) else [content]):
-                        if isinstance(block, dict) and block.get("type") == "text":
-                            text = str(block.get("text", "")).strip()
-                            if text:
-                                return text
-        fallback = "".join(text_parts).strip()
-        if not fallback:
-            raise RuntimeError(
-                "Pi RPC did not produce any output (received %d lines, agent_end=%s)"
-                % (len(stdout_lines), "yes" if agent_end_event else "no")
-            )
-        return fallback
+        return extract_rpc_response(stdout_lines)
 
     def _should_retry_pi_text_mode(
         self,
@@ -232,9 +117,11 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
     ) -> bool:
-        if image_path or image_paths:
-            return False
-        return str(exc).startswith(self._RPC_EMPTY_OUTPUT_MARKER)
+        return should_retry_pi_text_mode(
+            exc,
+            image_path=image_path,
+            image_paths=image_paths,
+        )
 
     def _run_pi_text_local(
         self,
@@ -371,7 +258,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         if not self._model_supports_images(config):
             if image_path or image_paths:
                 model = str(getattr(config, "pi_model", "") or "").strip()
-                suggestions = ", ".join(self._IMAGE_CAPABLE_MODEL_SUGGESTIONS)
+                suggestions = ", ".join(IMAGE_CAPABLE_MODEL_SUGGESTIONS)
                 return self._completed_process_with_output(
                     f"Model '{model}' is text-only and does not support images. "
                     f"Use /model to switch to an image-capable model. "
@@ -414,7 +301,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
                 not image_path
                 and not image_paths
                 and session_key
-                and any(marker in error_lower for marker in self._IMAGE_URL_ERROR_MARKERS)
+                and any(marker in error_lower for marker in IMAGE_URL_ERROR_MARKERS)
             ):
                 try:
                     model = str(getattr(config, "pi_model", "") or "").strip()
