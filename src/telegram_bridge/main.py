@@ -686,13 +686,6 @@ def run_bridge(config: Config) -> int:
         loaded_worker_sessions,
         loaded_in_flight,
     )
-    if loaded_canonical_sessions:
-        (
-            loaded_threads,
-            loaded_worker_sessions,
-            loaded_in_flight,
-        ) = build_legacy_from_canonical(loaded_canonical_sessions)
-
     current_policy_fingerprint = ""
     policy_reset_result = {
         "applied": False,
@@ -756,7 +749,7 @@ def run_bridge(config: Config) -> int:
             },
         )
 
-    if config.persistent_workers_enabled:
+    if config.persistent_workers_enabled and not config.canonical_sessions_enabled:
         now = time.time()
         if not current_policy_fingerprint:
             current_policy_fingerprint = compute_policy_fingerprint(
@@ -792,7 +785,7 @@ def run_bridge(config: Config) -> int:
             voice_alias_learning_store = None
 
     state = State(
-        chat_threads=loaded_threads,
+        chat_threads=loaded_threads if not config.canonical_sessions_enabled else {},
         chat_thread_path=state_paths["chat_threads"],
         chat_engines=loaded_engines,
         chat_engine_path=state_paths["chat_engines"],
@@ -804,9 +797,9 @@ def run_bridge(config: Config) -> int:
         chat_pi_provider_path=state_paths["chat_pi_providers"],
         chat_pi_models=loaded_pi_models,
         chat_pi_model_path=state_paths["chat_pi_models"],
-        worker_sessions=loaded_worker_sessions,
+        worker_sessions=loaded_worker_sessions if not config.canonical_sessions_enabled else {},
         worker_sessions_path=state_paths["worker_sessions"],
-        in_flight_requests=loaded_in_flight,
+        in_flight_requests=loaded_in_flight if not config.canonical_sessions_enabled else {},
         in_flight_path=state_paths["in_flight_requests"],
         canonical_sessions_enabled=config.canonical_sessions_enabled,
         canonical_legacy_mirror_enabled=config.canonical_legacy_mirror_enabled,
@@ -853,23 +846,17 @@ def run_bridge(config: Config) -> int:
         )
         return 1
 
-    if config.persistent_workers_enabled and (
-        not config.canonical_sessions_enabled or config.canonical_legacy_mirror_enabled
-    ):
+    if config.persistent_workers_enabled and not config.canonical_sessions_enabled:
         persist_chat_threads(state)
         persist_worker_sessions(state)
     if config.canonical_sessions_enabled:
         if not state.chat_sessions:
             state.chat_sessions = build_canonical_sessions_from_legacy(
-                state.chat_threads,
-                state.worker_sessions,
-                state.in_flight_requests,
+                loaded_threads,
+                loaded_worker_sessions,
+                loaded_in_flight,
             )
         persist_canonical_sessions(state)
-        mirror_legacy_from_canonical(
-            state,
-            persist=state.canonical_legacy_mirror_enabled,
-        )
 
     interrupted = state_repo.pop_interrupted_requests()
     if interrupted:
@@ -994,7 +981,7 @@ def run_bridge(config: Config) -> int:
         config.canonical_sqlite_path,
     )
     logging.info(
-        "Canonical legacy mirror enabled=%s canonical_json_mirror_enabled=%s",
+        "Canonical legacy mirror configured=%s (live mirroring disabled) canonical_json_mirror_enabled=%s",
         config.canonical_legacy_mirror_enabled,
         config.canonical_json_mirror_enabled,
     )

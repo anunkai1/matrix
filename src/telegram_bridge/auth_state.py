@@ -12,7 +12,6 @@ from telegram_bridge.state_store import (
     State,
     WorkerSession,
     canonical_session_is_empty,
-    mirror_legacy_from_canonical,
     persist_chat_threads,
     persist_canonical_sessions,
     persist_worker_sessions,
@@ -191,10 +190,6 @@ def clear_runtime_thread_state(state: State) -> Dict[str, int]:
                 if canonical_session_is_empty(session):
                     del state.chat_sessions[scope_key]
         persist_canonical_sessions(state)
-        mirror_legacy_from_canonical(
-            state,
-            persist=state.canonical_legacy_mirror_enabled,
-        )
         return {
             "threads": cleared_thread_count,
             "worker_sessions": cleared_worker_session_count,

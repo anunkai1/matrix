@@ -16,7 +16,6 @@ from telegram_bridge.state_store import (
     StateRepository,
     WorkerSession,
     canonical_session_is_empty,
-    mirror_legacy_from_canonical,
     persist_canonical_sessions,
     persist_chat_threads,
     persist_worker_sessions,
@@ -290,10 +289,6 @@ def _ensure_chat_worker_session_canonical(
 
     if changed:
         persist_canonical_sessions(state)
-        mirror_legacy_from_canonical(
-            state,
-            persist=state.canonical_legacy_mirror_enabled,
-        )
 
     return WorkerSessionEnsureOutcome(
         allowed=not rejected_for_capacity,

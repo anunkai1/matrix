@@ -63,7 +63,7 @@ class StateStoreUnitTests(unittest.TestCase):
             payload = json.loads(Path(state.chat_sessions_path).read_text(encoding="utf-8"))
             self.assertEqual(payload, {})
 
-    def test_canonical_mark_and_clear_inflight_mirrors_legacy_files(self):
+    def test_canonical_mark_and_clear_inflight_does_not_persist_legacy_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             state = state_store.State(
                 chat_thread_path=str(Path(tmpdir) / "chat_threads.json"),
@@ -71,7 +71,6 @@ class StateStoreUnitTests(unittest.TestCase):
                 in_flight_path=str(Path(tmpdir) / "in_flight_requests.json"),
                 chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
                 canonical_sessions_enabled=True,
-                canonical_legacy_mirror_enabled=True,
             )
 
             with mock.patch.object(state_store.time, "time", return_value=123.0):
@@ -80,22 +79,16 @@ class StateStoreUnitTests(unittest.TestCase):
             canonical_payload = json.loads(
                 Path(state.chat_sessions_path).read_text(encoding="utf-8")
             )
-            legacy_inflight_payload = json.loads(
-                Path(state.in_flight_path).read_text(encoding="utf-8")
-            )
             self.assertEqual(canonical_payload["tg:9"]["in_flight_message_id"], 90)
-            self.assertEqual(legacy_inflight_payload["tg:9"]["message_id"], 90)
+            self.assertFalse(Path(state.in_flight_path).exists())
 
             state_store.clear_in_flight_request(state, 9)
 
             canonical_cleared = json.loads(Path(state.chat_sessions_path).read_text(encoding="utf-8"))
-            legacy_inflight_cleared = json.loads(
-                Path(state.in_flight_path).read_text(encoding="utf-8")
-            )
             self.assertEqual(canonical_cleared, {})
-            self.assertEqual(legacy_inflight_cleared, {})
+            self.assertFalse(Path(state.in_flight_path).exists())
 
-    def test_pop_interrupted_requests_canonical_preserves_thread_and_clears_mirror(self):
+    def test_pop_interrupted_requests_canonical_preserves_thread_without_legacy_mirror(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             state = state_store.State(
                 chat_thread_path=str(Path(tmpdir) / "chat_threads.json"),
@@ -103,7 +96,6 @@ class StateStoreUnitTests(unittest.TestCase):
                 in_flight_path=str(Path(tmpdir) / "in_flight_requests.json"),
                 chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
                 canonical_sessions_enabled=True,
-                canonical_legacy_mirror_enabled=True,
                 chat_sessions={
                     "tg:4": state_store.CanonicalSession(
                         thread_id="thread-4",
@@ -113,7 +105,6 @@ class StateStoreUnitTests(unittest.TestCase):
                 },
             )
             state_store.persist_canonical_sessions(state)
-            state_store.mirror_legacy_from_canonical(state, persist=True)
 
             interrupted = state_store.pop_interrupted_requests(state)
 
@@ -123,18 +114,15 @@ class StateStoreUnitTests(unittest.TestCase):
             )
             self.assertEqual(state.chat_sessions["tg:4"].thread_id, "thread-4")
             self.assertIsNone(state.chat_sessions["tg:4"].in_flight_started_at)
-            self.assertEqual(state.chat_threads, {"tg:4": "thread-4"})
+            self.assertEqual(state.chat_threads, {})
             self.assertEqual(state.in_flight_requests, {})
 
             canonical_payload = json.loads(
                 Path(state.chat_sessions_path).read_text(encoding="utf-8")
             )
-            legacy_inflight_payload = json.loads(
-                Path(state.in_flight_path).read_text(encoding="utf-8")
-            )
             self.assertEqual(canonical_payload["tg:4"]["thread_id"], "thread-4")
             self.assertIsNone(canonical_payload["tg:4"]["in_flight_started_at"])
-            self.assertEqual(legacy_inflight_payload, {})
+            self.assertFalse(Path(state.in_flight_path).exists())
 
     def test_load_canonical_sessions_sanitizes_values_and_preserves_custom_scope_keys(self):
         with tempfile.TemporaryDirectory() as tmpdir:

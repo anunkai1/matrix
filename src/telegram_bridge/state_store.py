@@ -899,15 +899,9 @@ def mirror_legacy_from_canonical(state: State, persist: bool = True) -> None:
 
 def persist_canonical_and_mirror_legacy(state: State) -> None:
     persist_canonical_sessions(state)
-    mirror_legacy_from_canonical(
-        state,
-        persist=state.canonical_legacy_mirror_enabled,
-    )
 
 def persist_canonical_scope_and_mirror_legacy(state: State, scope_key: ScopeKey) -> None:
     persist_canonical_session_scope(state, scope_key)
-    if state.canonical_legacy_mirror_enabled:
-        mirror_legacy_from_canonical(state, persist=True)
 
 def sync_canonical_session(state: State, scope_key: ScopeKey) -> None:
     if not state.canonical_sessions_enabled:
