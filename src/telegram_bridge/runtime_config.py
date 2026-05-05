@@ -305,6 +305,379 @@ def resolve_runtime_identity() -> tuple[str, str, str, str, str]:
         busy_message,
     )
 
+def load_core_config_values(
+    *,
+    token: str,
+    allowed_chat_ids: Set[int],
+    state_dir: str,
+    exec_timeout_seconds: int,
+) -> Dict[str, object]:
+    return {
+        "token": token,
+        "allowed_chat_ids": allowed_chat_ids,
+        "api_base": os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/"),
+        "poll_timeout_seconds": parse_int_env("TELEGRAM_POLL_TIMEOUT_SECONDS", 30),
+        "retry_sleep_seconds": float(os.getenv("TELEGRAM_RETRY_SLEEP_SECONDS", "3")),
+        "exec_timeout_seconds": exec_timeout_seconds,
+        "max_input_chars": parse_int_env("TELEGRAM_MAX_INPUT_CHARS", TELEGRAM_LIMIT),
+        "max_output_chars": parse_int_env("TELEGRAM_MAX_OUTPUT_CHARS", 20000),
+        "max_image_bytes": parse_int_env("TELEGRAM_MAX_IMAGE_BYTES", 10 * 1024 * 1024, minimum=1024),
+        "max_voice_bytes": parse_int_env("TELEGRAM_MAX_VOICE_BYTES", 20 * 1024 * 1024, minimum=1024),
+        "max_document_bytes": parse_int_env("TELEGRAM_MAX_DOCUMENT_BYTES", 50 * 1024 * 1024, minimum=1024),
+        "attachment_retention_seconds": parse_int_env(
+            "TELEGRAM_ATTACHMENT_RETENTION_SECONDS",
+            14 * 24 * 60 * 60,
+            minimum=0,
+        ),
+        "attachment_max_total_bytes": parse_int_env(
+            "TELEGRAM_ATTACHMENT_MAX_TOTAL_BYTES",
+            10 * 1024 * 1024 * 1024,
+            minimum=1024 * 1024,
+        ),
+        "rate_limit_per_minute": parse_int_env("TELEGRAM_RATE_LIMIT_PER_MINUTE", 12),
+        "executor_cmd": parse_executor_cmd(),
+        "state_dir": state_dir,
+    }
+
+def load_voice_config_values(*, state_dir: str) -> Dict[str, object]:
+    voice_alias_learning_path = os.getenv(
+        "TELEGRAM_VOICE_ALIAS_LEARNING_PATH",
+        os.path.join(state_dir, "voice_alias_learning.json"),
+    ).strip() or os.path.join(state_dir, "voice_alias_learning.json")
+    return {
+        "voice_transcribe_cmd": parse_optional_cmd_env("TELEGRAM_VOICE_TRANSCRIBE_CMD"),
+        "voice_transcribe_timeout_seconds": parse_int_env(
+            "TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS",
+            120,
+        ),
+        "voice_alias_replacements": build_voice_alias_replacements(),
+        "voice_alias_learning_enabled": parse_bool_env(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_ENABLED",
+            True,
+        ),
+        "voice_alias_learning_path": voice_alias_learning_path,
+        "voice_alias_learning_min_examples": parse_int_env(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_MIN_EXAMPLES",
+            2,
+            minimum=1,
+        ),
+        "voice_alias_learning_confirmation_window_seconds": parse_int_env(
+            "TELEGRAM_VOICE_ALIAS_LEARNING_CONFIRMATION_WINDOW_SECONDS",
+            900,
+            minimum=30,
+        ),
+        "voice_low_confidence_confirmation_enabled": parse_bool_env(
+            "TELEGRAM_VOICE_LOW_CONFIDENCE_CONFIRMATION_ENABLED",
+            True,
+        ),
+        "voice_low_confidence_threshold": parse_float_env(
+            "TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD",
+            0.45,
+            minimum=0.0,
+            maximum=1.0,
+        ),
+        "voice_low_confidence_message": (
+            os.getenv(
+                "TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE",
+                "Voice transcript confidence is low, resend",
+            ).strip()
+            or "Voice transcript confidence is low, resend"
+        ),
+    }
+
+def load_session_config_values(
+    *,
+    canonical_sqlite_path: str,
+) -> Dict[str, object]:
+    return {
+        "persistent_workers_enabled": parse_bool_env(
+            "TELEGRAM_PERSISTENT_WORKERS_ENABLED",
+            False,
+        ),
+        "persistent_workers_max": parse_int_env(
+            "TELEGRAM_PERSISTENT_WORKERS_MAX",
+            4,
+            minimum=1,
+        ),
+        "persistent_workers_idle_timeout_seconds": parse_int_env(
+            "TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS",
+            45 * 60,
+            minimum=60,
+        ),
+        "persistent_workers_policy_files": build_policy_watch_files(),
+        "canonical_sessions_enabled": parse_bool_env(
+            "TELEGRAM_CANONICAL_SESSIONS_ENABLED",
+            False,
+        ),
+        "canonical_legacy_mirror_enabled": parse_bool_env(
+            "TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED",
+            False,
+        ),
+        "canonical_sqlite_enabled": parse_bool_env(
+            "TELEGRAM_CANONICAL_SQLITE_ENABLED",
+            False,
+        ),
+        "canonical_sqlite_path": canonical_sqlite_path,
+        "canonical_json_mirror_enabled": parse_bool_env(
+            "TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED",
+            False,
+        ),
+        "required_prefixes": parse_prefixes_env("TELEGRAM_REQUIRED_PREFIXES"),
+        "required_prefix_ignore_case": parse_bool_env(
+            "TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE",
+            True,
+        ),
+        "require_prefix_in_private": parse_bool_env(
+            "TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE",
+            True,
+        ),
+        "allow_private_chats_unlisted": parse_bool_env(
+            "TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED",
+            False,
+        ),
+        "allow_group_chats_unlisted": parse_bool_env(
+            "TELEGRAM_ALLOW_GROUP_CHATS_UNLISTED",
+            False,
+        ),
+    }
+
+def load_identity_config_values(
+    *,
+    assistant_name: str,
+    progress_label: str,
+    progress_elapsed_prefix: str,
+    progress_elapsed_suffix: str,
+    busy_message: str,
+    channel_plugin: str,
+) -> Dict[str, object]:
+    return {
+        "assistant_name": assistant_name,
+        "progress_label": progress_label,
+        "progress_elapsed_prefix": progress_elapsed_prefix,
+        "progress_elapsed_suffix": progress_elapsed_suffix,
+        "busy_message": busy_message,
+        "channel_plugin": channel_plugin,
+    }
+
+def load_engine_config_values() -> Dict[str, object]:
+    return {
+        "engine_plugin": parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
+        "selectable_engine_plugins": parse_plugin_list_env(
+            "TELEGRAM_SELECTABLE_ENGINE_PLUGINS",
+            ["codex", "gemma", "pi"],
+        ),
+        "codex_model": load_codex_model(),
+        "codex_reasoning_effort": load_codex_reasoning_effort(),
+        "gemma_provider": parse_plugin_name_env("GEMMA_PROVIDER", "ollama_ssh"),
+        "gemma_model": os.getenv("GEMMA_MODEL", "gemma4:26b").strip() or "gemma4:26b",
+        "gemma_base_url": os.getenv("GEMMA_BASE_URL", "http://127.0.0.1:11434").strip()
+        or "http://127.0.0.1:11434",
+        "gemma_ssh_host": os.getenv("GEMMA_SSH_HOST", "server4-beast").strip() or "server4-beast",
+        "gemma_request_timeout_seconds": parse_int_env(
+            "GEMMA_REQUEST_TIMEOUT_SECONDS",
+            180,
+            minimum=1,
+        ),
+        "venice_api_key": os.getenv("VENICE_API_KEY", "").strip(),
+        "venice_base_url": os.getenv("VENICE_BASE_URL", "https://api.venice.ai/api/v1").strip()
+        or "https://api.venice.ai/api/v1",
+        "venice_model": os.getenv("VENICE_MODEL", "mistral-31-24b").strip() or "mistral-31-24b",
+        "venice_temperature": parse_float_env(
+            "VENICE_TEMPERATURE",
+            0.2,
+            minimum=0.0,
+            maximum=2.0,
+        ),
+        "venice_request_timeout_seconds": parse_int_env(
+            "VENICE_REQUEST_TIMEOUT_SECONDS",
+            180,
+            minimum=1,
+        ),
+        "chatgpt_web_bridge_script": os.getenv(
+            "CHATGPT_WEB_BRIDGE_SCRIPT",
+            shared_core_path("ops", "chatgpt_web_bridge.py"),
+        ).strip()
+        or shared_core_path("ops", "chatgpt_web_bridge.py"),
+        "chatgpt_web_python_bin": os.getenv("CHATGPT_WEB_PYTHON_BIN", "python3").strip()
+        or "python3",
+        "chatgpt_web_browser_brain_url": os.getenv(
+            "CHATGPT_WEB_BROWSER_BRAIN_URL",
+            "http://127.0.0.1:47831",
+        ).strip()
+        or "http://127.0.0.1:47831",
+        "chatgpt_web_browser_brain_service": os.getenv(
+            "CHATGPT_WEB_BROWSER_BRAIN_SERVICE",
+            "server3-browser-brain.service",
+        ).strip()
+        or "server3-browser-brain.service",
+        "chatgpt_web_url": os.getenv("CHATGPT_WEB_URL", "https://chatgpt.com/").strip()
+        or "https://chatgpt.com/",
+        "chatgpt_web_start_service": parse_bool_env("CHATGPT_WEB_START_SERVICE", False),
+        "chatgpt_web_request_timeout_seconds": parse_int_env(
+            "CHATGPT_WEB_REQUEST_TIMEOUT_SECONDS",
+            30,
+            minimum=1,
+        ),
+        "chatgpt_web_ready_timeout_seconds": parse_int_env(
+            "CHATGPT_WEB_READY_TIMEOUT_SECONDS",
+            45,
+            minimum=1,
+        ),
+        "chatgpt_web_response_timeout_seconds": parse_int_env(
+            "CHATGPT_WEB_RESPONSE_TIMEOUT_SECONDS",
+            180,
+            minimum=1,
+        ),
+        "chatgpt_web_poll_seconds": parse_float_env(
+            "CHATGPT_WEB_POLL_SECONDS",
+            3.0,
+            minimum=0.1,
+            maximum=30.0,
+        ),
+        "pi_provider": parse_plugin_name_env("PI_PROVIDER", "ollama"),
+        "pi_model": os.getenv("PI_MODEL", "qwen3-coder:30b").strip() or "qwen3-coder:30b",
+        "pi_runner": parse_plugin_name_env("PI_RUNNER", "ssh"),
+        "pi_bin": os.getenv("PI_BIN", "pi").strip() or "pi",
+        "pi_ssh_host": os.getenv("PI_SSH_HOST", "server4-beast").strip() or "server4-beast",
+        "pi_local_cwd": os.getenv("PI_LOCAL_CWD", build_runtime_root()).strip()
+        or build_runtime_root(),
+        "pi_remote_cwd": os.getenv("PI_REMOTE_CWD", "/tmp").strip() or "/tmp",
+        "pi_session_mode": parse_plugin_name_env("PI_SESSION_MODE", "none"),
+        "pi_session_dir": os.getenv("PI_SESSION_DIR", "").strip(),
+        "pi_session_max_bytes": parse_int_env(
+            "PI_SESSION_MAX_BYTES",
+            2 * 1024 * 1024,
+            minimum=1,
+        ),
+        "pi_session_max_age_seconds": parse_int_env(
+            "PI_SESSION_MAX_AGE_SECONDS",
+            7 * 24 * 60 * 60,
+            minimum=1,
+        ),
+        "pi_session_archive_retention_seconds": parse_int_env(
+            "PI_SESSION_ARCHIVE_RETENTION_SECONDS",
+            14 * 24 * 60 * 60,
+            minimum=1,
+        ),
+        "pi_session_archive_dir": os.getenv("PI_SESSION_ARCHIVE_DIR", "").strip(),
+        "pi_tools_mode": parse_plugin_name_env("PI_TOOLS_MODE", "default"),
+        "pi_tools_allowlist": os.getenv("PI_TOOLS_ALLOWLIST", "").strip(),
+        "pi_extra_args": os.getenv("PI_EXTRA_ARGS", "").strip(),
+        "pi_ollama_tunnel_enabled": parse_bool_env("PI_OLLAMA_TUNNEL_ENABLED", True),
+        "pi_ollama_tunnel_local_port": parse_int_env(
+            "PI_OLLAMA_TUNNEL_LOCAL_PORT",
+            11435,
+            minimum=1,
+        ),
+        "pi_ollama_tunnel_remote_host": os.getenv(
+            "PI_OLLAMA_TUNNEL_REMOTE_HOST",
+            "127.0.0.1",
+        ).strip()
+        or "127.0.0.1",
+        "pi_ollama_tunnel_remote_port": parse_int_env(
+            "PI_OLLAMA_TUNNEL_REMOTE_PORT",
+            11434,
+            minimum=1,
+        ),
+        "pi_request_timeout_seconds": parse_int_env(
+            "PI_REQUEST_TIMEOUT_SECONDS",
+            1800,
+            minimum=1,
+        ),
+    }
+
+def load_channel_and_feature_config_values() -> Dict[str, object]:
+    return {
+        "whatsapp_plugin_enabled": parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),
+        "whatsapp_bridge_api_base": os.getenv(
+            "WHATSAPP_BRIDGE_API_BASE",
+            "http://127.0.0.1:8787",
+        ).strip(),
+        "whatsapp_bridge_auth_token": os.getenv("WHATSAPP_BRIDGE_AUTH_TOKEN", "").strip(),
+        "whatsapp_poll_timeout_seconds": parse_int_env(
+            "WHATSAPP_POLL_TIMEOUT_SECONDS",
+            20,
+            minimum=1,
+        ),
+        "signal_plugin_enabled": parse_bool_env("SIGNAL_PLUGIN_ENABLED", False),
+        "signal_bridge_api_base": os.getenv(
+            "SIGNAL_BRIDGE_API_BASE",
+            "http://127.0.0.1:18797",
+        ).strip(),
+        "signal_bridge_auth_token": os.getenv("SIGNAL_BRIDGE_AUTH_TOKEN", "").strip(),
+        "signal_poll_timeout_seconds": parse_int_env(
+            "SIGNAL_POLL_TIMEOUT_SECONDS",
+            20,
+            minimum=1,
+        ),
+        "keyword_routing_enabled": parse_bool_env(
+            "TELEGRAM_KEYWORD_ROUTING_ENABLED",
+            True,
+        ),
+    }
+
+def load_diary_and_affective_config_values(
+    *,
+    state_dir: str,
+    affective_runtime_db_path: str,
+    affective_runtime_ping_target: str,
+) -> Dict[str, object]:
+    default_diary_root = os.path.join(state_dir, "diary")
+    return {
+        "diary_mode_enabled": parse_bool_env(
+            "TELEGRAM_DIARY_MODE_ENABLED",
+            False,
+        ),
+        "diary_capture_quiet_window_seconds": parse_int_env(
+            "TELEGRAM_DIARY_CAPTURE_QUIET_WINDOW_SECONDS",
+            75,
+            minimum=1,
+        ),
+        "diary_timezone": (
+            os.getenv("TELEGRAM_DIARY_TIMEZONE", "Australia/Brisbane").strip()
+            or "Australia/Brisbane"
+        ),
+        "diary_local_root": (
+            os.getenv("TELEGRAM_DIARY_LOCAL_ROOT", default_diary_root).strip()
+            or default_diary_root
+        ),
+        "diary_nextcloud_enabled": parse_bool_env(
+            "TELEGRAM_DIARY_NEXTCLOUD_ENABLED",
+            False,
+        ),
+        "diary_nextcloud_base_url": os.getenv(
+            "TELEGRAM_DIARY_NEXTCLOUD_BASE_URL",
+            "",
+        ).strip(),
+        "diary_nextcloud_username": os.getenv(
+            "TELEGRAM_DIARY_NEXTCLOUD_USERNAME",
+            "",
+        ).strip(),
+        "diary_nextcloud_app_password": os.getenv(
+            "TELEGRAM_DIARY_NEXTCLOUD_APP_PASSWORD",
+            "",
+        ).strip(),
+        "diary_nextcloud_remote_root": (
+            os.getenv("TELEGRAM_DIARY_NEXTCLOUD_REMOTE_ROOT", "/Diary").strip()
+            or "/Diary"
+        ),
+        "affective_runtime_enabled": parse_bool_env(
+            "TELEGRAM_AFFECTIVE_RUNTIME_ENABLED",
+            False,
+        ),
+        "affective_runtime_db_path": affective_runtime_db_path,
+        "affective_runtime_ping_target": affective_runtime_ping_target,
+        "policy_reset_memory_on_change": parse_bool_env(
+            "TELEGRAM_POLICY_RESET_MEMORY_ON_CHANGE",
+            False,
+        ),
+    }
+
+def load_message_config_values(*, assistant_name: str) -> Dict[str, object]:
+    return {
+        "empty_output_message": f"(No output from {assistant_name})",
+    }
+
 def load_config() -> Config:
     channel_plugin = parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram")
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -337,326 +710,39 @@ def load_config() -> Config:
         busy_message,
     ) = resolve_runtime_identity()
     exec_timeout_seconds = parse_int_env("TELEGRAM_EXEC_TIMEOUT_SECONDS", 36000)
-    return Config(
-        token=token,
-        allowed_chat_ids=allowed_chat_ids,
-        api_base=os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/"),
-        poll_timeout_seconds=parse_int_env("TELEGRAM_POLL_TIMEOUT_SECONDS", 30),
-        retry_sleep_seconds=float(os.getenv("TELEGRAM_RETRY_SLEEP_SECONDS", "3")),
-        exec_timeout_seconds=exec_timeout_seconds,
-        max_input_chars=parse_int_env("TELEGRAM_MAX_INPUT_CHARS", TELEGRAM_LIMIT),
-        max_output_chars=parse_int_env("TELEGRAM_MAX_OUTPUT_CHARS", 20000),
-        max_image_bytes=parse_int_env("TELEGRAM_MAX_IMAGE_BYTES", 10 * 1024 * 1024, minimum=1024),
-        max_voice_bytes=parse_int_env("TELEGRAM_MAX_VOICE_BYTES", 20 * 1024 * 1024, minimum=1024),
-        max_document_bytes=parse_int_env("TELEGRAM_MAX_DOCUMENT_BYTES", 50 * 1024 * 1024, minimum=1024),
-        attachment_retention_seconds=parse_int_env(
-            "TELEGRAM_ATTACHMENT_RETENTION_SECONDS",
-            14 * 24 * 60 * 60,
-            minimum=0,
-        ),
-        attachment_max_total_bytes=parse_int_env(
-            "TELEGRAM_ATTACHMENT_MAX_TOTAL_BYTES",
-            10 * 1024 * 1024 * 1024,
-            minimum=1024 * 1024,
-        ),
-        rate_limit_per_minute=parse_int_env("TELEGRAM_RATE_LIMIT_PER_MINUTE", 12),
-        executor_cmd=parse_executor_cmd(),
-        voice_transcribe_cmd=parse_optional_cmd_env("TELEGRAM_VOICE_TRANSCRIBE_CMD"),
-        voice_transcribe_timeout_seconds=parse_int_env(
-            "TELEGRAM_VOICE_TRANSCRIBE_TIMEOUT_SECONDS",
-            120,
-        ),
-        voice_alias_replacements=build_voice_alias_replacements(),
-        voice_alias_learning_enabled=parse_bool_env(
-            "TELEGRAM_VOICE_ALIAS_LEARNING_ENABLED",
-            True,
-        ),
-        voice_alias_learning_path=os.getenv(
-            "TELEGRAM_VOICE_ALIAS_LEARNING_PATH",
-            os.path.join(state_dir, "voice_alias_learning.json"),
-        ).strip()
-        or os.path.join(state_dir, "voice_alias_learning.json"),
-        voice_alias_learning_min_examples=parse_int_env(
-            "TELEGRAM_VOICE_ALIAS_LEARNING_MIN_EXAMPLES",
-            2,
-            minimum=1,
-        ),
-        voice_alias_learning_confirmation_window_seconds=parse_int_env(
-            "TELEGRAM_VOICE_ALIAS_LEARNING_CONFIRMATION_WINDOW_SECONDS",
-            900,
-            minimum=30,
-        ),
-        voice_low_confidence_confirmation_enabled=parse_bool_env(
-            "TELEGRAM_VOICE_LOW_CONFIDENCE_CONFIRMATION_ENABLED",
-            True,
-        ),
-        voice_low_confidence_threshold=parse_float_env(
-            "TELEGRAM_VOICE_LOW_CONFIDENCE_THRESHOLD",
-            0.45,
-            minimum=0.0,
-            maximum=1.0,
-        ),
-        voice_low_confidence_message=(
-            os.getenv(
-                "TELEGRAM_VOICE_LOW_CONFIDENCE_MESSAGE",
-                "Voice transcript confidence is low, resend",
-            ).strip()
-            or "Voice transcript confidence is low, resend"
-        ),
-        state_dir=state_dir,
-        persistent_workers_enabled=parse_bool_env(
-            "TELEGRAM_PERSISTENT_WORKERS_ENABLED",
-            False,
-        ),
-        persistent_workers_max=parse_int_env(
-            "TELEGRAM_PERSISTENT_WORKERS_MAX",
-            4,
-            minimum=1,
-        ),
-        persistent_workers_idle_timeout_seconds=parse_int_env(
-            "TELEGRAM_PERSISTENT_WORKERS_IDLE_TIMEOUT_SECONDS",
-            45 * 60,
-            minimum=60,
-        ),
-        persistent_workers_policy_files=build_policy_watch_files(),
-        canonical_sessions_enabled=parse_bool_env(
-            "TELEGRAM_CANONICAL_SESSIONS_ENABLED",
-            False,
-        ),
-        canonical_legacy_mirror_enabled=parse_bool_env(
-            "TELEGRAM_CANONICAL_LEGACY_MIRROR_ENABLED",
-            False,
-        ),
-        canonical_sqlite_enabled=parse_bool_env(
-            "TELEGRAM_CANONICAL_SQLITE_ENABLED",
-            False,
-        ),
-        canonical_sqlite_path=canonical_sqlite_path,
-        canonical_json_mirror_enabled=parse_bool_env(
-            "TELEGRAM_CANONICAL_JSON_MIRROR_ENABLED",
-            False,
-        ),
-        required_prefixes=parse_prefixes_env("TELEGRAM_REQUIRED_PREFIXES"),
-        required_prefix_ignore_case=parse_bool_env(
-            "TELEGRAM_REQUIRED_PREFIX_IGNORE_CASE",
-            True,
-        ),
-        require_prefix_in_private=parse_bool_env(
-            "TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE",
-            True,
-        ),
-        allow_private_chats_unlisted=parse_bool_env(
-            "TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED",
-            False,
-        ),
-        allow_group_chats_unlisted=parse_bool_env(
-            "TELEGRAM_ALLOW_GROUP_CHATS_UNLISTED",
-            False,
-        ),
-        assistant_name=assistant_name,
-        progress_label=progress_label,
-        progress_elapsed_prefix=progress_elapsed_prefix,
-        progress_elapsed_suffix=progress_elapsed_suffix,
-        busy_message=busy_message,
-        channel_plugin=channel_plugin,
-        engine_plugin=parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
-        selectable_engine_plugins=parse_plugin_list_env(
-            "TELEGRAM_SELECTABLE_ENGINE_PLUGINS",
-            ["codex", "gemma", "pi"],
-        ),
-        codex_model=load_codex_model(),
-        codex_reasoning_effort=load_codex_reasoning_effort(),
-        gemma_provider=parse_plugin_name_env("GEMMA_PROVIDER", "ollama_ssh"),
-        gemma_model=os.getenv("GEMMA_MODEL", "gemma4:26b").strip() or "gemma4:26b",
-        gemma_base_url=os.getenv("GEMMA_BASE_URL", "http://127.0.0.1:11434").strip()
-        or "http://127.0.0.1:11434",
-        gemma_ssh_host=os.getenv("GEMMA_SSH_HOST", "server4-beast").strip() or "server4-beast",
-        gemma_request_timeout_seconds=parse_int_env(
-            "GEMMA_REQUEST_TIMEOUT_SECONDS",
-            180,
-            minimum=1,
-        ),
-        venice_api_key=os.getenv("VENICE_API_KEY", "").strip(),
-        venice_base_url=os.getenv("VENICE_BASE_URL", "https://api.venice.ai/api/v1").strip()
-        or "https://api.venice.ai/api/v1",
-        venice_model=os.getenv("VENICE_MODEL", "mistral-31-24b").strip() or "mistral-31-24b",
-        venice_temperature=parse_float_env(
-            "VENICE_TEMPERATURE",
-            0.2,
-            minimum=0.0,
-            maximum=2.0,
-        ),
-        venice_request_timeout_seconds=parse_int_env(
-            "VENICE_REQUEST_TIMEOUT_SECONDS",
-            180,
-            minimum=1,
-        ),
-        chatgpt_web_bridge_script=os.getenv(
-            "CHATGPT_WEB_BRIDGE_SCRIPT",
-            shared_core_path("ops", "chatgpt_web_bridge.py"),
-        ).strip()
-        or shared_core_path("ops", "chatgpt_web_bridge.py"),
-        chatgpt_web_python_bin=os.getenv("CHATGPT_WEB_PYTHON_BIN", "python3").strip()
-        or "python3",
-        chatgpt_web_browser_brain_url=os.getenv(
-            "CHATGPT_WEB_BROWSER_BRAIN_URL",
-            "http://127.0.0.1:47831",
-        ).strip()
-        or "http://127.0.0.1:47831",
-        chatgpt_web_browser_brain_service=os.getenv(
-            "CHATGPT_WEB_BROWSER_BRAIN_SERVICE",
-            "server3-browser-brain.service",
-        ).strip()
-        or "server3-browser-brain.service",
-        chatgpt_web_url=os.getenv("CHATGPT_WEB_URL", "https://chatgpt.com/").strip()
-        or "https://chatgpt.com/",
-        chatgpt_web_start_service=parse_bool_env("CHATGPT_WEB_START_SERVICE", False),
-        chatgpt_web_request_timeout_seconds=parse_int_env(
-            "CHATGPT_WEB_REQUEST_TIMEOUT_SECONDS",
-            30,
-            minimum=1,
-        ),
-        chatgpt_web_ready_timeout_seconds=parse_int_env(
-            "CHATGPT_WEB_READY_TIMEOUT_SECONDS",
-            45,
-            minimum=1,
-        ),
-        chatgpt_web_response_timeout_seconds=parse_int_env(
-            "CHATGPT_WEB_RESPONSE_TIMEOUT_SECONDS",
-            180,
-            minimum=1,
-        ),
-        chatgpt_web_poll_seconds=parse_float_env(
-            "CHATGPT_WEB_POLL_SECONDS",
-            3.0,
-            minimum=0.1,
-            maximum=30.0,
-        ),
-        pi_provider=parse_plugin_name_env("PI_PROVIDER", "ollama"),
-        pi_model=os.getenv("PI_MODEL", "qwen3-coder:30b").strip() or "qwen3-coder:30b",
-        pi_runner=parse_plugin_name_env("PI_RUNNER", "ssh"),
-        pi_bin=os.getenv("PI_BIN", "pi").strip() or "pi",
-        pi_ssh_host=os.getenv("PI_SSH_HOST", "server4-beast").strip() or "server4-beast",
-        pi_local_cwd=os.getenv("PI_LOCAL_CWD", build_runtime_root()).strip()
-        or build_runtime_root(),
-        pi_remote_cwd=os.getenv("PI_REMOTE_CWD", "/tmp").strip() or "/tmp",
-        pi_session_mode=parse_plugin_name_env("PI_SESSION_MODE", "none"),
-        pi_session_dir=os.getenv("PI_SESSION_DIR", "").strip(),
-        pi_session_max_bytes=parse_int_env(
-            "PI_SESSION_MAX_BYTES",
-            2 * 1024 * 1024,
-            minimum=1,
-        ),
-        pi_session_max_age_seconds=parse_int_env(
-            "PI_SESSION_MAX_AGE_SECONDS",
-            7 * 24 * 60 * 60,
-            minimum=1,
-        ),
-        pi_session_archive_retention_seconds=parse_int_env(
-            "PI_SESSION_ARCHIVE_RETENTION_SECONDS",
-            14 * 24 * 60 * 60,
-            minimum=1,
-        ),
-        pi_session_archive_dir=os.getenv("PI_SESSION_ARCHIVE_DIR", "").strip(),
-        pi_tools_mode=parse_plugin_name_env("PI_TOOLS_MODE", "default"),
-        pi_tools_allowlist=os.getenv("PI_TOOLS_ALLOWLIST", "").strip(),
-        pi_extra_args=os.getenv("PI_EXTRA_ARGS", "").strip(),
-        pi_ollama_tunnel_enabled=parse_bool_env("PI_OLLAMA_TUNNEL_ENABLED", True),
-        pi_ollama_tunnel_local_port=parse_int_env(
-            "PI_OLLAMA_TUNNEL_LOCAL_PORT",
-            11435,
-            minimum=1,
-        ),
-        pi_ollama_tunnel_remote_host=os.getenv(
-            "PI_OLLAMA_TUNNEL_REMOTE_HOST",
-            "127.0.0.1",
-        ).strip()
-        or "127.0.0.1",
-        pi_ollama_tunnel_remote_port=parse_int_env(
-            "PI_OLLAMA_TUNNEL_REMOTE_PORT",
-            11434,
-            minimum=1,
-        ),
-        pi_request_timeout_seconds=parse_int_env(
-            "PI_REQUEST_TIMEOUT_SECONDS",
-            1800,
-            minimum=1,
-        ),
-        whatsapp_plugin_enabled=parse_bool_env("WHATSAPP_PLUGIN_ENABLED", False),
-        whatsapp_bridge_api_base=os.getenv(
-            "WHATSAPP_BRIDGE_API_BASE",
-            "http://127.0.0.1:8787",
-        ).strip(),
-        whatsapp_bridge_auth_token=os.getenv("WHATSAPP_BRIDGE_AUTH_TOKEN", "").strip(),
-        whatsapp_poll_timeout_seconds=parse_int_env(
-            "WHATSAPP_POLL_TIMEOUT_SECONDS",
-            20,
-            minimum=1,
-        ),
-        signal_plugin_enabled=parse_bool_env("SIGNAL_PLUGIN_ENABLED", False),
-        signal_bridge_api_base=os.getenv(
-            "SIGNAL_BRIDGE_API_BASE",
-            "http://127.0.0.1:18797",
-        ).strip(),
-        signal_bridge_auth_token=os.getenv("SIGNAL_BRIDGE_AUTH_TOKEN", "").strip(),
-        signal_poll_timeout_seconds=parse_int_env(
-            "SIGNAL_POLL_TIMEOUT_SECONDS",
-            20,
-            minimum=1,
-        ),
-        keyword_routing_enabled=parse_bool_env(
-            "TELEGRAM_KEYWORD_ROUTING_ENABLED",
-            True,
-        ),
-        diary_mode_enabled=parse_bool_env(
-            "TELEGRAM_DIARY_MODE_ENABLED",
-            False,
-        ),
-        diary_capture_quiet_window_seconds=parse_int_env(
-            "TELEGRAM_DIARY_CAPTURE_QUIET_WINDOW_SECONDS",
-            75,
-            minimum=1,
-        ),
-        diary_timezone=(
-            os.getenv("TELEGRAM_DIARY_TIMEZONE", "Australia/Brisbane").strip()
-            or "Australia/Brisbane"
-        ),
-        diary_local_root=(
-            os.getenv(
-                "TELEGRAM_DIARY_LOCAL_ROOT",
-                os.path.join(state_dir, "diary"),
-            ).strip()
-            or os.path.join(state_dir, "diary")
-        ),
-        diary_nextcloud_enabled=parse_bool_env(
-            "TELEGRAM_DIARY_NEXTCLOUD_ENABLED",
-            False,
-        ),
-        diary_nextcloud_base_url=os.getenv(
-            "TELEGRAM_DIARY_NEXTCLOUD_BASE_URL",
-            "",
-        ).strip(),
-        diary_nextcloud_username=os.getenv(
-            "TELEGRAM_DIARY_NEXTCLOUD_USERNAME",
-            "",
-        ).strip(),
-        diary_nextcloud_app_password=os.getenv(
-            "TELEGRAM_DIARY_NEXTCLOUD_APP_PASSWORD",
-            "",
-        ).strip(),
-        diary_nextcloud_remote_root=(
-            os.getenv("TELEGRAM_DIARY_NEXTCLOUD_REMOTE_ROOT", "/Diary").strip()
-            or "/Diary"
-        ),
-        affective_runtime_enabled=parse_bool_env(
-            "TELEGRAM_AFFECTIVE_RUNTIME_ENABLED",
-            False,
-        ),
-        affective_runtime_db_path=affective_runtime_db_path,
-        affective_runtime_ping_target=affective_runtime_ping_target,
-        policy_reset_memory_on_change=parse_bool_env(
-            "TELEGRAM_POLICY_RESET_MEMORY_ON_CHANGE",
-            False,
-        ),
-        empty_output_message=f"(No output from {assistant_name})",
+    values: Dict[str, object] = {}
+    values.update(
+        load_core_config_values(
+            token=token,
+            allowed_chat_ids=allowed_chat_ids,
+            state_dir=state_dir,
+            exec_timeout_seconds=exec_timeout_seconds,
+        )
     )
+    values.update(load_voice_config_values(state_dir=state_dir))
+    values.update(
+        load_session_config_values(
+            canonical_sqlite_path=canonical_sqlite_path,
+        )
+    )
+    values.update(
+        load_identity_config_values(
+            assistant_name=assistant_name,
+            progress_label=progress_label,
+            progress_elapsed_prefix=progress_elapsed_prefix,
+            progress_elapsed_suffix=progress_elapsed_suffix,
+            busy_message=busy_message,
+            channel_plugin=channel_plugin,
+        )
+    )
+    values.update(load_engine_config_values())
+    values.update(load_channel_and_feature_config_values())
+    values.update(
+        load_diary_and_affective_config_values(
+            state_dir=state_dir,
+            affective_runtime_db_path=affective_runtime_db_path,
+            affective_runtime_ping_target=affective_runtime_ping_target,
+        )
+    )
+    values.update(load_message_config_values(assistant_name=assistant_name))
+    return Config(**values)
