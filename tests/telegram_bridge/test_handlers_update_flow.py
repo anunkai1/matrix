@@ -2,12 +2,13 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tests.telegram_bridge.test_bridge_core import (
+from tests.telegram_bridge.helpers import (
     FakeTelegramClient,
-    bridge,
-    bridge_handlers,
     make_config,
 )
+
+import telegram_bridge.handlers as bridge_handlers
+import telegram_bridge.main as bridge
 
 
 class HandleUpdateHelperTests(unittest.TestCase):
