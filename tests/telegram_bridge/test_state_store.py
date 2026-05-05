@@ -169,6 +169,41 @@ class StateStoreUnitTests(unittest.TestCase):
             self.assertEqual(custom_scope.thread_id, "ignored")
             self.assertIsNone(custom_scope.worker_created_at)
 
+    def test_clear_thread_id_sqlite_updates_only_target_scope(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sqlite_path = str(Path(tmpdir) / "chat_sessions.sqlite3")
+            state = state_store.State(
+                canonical_sessions_enabled=True,
+                canonical_sqlite_enabled=True,
+                canonical_sqlite_path=sqlite_path,
+                chat_sessions={
+                    "tg:7": state_store.CanonicalSession(thread_id="stale-thread"),
+                    "tg:8": state_store.CanonicalSession(thread_id="keep-thread"),
+                },
+            )
+            state_store.persist_canonical_sessions(state)
+
+            removed = state_store.clear_thread_id(state, 7)
+
+            self.assertTrue(removed)
+            persisted = state_store.load_canonical_sessions_sqlite(sqlite_path)
+            self.assertEqual(set(persisted), {"tg:8"})
+            self.assertEqual(persisted["tg:8"].thread_id, "keep-thread")
+
+    def test_persist_canonical_sessions_sqlite_preserves_custom_scope_keys(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sqlite_path = str(Path(tmpdir) / "chat_sessions.sqlite3")
+            state_store.persist_canonical_sessions_sqlite(
+                sqlite_path,
+                {
+                    "tg:not-a-chat": state_store.CanonicalSession(thread_id="custom-thread"),
+                },
+            )
+
+            persisted = state_store.load_canonical_sessions_sqlite(sqlite_path)
+            self.assertEqual(set(persisted), {"tg:not-a-chat"})
+            self.assertEqual(persisted["tg:not-a-chat"].thread_id, "custom-thread")
+
 
 if __name__ == "__main__":
     unittest.main()

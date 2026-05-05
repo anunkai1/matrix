@@ -319,6 +319,33 @@ def load_canonical_sessions_sqlite(path: str) -> Dict[ScopeKey, CanonicalSession
         )
     return parsed
 
+def _canonical_session_sqlite_row(
+    scope_key: ScopeKey,
+    session: CanonicalSession,
+) -> tuple[str, Optional[int], Optional[int], str, Optional[float], Optional[float], str, Optional[float], Optional[int]]:
+    normalized_scope_key = normalize_scope_key(scope_key)
+    chat_id: Optional[int] = None
+    message_thread_id: Optional[int] = None
+    if normalized_scope_key.startswith("tg:"):
+        try:
+            parsed_scope = parse_telegram_scope_key(normalized_scope_key)
+        except ValueError:
+            parsed_scope = None
+        if parsed_scope is not None:
+            chat_id = parsed_scope.chat_id
+            message_thread_id = parsed_scope.message_thread_id
+    return (
+        normalized_scope_key,
+        chat_id,
+        message_thread_id,
+        session.thread_id,
+        session.worker_created_at,
+        session.worker_last_used_at,
+        session.worker_policy_fingerprint,
+        session.in_flight_started_at,
+        session.in_flight_message_id,
+    )
+
 def persist_canonical_sessions_sqlite(
     path: str,
     sessions: Dict[ScopeKey, CanonicalSession],
@@ -345,27 +372,53 @@ def persist_canonical_sessions_sqlite(
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
-                    (
-                        normalize_scope_key(scope_key),
-                        (
-                            parse_telegram_scope_key(normalize_scope_key(scope_key)).chat_id
-                            if normalize_scope_key(scope_key).startswith("tg:")
-                            else None
-                        ),
-                        (
-                            parse_telegram_scope_key(normalize_scope_key(scope_key)).message_thread_id
-                            if normalize_scope_key(scope_key).startswith("tg:")
-                            else None
-                        ),
-                        session.thread_id,
-                        session.worker_created_at,
-                        session.worker_last_used_at,
-                        session.worker_policy_fingerprint,
-                        session.in_flight_started_at,
-                        session.in_flight_message_id,
-                    )
+                    _canonical_session_sqlite_row(scope_key, session)
                     for scope_key, session in sorted(sessions.items())
                 ],
+            )
+        conn.commit()
+
+def persist_canonical_session_sqlite(
+    path: str,
+    scope_key: ScopeKey,
+    session: Optional[CanonicalSession],
+) -> None:
+    if not path:
+        return
+    ensure_canonical_sessions_sqlite(path)
+    normalized_scope_key = normalize_scope_key(scope_key)
+    with sqlite3.connect(path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if session is None:
+            conn.execute(
+                "DELETE FROM canonical_sessions WHERE scope_key = ?",
+                (normalized_scope_key,),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO canonical_sessions (
+                    scope_key,
+                    chat_id,
+                    message_thread_id,
+                    thread_id,
+                    worker_created_at,
+                    worker_last_used_at,
+                    worker_policy_fingerprint,
+                    in_flight_started_at,
+                    in_flight_message_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(scope_key) DO UPDATE SET
+                    chat_id = excluded.chat_id,
+                    message_thread_id = excluded.message_thread_id,
+                    thread_id = excluded.thread_id,
+                    worker_created_at = excluded.worker_created_at,
+                    worker_last_used_at = excluded.worker_last_used_at,
+                    worker_policy_fingerprint = excluded.worker_policy_fingerprint,
+                    in_flight_started_at = excluded.in_flight_started_at,
+                    in_flight_message_id = excluded.in_flight_message_id
+                """,
+                _canonical_session_sqlite_row(normalized_scope_key, session),
             )
         conn.commit()
 
@@ -513,6 +566,31 @@ def persist_json_state_file(path_value: str, serialized: Dict[str, object]) -> N
         except OSError:
             pass
         raise
+
+def _copy_canonical_session(session: CanonicalSession) -> CanonicalSession:
+    return CanonicalSession(
+        thread_id=session.thread_id,
+        worker_created_at=session.worker_created_at,
+        worker_last_used_at=session.worker_last_used_at,
+        worker_policy_fingerprint=session.worker_policy_fingerprint,
+        in_flight_started_at=session.in_flight_started_at,
+        in_flight_message_id=session.in_flight_message_id,
+    )
+
+def _serialize_canonical_sessions(
+    sessions: Dict[ScopeKey, CanonicalSession],
+) -> Dict[ScopeKey, Dict[str, object]]:
+    return {
+        scope_key: {
+            "thread_id": session.thread_id,
+            "worker_created_at": session.worker_created_at,
+            "worker_last_used_at": session.worker_last_used_at,
+            "worker_policy_fingerprint": session.worker_policy_fingerprint,
+            "in_flight_started_at": session.in_flight_started_at,
+            "in_flight_message_id": session.in_flight_message_id,
+        }
+        for scope_key, session in sessions.items()
+    }
 
 def persist_chat_threads(state: State) -> None:
     with state.lock:
@@ -763,33 +841,42 @@ def persist_canonical_sessions(state: State) -> None:
         return
     with state.lock:
         sessions = {
-            normalize_scope_key(scope_key): CanonicalSession(
-                thread_id=session.thread_id,
-                worker_created_at=session.worker_created_at,
-                worker_last_used_at=session.worker_last_used_at,
-                worker_policy_fingerprint=session.worker_policy_fingerprint,
-                in_flight_started_at=session.in_flight_started_at,
-                in_flight_message_id=session.in_flight_message_id,
-            )
+            normalize_scope_key(scope_key): _copy_canonical_session(session)
             for scope_key, session in state.chat_sessions.items()
         }
-        serialized = {
-            scope_key: {
-                "thread_id": session.thread_id,
-                "worker_created_at": session.worker_created_at,
-                "worker_last_used_at": session.worker_last_used_at,
-                "worker_policy_fingerprint": session.worker_policy_fingerprint,
-                "in_flight_started_at": session.in_flight_started_at,
-                "in_flight_message_id": session.in_flight_message_id,
-            }
-            for scope_key, session in sessions.items()
-        }
+        serialized = _serialize_canonical_sessions(sessions)
     if state.canonical_sqlite_enabled:
         persist_canonical_sessions_sqlite(state.canonical_sqlite_path, sessions)
         if state.canonical_json_mirror_enabled:
             persist_json_state_file(state.chat_sessions_path, serialized)
         return
     persist_json_state_file(state.chat_sessions_path, serialized)
+
+def persist_canonical_session_scope(state: State, scope_key: ScopeKey) -> None:
+    if not state.canonical_sessions_enabled:
+        return
+    normalized_scope_key = normalize_scope_key(scope_key)
+    with state.lock:
+        session = state.chat_sessions.get(normalized_scope_key)
+        session_copy = _copy_canonical_session(session) if session is not None else None
+        json_mirror_payload = None
+        if state.canonical_json_mirror_enabled:
+            json_mirror_payload = _serialize_canonical_sessions(
+                {
+                    normalize_scope_key(candidate_scope_key): _copy_canonical_session(candidate_session)
+                    for candidate_scope_key, candidate_session in state.chat_sessions.items()
+                }
+            )
+    if state.canonical_sqlite_enabled:
+        persist_canonical_session_sqlite(
+            state.canonical_sqlite_path,
+            normalized_scope_key,
+            session_copy,
+        )
+        if json_mirror_payload is not None:
+            persist_json_state_file(state.chat_sessions_path, json_mirror_payload)
+        return
+    persist_canonical_sessions(state)
 
 def mirror_legacy_from_canonical(state: State, persist: bool = True) -> None:
     if not state.canonical_sessions_enabled:
@@ -817,6 +904,11 @@ def persist_canonical_and_mirror_legacy(state: State) -> None:
         persist=state.canonical_legacy_mirror_enabled,
     )
 
+def persist_canonical_scope_and_mirror_legacy(state: State, scope_key: ScopeKey) -> None:
+    persist_canonical_session_scope(state, scope_key)
+    if state.canonical_legacy_mirror_enabled:
+        mirror_legacy_from_canonical(state, persist=True)
+
 def sync_canonical_session(state: State, scope_key: ScopeKey) -> None:
     if not state.canonical_sessions_enabled:
         return
@@ -838,7 +930,7 @@ def sync_canonical_session(state: State, scope_key: ScopeKey) -> None:
             state.chat_sessions[scope_key] = session
             changed = True
     if changed:
-        persist_canonical_and_mirror_legacy(state)
+        persist_canonical_scope_and_mirror_legacy(state, scope_key)
 
 def sync_all_canonical_sessions(state: State) -> None:
     if not state.canonical_sessions_enabled:
@@ -857,7 +949,7 @@ def clear_worker_session(state: State, scope_key: ScopeKey) -> bool:
         scope_key,
         normalize_scope_key_fn=normalize_scope_key,
         canonical_session_is_empty_fn=canonical_session_is_empty,
-        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        persist_canonical_scope_and_mirror_legacy_fn=persist_canonical_scope_and_mirror_legacy,
         persist_worker_sessions_fn=persist_worker_sessions,
         sync_canonical_session_fn=sync_canonical_session,
     )
@@ -877,7 +969,7 @@ def set_thread_id(state: State, scope_key: ScopeKey, thread_id: str) -> None:
         normalize_scope_key_fn=normalize_scope_key,
         canonical_session_cls=CanonicalSession,
         persist_legacy_state_fn=_persist_legacy_state,
-        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        persist_canonical_scope_and_mirror_legacy_fn=persist_canonical_scope_and_mirror_legacy,
         sync_canonical_session_fn=sync_canonical_session,
     )
 
@@ -888,7 +980,7 @@ def clear_thread_id(state: State, scope_key: ScopeKey) -> bool:
         normalize_scope_key_fn=normalize_scope_key,
         canonical_session_is_empty_fn=canonical_session_is_empty,
         persist_legacy_state_fn=_persist_legacy_state,
-        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        persist_canonical_scope_and_mirror_legacy_fn=persist_canonical_scope_and_mirror_legacy,
         sync_canonical_session_fn=sync_canonical_session,
     )
 
@@ -899,7 +991,7 @@ def mark_in_flight_request(state: State, scope_key: ScopeKey, message_id: Option
         message_id,
         normalize_scope_key_fn=normalize_scope_key,
         canonical_session_cls=CanonicalSession,
-        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        persist_canonical_scope_and_mirror_legacy_fn=persist_canonical_scope_and_mirror_legacy,
         persist_in_flight_requests_fn=persist_in_flight_requests,
         sync_canonical_session_fn=sync_canonical_session,
     )
@@ -910,7 +1002,7 @@ def clear_in_flight_request(state: State, scope_key: ScopeKey) -> None:
         scope_key,
         normalize_scope_key_fn=normalize_scope_key,
         canonical_session_is_empty_fn=canonical_session_is_empty,
-        persist_canonical_and_mirror_legacy_fn=persist_canonical_and_mirror_legacy,
+        persist_canonical_scope_and_mirror_legacy_fn=persist_canonical_scope_and_mirror_legacy,
         persist_in_flight_requests_fn=persist_in_flight_requests,
         sync_canonical_session_fn=sync_canonical_session,
     )

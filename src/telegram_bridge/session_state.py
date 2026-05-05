@@ -9,7 +9,7 @@ def clear_worker_session(
     *,
     normalize_scope_key_fn,
     canonical_session_is_empty_fn,
-    persist_canonical_and_mirror_legacy_fn,
+    persist_canonical_scope_and_mirror_legacy_fn,
     persist_worker_sessions_fn,
     sync_canonical_session_fn,
 ) -> bool:
@@ -30,7 +30,7 @@ def clear_worker_session(
                     del state.chat_sessions[scope_key]
                 changed = True
         if changed:
-            persist_canonical_and_mirror_legacy_fn(state)
+            persist_canonical_scope_and_mirror_legacy_fn(state, scope_key)
         return changed
 
     removed = False
@@ -68,7 +68,7 @@ def set_thread_id(
     normalize_scope_key_fn,
     canonical_session_cls,
     persist_legacy_state_fn,
-    persist_canonical_and_mirror_legacy_fn,
+    persist_canonical_scope_and_mirror_legacy_fn,
     sync_canonical_session_fn,
 ) -> None:
     scope_key = normalize_scope_key_fn(scope_key)
@@ -89,7 +89,7 @@ def set_thread_id(
                     session.worker_last_used_at = now
                     changed = True
         if changed:
-            persist_canonical_and_mirror_legacy_fn(state)
+            persist_canonical_scope_and_mirror_legacy_fn(state, scope_key)
         return
 
     normalized_thread_id = thread_id.strip()
@@ -118,7 +118,7 @@ def clear_thread_id(
     normalize_scope_key_fn,
     canonical_session_is_empty_fn,
     persist_legacy_state_fn,
-    persist_canonical_and_mirror_legacy_fn,
+    persist_canonical_scope_and_mirror_legacy_fn,
     sync_canonical_session_fn,
 ) -> bool:
     scope_key = normalize_scope_key_fn(scope_key)
@@ -137,7 +137,7 @@ def clear_thread_id(
                     del state.chat_sessions[scope_key]
                     removed = True
         if removed:
-            persist_canonical_and_mirror_legacy_fn(state)
+            persist_canonical_scope_and_mirror_legacy_fn(state, scope_key)
         return removed
 
     removed = False

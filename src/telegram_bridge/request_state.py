@@ -20,7 +20,7 @@ def mark_in_flight_request(
     *,
     normalize_scope_key_fn,
     canonical_session_cls,
-    persist_canonical_and_mirror_legacy_fn,
+    persist_canonical_scope_and_mirror_legacy_fn,
     persist_in_flight_requests_fn,
     sync_canonical_session_fn,
 ) -> None:
@@ -33,7 +33,7 @@ def mark_in_flight_request(
                 state.chat_sessions[scope_key] = session
             session.in_flight_started_at = time.time()
             session.in_flight_message_id = message_id if isinstance(message_id, int) else None
-        persist_canonical_and_mirror_legacy_fn(state)
+        persist_canonical_scope_and_mirror_legacy_fn(state, scope_key)
         return
 
     payload = _build_in_flight_payload(started_at=time.time(), message_id=message_id)
@@ -48,7 +48,7 @@ def clear_in_flight_request(
     *,
     normalize_scope_key_fn,
     canonical_session_is_empty_fn,
-    persist_canonical_and_mirror_legacy_fn,
+    persist_canonical_scope_and_mirror_legacy_fn,
     persist_in_flight_requests_fn,
     sync_canonical_session_fn,
 ) -> None:
@@ -67,7 +67,7 @@ def clear_in_flight_request(
                     del state.chat_sessions[scope_key]
                 changed = True
         if changed:
-            persist_canonical_and_mirror_legacy_fn(state)
+            persist_canonical_scope_and_mirror_legacy_fn(state, scope_key)
         return
 
     removed = False
