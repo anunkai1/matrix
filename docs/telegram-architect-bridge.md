@@ -246,12 +246,12 @@ See [`docs/runbooks/server4-gemma-engine.md`](runbooks/server4-gemma-engine.md).
 
 The bridge can also select the `pi` coding agent as an engine through the same `/engine` override path.
 
-- Correct engine-swap mode runs Pi locally on Server3 inside the chatbot runtime root, while Server4 Beast supplies the Ollama model through an SSH tunnel.
-- Defaults: `PI_PROVIDER=ollama`, `PI_MODEL=qwen3-coder:30b`, `PI_RUNNER=ssh`, `PI_SSH_HOST=server4-beast`, `PI_TOOLS_MODE=default`.
-- Pi can also be pointed at Venice by registering a custom `venice` provider in `~/.pi/agent/models.json` on the Pi host and storing the Venice API key in that host's `~/.pi/agent/auth.json`; in that mode use `PI_PROVIDER=venice` and a Venice model id such as `deepseek-v4-flash`.
-- Use `/pi` to inspect Pi status for the current chat/topic.
+- Shared-bridge Pi runs locally and supports multiple backend providers. The built-in provider choices are `ollama`, `venice`, and `deepseek`.
+- The generic shared-bridge defaults are still Ollama-oriented: `PI_PROVIDER=ollama`, `PI_MODEL=qwen3-coder:30b`, `PI_RUNNER=ssh`, `PI_SSH_HOST=server4-beast`, `PI_TOOLS_MODE=default`.
 - For true runtime-root preservation, set `PI_RUNNER=local` and `PI_LOCAL_CWD` to the bot runtime root, for example `/home/tank/tankbot`.
-- Live Server3 Pi/Venice bridges now run with `PI_SESSION_MODE=telegram_scope`; that maps native Pi sessions to Telegram scope keys instead of the shared working directory.
+- Pi can use Venice-backed models by setting `PI_PROVIDER=venice`; Pi can use DeepSeek-backed models by setting `PI_PROVIDER=deepseek`. The available provider/model mappings are defined in the Pi config, for example `~/.pi/agent/models.json`.
+- Use `/pi` to inspect Pi status for the current chat/topic.
+- Live Server3 Pi bridges now run with `PI_SESSION_MODE=telegram_scope`; that maps native Pi sessions to Telegram scope keys instead of the shared working directory.
 - Pi session retention: rotate a scope file when it crosses the configured size or age threshold; conversation continuity is handled entirely by engine-native session files (Pi JSONL per chat/topic, Codex JSONL per exec session).
 - Per chat/topic, use `/engine pi`, `/engine codex`, `/engine reset`, or `/engine status`.
 - When Pi is the effective engine, `/engine status` reports Pi runner/config details and checks model availability.

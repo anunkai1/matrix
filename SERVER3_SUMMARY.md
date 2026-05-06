@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-05-05 (AEST, +10:00)
+Last updated: 2026-05-06 (AEST, +10:00)
 
 ## Purpose
 - Fast restart context optimized for execution speed, clarity, and recovery value.
@@ -17,7 +17,7 @@ Last updated: 2026-05-05 (AEST, +10:00)
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
 - Runtime pattern: Telegram long polling + local `codex exec`
-- Server4 Beast (`192.168.0.124`) now hosts Ollama models `gemma4:26b` and `qwen3-coder:30b`; Server3 Telegram bridge chats can select `gemma` directly through Ollama or `pi` through local Server3 Pi using Server4 as the model backend; default engine remains `codex`.
+- Server4 Beast (`192.168.0.124`) now hosts Ollama models `gemma4:26b` and `qwen3-coder:30b`; Server3 Telegram bridge chats can select `gemma` directly through Ollama, while the shared `pi` path runs locally on Server3 and can use `ollama`, `venice`, or `deepseek` backends depending on runtime config. Architect currently defaults to `codex`.
 - Core capabilities: text/photo/voice/document handling, optional persistent workers, optional canonical session model, safe queued `/restart`. Conversation continuity is handled by engine-native sessions (Pi JSONL files per chat/topic, Codex JSONL files per exec session).
 - Browser Brain live mode is now `existing_session` on local CDP port `9223`; the visible `tv` Brave helper is the intended on-screen login path for sites like `x.com`, while the Browser Brain API now keeps snapshot refs locator-friendly with ARIA snapshots and supports guarded hover/select/dialog/console/network actions.
 - Telegram reply-context wrappers now use English labels (`Reply Context`, `Original Message Author`, `Message User Replied To`, `Current User Message`) while downstream parsers remain backward-compatible with older Russian wrappers.
@@ -58,7 +58,7 @@ Last updated: 2026-05-05 (AEST, +10:00)
 - Local media services now use one canonical internal namespace: `/data/downloads` and `/data/media/...`; avoid reintroducing alternate path aliases like `/downloads`, `/tv`, `/movies`, or `/media`.
 - Server3 state resilience now uses a monthly quiesced backup path (`server3-state-backup.service` / `server3-state-backup.timer`) that snapshots rebuild-critical host/app/runtime state to `/srv/external/server3-backups/state`; the Arr media payload stays on the external data disk and is intentionally excluded.
 - Server time standard for operations is Brisbane (`Australia/Brisbane`, AEST/UTC+10).
-- Server4/API/browser engine integration keeps Server3 as the bot/control-plane host: use `/engine gemma`, `/engine pi`, `/engine codex`, `/engine chatgptweb`, `/engine reset`, and `/engine status` per chat/topic. Gemma is a direct text-only Ollama path; Pi runs locally in the Server3 runtime root while using Server4 Ollama through the tunnel; Venice remains available as a Pi provider rather than a first-class engine choice; `chatgptweb` is a brittle Browser Brain-backed lab engine; all report live health details in `/engine status` where applicable.
+- Server4/API/browser engine integration keeps Server3 as the bot/control-plane host: use `/engine gemma`, `/engine pi`, `/engine codex`, `/engine chatgptweb`, `/engine reset`, and `/engine status` per chat/topic. Gemma is a direct text-only Ollama path; the shared Pi engine runs locally in the runtime root and can use `ollama`, `venice`, or `deepseek` backends depending on env; `chatgptweb` is a brittle Browser Brain-backed lab engine; all report live health details in `/engine status` where applicable.
 
 ## Recent Changes (Rolling Max 8)
 - 2026-05-05: code infrastructure overhaul. Eliminated pervasive `try/except ImportError` anti-pattern from all 54 bridge modules (-1,116 lines) by adding proper package structure with `__init__.py`, `pyproject.toml` build system, and `PYTHONPATH` in systemd units. Extracted reusable `Env` parser class (`env_parser.py`, 187 lines) replacing 11 duplicated parse functions. Split `engine_adapter.py` (1,407 lines) into 8 focused files under `engines/` subpackage. Removed vestigial memory systemd units from live system. Net source reduction: -3,087 / +492 = -2,595 lines.
