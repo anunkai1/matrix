@@ -24,7 +24,7 @@ mappings=(
   "/home/sentinel/sentinelbot/LESSONS.md|/home/architect/matrix/docs/runtime_docs/sentinel/LESSONS.md"
   "/home/sentinel/sentinelbot/private/SOUL.md|/home/architect/matrix/docs/runtime_docs/sentinel/private/SOUL.md"
   "/home/oracle/oraclebot/AGENTS.md|/home/architect/matrix/infra/runtime_personas/oracle.AGENTS.md"
-  "/home/mavali_eth/mavali_ethbot/AGENTS.md|/home/architect/matrix/infra/runtime_personas/mavali_eth.AGENTS.md"
+  "/home/architect/gitea-server2/mavali_eth/AGENTS.md|/home/architect/matrix/infra/runtime_personas/mavali_eth.AGENTS.md"
   "/home/macrorayd/macroraydbot/AGENTS.md|/home/architect/matrix/infra/runtime_personas/macrorayd.AGENTS.md"
 )
 
@@ -33,14 +33,12 @@ for entry in "${mappings[@]}"; do
   runtime_path="${entry%%|*}"
   repo_path="${entry#*|}"
 
-  if ! sudo test -e "${runtime_path}"; then
-    echo "[missing-runtime] ${runtime_path}" >&2
-    failures=$((failures + 1))
-    continue
-  fi
-
   if ! sudo test -L "${runtime_path}"; then
-    echo "[not-symlink] ${runtime_path}" >&2
+    if ! sudo test -e "${runtime_path}"; then
+      echo "[missing-runtime] ${runtime_path}" >&2
+    else
+      echo "[not-symlink] ${runtime_path}" >&2
+    fi
     failures=$((failures + 1))
     continue
   fi

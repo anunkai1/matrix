@@ -694,7 +694,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         },
         {
           "label": "workspace",
-          "value": "/home/mavali_eth/mavali_ethbot"
+          "value": "/home/architect/gitea-server2/mavali_eth"
         },
         {
           "label": "owner",

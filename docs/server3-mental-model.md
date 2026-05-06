@@ -347,7 +347,7 @@ Server3 now uses one shared bridge core in `/home/architect/matrix` plus per-run
 - Oracle Signal transport: `/home/oracle/signal-oracle/app`
 - Govorun Python bridge: `/home/govorun/govorunbot` (overlay root)
 - Govorun Node transport: `/home/govorun/whatsapp-govorun/app`
-- Mavali ETH: `/home/mavali_eth/mavali_ethbot` (overlay root with wallet-first engine plugin)
+- Mavali ETH: `/home/architect/gitea-server2/mavali_eth` (overlay root with wallet-first engine plugin)
 - Macrorayd: `/home/macrorayd/macroraydbot` (overlay root)
 - Browser Brain: `/home/browser_brain/browserbrain` (dedicated local browser-control service root)
 

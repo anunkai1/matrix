@@ -250,7 +250,7 @@
       "name": "Mavali ETH",
       "category": "secondary",
       "runtime_layout": "shared-core-overlay",
-      "workspace_root": "/home/mavali_eth/mavali_ethbot",
+      "workspace_root": "/home/architect/gitea-server2/mavali_eth",
       "shared_core_root": "/home/architect/matrix",
       "purpose": "Wallet-first Ethereum mainnet runtime with deterministic wallet actions and Codex fallback for non-wallet prompts.",
       "expected_default_state": "active",
