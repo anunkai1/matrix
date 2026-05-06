@@ -732,7 +732,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         },
         {
           "label": "docs",
-          "value": "docs/runbooks/mavali-eth-operations.md"
+          "value": "/home/architect/gitea-server2/mavali_eth/docs/mavali-eth-operations.md"
         },
         {
           "label": "guard",

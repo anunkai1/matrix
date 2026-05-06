@@ -633,7 +633,7 @@ def runtime_docs(name: str) -> List[Tuple[str, str]]:
     if name == "Mavali ETH":
         return [
             ("logs", "journalctl -u telegram-mavali-eth-bridge.service"),
-            ("docs", "docs/runbooks/mavali-eth-operations.md"),
+            ("docs", "/home/architect/gitea-server2/mavali_eth/docs/mavali-eth-operations.md"),
             ("guard", "bridge-side pending-action guard"),
         ]
     return [

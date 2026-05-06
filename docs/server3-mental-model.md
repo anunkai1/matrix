@@ -77,7 +77,7 @@ Current live engine shape:
 | `gemma` | Text-only Ollama-backed model path on Server4 | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/server4-gemma-engine.md`](./runbooks/server4-gemma-engine.md) |
 | `pi` | Pi agent path that preserves runtime identity while using local or Server4-backed models; can use Venice as a provider | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/server4-pi-engine.md`](./runbooks/server4-pi-engine.md) |
 | `chatgptweb` | Experimental Browser Brain-backed ChatGPT web bridge | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), `ops/chatgpt_web_bridge.py` |
-| `mavali_eth` | Deterministic wallet/protocol engine with Codex fallback for unsupported prompts | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/mavali-eth-engine.md`](./runbooks/mavali-eth-engine.md) |
+| `mavali_eth` | Deterministic wallet/protocol engine with Codex fallback for unsupported prompts | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [mavali-eth-engine.md](/home/architect/gitea-server2/mavali_eth/docs/mavali-eth-engine.md) |
 
 Operational rule:
 - `/engine status` is the runtime-facing truth source for default engine, chat override, selectable engines, and engine-specific health checks.

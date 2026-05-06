@@ -270,7 +270,7 @@ The shared bridge can also select a dedicated deterministic wallet engine used b
 - Image or file-heavy turns also fall back to Codex.
 - Confirmation prompts are guarded so the bridge does not advertise `confirm` for actions that were not actually staged in the Mavali ETH store.
 
-See [`docs/runbooks/mavali-eth-engine.md`](runbooks/mavali-eth-engine.md).
+See [mavali-eth-engine.md](/home/architect/gitea-server2/mavali_eth/docs/mavali-eth-engine.md).
 
 ## Venice via Pi
 
