@@ -65,11 +65,12 @@ RUNTIME_ROOT = Path(__file__).resolve().parents[2]
 os.environ.setdefault(\"TELEGRAM_SHARED_CORE_ROOT\", str(SHARED_CORE_ROOT))
 os.environ.setdefault(\"TELEGRAM_RUNTIME_ROOT\", str(RUNTIME_ROOT))
 
-shared_src = SHARED_CORE_ROOT / \"src\" / \"telegram_bridge\"
-if str(shared_src) not in sys.path:
-    sys.path.insert(0, str(shared_src))
+shared_src_root = SHARED_CORE_ROOT / \"src\"
+shared_entrypoint = shared_src_root / \"telegram_bridge\" / {entrypoint!r}
+if str(shared_src_root) not in sys.path:
+    sys.path.insert(0, str(shared_src_root))
 
-runpy.run_path(str(shared_src / {entrypoint!r}), run_name=\"__main__\")
+runpy.run_path(str(shared_entrypoint), run_name=\"__main__\")
 """
 
 

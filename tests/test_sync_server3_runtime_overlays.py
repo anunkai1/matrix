@@ -74,7 +74,10 @@ class OverlaySyncTests(unittest.TestCase):
                     str(target_dir / "wait_for_signal_transport.py"),
                 ],
             )
-            self.assertIn("Server3 shared-core overlay shim.", (target_dir / "main.py").read_text(encoding="utf-8"))
+            main_text = (target_dir / "main.py").read_text(encoding="utf-8")
+            self.assertIn("Server3 shared-core overlay shim.", main_text)
+            self.assertIn('shared_src_root = SHARED_CORE_ROOT / "src"', main_text)
+            self.assertIn('sys.path.insert(0, str(shared_src_root))', main_text)
             self.assertIn("TELEGRAM_RUNTIME_ROOT", (target_dir / "executor.sh").read_text(encoding="utf-8"))
             self.assertIn(
                 "runpy.run_path",
