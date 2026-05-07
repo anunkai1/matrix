@@ -1,6 +1,8 @@
 import importlib.util
 import os
+import sqlite3
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,6 +48,54 @@ class RuntimeProfileTests(unittest.TestCase):
     def test_start_command_message_uses_assistant_name(self) -> None:
         config = SimpleNamespace(assistant_name="HelperBot")
         self.assertIn("HelperBot", runtime_profile.start_command_message(config))
+
+    def test_engine_progress_context_uses_recent_codex_model_when_unset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            codex_home = Path(tmpdir) / ".codex"
+            codex_home.mkdir()
+            db_path = codex_home / "state_5.sqlite"
+            connection = sqlite3.connect(db_path)
+            try:
+                connection.execute(
+                    """
+                    create table threads (
+                        cwd text,
+                        model text,
+                        updated_at integer,
+                        updated_at_ms integer
+                    )
+                    """
+                )
+                connection.execute(
+                    "insert into threads (cwd, model, updated_at, updated_at_ms) values (?, ?, ?, ?)",
+                    ("/runtime/mavali", "gpt-5.5", 1, 1000),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            config = SimpleNamespace(codex_model="")
+            with mock.patch.dict(
+                os.environ,
+                {"CODEX_HOME": str(codex_home), "TELEGRAM_RUNTIME_ROOT": "/runtime/mavali"},
+                clear=False,
+            ):
+                self.assertEqual(
+                    runtime_profile.build_engine_progress_context_label(config, "codex"),
+                    "(codex | gpt-5.5)",
+                )
+
+    def test_mavali_eth_progress_context_includes_codex_model(self) -> None:
+        config = SimpleNamespace(codex_model="")
+        with mock.patch.object(
+            runtime_profile,
+            "_effective_codex_progress_model",
+            return_value="gpt-5.5",
+        ):
+            self.assertEqual(
+                runtime_profile.build_engine_progress_context_label(config, "mavali_eth"),
+                "(mavali_eth | codex | gpt-5.5)",
+            )
 
     def test_browser_brain_prompt_references_wrapper(self) -> None:
         prompt = runtime_profile.build_browser_brain_keyword_prompt("open example.com")

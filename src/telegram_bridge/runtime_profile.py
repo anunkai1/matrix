@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import re
+import sqlite3
+from pathlib import Path
 from typing import List, Optional
 
 from telegram_bridge.channel_adapter import ChannelAdapter
@@ -90,6 +92,64 @@ def assistant_label(config) -> str:
     value = getattr(config, "assistant_name", "").strip()
     return value or "Architect"
 
+def _recent_codex_model_for_runtime(runtime_root: str) -> str:
+    codex_home_raw = str(os.getenv("CODEX_HOME", "") or "").strip()
+    codex_home = Path(codex_home_raw).expanduser() if codex_home_raw else Path.home() / ".codex"
+    state_paths = sorted(
+        codex_home.glob("state_*.sqlite"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not state_paths:
+        return ""
+    state_path = state_paths[0]
+    try:
+        connection = sqlite3.connect(f"file:{state_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return ""
+    try:
+        cursor = connection.cursor()
+        order_clause = "coalesce(updated_at_ms, updated_at * 1000) desc"
+        if runtime_root:
+            row = cursor.execute(
+                f"""
+                select model
+                from threads
+                where model is not null
+                  and trim(model) <> ''
+                  and cwd = ?
+                order by {order_clause}
+                limit 1
+                """,
+                (runtime_root,),
+            ).fetchone()
+            if row and row[0]:
+                return str(row[0]).strip()
+        row = cursor.execute(
+            f"""
+            select model
+            from threads
+            where model is not null
+              and trim(model) <> ''
+            order by {order_clause}
+            limit 1
+            """
+        ).fetchone()
+        if row and row[0]:
+            return str(row[0]).strip()
+    except sqlite3.Error:
+        return ""
+    finally:
+        connection.close()
+    return ""
+
+def _effective_codex_progress_model(config) -> str:
+    model = str(getattr(config, "codex_model", "") or "").strip()
+    if model:
+        return model
+    runtime_root = str(os.getenv("TELEGRAM_RUNTIME_ROOT", "") or "").strip()
+    return _recent_codex_model_for_runtime(runtime_root)
+
 def build_engine_progress_context_label(config, engine_name: Optional[str] = None) -> str:
     selected = str(engine_name or getattr(config, "engine_plugin", "codex") or "codex").strip().lower()
     if not selected:
@@ -117,8 +177,11 @@ def build_engine_progress_context_label(config, engine_name: Optional[str] = Non
             parts.append(model)
         return f"({' | '.join(parts)})"
     if selected == "codex":
-        model = str(getattr(config, "codex_model", "") or "").strip()
+        model = _effective_codex_progress_model(config)
         return f"(codex | {model})" if model else "(codex)"
+    if selected == "mavali_eth":
+        model = _effective_codex_progress_model(config)
+        return f"(mavali_eth | codex | {model})" if model else "(mavali_eth | codex)"
     return f"({selected})"
 
 def start_command_message(config) -> str:
