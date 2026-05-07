@@ -131,6 +131,7 @@ class TelegramClient:
                             "transient": bool(is_transient),
                             "error_type": type(exc).__name__,
                             "error_code": getattr(exc, "error_code", None),
+                            "error_description": getattr(exc, "description", str(exc)),
                             "will_retry": False,
                         },
                     )
@@ -146,6 +147,7 @@ class TelegramClient:
                         "max_attempts": max_attempts,
                         "error_type": type(exc).__name__,
                         "error_code": getattr(exc, "error_code", None),
+                        "error_description": getattr(exc, "description", str(exc)),
                         "retry_delay_seconds": delay_seconds,
                     },
                 )

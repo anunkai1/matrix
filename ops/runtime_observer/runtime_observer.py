@@ -161,6 +161,42 @@ def pick_worst_severity(levels: Iterable[str]) -> str:
     return worst
 
 
+def normalize_error_description(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
+    if not text:
+        return ""
+    return " ".join(text.split())
+
+
+def collect_error_descriptions(
+    rows: Iterable[Dict[str, object]],
+    *,
+    event_name: str,
+    method: Optional[str] = None,
+    error_code: Optional[int] = None,
+    limit: int = 3,
+) -> List[str]:
+    descriptions: List[str] = []
+    seen = set()
+    for row in rows:
+        if row.get("event") != event_name:
+            continue
+        if method is not None and row.get("method") != method:
+            continue
+        if error_code is not None and safe_int(row.get("error_code"), default=-1) != error_code:
+            continue
+        description = normalize_error_description(row.get("error_description"))
+        if not description or description in seen:
+            continue
+        descriptions.append(description)
+        seen.add(description)
+        if len(descriptions) >= limit:
+            break
+    return descriptions
+
+
 @dataclass(frozen=True)
 class Threshold:
     warn: float
@@ -374,6 +410,10 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         for row in telegram_events
         if row.get("event") == "bridge.telegram_api_retry_scheduled"
     )
+    retry_descriptions = collect_error_descriptions(
+        telegram_events,
+        event_name="bridge.telegram_api_retry_scheduled",
+    )
     retry_threshold = Threshold(warn=6.0, critical=15.0)
     telegram_retry_kpi = {
         "severity": retry_threshold.classify(float(retry_count)),
@@ -381,6 +421,7 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         "warn_threshold": 6,
         "critical_threshold": 15,
         "count_last_15m": retry_count,
+        "error_descriptions": retry_descriptions,
     }
 
     edit_attempts = 0
@@ -398,6 +439,12 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         if row.get("event") == "bridge.telegram_api_failed"
         and row.get("method") == "editMessageText"
         and safe_int(row.get("error_code"), default=-1) == 400
+    )
+    edit_descriptions = collect_error_descriptions(
+        telegram_events,
+        event_name="bridge.telegram_api_failed",
+        method="editMessageText",
+        error_code=400,
     )
     edit_400_count = max(0, raw_edit_400_count - benign_edit_400_count)
     edit_rate: Optional[float]
@@ -430,6 +477,7 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         "edit_attempts": edit_attempts,
         "sample_size_suppressed": sample_size_suppressed,
         "rate_percent": round(edit_rate, 3) if isinstance(edit_rate, float) else None,
+        "error_descriptions": edit_descriptions,
     }
 
     request_success = sum(
@@ -634,7 +682,10 @@ def format_kpi_alert_line(name: str, metric: Dict[str, object]) -> str:
             f"{metric.get('max_restarts_per_service_last_hour', '-')}"
         )
     if name == "telegram_retry_rate":
-        return f"- {name}: {severity} count_last_15m={metric.get('count_last_15m', '-')}"
+        return (
+            f"- {name}: {severity} count_last_15m={metric.get('count_last_15m', '-')}"
+            f"{format_description_suffix(metric.get('error_descriptions'))}"
+        )
     if name == "telegram_edit_400_rate":
         suppressed = bool(metric.get("sample_size_suppressed", False))
         suppressed_suffix = " (suppressed:low_sample)" if suppressed else ""
@@ -642,6 +693,7 @@ def format_kpi_alert_line(name: str, metric: Dict[str, object]) -> str:
             f"- {name}: {severity} rate={format_percent(metric.get('rate_percent'))} "
             f"edit_400={metric.get('edit_400_count', '-')} attempts={metric.get('edit_attempts', '-')}"
             f" min_attempts={metric.get('min_attempts_threshold', '-')}{suppressed_suffix}"
+            f"{format_description_suffix(metric.get('error_descriptions'))}"
         )
     if name == "wa_reconnect_rate":
         return f"- {name}: {severity} count_last_hour={metric.get('count_last_hour', '-')}"
@@ -802,6 +854,7 @@ def format_status(snapshot: Dict[str, object]) -> str:
     edit = kpis["telegram_edit_400_rate"]
     wa = kpis["wa_reconnect_rate"]
     req = kpis["request_fail_rate"]
+    service_degraded = service["severity"] in {"warn", "critical", "unknown"}
     lines = [
         f"Runtime observer status ({snapshot['observed_at_local']})",
         f"mode={snapshot['mode']} timezone={snapshot['timezone']}",
@@ -815,10 +868,16 @@ def format_status(snapshot: Dict[str, object]) -> str:
             "restart_count: "
             f"{restart['severity']} max_per_service_last_hour={restart['max_restarts_per_service_last_hour']} "
             f"detail={json.dumps(restart['restarts_last_hour'], sort_keys=True)}"
+            if service_degraded
+            else
+            "restart_count: historical "
+            f"max_per_service_last_hour={restart['max_restarts_per_service_last_hour']} "
+            "(services healthy)"
         ),
         (
             "telegram_retry_rate: "
             f"{retry['severity']} count_last_15m={retry['count_last_15m']}"
+            f"{format_description_suffix(retry.get('error_descriptions'))}"
         ),
         (
             "telegram_edit_400_rate: "
@@ -826,6 +885,7 @@ def format_status(snapshot: Dict[str, object]) -> str:
             f"edit_400={edit['edit_400_count']} attempts={edit['edit_attempts']} "
             f"min_attempts={edit.get('min_attempts_threshold', '-')} "
             f"suppressed={bool(edit.get('sample_size_suppressed', False))}"
+            f"{format_description_suffix(edit.get('error_descriptions'))}"
         ),
         (
             "wa_reconnect_rate: "
@@ -863,6 +923,15 @@ def format_triplet(stats: Dict[str, Optional[float]], suffix: str = "") -> str:
     return f"{min_value:.3f}/{avg_value:.3f}/{max_value:.3f}{suffix}"
 
 
+def format_description_suffix(value: object) -> str:
+    if not isinstance(value, list) or not value:
+        return ""
+    descriptions = [item for item in value if isinstance(item, str) and item]
+    if not descriptions:
+        return ""
+    return f" descriptions={json.dumps(descriptions, ensure_ascii=True)}"
+
+
 def format_operator_summary_line(kpis: Dict[str, Dict[str, object]]) -> str:
     def worst(name: str) -> str:
         metric = kpis.get(name, {})
@@ -874,7 +943,10 @@ def format_operator_summary_line(kpis: Dict[str, Dict[str, object]]) -> str:
     issues: List[str] = []
     if worst("telegram_edit_400_rate") in {"warn", "critical", "unknown"}:
         issues.append("intermittent Telegram edit-400 spikes")
-    if worst("restart_count") in {"warn", "critical", "unknown"}:
+    if (
+        worst("restart_count") in {"warn", "critical", "unknown"}
+        and worst("service_up") in {"warn", "critical", "unknown"}
+    ):
         issues.append("some restarts that triggered warnings")
     if worst("telegram_retry_rate") in {"warn", "critical", "unknown"}:
         issues.append("Telegram retry spikes")
