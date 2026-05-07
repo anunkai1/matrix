@@ -353,6 +353,11 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         for name, row in states.items()
         if row.get("active") is False and isinstance(row.get("down_seconds"), (int, float)) and row.get("down_seconds", 0) > 60  # type: ignore[arg-type]
     ]
+    down_services = [
+        name
+        for name, row in states.items()
+        if row.get("active") is False
+    ]
     if down_over_60:
         service_severity = "critical"
     elif active_count < service_total:
@@ -367,6 +372,7 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         "active_services": active_count,
         "total_services": service_total,
         "down_over_60s": down_over_60,
+        "down_services": down_services,
         "services": states,
     }
 
@@ -396,6 +402,15 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
             default=0,
         ),
         "restarts_last_hour": restarts_per_service,
+        "top_restarting_services": [
+            name
+            for name, count in sorted(
+                restarts_per_service.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )
+            if count > 0
+        ][:3],
     }
 
     telegram_since = now_dt - timedelta(minutes=15)
@@ -662,6 +677,19 @@ def kpi_alert_rows(snapshot: Dict[str, object]) -> List[Tuple[str, Dict[str, obj
     return rows
 
 
+def affected_service_names(metric: Dict[str, object]) -> List[str]:
+    names: List[str] = []
+    if isinstance(metric.get("down_services"), list):
+        for item in metric["down_services"]:
+            if isinstance(item, str) and item:
+                names.append(item)
+    if isinstance(metric.get("top_restarting_services"), list):
+        for item in metric["top_restarting_services"]:
+            if isinstance(item, str) and item and item not in names:
+                names.append(item)
+    return names
+
+
 def alert_signature(rows: List[Tuple[str, Dict[str, object]]]) -> str:
     if not rows:
         return ""
@@ -675,11 +703,15 @@ def format_kpi_alert_line(name: str, metric: Dict[str, object]) -> str:
         total = metric.get("total_services", "-")
         down = metric.get("down_over_60s")
         down_text = ",".join(down) if isinstance(down, list) and down else "-"
-        return f"- {name}: {severity} active={active}/{total} down_over_60s={down_text}"
+        affected = affected_service_names(metric)
+        affected_suffix = f" affected={','.join(affected)}" if affected else ""
+        return f"- {name}: {severity} active={active}/{total} down_over_60s={down_text}{affected_suffix}"
     if name == "restart_count":
+        affected = affected_service_names(metric)
+        affected_suffix = f" affected={','.join(affected)}" if affected else ""
         return (
             f"- {name}: {severity} max_per_service_last_hour="
-            f"{metric.get('max_restarts_per_service_last_hour', '-')}"
+            f"{metric.get('max_restarts_per_service_last_hour', '-')}{affected_suffix}"
         )
     if name == "telegram_retry_rate":
         return (
