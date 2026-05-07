@@ -384,17 +384,22 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
     }
 
     edit_attempts = 0
+    benign_edit_400_count = 0
     for row in telegram_events:
         if row.get("event") != "bridge.progress_edit_stats":
             continue
         edit_attempts += max(0, safe_int(row.get("edit_attempts"), default=0))
-    edit_400_count = sum(
+        benign_edit_400_count += max(
+            0, safe_int(row.get("edit_failures_400"), default=0)
+        )
+    raw_edit_400_count = sum(
         1
         for row in telegram_events
         if row.get("event") == "bridge.telegram_api_failed"
         and row.get("method") == "editMessageText"
         and safe_int(row.get("error_code"), default=-1) == 400
     )
+    edit_400_count = max(0, raw_edit_400_count - benign_edit_400_count)
     edit_rate: Optional[float]
     sample_size_suppressed = False
     if edit_attempts > 0:
@@ -419,6 +424,8 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         "warn_threshold_percent": 3.0,
         "critical_threshold_percent": 8.0,
         "min_attempts_threshold": TELEGRAM_EDIT_MIN_ATTEMPTS,
+        "raw_edit_400_count": raw_edit_400_count,
+        "benign_edit_400_count": benign_edit_400_count,
         "edit_400_count": edit_400_count,
         "edit_attempts": edit_attempts,
         "sample_size_suppressed": sample_size_suppressed,
