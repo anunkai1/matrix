@@ -587,12 +587,20 @@ def kpi_alert_rows(snapshot: Dict[str, object]) -> List[Tuple[str, Dict[str, obj
     kpis = snapshot.get("kpis")
     if not isinstance(kpis, dict):
         return []
+    service_metric = kpis.get("service_up")
+    service_degraded = False
+    if isinstance(service_metric, dict):
+        service_degraded = service_metric.get("severity") in {"warn", "critical", "unknown"}
     rows: List[Tuple[str, Dict[str, object]]] = []
     for name, metric in kpis.items():
         if not isinstance(name, str) or not isinstance(metric, dict):
             continue
         severity = metric.get("severity")
         if severity not in {"warn", "critical"}:
+            continue
+        # Restart-count alone becomes historical residue after a service recovers.
+        # Alert on it only while there is also a live availability degradation.
+        if name == "restart_count" and not service_degraded:
             continue
         rows.append((name, metric))
     rows.sort(key=lambda row: row[0])
