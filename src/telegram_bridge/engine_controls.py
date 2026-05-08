@@ -2,6 +2,7 @@ import subprocess
 from typing import Dict, List, Optional, Tuple
 
 from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge import engine_control_commands
 from telegram_bridge import engine_control_views
 from telegram_bridge import engine_control_mutations
 from telegram_bridge.engine_catalog import (
@@ -127,14 +128,13 @@ def _send_control_result(
     message_id: Optional[int],
     result: CallbackActionResult,
 ) -> bool:
-    client.send_message(
+    return engine_control_commands.send_control_result(
+        client,
         chat_id,
-        result.text,
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
-        reply_markup=result.reply_markup,
+        message_thread_id,
+        message_id,
+        result,
     )
-    return True
 
 def _build_engine_action_result(
     state: State,
@@ -229,16 +229,19 @@ def handle_engine_command(
     message_id: Optional[int],
     raw_text: str,
 ) -> bool:
-    pieces = raw_text.strip().split(maxsplit=1)
-    tail = pieces[1].strip().lower() if len(pieces) > 1 else "status"
-    tail = normalize_engine_name(tail)
-    if tail in {"", "status"}:
-        result = _build_engine_action_result(state, config, scope_key, "status")
-    elif tail == "reset":
-        result = _build_engine_action_result(state, config, scope_key, "reset")
-    else:
-        result = _build_engine_action_result(state, config, scope_key, "set", tail)
-    return _send_control_result(client, chat_id, message_thread_id, message_id, result)
+    return engine_control_commands.handle_engine_command(
+        state,
+        config,
+        client,
+        scope_key,
+        chat_id,
+        message_thread_id,
+        message_id,
+        raw_text,
+        normalize_engine_name=normalize_engine_name,
+        build_engine_action_result=_build_engine_action_result,
+        send_control_result_fn=_send_control_result,
+    )
 
 def handle_pi_command(
     state: State,
@@ -250,154 +253,30 @@ def handle_pi_command(
     message_id: Optional[int],
     raw_text: str,
 ) -> bool:
-    pieces = raw_text.strip().split(maxsplit=1)
-    raw_tail = pieces[1].strip() if len(pieces) > 1 else "status"
-    tail = raw_tail.lower()
-    display_config = build_engine_runtime_config(state, config, scope_key, "pi")
-
-    if tail in {"", "status"}:
-        return _send_control_result(
-            client,
-            chat_id,
-            message_thread_id,
-            message_id,
-            CallbackActionResult(text=build_pi_status_text(state, config, scope_key)),
-        )
-    if tail == "providers":
-        return _send_control_result(
-            client,
-            chat_id,
-            message_thread_id,
-            message_id,
-            _build_pi_provider_action_result(state, config, scope_key, "menu"),
-        )
-    if tail == "models":
-        try:
-            text = build_pi_models_text(state, config, scope_key)
-        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-            text = "Failed to list Pi models.\n" f"Error: {_brief_health_error(exc)}"
-        else:
-            text += (
-                "\n\nDeprecated alias: `/pi models` still works for compatibility, "
-                "but `/model list` is the canonical command."
-            )
-        return _send_control_result(
-            client,
-            chat_id,
-            message_thread_id,
-            message_id,
-            CallbackActionResult(text=text),
-        )
-    if tail == "reset":
-        removed_provider = clear_chat_pi_provider(state, scope_key)
-        removed_model = clear_chat_pi_model(state, scope_key)
-        effective_config = build_engine_runtime_config(state, config, scope_key, "pi")
-        source_text = "chat overrides cleared" if (removed_provider or removed_model) else "no chat overrides were set"
-        return _send_control_result(
-            client,
-            chat_id,
-            message_thread_id,
-            message_id,
-            CallbackActionResult(
-                text=(
-                f"{source_text}. "
-                f"Pi provider is now {configured_pi_provider(effective_config)} "
-                f"({_build_pi_provider_source_text(state, scope_key)}). "
-                f"Pi model is now {configured_pi_model(effective_config)} "
-                f"({_build_pi_model_source_text(state, scope_key)})."
-                )
-            ),
-        )
-    if tail.startswith("provider"):
-        provider_name = raw_tail[8:].strip() if len(raw_tail) >= 8 else ""
-        if not provider_name:
-            return _send_control_result(
-                client,
-                chat_id,
-                message_thread_id,
-                message_id,
-                CallbackActionResult(
-                    text="Usage: /pi provider <name>\nUse /pi providers to list available Pi providers."
-                ),
-            )
-        try:
-            result = _build_pi_provider_action_result(state, config, scope_key, "set", provider_name)
-        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-            return _send_control_result(
-                client,
-                chat_id,
-                message_thread_id,
-                message_id,
-                CallbackActionResult(
-                    text="Failed to validate Pi provider.\n"
-                    f"Error: {_brief_health_error(exc)}"
-                ),
-            )
-        return _send_control_result(client, chat_id, message_thread_id, message_id, result)
-    if tail.startswith("model"):
-        model_name = raw_tail[5:].strip() if len(raw_tail) >= 5 else ""
-        if not model_name:
-            return _send_control_result(
-                client,
-                chat_id,
-                message_thread_id,
-                message_id,
-                CallbackActionResult(
-                    text="Usage: /model <name>\nUse /model list to list available models for the current Pi provider."
-                ),
-            )
-        try:
-            available_models = _pi_provider_model_names(display_config)
-        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-            return _send_control_result(
-                client,
-                chat_id,
-                message_thread_id,
-                message_id,
-                CallbackActionResult(
-                    text="Failed to validate Pi models.\n"
-                    f"Error: {_brief_health_error(exc)}"
-                ),
-            )
-        resolved_model = _resolve_pi_model_candidate(available_models, model_name)
-        if resolved_model is None:
-            provider = configured_pi_provider(display_config)
-            return _send_control_result(
-                client,
-                chat_id,
-                message_thread_id,
-                message_id,
-                CallbackActionResult(
-                    text=(
-                    f"Model not available for Pi provider `{provider}`: `{model_name}`\n"
-                    "Use /model list to see the allowed model names."
-                    )
-                ),
-            )
-        set_chat_pi_model(state, scope_key, resolved_model)
-        updated_config = build_engine_runtime_config(state, config, scope_key, "pi")
-        return _send_control_result(
-            client,
-            chat_id,
-            message_thread_id,
-            message_id,
-            CallbackActionResult(
-                text=(
-                f"Pi model for this chat is now {configured_pi_model(updated_config)} "
-                f"({_build_pi_model_source_text(state, scope_key)}).\n"
-                "Deprecated alias: `/pi model` still works for compatibility, "
-                "but `/model <name>` is the canonical command."
-                )
-            ),
-        )
-    return _send_control_result(
+    return engine_control_commands.handle_pi_command(
+        state,
+        config,
         client,
+        scope_key,
         chat_id,
         message_thread_id,
         message_id,
-        CallbackActionResult(
-            text="Unknown /pi command. Use /pi, /pi providers, /pi provider <name>, or /pi reset. Use /model list and /model <name> for Pi model selection."
-        ),
+        raw_text,
+        build_engine_runtime_config=build_engine_runtime_config,
+        build_pi_status_text=build_pi_status_text,
+        build_pi_provider_action_result=_build_pi_provider_action_result,
+        build_pi_models_text=build_pi_models_text,
+        brief_health_error=_brief_health_error,
+        clear_chat_pi_provider=clear_chat_pi_provider,
+        clear_chat_pi_model=clear_chat_pi_model,
+        configured_pi_provider=configured_pi_provider,
+        build_pi_provider_source_text=_build_pi_provider_source_text,
+        configured_pi_model=configured_pi_model,
+        build_pi_model_source_text=_build_pi_model_source_text,
+        pi_provider_model_names=_pi_provider_model_names,
+        resolve_pi_model_candidate=_resolve_pi_model_candidate,
+        set_chat_pi_model=set_chat_pi_model,
+        send_control_result_fn=_send_control_result,
     )
 
 def _build_model_picker_markup(
@@ -613,54 +492,21 @@ def handle_model_command(
     message_id: Optional[int],
     raw_text: str,
 ) -> bool:
-    pieces = raw_text.strip().split(maxsplit=1)
-    raw_tail = pieces[1].strip() if len(pieces) > 1 else "status"
-    tail = raw_tail.lower()
-    active_engine = _model_active_engine_name(state, config, scope_key)
-
-    if tail in {"", "status"}:
-        result = _build_model_action_result(state, config, scope_key, "status")
-    elif tail == "list":
-        try:
-            text = build_model_list_text(state, config, scope_key)
-        except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-            text = "Failed to list models.\n" f"Error: {_brief_health_error(exc)}"
-        result = CallbackActionResult(text=text)
-    elif tail == "reset":
-        result = _build_model_action_result(
-            state,
-            config,
-            scope_key,
-            "reset",
-            engine_name=active_engine,
-        )
-    else:
-        if active_engine == "codex":
-            result = _build_model_action_result(
-                state,
-                config,
-                scope_key,
-                "set",
-                engine_name=active_engine,
-                value=raw_tail,
-            )
-        elif active_engine == "pi":
-            try:
-                result = _build_model_action_result(
-                    state,
-                    config,
-                    scope_key,
-                    "set",
-                    engine_name=active_engine,
-                    value=raw_tail,
-                )
-            except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-                result = CallbackActionResult(
-                    text="Failed to validate Pi models.\n" f"Error: {_brief_health_error(exc)}"
-                )
-        else:
-            result = _build_model_action_result(state, config, scope_key, "status")
-    return _send_control_result(client, chat_id, message_thread_id, message_id, result)
+    return engine_control_commands.handle_model_command(
+        state,
+        config,
+        client,
+        scope_key,
+        chat_id,
+        message_thread_id,
+        message_id,
+        raw_text,
+        model_active_engine_name=_model_active_engine_name,
+        build_model_action_result=_build_model_action_result,
+        build_model_list_text=build_model_list_text,
+        brief_health_error=_brief_health_error,
+        send_control_result_fn=_send_control_result,
+    )
 
 def handle_effort_command(
     state: State,
@@ -672,22 +518,20 @@ def handle_effort_command(
     message_id: Optional[int],
     raw_text: str,
 ) -> bool:
-    pieces = raw_text.strip().split(maxsplit=1)
-    raw_tail = pieces[1].strip() if len(pieces) > 1 else "status"
-    tail = raw_tail.lower()
-    active_engine = _model_active_engine_name(state, config, scope_key)
-
-    if tail in {"", "status"}:
-        result = _build_effort_action_result(state, config, scope_key, "status")
-    elif tail == "list":
-        result = CallbackActionResult(text=build_effort_list_text(state, config, scope_key))
-    elif tail == "reset":
-        result = _build_effort_action_result(state, config, scope_key, "reset")
-    elif active_engine != "codex":
-        result = _build_effort_action_result(state, config, scope_key, "status")
-    else:
-        result = _build_effort_action_result(state, config, scope_key, "set", raw_tail)
-    return _send_control_result(client, chat_id, message_thread_id, message_id, result)
+    return engine_control_commands.handle_effort_command(
+        state,
+        config,
+        client,
+        scope_key,
+        chat_id,
+        message_thread_id,
+        message_id,
+        raw_text,
+        model_active_engine_name=_model_active_engine_name,
+        build_effort_action_result=_build_effort_action_result,
+        build_effort_list_text=build_effort_list_text,
+        send_control_result_fn=_send_control_result,
+    )
 
 def resolve_engine_for_scope(
     state: State,
