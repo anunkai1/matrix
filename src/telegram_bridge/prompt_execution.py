@@ -1,10 +1,58 @@
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
 from telegram_bridge.handler_models import DocumentPayload, PromptRequest
 from telegram_bridge.state_store import StateRepository
+
+
+@dataclass(frozen=True)
+class PromptExecutionRuntime:
+    progress_reporter_cls: object
+    state_repository_cls: object
+    codex_engine_adapter_factory: object
+    assistant_label_fn: object
+    build_engine_runtime_config_fn: object
+    build_engine_progress_context_label_fn: object
+    refresh_runtime_auth_fingerprint_fn: object
+    prepare_prompt_input_request_fn: object
+    execute_prompt_with_retry_fn: object
+    finalize_prompt_success_fn: object
+    finalize_request_progress_fn: object
+    emit_event_fn: object
+
+
+def build_prompt_execution_runtime(
+    *,
+    progress_reporter_cls,
+    state_repository_cls=StateRepository,
+    codex_engine_adapter_factory=CodexEngineAdapter,
+    assistant_label_fn,
+    build_engine_runtime_config_fn,
+    build_engine_progress_context_label_fn,
+    refresh_runtime_auth_fingerprint_fn,
+    prepare_prompt_input_request_fn,
+    execute_prompt_with_retry_fn,
+    finalize_prompt_success_fn,
+    finalize_request_progress_fn,
+    emit_event_fn,
+) -> PromptExecutionRuntime:
+    return PromptExecutionRuntime(
+        progress_reporter_cls=progress_reporter_cls,
+        state_repository_cls=state_repository_cls,
+        codex_engine_adapter_factory=codex_engine_adapter_factory,
+        assistant_label_fn=assistant_label_fn,
+        build_engine_runtime_config_fn=build_engine_runtime_config_fn,
+        build_engine_progress_context_label_fn=build_engine_progress_context_label_fn,
+        refresh_runtime_auth_fingerprint_fn=refresh_runtime_auth_fingerprint_fn,
+        prepare_prompt_input_request_fn=prepare_prompt_input_request_fn,
+        execute_prompt_with_retry_fn=execute_prompt_with_retry_fn,
+        finalize_prompt_success_fn=finalize_prompt_success_fn,
+        finalize_request_progress_fn=finalize_request_progress_fn,
+        emit_event_fn=emit_event_fn,
+    )
 
 def emit_phase_timing(
     *,
@@ -147,19 +195,46 @@ def begin_affective_turn(
 def process_prompt_request(
     request: PromptRequest,
     *,
-    progress_reporter_cls,
+    runtime: Optional[PromptExecutionRuntime] = None,
+    progress_reporter_cls=None,
     state_repository_cls=StateRepository,
     codex_engine_adapter_factory=CodexEngineAdapter,
-    assistant_label_fn,
-    build_engine_runtime_config_fn,
-    build_engine_progress_context_label_fn,
-    refresh_runtime_auth_fingerprint_fn,
-    prepare_prompt_input_request_fn,
-    execute_prompt_with_retry_fn,
-    finalize_prompt_success_fn,
-    finalize_request_progress_fn,
-    emit_event_fn,
+    assistant_label_fn=None,
+    build_engine_runtime_config_fn=None,
+    build_engine_progress_context_label_fn=None,
+    refresh_runtime_auth_fingerprint_fn=None,
+    prepare_prompt_input_request_fn=None,
+    execute_prompt_with_retry_fn=None,
+    finalize_prompt_success_fn=None,
+    finalize_request_progress_fn=None,
+    emit_event_fn=None,
 ) -> None:
+    runtime = runtime or build_prompt_execution_runtime(
+        progress_reporter_cls=progress_reporter_cls,
+        state_repository_cls=state_repository_cls,
+        codex_engine_adapter_factory=codex_engine_adapter_factory,
+        assistant_label_fn=assistant_label_fn,
+        build_engine_runtime_config_fn=build_engine_runtime_config_fn,
+        build_engine_progress_context_label_fn=build_engine_progress_context_label_fn,
+        refresh_runtime_auth_fingerprint_fn=refresh_runtime_auth_fingerprint_fn,
+        prepare_prompt_input_request_fn=prepare_prompt_input_request_fn,
+        execute_prompt_with_retry_fn=execute_prompt_with_retry_fn,
+        finalize_prompt_success_fn=finalize_prompt_success_fn,
+        finalize_request_progress_fn=finalize_request_progress_fn,
+        emit_event_fn=emit_event_fn,
+    )
+    progress_reporter_cls = runtime.progress_reporter_cls
+    state_repository_cls = runtime.state_repository_cls
+    codex_engine_adapter_factory = runtime.codex_engine_adapter_factory
+    assistant_label_fn = runtime.assistant_label_fn
+    build_engine_runtime_config_fn = runtime.build_engine_runtime_config_fn
+    build_engine_progress_context_label_fn = runtime.build_engine_progress_context_label_fn
+    refresh_runtime_auth_fingerprint_fn = runtime.refresh_runtime_auth_fingerprint_fn
+    prepare_prompt_input_request_fn = runtime.prepare_prompt_input_request_fn
+    execute_prompt_with_retry_fn = runtime.execute_prompt_with_retry_fn
+    finalize_prompt_success_fn = runtime.finalize_prompt_success_fn
+    finalize_request_progress_fn = runtime.finalize_request_progress_fn
+    emit_event_fn = runtime.emit_event_fn
     state = request.state
     config = request.config
     client = request.client
@@ -247,6 +322,17 @@ def process_prompt_request(
         attachment_file_ids = list(prepared.attachment_file_ids)
         prompt_text = prepared.prompt_text
         previous_thread_id = None if stateless else state_repo.get_thread_id(scope_key)
+        # Preserve the historical phase contract even though the dedicated
+        # bridge memory layer has been removed and engine-native sessions are
+        # now the source of truth for continuity.
+        emit_phase_timing(
+            chat_id=chat_id,
+            message_id=message_id,
+            phase="begin_memory_turn",
+            started_at_monotonic=time.monotonic(),
+            emit_event_fn=emit_event_fn,
+            memory_enabled=False,
+        )
         affective_started_at = time.monotonic()
         prompt_text, affective_turn_started = begin_affective_turn(
             affective_runtime,

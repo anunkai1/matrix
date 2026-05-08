@@ -136,11 +136,16 @@ class TestPrompt(unittest.TestCase):
         process_prompt_request.assert_called_once()
         args, kwargs = process_prompt_request.call_args
         self.assertIs(args[0], request)
-        self.assertIs(kwargs["progress_reporter_cls"], bridge_handlers.ProgressReporter)
-        self.assertIs(kwargs["prepare_prompt_input_request_fn"], bridge_handlers._prepare_prompt_input_request)
-        self.assertIs(kwargs["execute_prompt_with_retry_fn"], bridge_handlers.execute_prompt_with_retry)
-        self.assertIs(kwargs["finalize_prompt_success_fn"], bridge_handlers.finalize_prompt_success)
-        self.assertIs(kwargs["finalize_request_progress_fn"], bridge_handlers.finalize_request_progress)
+        runtime = kwargs["runtime"]
+        self.assertIsInstance(runtime, bridge_prompt_execution.PromptExecutionRuntime)
+        self.assertIs(runtime.progress_reporter_cls, bridge_handlers.ProgressReporter)
+        self.assertIs(
+            runtime.prepare_prompt_input_request_fn,
+            bridge_handlers._prepare_prompt_input_request,
+        )
+        self.assertIs(runtime.execute_prompt_with_retry_fn, bridge_handlers.execute_prompt_with_retry)
+        self.assertIs(runtime.finalize_prompt_success_fn, bridge_handlers.finalize_prompt_success)
+        self.assertIs(runtime.finalize_request_progress_fn, bridge_handlers.finalize_request_progress)
 
     @mock.patch.object(bridge_handlers, "finalize_chat_work")
     @mock.patch.object(bridge_handlers, "run_dishframed_cli", return_value=("/tmp/menu_preview.png", "Rendered PNG preview"))
@@ -239,10 +244,15 @@ class TestPrompt(unittest.TestCase):
         process_youtube_request.assert_called_once()
         args, kwargs = process_youtube_request.call_args
         self.assertIs(args[0], request)
-        self.assertIs(kwargs["build_progress_reporter_fn"], bridge_handlers.build_progress_reporter)
-        self.assertIs(kwargs["execute_prompt_with_retry_fn"], bridge_handlers.execute_prompt_with_retry)
-        self.assertIs(kwargs["finalize_prompt_success_fn"], bridge_handlers.finalize_prompt_success)
-        self.assertIs(kwargs["finalize_request_progress_fn"], bridge_handlers.finalize_request_progress)
+        runtime = kwargs["runtime"]
+        self.assertIsInstance(
+            runtime,
+            bridge_special_request_processing.YoutubeProcessingRuntime,
+        )
+        self.assertIs(runtime.build_progress_reporter_fn, bridge_handlers.build_progress_reporter)
+        self.assertIs(runtime.execute_prompt_with_retry_fn, bridge_handlers.execute_prompt_with_retry)
+        self.assertIs(runtime.finalize_prompt_success_fn, bridge_handlers.finalize_prompt_success)
+        self.assertIs(runtime.finalize_request_progress_fn, bridge_handlers.finalize_request_progress)
 
     def test_process_dishframed_request_delegates_to_special_request_processing_module(self):
         state = bridge.State()
@@ -268,10 +278,15 @@ class TestPrompt(unittest.TestCase):
         process_dishframed_request.assert_called_once()
         args, kwargs = process_dishframed_request.call_args
         self.assertIs(args[0], request)
-        self.assertIs(kwargs["build_progress_reporter_fn"], bridge_handlers.build_progress_reporter)
-        self.assertIs(kwargs["prepare_prompt_input_fn"], bridge_handlers.prepare_prompt_input)
-        self.assertIs(kwargs["run_dishframed_cli_fn"], bridge_handlers.run_dishframed_cli)
-        self.assertIs(kwargs["finalize_request_progress_fn"], bridge_handlers.finalize_request_progress)
+        runtime = kwargs["runtime"]
+        self.assertIsInstance(
+            runtime,
+            bridge_special_request_processing.DishframedProcessingRuntime,
+        )
+        self.assertIs(runtime.build_progress_reporter_fn, bridge_handlers.build_progress_reporter)
+        self.assertIs(runtime.prepare_prompt_input_fn, bridge_handlers.prepare_prompt_input)
+        self.assertIs(runtime.run_dishframed_cli_fn, bridge_handlers.run_dishframed_cli)
+        self.assertIs(runtime.finalize_request_progress_fn, bridge_handlers.finalize_request_progress)
 
     def test_build_youtube_summary_prompt_includes_basic_video_fields(self):
         prompt = bridge_handlers.build_youtube_summary_prompt(
@@ -429,4 +444,3 @@ class TestPrompt(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.returncode, 0)
         self.assertEqual(engine.calls, 1)
-

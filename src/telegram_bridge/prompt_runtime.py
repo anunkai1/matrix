@@ -2,6 +2,7 @@ import logging
 import subprocess
 import threading
 import time
+from dataclasses import dataclass
 from typing import List, Optional
 
 from telegram_bridge.channel_adapter import ChannelAdapter
@@ -9,7 +10,48 @@ from telegram_bridge.engine_adapter import EngineAdapter
 from telegram_bridge.executor import ExecutorCancelledError
 from telegram_bridge.state_store import StateRepository
 
-from telegram_bridge import bridge_deps as handlers
+
+@dataclass(frozen=True)
+class PromptRuntimeHooks:
+    build_scope_key_fn: object
+    emit_event_fn: object
+    emit_phase_timing_fn: object
+    send_canceled_response_fn: object
+    send_executor_failure_message_fn: object
+    extract_executor_failure_message_fn: object
+    should_reset_thread_after_resume_failure_fn: object
+    resume_retry_phase_fn: object
+    parse_executor_output_fn: object
+    output_contains_control_directive_fn: object
+    trim_output_fn: object
+    deliver_output_and_emit_success_fn: object
+    retry_with_new_session_phase: str
+
+
+def _handlers():
+    import telegram_bridge.handlers as handlers
+
+    return handlers
+
+
+def build_prompt_runtime_hooks() -> PromptRuntimeHooks:
+    handlers = _handlers()
+    return PromptRuntimeHooks(
+        build_scope_key_fn=handlers.build_telegram_scope_key,
+        emit_event_fn=handlers.emit_event,
+        emit_phase_timing_fn=handlers.emit_phase_timing,
+        send_canceled_response_fn=handlers.send_canceled_response,
+        send_executor_failure_message_fn=handlers.send_executor_failure_message,
+        extract_executor_failure_message_fn=handlers.extract_executor_failure_message,
+        should_reset_thread_after_resume_failure_fn=handlers.should_reset_thread_after_resume_failure,
+        resume_retry_phase_fn=handlers.resume_retry_phase,
+        parse_executor_output_fn=handlers.parse_executor_output,
+        output_contains_control_directive_fn=handlers.output_contains_control_directive,
+        trim_output_fn=handlers.trim_output,
+        deliver_output_and_emit_success_fn=handlers.deliver_output_and_emit_success,
+        retry_with_new_session_phase=handlers.RETRY_WITH_NEW_SESSION_PHASE,
+    )
+
 
 def execute_prompt_with_retry(
     state_repo: StateRepository,
@@ -28,9 +70,11 @@ def execute_prompt_with_retry(
     actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
     session_continuity_enabled: bool = True,
+    runtime_hooks: Optional[PromptRuntimeHooks] = None,
 ) -> Optional[subprocess.CompletedProcess[str]]:
+    runtime_hooks = runtime_hooks or build_prompt_runtime_hooks()
     if scope_key is None:
-        scope_key = handlers.build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
+        scope_key = runtime_hooks.build_scope_key_fn(chat_id, message_thread_id=message_thread_id)
     allow_automatic_retry = config.persistent_workers_enabled
     retry_attempted = False
     attempt_thread_id: Optional[str] = previous_thread_id
@@ -41,7 +85,7 @@ def execute_prompt_with_retry(
 
     while True:
         if cancel_event is not None and cancel_event.is_set():
-            handlers.emit_event(
+            runtime_hooks.emit_event_fn(
                 "bridge.request_cancelled",
                 fields={
                     "chat_id": chat_id,
@@ -51,11 +95,11 @@ def execute_prompt_with_retry(
                 },
             )
             progress.mark_failure("Execution canceled.")
-            handlers.send_canceled_response(client, chat_id, message_id, message_thread_id)
+            runtime_hooks.send_canceled_response_fn(client, chat_id, message_id, message_thread_id)
             return None
 
         attempt += 1
-        handlers.emit_event(
+        runtime_hooks.emit_event_fn(
             "bridge.executor_attempt",
             fields={
                 "chat_id": chat_id,
@@ -80,7 +124,7 @@ def execute_prompt_with_retry(
                     progress_callback=progress.handle_executor_event,
                     cancel_event=cancel_event,
                 )
-                handlers.emit_phase_timing(
+                runtime_hooks.emit_phase_timing_fn(
                     chat_id=chat_id,
                     message_id=message_id,
                     phase="engine_run",
@@ -110,7 +154,7 @@ def execute_prompt_with_retry(
                     progress_callback=progress.handle_executor_event,
                     cancel_event=cancel_event,
                 )
-                handlers.emit_phase_timing(
+                runtime_hooks.emit_phase_timing_fn(
                     chat_id=chat_id,
                     message_id=message_id,
                     phase="engine_run",
@@ -121,7 +165,7 @@ def execute_prompt_with_retry(
                     fallback_signature=True,
                 )
         except ExecutorCancelledError:
-            handlers.emit_phase_timing(
+            runtime_hooks.emit_phase_timing_fn(
                 chat_id=chat_id,
                 message_id=message_id,
                 phase="engine_run",
@@ -131,15 +175,15 @@ def execute_prompt_with_retry(
                 error_type="ExecutorCancelledError",
             )
             logging.info("Executor canceled for chat_id=%s", chat_id)
-            handlers.emit_event(
+            runtime_hooks.emit_event_fn(
                 "bridge.request_cancelled",
                 fields={"chat_id": chat_id, "message_id": message_id, "attempt": attempt},
             )
             progress.mark_failure("Execution canceled.")
-            handlers.send_canceled_response(client, chat_id, message_id, message_thread_id)
+            runtime_hooks.send_canceled_response_fn(client, chat_id, message_id, message_thread_id)
             return None
         except subprocess.TimeoutExpired:
-            handlers.emit_phase_timing(
+            runtime_hooks.emit_phase_timing_fn(
                 chat_id=chat_id,
                 message_id=message_id,
                 phase="engine_run",
@@ -149,7 +193,7 @@ def execute_prompt_with_retry(
                 error_type="TimeoutExpired",
             )
             logging.warning("Executor timeout for chat_id=%s", chat_id)
-            handlers.emit_event(
+            runtime_hooks.emit_event_fn(
                 "bridge.request_timeout",
                 level=logging.WARNING,
                 fields={"chat_id": chat_id, "message_id": message_id, "attempt": attempt},
@@ -163,7 +207,7 @@ def execute_prompt_with_retry(
             )
             return None
         except FileNotFoundError:
-            handlers.emit_phase_timing(
+            runtime_hooks.emit_phase_timing_fn(
                 chat_id=chat_id,
                 message_id=message_id,
                 phase="engine_run",
@@ -173,7 +217,7 @@ def execute_prompt_with_retry(
                 error_type="FileNotFoundError",
             )
             logging.exception("Executor command not found: %s", config.executor_cmd)
-            handlers.emit_event(
+            runtime_hooks.emit_event_fn(
                 "bridge.executor_missing",
                 level=logging.ERROR,
                 fields={"chat_id": chat_id, "message_id": message_id},
@@ -187,7 +231,7 @@ def execute_prompt_with_retry(
             )
             return None
         except Exception:
-            handlers.emit_phase_timing(
+            runtime_hooks.emit_phase_timing_fn(
                 chat_id=chat_id,
                 message_id=message_id,
                 phase="engine_run",
@@ -197,7 +241,7 @@ def execute_prompt_with_retry(
                 error_type="Exception",
             )
             logging.exception("Unexpected executor error for chat_id=%s", chat_id)
-            handlers.emit_event(
+            runtime_hooks.emit_event_fn(
                 "bridge.executor_exception",
                 level=logging.WARNING,
                 fields={"chat_id": chat_id, "message_id": message_id, "attempt": attempt},
@@ -207,8 +251,8 @@ def execute_prompt_with_retry(
                 if session_continuity_enabled:
                     state_repo.clear_thread_id(scope_key)
                 attempt_thread_id = None
-                progress.set_phase(handlers.RETRY_WITH_NEW_SESSION_PHASE)
-                handlers.emit_event(
+                progress.set_phase(runtime_hooks.retry_with_new_session_phase)
+                runtime_hooks.emit_event_fn(
                     "bridge.request_retry_scheduled",
                     level=logging.WARNING,
                     fields={
@@ -220,7 +264,7 @@ def execute_prompt_with_retry(
                 )
                 continue
             progress.mark_failure("Execution failed before completion.")
-            handlers.send_executor_failure_message(
+            runtime_hooks.send_executor_failure_message_fn(
                 client=client,
                 config=config,
                 chat_id=chat_id,
@@ -231,7 +275,7 @@ def execute_prompt_with_retry(
             return None
 
         if result.returncode == 0:
-            handlers.emit_event(
+            runtime_hooks.emit_event_fn(
                 "bridge.executor_completed",
                 fields={
                     "chat_id": chat_id,
@@ -242,8 +286,11 @@ def execute_prompt_with_retry(
             return result
 
         reset_and_retry_new = False
-        failure_message = handlers.extract_executor_failure_message(result.stdout or "", result.stderr or "")
-        if attempt_thread_id and handlers.should_reset_thread_after_resume_failure(
+        failure_message = runtime_hooks.extract_executor_failure_message_fn(
+            result.stdout or "",
+            result.stderr or "",
+        )
+        if attempt_thread_id and runtime_hooks.should_reset_thread_after_resume_failure_fn(
             result.stderr or "",
             result.stdout or "",
         ):
@@ -254,8 +301,8 @@ def execute_prompt_with_retry(
                 (result.stderr or "")[-1000:],
             )
             reset_and_retry_new = True
-            progress.set_phase(handlers.resume_retry_phase(config))
-            handlers.emit_event(
+            progress.set_phase(runtime_hooks.resume_retry_phase_fn(config))
+            runtime_hooks.emit_event_fn(
                 "bridge.request_retry_scheduled",
                 level=logging.WARNING,
                 fields={
@@ -280,8 +327,8 @@ def execute_prompt_with_retry(
             )
             reset_and_retry_new = True
             retry_attempted = True
-            progress.set_phase(handlers.RETRY_WITH_NEW_SESSION_PHASE)
-            handlers.emit_event(
+            progress.set_phase(runtime_hooks.retry_with_new_session_phase)
+            runtime_hooks.emit_event_fn(
                 "bridge.request_retry_scheduled",
                 level=logging.WARNING,
                 fields={
@@ -306,7 +353,7 @@ def execute_prompt_with_retry(
             result.returncode,
             (result.stderr or "")[-1000:],
         )
-        handlers.emit_event(
+        runtime_hooks.emit_event_fn(
             "bridge.request_failed",
             level=logging.WARNING,
             fields={
@@ -317,7 +364,7 @@ def execute_prompt_with_retry(
             },
         )
         progress.mark_failure("Execution failed.")
-        handlers.send_executor_failure_message(
+        runtime_hooks.send_executor_failure_message_fn(
             client=client,
             config=config,
             chat_id=chat_id,
@@ -327,6 +374,7 @@ def execute_prompt_with_retry(
             message_thread_id=message_thread_id,
         )
         return None
+
 
 def finalize_prompt_success(
     state_repo: StateRepository,
@@ -338,18 +386,20 @@ def finalize_prompt_success(
     progress,
     scope_key: Optional[str] = None,
     message_thread_id: Optional[int] = None,
+    runtime_hooks: Optional[PromptRuntimeHooks] = None,
 ) -> tuple[Optional[str], str]:
+    runtime_hooks = runtime_hooks or build_prompt_runtime_hooks()
     if scope_key is None:
-        scope_key = handlers.build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
-    new_thread_id, output = handlers.parse_executor_output(result.stdout or "")
+        scope_key = runtime_hooks.build_scope_key_fn(chat_id, message_thread_id=message_thread_id)
+    new_thread_id, output = runtime_hooks.parse_executor_output_fn(result.stdout or "")
     if new_thread_id:
         state_repo.set_thread_id(scope_key, new_thread_id)
     if not output:
         output = config.empty_output_message
-    if not handlers.output_contains_control_directive(output):
-        output = handlers.trim_output(output, config.max_output_chars)
+    if not runtime_hooks.output_contains_control_directive_fn(output):
+        output = runtime_hooks.trim_output_fn(output, config.max_output_chars)
     progress.mark_success()
-    delivered_output = handlers.deliver_output_and_emit_success(
+    delivered_output = runtime_hooks.deliver_output_and_emit_success_fn(
         client=client,
         chat_id=chat_id,
         message_id=message_id,

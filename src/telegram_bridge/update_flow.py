@@ -11,9 +11,20 @@ from telegram_bridge.handler_models import (
 )
 from telegram_bridge.state_store import State
 
-from telegram_bridge import bridge_deps as handlers
+
+def _handlers():
+    import telegram_bridge.handlers as handlers
+
+    return handlers
+
+
+def _state_store():
+    import telegram_bridge.state_store as state_store
+
+    return state_store
 
 def start_dishframed_dispatch(request: UpdateDispatchRequest) -> bool:
+    handlers = _handlers()
     photo_file_ids = list(request.photo_file_ids)
     if not photo_file_ids:
         photo_file_ids = handlers.get_recent_scope_photos(request.state, request.scope_key)
@@ -43,7 +54,7 @@ def start_dishframed_dispatch(request: UpdateDispatchRequest) -> bool:
         )
         return False
     cancel_event = handlers.register_cancel_event(request.state, request.scope_key)
-    handlers.StateRepository(request.state).mark_in_flight_request(request.scope_key, request.message_id)
+    _state_store().mark_in_flight_request(request.state, request.scope_key, request.message_id)
     handlers.emit_event(
         "bridge.request_accepted",
         fields={
@@ -75,6 +86,7 @@ def start_dishframed_dispatch(request: UpdateDispatchRequest) -> bool:
     return True
 
 def start_standard_dispatch(request: UpdateDispatchRequest) -> bool:
+    handlers = _handlers()
     try:
         active_engine = handlers.resolve_engine_for_scope(
             request.state,
@@ -131,8 +143,7 @@ def start_standard_dispatch(request: UpdateDispatchRequest) -> bool:
         return False
 
     cancel_event = handlers.register_cancel_event(request.state, request.scope_key)
-    state_repo = handlers.StateRepository(request.state)
-    state_repo.mark_in_flight_request(request.scope_key, request.message_id)
+    _state_store().mark_in_flight_request(request.state, request.scope_key, request.message_id)
     handlers.emit_event(
         "bridge.request_accepted",
         fields={
@@ -197,6 +208,7 @@ def start_standard_dispatch(request: UpdateDispatchRequest) -> bool:
     return True
 
 def extract_incoming_update_context(update: Dict[str, object]) -> Optional[IncomingUpdateContext]:
+    handlers = _handlers()
     message, conversation_scope, message_id = handlers.extract_chat_context(update)
     if message is None or conversation_scope is None:
         return None
@@ -231,6 +243,7 @@ def allow_update_chat(
     config,
     client: ChannelAdapter,
 ) -> bool:
+    handlers = _handlers()
     allow_private_unlisted = bool(getattr(config, "allow_private_chats_unlisted", False))
     allow_group_unlisted = bool(getattr(config, "allow_group_chats_unlisted", False))
     if ctx.chat_id in config.allowed_chat_ids:
@@ -264,6 +277,7 @@ def prepare_update_request(
     client: ChannelAdapter,
     ctx: IncomingUpdateContext,
 ) -> Optional[PreparedUpdateRequest]:
+    handlers = _handlers()
     prompt_input, photo_file_ids, voice_file_id, document = handlers.extract_prompt_and_media(ctx.message)
     if prompt_input is None and not photo_file_ids and voice_file_id is None and document is None:
         return None
@@ -377,6 +391,7 @@ def build_update_flow_state(
     )
 
 def maybe_handle_diary_update_flow(flow: UpdateFlowState) -> bool:
+    handlers = _handlers()
     if not handlers.diary_mode_enabled(flow.config):
         return False
     if handlers.handle_known_command(
@@ -417,6 +432,7 @@ def prepare_update_dispatch_request(
     flow: UpdateFlowState,
     handle_update_started_at: float,
 ) -> Optional[UpdateDispatchRequest]:
+    handlers = _handlers()
     keyword_result = handlers.apply_priority_keyword_routing(
         config=flow.config,
         prompt_input=flow.prompt_input,

@@ -4,7 +4,7 @@ from typing import Optional
 from telegram_bridge.channel_adapter import ChannelAdapter
 from telegram_bridge.engine_adapter import PiEngineAdapter
 from telegram_bridge.session_manager import request_safe_restart, trigger_restart_async
-from telegram_bridge.state_store import State, StateRepository
+from telegram_bridge.state_store import State, clear_thread_id, clear_worker_session
 from telegram_bridge.structured_logging import emit_event
 from telegram_bridge import response_delivery
 from telegram_bridge import prompt_execution
@@ -26,9 +26,8 @@ def handle_reset_command(
     message_thread_id: Optional[int],
     message_id: Optional[int],
 ) -> None:
-    state_repo = StateRepository(state)
-    removed_thread = state_repo.clear_thread_id(scope_key)
-    removed_worker = state_repo.clear_worker_session(scope_key) if config.persistent_workers_enabled else False
+    removed_thread = clear_thread_id(state, scope_key)
+    removed_worker = clear_worker_session(state, scope_key) if config.persistent_workers_enabled else False
     try:
         PiEngineAdapter.clear_scope_session_files(config, scope_key)
     except Exception:

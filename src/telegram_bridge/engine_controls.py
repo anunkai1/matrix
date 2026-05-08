@@ -28,7 +28,24 @@ from telegram_bridge.handler_models import CallbackActionResult
 from telegram_bridge import engine_health
 from telegram_bridge import engine_pi_catalog
 from telegram_bridge.plugin_registry import build_default_plugin_registry
-from telegram_bridge.state_store import State, StateRepository
+from telegram_bridge.state_store import (
+    State,
+    clear_chat_codex_effort,
+    clear_chat_codex_model,
+    clear_chat_engine,
+    clear_chat_pi_model,
+    clear_chat_pi_provider,
+    get_chat_codex_effort,
+    get_chat_codex_model,
+    get_chat_engine,
+    get_chat_pi_model,
+    get_chat_pi_provider,
+    set_chat_codex_effort,
+    set_chat_codex_model,
+    set_chat_engine,
+    set_chat_pi_model,
+    set_chat_pi_provider,
+)
 
 GEMMA_HEALTH_TIMEOUT_SECONDS = 6
 GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = 5
@@ -39,8 +56,8 @@ def build_engine_runtime_config(state, config, scope_key: str, engine_name: str)
     runtime_config = copy.copy(config)
     normalized_engine = normalize_engine_name(engine_name)
     if normalized_engine == "codex":
-        override_model = StateRepository(state).get_chat_codex_model(scope_key)
-        override_effort = StateRepository(state).get_chat_codex_effort(scope_key)
+        override_model = get_chat_codex_model(state, scope_key)
+        override_effort = get_chat_codex_effort(state, scope_key)
         if not override_model and not override_effort:
             return config
         if override_model:
@@ -50,8 +67,8 @@ def build_engine_runtime_config(state, config, scope_key: str, engine_name: str)
         return runtime_config
     if normalized_engine != "pi":
         return config
-    override_provider = StateRepository(state).get_chat_pi_provider(scope_key)
-    override_model = StateRepository(state).get_chat_pi_model(scope_key)
+    override_provider = get_chat_pi_provider(state, scope_key)
+    override_model = get_chat_pi_model(state, scope_key)
     if not override_provider and not override_model:
         return config
     if override_provider:
@@ -61,22 +78,22 @@ def build_engine_runtime_config(state, config, scope_key: str, engine_name: str)
     return runtime_config
 
 def _build_codex_model_source_text(state: State, scope_key: str) -> str:
-    if StateRepository(state).get_chat_codex_model(scope_key):
+    if get_chat_codex_model(state, scope_key):
         return "chat override"
     return "global default"
 
 def _build_codex_effort_source_text(state: State, scope_key: str) -> str:
-    if StateRepository(state).get_chat_codex_effort(scope_key):
+    if get_chat_codex_effort(state, scope_key):
         return "chat override"
     return "global default"
 
 def _build_pi_provider_source_text(state: State, scope_key: str) -> str:
-    if StateRepository(state).get_chat_pi_provider(scope_key):
+    if get_chat_pi_provider(state, scope_key):
         return "chat override"
     return "global default"
 
 def _build_pi_model_source_text(state: State, scope_key: str) -> str:
-    if StateRepository(state).get_chat_pi_model(scope_key):
+    if get_chat_pi_model(state, scope_key):
         return "chat override"
     return "global default"
 
@@ -183,7 +200,7 @@ def build_engine_status_text(state: State, config, scope_key: str) -> str:
         state,
         config,
         scope_key,
-        state_repo=StateRepository(state),
+        get_chat_engine=get_chat_engine,
         normalize_engine_name=normalize_engine_name,
         configured_default_engine=configured_default_engine,
         selectable_engine_plugins=selectable_engine_plugins,
@@ -202,7 +219,7 @@ def _engine_callback_data(engine_name: str, action: str) -> str:
     return engine_control_views.engine_callback_data(engine_name, action)
 
 def _model_active_engine_name(state: State, config, scope_key: str) -> str:
-    selected = StateRepository(state).get_chat_engine(scope_key)
+    selected = get_chat_engine(state, scope_key)
     return normalize_engine_name(selected or configured_default_engine(config))
 
 def _compact_inline_keyboard(
@@ -243,11 +260,11 @@ def _set_engine_for_scope(state: State, config, scope_key: str, engine_name: str
     allowed = selectable_engine_plugins(config)
     if normalized_engine not in allowed:
         return f"Unknown or unavailable engine: {normalized_engine}\nSelectable engines: {', '.join(allowed)}"
-    StateRepository(state).set_chat_engine(scope_key, normalized_engine)
+    set_chat_engine(state, scope_key, normalized_engine)
     return f"This chat now uses engine: {normalized_engine}"
 
 def _reset_engine_for_scope(state: State, config, scope_key: str) -> str:
-    removed = StateRepository(state).clear_chat_engine(scope_key)
+    removed = clear_chat_engine(state, scope_key)
     suffix = "removed" if removed else "already using default"
     return f"Engine override {suffix}. This chat now uses {configured_default_engine(config)}."
 
@@ -384,7 +401,6 @@ def handle_pi_command(
     pieces = raw_text.strip().split(maxsplit=1)
     raw_tail = pieces[1].strip() if len(pieces) > 1 else "status"
     tail = raw_tail.lower()
-    state_repo = StateRepository(state)
     display_config = build_engine_runtime_config(state, config, scope_key, "pi")
 
     if tail in {"", "status"}:
@@ -421,8 +437,8 @@ def handle_pi_command(
             CallbackActionResult(text=text),
         )
     if tail == "reset":
-        removed_provider = state_repo.clear_chat_pi_provider(scope_key)
-        removed_model = state_repo.clear_chat_pi_model(scope_key)
+        removed_provider = clear_chat_pi_provider(state, scope_key)
+        removed_model = clear_chat_pi_model(state, scope_key)
         effective_config = build_engine_runtime_config(state, config, scope_key, "pi")
         source_text = "chat overrides cleared" if (removed_provider or removed_model) else "no chat overrides were set"
         return _send_control_result(
@@ -506,7 +522,7 @@ def handle_pi_command(
                     )
                 ),
             )
-        state_repo.set_chat_pi_model(scope_key, resolved_model)
+        set_chat_pi_model(state, scope_key, resolved_model)
         updated_config = build_engine_runtime_config(state, config, scope_key, "pi")
         return _send_control_result(
             client,
@@ -634,15 +650,14 @@ def build_effort_list_text(state: State, config, scope_key: str) -> str:
     )
 
 def _set_codex_model_for_scope(state: State, config, scope_key: str, model_name: str) -> str:
-    state_repo = StateRepository(state)
     resolved_model = _resolve_codex_model_candidate(model_name)
-    state_repo.set_chat_codex_model(scope_key, resolved_model)
+    set_chat_codex_model(state, scope_key, resolved_model)
     updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
     current_effort = configured_codex_reasoning_effort(updated_config)
     if current_effort and _resolve_codex_effort_candidate(resolved_model, current_effort) is None:
         supported_efforts = _supported_codex_efforts_for_model(resolved_model)
         if supported_efforts:
-            state_repo.set_chat_codex_effort(scope_key, supported_efforts[0])
+            set_chat_codex_effort(state, scope_key, supported_efforts[0])
             updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
     return (
         f"Codex model for this chat is now {configured_codex_model(updated_config) or '(default)'} "
@@ -650,9 +665,8 @@ def _set_codex_model_for_scope(state: State, config, scope_key: str, model_name:
     )
 
 def _reset_model_for_scope(state: State, config, scope_key: str, active_engine: str) -> str:
-    state_repo = StateRepository(state)
     if active_engine == "codex":
-        removed = state_repo.clear_chat_codex_model(scope_key)
+        removed = clear_chat_codex_model(state, scope_key)
         updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
         source = "chat override cleared" if removed else "no chat override was set"
         return (
@@ -660,7 +674,7 @@ def _reset_model_for_scope(state: State, config, scope_key: str, active_engine: 
             f"({_build_codex_model_source_text(state, scope_key)})."
         )
     if active_engine == "pi":
-        removed = state_repo.clear_chat_pi_model(scope_key)
+        removed = clear_chat_pi_model(state, scope_key)
         updated_config = build_engine_runtime_config(state, config, scope_key, "pi")
         source = "chat override cleared" if removed else "no chat override was set"
         return (
@@ -679,13 +693,12 @@ def _set_pi_provider_for_scope(state: State, config, scope_key: str, provider_na
             f"Provider `{normalized_provider}` did not report any models.\n"
             "Pi provider was not changed."
         )
-    state_repo = StateRepository(state)
-    current_model = state_repo.get_chat_pi_model(scope_key)
+    current_model = get_chat_pi_model(state, scope_key)
     resolved_model = _resolve_pi_model_candidate(available_models, current_model or "")
     if resolved_model is None:
         resolved_model = available_models[0]
-    state_repo.set_chat_pi_provider(scope_key, normalized_provider)
-    state_repo.set_chat_pi_model(scope_key, resolved_model)
+    set_chat_pi_provider(state, scope_key, normalized_provider)
+    set_chat_pi_model(state, scope_key, resolved_model)
     return (
         f"Pi provider for this chat is now {normalized_provider}. "
         f"Pi model is now {resolved_model}."
@@ -701,7 +714,7 @@ def _set_pi_model_for_scope(state: State, config, scope_key: str, model_name: st
             f"Model not available for Pi provider `{provider}`: `{model_name}`\n"
             "Use /model list to see the allowed model names."
         )
-    StateRepository(state).set_chat_pi_model(scope_key, resolved_model)
+    set_chat_pi_model(state, scope_key, resolved_model)
     updated_config = build_engine_runtime_config(state, config, scope_key, "pi")
     return (
         f"Pi model for this chat is now {configured_pi_model(updated_config)} "
@@ -717,7 +730,7 @@ def _set_codex_effort_for_scope(state: State, config, scope_key: str, effort_nam
             f"Reasoning effort not supported for Codex model `{current_model or '(default)'}`: "
             f"`{effort_name}`\nUse /effort list to see the allowed effort names."
         )
-    StateRepository(state).set_chat_codex_effort(scope_key, resolved_effort)
+    set_chat_codex_effort(state, scope_key, resolved_effort)
     updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
     return (
         f"Codex reasoning effort for this chat is now "
@@ -726,7 +739,7 @@ def _set_codex_effort_for_scope(state: State, config, scope_key: str, effort_nam
     )
 
 def _reset_codex_effort_for_scope(state: State, config, scope_key: str) -> str:
-    removed = StateRepository(state).clear_chat_codex_effort(scope_key)
+    removed = clear_chat_codex_effort(state, scope_key)
     updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
     source = "chat override cleared" if removed else "no chat override was set"
     return (
@@ -842,7 +855,7 @@ def resolve_engine_for_scope(
     scope_key: str,
     default_engine: Optional[EngineAdapter],
 ) -> EngineAdapter:
-    selected = StateRepository(state).get_chat_engine(scope_key)
+    selected = get_chat_engine(state, scope_key)
     if not selected:
         if default_engine is not None:
             return default_engine

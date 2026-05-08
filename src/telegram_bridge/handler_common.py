@@ -7,7 +7,7 @@ from telegram_bridge.background_tasks import start_daemon_thread
 from telegram_bridge.conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
 from telegram_bridge.executor import ExecutorProgressEvent
 from telegram_bridge.runtime_profile import assistant_label
-from telegram_bridge.state_store import State, StateRepository
+from telegram_bridge.state_store import State, get_chat_engine
 from telegram_bridge.structured_logging import emit_event
 from telegram_bridge.transport import TELEGRAM_LIMIT
 from telegram_bridge.engine_controls import selectable_engine_plugins
@@ -459,7 +459,7 @@ def build_status_text(
     ]
 
     if scope_key is not None:
-        selected_engine = StateRepository(state).get_chat_engine(scope_key)
+        selected_engine = get_chat_engine(state, scope_key)
         lines.append(f"This chat has Codex thread: {has_thread}")
         lines.append(f"This chat has worker session: {has_worker}")
         lines.append(f"This chat engine: {selected_engine or getattr(config, 'engine_plugin', 'codex')}")

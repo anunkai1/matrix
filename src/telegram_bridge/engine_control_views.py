@@ -188,7 +188,7 @@ def build_engine_status_text(
     config,
     scope_key: str,
     *,
-    state_repo,
+    get_chat_engine: Callable,
     normalize_engine_name: Callable,
     configured_default_engine: Callable,
     selectable_engine_plugins: Callable,
@@ -202,7 +202,7 @@ def build_engine_status_text(
     check_pi_health: Callable,
     check_chatgpt_web_health: Callable,
 ) -> str:
-    selected = state_repo.get_chat_engine(scope_key)
+    selected = get_chat_engine(state, scope_key)
     effective = normalize_engine_name(selected or configured_default_engine(config))
     display_config = build_engine_runtime_config(state, config, scope_key, effective)
     lines = [

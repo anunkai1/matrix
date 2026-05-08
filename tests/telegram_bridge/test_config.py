@@ -26,6 +26,7 @@ from tests.telegram_bridge.helpers import (
 )
 
 import telegram_bridge.auth_state as bridge_auth_state
+import telegram_bridge.bridge_runtime_setup as bridge_runtime_setup
 import telegram_bridge.channel_adapter as bridge_channel_adapter
 import telegram_bridge.command_routing as bridge_command_routing
 import telegram_bridge.control_commands as bridge_control_commands
@@ -230,3 +231,122 @@ class TestConfig(unittest.TestCase):
                 "new-fingerprint",
             )
 
+    def test_build_runtime_bootstrap_keeps_loaded_runtime_state(self):
+        config = make_config(
+            state_dir="/tmp/architect-state",
+            canonical_sessions_enabled=True,
+            canonical_sqlite_enabled=True,
+            canonical_json_mirror_enabled=True,
+        )
+        attachment_store = object()
+        affective_runtime = object()
+        voice_store = object()
+        loaded_worker_sessions = {
+            1: bridge.WorkerSession(
+                created_at=1.0,
+                last_used_at=2.0,
+                thread_id="thread-1",
+                policy_fingerprint="policy-fp",
+            )
+        }
+        loaded_canonical_sessions = {"tg:1": bridge.CanonicalSession(thread_id="canonical-thread")}
+        state_paths = {
+            "chat_threads": "/tmp/chat_threads.json",
+            "chat_engines": "/tmp/chat_engines.json",
+            "chat_codex_models": "/tmp/chat_codex_models.json",
+            "chat_codex_efforts": "/tmp/chat_codex_efforts.json",
+            "chat_pi_models": "/tmp/chat_pi_models.json",
+            "chat_pi_providers": "/tmp/chat_pi_providers.json",
+            "worker_sessions": "/tmp/worker_sessions.json",
+            "in_flight_requests": "/tmp/in_flight_requests.json",
+            "chat_sessions": "/tmp/chat_sessions.json",
+        }
+        loaded_state = {
+            "threads": {1: "thread-1"},
+            "engines": {"tg:1": "pi"},
+            "codex_models": {"tg:1": "gpt-5.5"},
+            "codex_efforts": {"tg:1": "medium"},
+            "pi_models": {"tg:1": "qwen3-coder:30b"},
+            "pi_providers": {"tg:1": "ollama"},
+            "worker_sessions": loaded_worker_sessions,
+            "in_flight": {1: {"message_id": 99}},
+        }
+
+        with (
+            mock.patch.object(bridge_runtime_setup, "ensure_state_dir"),
+            mock.patch.object(bridge_runtime_setup, "AttachmentStore", return_value=attachment_store),
+            mock.patch.object(bridge_runtime_setup, "build_affective_runtime", return_value=affective_runtime),
+            mock.patch.object(bridge_runtime_setup, "build_bridge_state_paths", return_value=state_paths),
+            mock.patch.object(bridge_runtime_setup, "load_bridge_state_mappings", return_value=loaded_state),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "load_canonical_session_bootstrap",
+                return_value=(loaded_canonical_sessions, "canonical-json"),
+            ),
+            mock.patch.object(bridge_runtime_setup, "compute_current_auth_fingerprint", return_value="auth-fp"),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "apply_auth_change_thread_reset",
+                return_value={"applied": False, "counts": {}},
+            ),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "initialize_voice_alias_learning_store",
+                return_value=voice_store,
+            ),
+        ):
+            bootstrap = bridge.build_runtime_bootstrap(config)
+
+        self.assertEqual(bootstrap.canonical_bootstrap_source, "canonical-json")
+        self.assertIs(bootstrap.affective_runtime, affective_runtime)
+        self.assertIs(bootstrap.voice_alias_learning_store, voice_store)
+        self.assertEqual(bootstrap.state.chat_threads, {})
+        self.assertEqual(bootstrap.state.worker_sessions, {})
+        self.assertEqual(bootstrap.state.chat_sessions, loaded_canonical_sessions)
+        self.assertEqual(bootstrap.state.chat_engines, {"tg:1": "pi"})
+        self.assertEqual(bootstrap.state.auth_fingerprint, "auth-fp")
+        self.assertIs(bootstrap.state.attachment_store, attachment_store)
+        self.assertIs(bootstrap.state.affective_runtime, affective_runtime)
+        self.assertIs(bootstrap.state.voice_alias_learning_store, voice_store)
+
+    def test_persist_bootstrap_state_backfills_canonical_sessions_from_legacy(self):
+        config = make_config(
+            canonical_sessions_enabled=True,
+            persistent_workers_enabled=True,
+        )
+        bootstrap = bridge.RuntimeBootstrap(
+            state=bridge.State(canonical_sessions_enabled=True, chat_sessions={}),
+            state_paths={},
+            loaded_threads={1: "thread-1"},
+            loaded_worker_sessions={
+                1: bridge.WorkerSession(
+                    created_at=1.0,
+                    last_used_at=2.0,
+                    thread_id="thread-1",
+                    policy_fingerprint="policy-fp",
+                )
+            },
+            loaded_in_flight={1: {"message_id": 42}},
+            canonical_bootstrap_source="legacy",
+            affective_runtime=None,
+            voice_alias_learning_store=None,
+        )
+        built_sessions = {"tg:1": bridge.CanonicalSession(thread_id="thread-1")}
+
+        with (
+            mock.patch.object(
+                bridge_runtime_setup,
+                "build_canonical_sessions_from_legacy",
+                return_value=built_sessions,
+            ) as build_sessions,
+            mock.patch.object(bridge_runtime_setup, "persist_canonical_sessions") as persist_canonical,
+        ):
+            bridge.persist_bootstrap_state(config, bootstrap)
+
+        build_sessions.assert_called_once_with(
+            bootstrap.loaded_threads,
+            bootstrap.loaded_worker_sessions,
+            bootstrap.loaded_in_flight,
+        )
+        self.assertIs(bootstrap.state.chat_sessions, built_sessions)
+        persist_canonical.assert_called_once_with(bootstrap.state)

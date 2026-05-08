@@ -16,6 +16,7 @@ from telegram_bridge.state_store import (
     StateRepository,
     WorkerSession,
     canonical_session_is_empty,
+    clear_in_flight_request,
     persist_canonical_sessions,
     persist_chat_threads,
     persist_worker_sessions,
@@ -623,9 +624,8 @@ def finalize_chat_work(
     message_thread_id: Optional[int] = None,
 ) -> None:
     scope_key = _resolve_scope_key(scope_key, chat_id, message_thread_id)
-    state_repo = StateRepository(state)
     try:
-        state_repo.clear_in_flight_request(scope_key)
+        clear_in_flight_request(state, scope_key)
     except Exception:
         logging.exception("Failed to clear in-flight request state for scope=%s", scope_key)
     finally:

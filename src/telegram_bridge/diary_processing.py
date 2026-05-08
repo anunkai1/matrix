@@ -32,8 +32,15 @@ from telegram_bridge.response_delivery import (
 from telegram_bridge.runtime_profile import build_engine_progress_context_label
 from telegram_bridge.session_manager import finalize_chat_work, mark_busy
 from telegram_bridge.handler_models import DocumentPayload
-from telegram_bridge.state_store import PendingDiaryBatch, State, StateRepository
+from telegram_bridge.state_store import PendingDiaryBatch, State, get_chat_engine, mark_in_flight_request
 from telegram_bridge.structured_logging import emit_event
+
+
+def _handlers():
+    import telegram_bridge.handlers as handlers
+
+    return handlers
+
 
 def diary_control_command(command: Optional[str]) -> bool:
     return command in {"/today", "/queue"}
@@ -99,7 +106,7 @@ def build_diary_today_status(state: State, config, scope_key: str) -> str:
     return "\n".join(lines)
 
 def build_diary_progress_context_label(state: State, config, scope_key: str) -> str:
-    selected_engine = StateRepository(state).get_chat_engine(scope_key)
+    selected_engine = get_chat_engine(state, scope_key)
     engine_name = selected_engine or configured_default_engine(config)
     display_config = build_engine_runtime_config(state, config, scope_key, engine_name)
     return build_engine_progress_context_label(display_config, selected_engine)
@@ -143,9 +150,8 @@ def process_diary_batch(
         build_diary_progress_context_label(state, config, scope_key),
     )
     cleanup_paths: List[str] = []
-    state_repo = StateRepository(state)
     cancel_event = register_cancel_event(state, scope_key)
-    state_repo.mark_in_flight_request(scope_key, pending.latest_message_id)
+    mark_in_flight_request(state, scope_key, pending.latest_message_id)
     try:
         progress.start()
         progress.set_phase("Preparing diary entry.")
@@ -387,7 +393,7 @@ def diary_queue_worker(
             if pending is None:
                 finalize_chat_work(state, client, chat_id=0, scope_key=scope_key)
                 continue
-            process_diary_batch(
+            _handlers().process_diary_batch(
                 state=state,
                 config=config,
                 client=client,

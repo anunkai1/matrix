@@ -37,6 +37,6 @@ source = ["src/telegram_bridge"]
 branch = true
 
 [tool.coverage.report]
-fail_under = 35
+fail_under = 60
 show_missing = true
 skip_covered = true

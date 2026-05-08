@@ -3,11 +3,17 @@ import os
 import subprocess
 from typing import Dict, List, Optional
 
-from telegram_bridge import bridge_deps as handlers
 from telegram_bridge.channel_adapter import ChannelAdapter
 from telegram_bridge.handler_models import DocumentPayload, PreparedPromptInput, PromptRequest
 from telegram_bridge.state_store import State
 from telegram_bridge import prompt_preparation
+
+
+def _handlers():
+    import telegram_bridge.handlers as handlers
+
+    return handlers
+
 
 def transcribe_voice_for_chat(
     state: State,
@@ -18,6 +24,7 @@ def transcribe_voice_for_chat(
     voice_file_id: str,
     echo_transcript: bool = True,
 ) -> Optional[str]:
+    handlers = _handlers()
     if not config.voice_transcribe_cmd:
         client.send_message(
             chat_id,
@@ -126,10 +133,12 @@ def transcribe_voice_for_chat(
             except OSError:
                 logging.warning("Failed to remove temp voice file: %s", voice_path)
 
+
 def _prepare_prompt_input_request(
     request: PromptRequest,
     progress,
 ) -> Optional[PreparedPromptInput]:
+    handlers = _handlers()
     return prompt_preparation.prepare_prompt_input_request(
         request,
         progress,
@@ -140,6 +149,7 @@ def _prepare_prompt_input_request(
         emit_event_fn=handlers.emit_event,
         prefix_help_message=handlers.PREFIX_HELP_MESSAGE,
     )
+
 
 def prepare_prompt_input(
     state: State,
@@ -155,6 +165,7 @@ def prepare_prompt_input(
     photo_file_ids: Optional[List[str]] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> Optional[PreparedPromptInput]:
+    handlers = _handlers()
     return _prepare_prompt_input_request(
         handlers.build_prompt_request(
             state=state,
@@ -175,6 +186,7 @@ def prepare_prompt_input(
         progress,
     )
 
+
 def prewarm_attachment_archive_for_message(
     state: State,
     config,
@@ -182,6 +194,7 @@ def prewarm_attachment_archive_for_message(
     chat_id: int,
     message: Dict[str, object],
 ) -> None:
+    handlers = _handlers()
     prompt_preparation.prewarm_attachment_archive_for_message(
         state,
         config,

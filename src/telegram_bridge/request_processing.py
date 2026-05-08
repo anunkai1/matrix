@@ -9,7 +9,6 @@ from telegram_bridge import special_request_processing
 from telegram_bridge import response_delivery
 from telegram_bridge.runtime_profile import assistant_label, build_engine_progress_context_label
 from telegram_bridge.state_store import StateRepository
-from telegram_bridge.structured_logging import emit_event
 from telegram_bridge.engine_controls import build_engine_runtime_config
 
 finalize_request_progress = response_delivery.finalize_request_progress
@@ -19,7 +18,15 @@ emit_worker_exception_and_reply = response_delivery.emit_worker_exception_and_re
 send_chat_action_safe = response_delivery.send_chat_action_safe
 infer_media_kind = response_delivery.infer_media_kind
 
-from telegram_bridge import bridge_deps as handlers
+def _handlers():
+    import telegram_bridge.handlers as handlers
+
+    return handlers
+
+
+def _emit_event(*args, **kwargs) -> None:
+    _handlers().emit_event(*args, **kwargs)
+
 
 def deliver_output_and_emit_success(
     client: ChannelAdapter,
@@ -29,6 +36,7 @@ def deliver_output_and_emit_success(
     message_thread_id: Optional[int] = None,
     new_thread_id: bool = False,
 ) -> str:
+    handlers = _handlers()
     delivered_output = handlers.send_executor_output(
         client=client,
         chat_id=chat_id,
@@ -36,7 +44,7 @@ def deliver_output_and_emit_success(
         output=output,
         message_thread_id=message_thread_id,
     )
-    emit_event(
+    _emit_event(
         "bridge.request_succeeded",
         fields={
             "chat_id": chat_id,
@@ -46,6 +54,7 @@ def deliver_output_and_emit_success(
         },
     )
     return delivered_output
+
 
 def begin_affective_turn(
     affective_runtime,
@@ -59,8 +68,9 @@ def begin_affective_turn(
         prompt_text,
         chat_id=chat_id,
         message_id=message_id,
-        emit_event_fn=emit_event,
+        emit_event_fn=_emit_event,
     )
+
 
 def emit_request_processing_started(
     *,
@@ -82,8 +92,9 @@ def emit_request_processing_started(
         voice_file_id=voice_file_id,
         document=document,
         previous_thread_id=previous_thread_id,
-        emit_event_fn=emit_event,
+        emit_event_fn=_emit_event,
     )
+
 
 def emit_phase_timing(
     *,
@@ -98,9 +109,10 @@ def emit_phase_timing(
         message_id=message_id,
         phase=phase,
         started_at_monotonic=started_at_monotonic,
-        emit_event_fn=emit_event,
+        emit_event_fn=_emit_event,
         **extra_fields,
     )
+
 
 def build_progress_reporter(
     client: ChannelAdapter,
@@ -110,6 +122,7 @@ def build_progress_reporter(
     message_thread_id: Optional[int],
     progress_context_label: str,
 ):
+    handlers = _handlers()
     return prompt_execution.build_progress_reporter(
         client,
         config,
@@ -121,10 +134,12 @@ def build_progress_reporter(
         assistant_label_fn=assistant_label,
     )
 
+
 def _build_prompt_progress_reporter(
     request: PromptRequest,
     active_engine: EngineAdapter,
 ):
+    handlers = _handlers()
     return prompt_execution.build_prompt_progress_reporter(
         request,
         active_engine,
@@ -134,9 +149,9 @@ def _build_prompt_progress_reporter(
         assistant_label_fn=assistant_label,
     )
 
-def _process_prompt_request(request: PromptRequest) -> None:
-    prompt_execution.process_prompt_request(
-        request,
+
+def _build_prompt_execution_runtime(handlers):
+    return prompt_execution.build_prompt_execution_runtime(
         progress_reporter_cls=handlers.ProgressReporter,
         state_repository_cls=StateRepository,
         codex_engine_adapter_factory=CodexEngineAdapter,
@@ -148,8 +163,48 @@ def _process_prompt_request(request: PromptRequest) -> None:
         execute_prompt_with_retry_fn=handlers.execute_prompt_with_retry,
         finalize_prompt_success_fn=handlers.finalize_prompt_success,
         finalize_request_progress_fn=finalize_request_progress,
-        emit_event_fn=emit_event,
+        emit_event_fn=_emit_event,
     )
+
+
+def _build_youtube_processing_runtime(handlers):
+    return special_request_processing.build_youtube_processing_runtime(
+        build_progress_reporter_fn=build_progress_reporter,
+        build_engine_progress_context_label_fn=build_engine_progress_context_label,
+        state_repository_cls=StateRepository,
+        codex_engine_adapter_factory=CodexEngineAdapter,
+        send_canceled_response_fn=send_canceled_response,
+        run_youtube_analyzer_fn=handlers.run_youtube_analyzer,
+        build_youtube_transcript_output_fn=handlers.build_youtube_transcript_output,
+        deliver_output_and_emit_success_fn=deliver_output_and_emit_success,
+        build_youtube_unavailable_message_fn=handlers.build_youtube_unavailable_message,
+        execute_prompt_with_retry_fn=handlers.execute_prompt_with_retry,
+        build_youtube_summary_prompt_fn=handlers.build_youtube_summary_prompt,
+        finalize_prompt_success_fn=handlers.finalize_prompt_success,
+        finalize_request_progress_fn=finalize_request_progress,
+    )
+
+
+def _build_dishframed_processing_runtime(handlers):
+    return special_request_processing.build_dishframed_processing_runtime(
+        build_progress_reporter_fn=build_progress_reporter,
+        prepare_prompt_input_fn=handlers.prepare_prompt_input,
+        dishframed_usage_message=handlers.DISHFRAMED_USAGE_MESSAGE,
+        run_dishframed_cli_fn=handlers.run_dishframed_cli,
+        telegram_caption_limit=handlers.TELEGRAM_CAPTION_LIMIT,
+        infer_media_kind_fn=infer_media_kind,
+        send_chat_action_safe_fn=send_chat_action_safe,
+        finalize_request_progress_fn=finalize_request_progress,
+    )
+
+
+def _process_prompt_request(request: PromptRequest) -> None:
+    handlers = _handlers()
+    prompt_execution.process_prompt_request(
+        request,
+        runtime=_build_prompt_execution_runtime(handlers),
+    )
+
 
 def _process_message_worker_request(request: PromptRequest) -> None:
     try:
@@ -166,45 +221,32 @@ def _process_message_worker_request(request: PromptRequest) -> None:
             message_thread_id=request.message_thread_id,
         )
 
+
 def _process_youtube_request(request: YoutubeRequest) -> None:
+    handlers = _handlers()
     special_request_processing.process_youtube_request(
         request,
-        build_progress_reporter_fn=build_progress_reporter,
-        build_engine_progress_context_label_fn=build_engine_progress_context_label,
-        state_repository_cls=StateRepository,
-        codex_engine_adapter_factory=CodexEngineAdapter,
-        send_canceled_response_fn=send_canceled_response,
-        run_youtube_analyzer_fn=handlers.run_youtube_analyzer,
-        build_youtube_transcript_output_fn=handlers.build_youtube_transcript_output,
-        deliver_output_and_emit_success_fn=deliver_output_and_emit_success,
-        build_youtube_unavailable_message_fn=handlers.build_youtube_unavailable_message,
-        execute_prompt_with_retry_fn=handlers.execute_prompt_with_retry,
-        build_youtube_summary_prompt_fn=handlers.build_youtube_summary_prompt,
-        finalize_prompt_success_fn=handlers.finalize_prompt_success,
-        finalize_request_progress_fn=finalize_request_progress,
+        runtime=_build_youtube_processing_runtime(handlers),
     )
+
 
 def _process_youtube_worker_request(request: YoutubeRequest) -> None:
     special_request_processing.process_youtube_worker_request(
         request,
         process_youtube_request_fn=_process_youtube_request,
-        emit_event_fn=emit_event,
+        emit_event_fn=_emit_event,
         send_timeout_response_fn=send_timeout_response,
         emit_worker_exception_and_reply_fn=emit_worker_exception_and_reply,
     )
 
+
 def _process_dishframed_request(request: DishframedRequest) -> None:
+    handlers = _handlers()
     special_request_processing.process_dishframed_request(
         request,
-        build_progress_reporter_fn=build_progress_reporter,
-        prepare_prompt_input_fn=handlers.prepare_prompt_input,
-        dishframed_usage_message=handlers.DISHFRAMED_USAGE_MESSAGE,
-        run_dishframed_cli_fn=handlers.run_dishframed_cli,
-        telegram_caption_limit=handlers.TELEGRAM_CAPTION_LIMIT,
-        infer_media_kind_fn=infer_media_kind,
-        send_chat_action_safe_fn=send_chat_action_safe,
-        finalize_request_progress_fn=finalize_request_progress,
+        runtime=_build_dishframed_processing_runtime(handlers),
     )
+
 
 def _process_dishframed_worker_request(request: DishframedRequest) -> None:
     special_request_processing.process_dishframed_worker_request(

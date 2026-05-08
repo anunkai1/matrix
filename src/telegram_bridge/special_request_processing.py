@@ -1,6 +1,7 @@
 import logging
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from typing import List
 
 from telegram_bridge.engine_adapter import CodexEngineAdapter
@@ -8,8 +9,37 @@ from telegram_bridge.executor import ExecutorCancelledError
 from telegram_bridge.handler_models import DishframedRequest, YoutubeRequest
 from telegram_bridge.state_store import StateRepository
 
-def process_youtube_request(
-    request: YoutubeRequest,
+
+@dataclass(frozen=True)
+class YoutubeProcessingRuntime:
+    build_progress_reporter_fn: object
+    build_engine_progress_context_label_fn: object
+    state_repository_cls: object
+    codex_engine_adapter_factory: object
+    send_canceled_response_fn: object
+    run_youtube_analyzer_fn: object
+    build_youtube_transcript_output_fn: object
+    deliver_output_and_emit_success_fn: object
+    build_youtube_unavailable_message_fn: object
+    execute_prompt_with_retry_fn: object
+    build_youtube_summary_prompt_fn: object
+    finalize_prompt_success_fn: object
+    finalize_request_progress_fn: object
+
+
+@dataclass(frozen=True)
+class DishframedProcessingRuntime:
+    build_progress_reporter_fn: object
+    prepare_prompt_input_fn: object
+    dishframed_usage_message: str
+    run_dishframed_cli_fn: object
+    telegram_caption_limit: int
+    infer_media_kind_fn: object
+    send_chat_action_safe_fn: object
+    finalize_request_progress_fn: object
+
+
+def build_youtube_processing_runtime(
     *,
     build_progress_reporter_fn,
     build_engine_progress_context_label_fn,
@@ -24,7 +54,92 @@ def process_youtube_request(
     build_youtube_summary_prompt_fn,
     finalize_prompt_success_fn,
     finalize_request_progress_fn,
+) -> YoutubeProcessingRuntime:
+    return YoutubeProcessingRuntime(
+        build_progress_reporter_fn=build_progress_reporter_fn,
+        build_engine_progress_context_label_fn=build_engine_progress_context_label_fn,
+        state_repository_cls=state_repository_cls,
+        codex_engine_adapter_factory=codex_engine_adapter_factory,
+        send_canceled_response_fn=send_canceled_response_fn,
+        run_youtube_analyzer_fn=run_youtube_analyzer_fn,
+        build_youtube_transcript_output_fn=build_youtube_transcript_output_fn,
+        deliver_output_and_emit_success_fn=deliver_output_and_emit_success_fn,
+        build_youtube_unavailable_message_fn=build_youtube_unavailable_message_fn,
+        execute_prompt_with_retry_fn=execute_prompt_with_retry_fn,
+        build_youtube_summary_prompt_fn=build_youtube_summary_prompt_fn,
+        finalize_prompt_success_fn=finalize_prompt_success_fn,
+        finalize_request_progress_fn=finalize_request_progress_fn,
+    )
+
+
+def build_dishframed_processing_runtime(
+    *,
+    build_progress_reporter_fn,
+    prepare_prompt_input_fn,
+    dishframed_usage_message: str,
+    run_dishframed_cli_fn,
+    telegram_caption_limit: int,
+    infer_media_kind_fn,
+    send_chat_action_safe_fn,
+    finalize_request_progress_fn,
+) -> DishframedProcessingRuntime:
+    return DishframedProcessingRuntime(
+        build_progress_reporter_fn=build_progress_reporter_fn,
+        prepare_prompt_input_fn=prepare_prompt_input_fn,
+        dishframed_usage_message=dishframed_usage_message,
+        run_dishframed_cli_fn=run_dishframed_cli_fn,
+        telegram_caption_limit=telegram_caption_limit,
+        infer_media_kind_fn=infer_media_kind_fn,
+        send_chat_action_safe_fn=send_chat_action_safe_fn,
+        finalize_request_progress_fn=finalize_request_progress_fn,
+    )
+
+def process_youtube_request(
+    request: YoutubeRequest,
+    *,
+    runtime: YoutubeProcessingRuntime | None = None,
+    build_progress_reporter_fn=None,
+    build_engine_progress_context_label_fn=None,
+    state_repository_cls=StateRepository,
+    codex_engine_adapter_factory=CodexEngineAdapter,
+    send_canceled_response_fn=None,
+    run_youtube_analyzer_fn=None,
+    build_youtube_transcript_output_fn=None,
+    deliver_output_and_emit_success_fn=None,
+    build_youtube_unavailable_message_fn=None,
+    execute_prompt_with_retry_fn=None,
+    build_youtube_summary_prompt_fn=None,
+    finalize_prompt_success_fn=None,
+    finalize_request_progress_fn=None,
 ) -> None:
+    runtime = runtime or build_youtube_processing_runtime(
+        build_progress_reporter_fn=build_progress_reporter_fn,
+        build_engine_progress_context_label_fn=build_engine_progress_context_label_fn,
+        state_repository_cls=state_repository_cls,
+        codex_engine_adapter_factory=codex_engine_adapter_factory,
+        send_canceled_response_fn=send_canceled_response_fn,
+        run_youtube_analyzer_fn=run_youtube_analyzer_fn,
+        build_youtube_transcript_output_fn=build_youtube_transcript_output_fn,
+        deliver_output_and_emit_success_fn=deliver_output_and_emit_success_fn,
+        build_youtube_unavailable_message_fn=build_youtube_unavailable_message_fn,
+        execute_prompt_with_retry_fn=execute_prompt_with_retry_fn,
+        build_youtube_summary_prompt_fn=build_youtube_summary_prompt_fn,
+        finalize_prompt_success_fn=finalize_prompt_success_fn,
+        finalize_request_progress_fn=finalize_request_progress_fn,
+    )
+    build_progress_reporter_fn = runtime.build_progress_reporter_fn
+    build_engine_progress_context_label_fn = runtime.build_engine_progress_context_label_fn
+    state_repository_cls = runtime.state_repository_cls
+    codex_engine_adapter_factory = runtime.codex_engine_adapter_factory
+    send_canceled_response_fn = runtime.send_canceled_response_fn
+    run_youtube_analyzer_fn = runtime.run_youtube_analyzer_fn
+    build_youtube_transcript_output_fn = runtime.build_youtube_transcript_output_fn
+    deliver_output_and_emit_success_fn = runtime.deliver_output_and_emit_success_fn
+    build_youtube_unavailable_message_fn = runtime.build_youtube_unavailable_message_fn
+    execute_prompt_with_retry_fn = runtime.execute_prompt_with_retry_fn
+    build_youtube_summary_prompt_fn = runtime.build_youtube_summary_prompt_fn
+    finalize_prompt_success_fn = runtime.finalize_prompt_success_fn
+    finalize_request_progress_fn = runtime.finalize_request_progress_fn
     active_engine = request.engine or codex_engine_adapter_factory()
     state_repo = state_repository_cls(request.state)
     cleanup_paths: List[str] = []
@@ -186,15 +301,34 @@ def process_youtube_worker_request(
 def process_dishframed_request(
     request: DishframedRequest,
     *,
-    build_progress_reporter_fn,
-    prepare_prompt_input_fn,
-    dishframed_usage_message: str,
-    run_dishframed_cli_fn,
-    telegram_caption_limit: int,
-    infer_media_kind_fn,
-    send_chat_action_safe_fn,
-    finalize_request_progress_fn,
+    runtime: DishframedProcessingRuntime | None = None,
+    build_progress_reporter_fn=None,
+    prepare_prompt_input_fn=None,
+    dishframed_usage_message: str = "",
+    run_dishframed_cli_fn=None,
+    telegram_caption_limit: int = 0,
+    infer_media_kind_fn=None,
+    send_chat_action_safe_fn=None,
+    finalize_request_progress_fn=None,
 ) -> None:
+    runtime = runtime or build_dishframed_processing_runtime(
+        build_progress_reporter_fn=build_progress_reporter_fn,
+        prepare_prompt_input_fn=prepare_prompt_input_fn,
+        dishframed_usage_message=dishframed_usage_message,
+        run_dishframed_cli_fn=run_dishframed_cli_fn,
+        telegram_caption_limit=telegram_caption_limit,
+        infer_media_kind_fn=infer_media_kind_fn,
+        send_chat_action_safe_fn=send_chat_action_safe_fn,
+        finalize_request_progress_fn=finalize_request_progress_fn,
+    )
+    build_progress_reporter_fn = runtime.build_progress_reporter_fn
+    prepare_prompt_input_fn = runtime.prepare_prompt_input_fn
+    dishframed_usage_message = runtime.dishframed_usage_message
+    run_dishframed_cli_fn = runtime.run_dishframed_cli_fn
+    telegram_caption_limit = runtime.telegram_caption_limit
+    infer_media_kind_fn = runtime.infer_media_kind_fn
+    send_chat_action_safe_fn = runtime.send_chat_action_safe_fn
+    finalize_request_progress_fn = runtime.finalize_request_progress_fn
     cleanup_paths: List[str] = []
     cleanup_dirs: List[str] = []
     progress = build_progress_reporter_fn(
