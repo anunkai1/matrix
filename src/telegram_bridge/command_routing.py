@@ -4,6 +4,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 from telegram_bridge.channel_adapter import ChannelAdapter
 from telegram_bridge import command_callback_routing
+from telegram_bridge import command_known_routing
 from telegram_bridge import control_commands
 from telegram_bridge.diary_processing import build_diary_queue_status, build_diary_today_status
 from telegram_bridge.diary_store import diary_mode_enabled
@@ -177,35 +178,25 @@ def handle_known_command(
     command: Optional[str],
     raw_text: str,
 ) -> bool:
-    if command is None:
-        return False
-
-    ctx = KnownCommandContext(
-        state=state,
-        config=config,
-        client=client,
-        scope_key=scope_key,
-        chat_id=chat_id,
-        message_thread_id=message_thread_id,
-        message_id=message_id,
-        raw_text=raw_text,
+    return command_known_routing.handle_known_command(
+        state,
+        config,
+        client,
+        scope_key,
+        chat_id,
+        message_thread_id,
+        message_id,
+        command,
+        raw_text,
+        known_command_context_cls=KnownCommandContext,
+        help_command_aliases=HELP_COMMAND_ALIASES,
+        cancel_command_aliases=CANCEL_COMMAND_ALIASES,
+        handle_help_known_command=_handle_help_known_command,
+        handle_cancel_known_command=_handle_cancel_known_command,
+        known_command_handlers=KNOWN_COMMAND_HANDLERS,
+        diary_mode_enabled=diary_mode_enabled,
+        diary_command_handlers=DIARY_COMMAND_HANDLERS,
     )
-
-    if command in HELP_COMMAND_ALIASES:
-        return _handle_help_known_command(ctx)
-    if command in CANCEL_COMMAND_ALIASES:
-        return _handle_cancel_known_command(ctx)
-
-    handler = KNOWN_COMMAND_HANDLERS.get(command)
-    if handler is not None:
-        return handler(ctx)
-
-    if diary_mode_enabled(config):
-        diary_handler = DIARY_COMMAND_HANDLERS.get(command)
-        if diary_handler is not None:
-            return diary_handler(ctx)
-
-    return False
 
 def _handle_engine_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
     return engine_controls._build_engine_action_result(
