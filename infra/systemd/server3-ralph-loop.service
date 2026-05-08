@@ -1,0 +1,19 @@
+[Unit]
+Description=Server3 Ralph Optimization Loop
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+Environment=RALPH_LOOP_STATE_DIR=/var/lib/server3-ralph-loop
+Environment=RALPH_LOOP_TZ=Australia/Brisbane
+Environment=RALPH_LOOP_TELEGRAM_UNIT=telegram-architect-bridge.service
+Environment=RALPH_LOOP_WINDOW_HOURS=6
+EnvironmentFile=-/etc/default/server3-ralph-loop
+EnvironmentFile=-/etc/default/telegram-architect-bridge
+StateDirectory=server3-ralph-loop
+ExecStart=/usr/bin/python3 /home/architect/matrix/ops/ralph_loop/ralph_loop.py collect
