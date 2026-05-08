@@ -11,6 +11,7 @@ if str(SRC_ROOT) not in sys.path:
 from tests.telegram_bridge.helpers import FakeTelegramClient, make_config
 
 import telegram_bridge.engine_control_commands as engine_control_commands
+import telegram_bridge.engine_control_actions as engine_control_actions
 import telegram_bridge.engine_control_mutations as engine_control_mutations
 from telegram_bridge.handler_models import CallbackActionResult
 from telegram_bridge.state_store import State, StateRepository
@@ -245,6 +246,90 @@ class TestEngineControlCommands(unittest.TestCase):
 
         self.assertTrue(handled)
         self.assertIn("Unknown /pi command", client.messages[0][1])
+
+
+class TestEngineControlActions(unittest.TestCase):
+    def test_build_engine_action_result_uses_reset_branch_and_picker(self):
+        result = engine_control_actions.build_engine_action_result(
+            State(),
+            make_config(),
+            "tg:1",
+            "reset",
+            reset_engine_for_scope=lambda *_args: "reset-ok",
+            set_engine_for_scope=lambda *_args: self.fail("set branch should not run"),
+            build_engine_status_text=lambda *_args: self.fail("status branch should not run"),
+            build_engine_picker_markup=lambda *_args: {"inline_keyboard": [[{"text": "x"}]]},
+        )
+
+        self.assertEqual(result.text, "reset-ok")
+        self.assertIsInstance(result.reply_markup, dict)
+
+    def test_build_pi_provider_action_result_uses_menu_branch(self):
+        result = engine_control_actions.build_pi_provider_action_result(
+            State(),
+            make_config(),
+            "tg:1",
+            "menu",
+            set_pi_provider_for_scope=lambda *_args: self.fail("set branch should not run"),
+            build_engine_picker_markup=lambda *_args: self.fail("engine picker should not run"),
+            build_pi_providers_text=lambda *_args: "providers",
+            build_provider_picker_markup=lambda *_args: {"inline_keyboard": [[{"text": "provider"}]]},
+        )
+
+        self.assertEqual(result.text, "providers")
+        self.assertEqual(result.reply_markup["inline_keyboard"][0][0]["text"], "provider")
+
+    def test_build_model_action_result_uses_status_for_unknown_engine(self):
+        result = engine_control_actions.build_model_action_result(
+            State(),
+            make_config(),
+            "tg:1",
+            "set",
+            value="anything",
+            page_index=2,
+            model_active_engine_name=lambda *_args: "gemma",
+            reset_model_for_scope=lambda *_args: self.fail("reset branch should not run"),
+            set_codex_model_for_scope=lambda *_args: self.fail("codex branch should not run"),
+            set_pi_model_for_scope=lambda *_args: self.fail("pi branch should not run"),
+            build_model_status_text=lambda *_args: "status-text",
+            build_model_picker_markup=lambda *_args, **kwargs: {"page": kwargs["page_index"]},
+        )
+
+        self.assertEqual(result.text, "status-text")
+        self.assertEqual(result.reply_markup, {"page": 2})
+
+    def test_build_provider_picker_markup_falls_back_to_static_choices(self):
+        result = engine_control_actions.build_provider_picker_markup(
+            State(),
+            make_config(),
+            "tg:1",
+            view_builder=lambda *_args: (_ for _ in ()).throw(RuntimeError("boom")),
+            build_engine_runtime_config=lambda *_args: SimpleNamespace(pi_provider="deepseek"),
+            configured_pi_provider=lambda runtime_config: runtime_config.pi_provider,
+            provider_choices=[("venice", "Venice"), ("deepseek", "DeepSeek")],
+            provider_callback_data=lambda action, value: f"{action}:{value}",
+            compact_inline_keyboard=lambda buttons, columns=2: {
+                "inline_keyboard": [[{"text": label, "callback_data": data} for label, data in buttons[:columns]]]
+            },
+            engine_callback_data=lambda engine_name, action: f"{engine_name}:{action}",
+        )
+
+        self.assertIsInstance(result, dict)
+        callback_values = [button["callback_data"] for row in result["inline_keyboard"] for button in row]
+        self.assertIn("set:venice", callback_values)
+        self.assertIn("set:deepseek", callback_values)
+        self.assertIn("pi:menu", callback_values)
+
+    def test_build_model_picker_markup_returns_none_on_view_failure(self):
+        result = engine_control_actions.build_model_picker_markup(
+            State(),
+            make_config(),
+            "tg:1",
+            page_index=0,
+            view_builder=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+        )
+
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ import subprocess
 from typing import Dict, List, Optional, Tuple
 
 from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge import engine_control_actions
 from telegram_bridge import engine_control_commands
 from telegram_bridge import engine_control_views
 from telegram_bridge import engine_control_mutations
@@ -143,15 +144,16 @@ def _build_engine_action_result(
     action: str,
     engine_name: str = "",
 ) -> CallbackActionResult:
-    if action == "reset":
-        text = _reset_engine_for_scope(state, config, scope_key)
-    elif action == "set":
-        text = _set_engine_for_scope(state, config, scope_key, engine_name)
-    else:
-        text = build_engine_status_text(state, config, scope_key)
-    return CallbackActionResult(
-        text=text,
-        reply_markup=_build_engine_picker_markup(state, config, scope_key),
+    return engine_control_actions.build_engine_action_result(
+        state,
+        config,
+        scope_key,
+        action,
+        engine_name,
+        reset_engine_for_scope=_reset_engine_for_scope,
+        set_engine_for_scope=_set_engine_for_scope,
+        build_engine_status_text=build_engine_status_text,
+        build_engine_picker_markup=_build_engine_picker_markup,
     )
 
 def _build_pi_provider_action_result(
@@ -161,13 +163,17 @@ def _build_pi_provider_action_result(
     action: str,
     value: str = "",
 ) -> CallbackActionResult:
-    if action == "set":
-        text = _set_pi_provider_for_scope(state, config, scope_key, value)
-        reply_markup = _build_engine_picker_markup(state, config, scope_key)
-    else:
-        text = build_pi_providers_text(state, config, scope_key)
-        reply_markup = _build_provider_picker_markup(state, config, scope_key)
-    return CallbackActionResult(text=text, reply_markup=reply_markup)
+    return engine_control_actions.build_pi_provider_action_result(
+        state,
+        config,
+        scope_key,
+        action,
+        value,
+        set_pi_provider_for_scope=_set_pi_provider_for_scope,
+        build_engine_picker_markup=_build_engine_picker_markup,
+        build_pi_providers_text=build_pi_providers_text,
+        build_provider_picker_markup=_build_provider_picker_markup,
+    )
 
 def _build_model_action_result(
     state: State,
@@ -179,26 +185,20 @@ def _build_model_action_result(
     value: str = "",
     page_index: Optional[int] = None,
 ) -> CallbackActionResult:
-    active_engine = engine_name or _model_active_engine_name(state, config, scope_key)
-    if action == "reset":
-        text = _reset_model_for_scope(state, config, scope_key, active_engine)
-    elif action == "set":
-        if active_engine == "codex":
-            text = _set_codex_model_for_scope(state, config, scope_key, value)
-        elif active_engine == "pi":
-            text = _set_pi_model_for_scope(state, config, scope_key, value)
-        else:
-            text = build_model_status_text(state, config, scope_key)
-    else:
-        text = build_model_status_text(state, config, scope_key)
-    return CallbackActionResult(
-        text=text,
-        reply_markup=_build_model_picker_markup(
-            state,
-            config,
-            scope_key,
-            page_index=page_index,
-        ),
+    return engine_control_actions.build_model_action_result(
+        state,
+        config,
+        scope_key,
+        action,
+        engine_name=engine_name,
+        value=value,
+        page_index=page_index,
+        model_active_engine_name=_model_active_engine_name,
+        reset_model_for_scope=_reset_model_for_scope,
+        set_codex_model_for_scope=_set_codex_model_for_scope,
+        set_pi_model_for_scope=_set_pi_model_for_scope,
+        build_model_status_text=build_model_status_text,
+        build_model_picker_markup=_build_model_picker_markup,
     )
 
 def _build_effort_action_result(
@@ -208,15 +208,16 @@ def _build_effort_action_result(
     action: str,
     value: str = "",
 ) -> CallbackActionResult:
-    if action == "reset":
-        text = _reset_codex_effort_for_scope(state, config, scope_key)
-    elif action == "set":
-        text = _set_codex_effort_for_scope(state, config, scope_key, value)
-    else:
-        text = build_effort_status_text(state, config, scope_key)
-    return CallbackActionResult(
-        text=text,
-        reply_markup=_build_effort_picker_markup(state, config, scope_key),
+    return engine_control_actions.build_effort_action_result(
+        state,
+        config,
+        scope_key,
+        action,
+        value,
+        reset_codex_effort_for_scope=_reset_codex_effort_for_scope,
+        set_codex_effort_for_scope=_set_codex_effort_for_scope,
+        build_effort_status_text=build_effort_status_text,
+        build_effort_picker_markup=_build_effort_picker_markup,
     )
 
 def handle_engine_command(
@@ -286,11 +287,15 @@ def _build_model_picker_markup(
     *,
     page_index: Optional[int] = None,
 ) -> Optional[Dict[str, object]]:
-    try:
-        return engine_control_views.build_model_picker_markup(
-            state,
-            config,
-            scope_key,
+    return engine_control_actions.build_model_picker_markup(
+        state,
+        config,
+        scope_key,
+        page_index=page_index,
+        view_builder=lambda current_state, current_config, current_scope_key, *, page_index=None: engine_control_views.build_model_picker_markup(
+            current_state,
+            current_config,
+            current_scope_key,
             page_index=page_index,
             model_active_engine_name=_model_active_engine_name,
             build_engine_runtime_config=build_engine_runtime_config,
@@ -298,46 +303,45 @@ def _build_model_picker_markup(
             load_codex_model_choices=_load_codex_model_choices,
             pi_provider_model_names=_pi_provider_model_names,
             configured_pi_model=configured_pi_model,
-        )
-    except (OSError, RuntimeError, subprocess.TimeoutExpired):
-        return None
+        ),
+    )
 
 def _build_provider_picker_markup(state: State, config, scope_key: str) -> Optional[Dict[str, object]]:
-    try:
-        return engine_control_views.build_provider_picker_markup(
-            state,
-            config,
-            scope_key,
-            build_engine_runtime_config=build_engine_runtime_config,
-            configured_pi_provider=configured_pi_provider,
-            pi_available_provider_names=_pi_available_provider_names,
-        )
-    except (OSError, RuntimeError, subprocess.TimeoutExpired):
-        display_config = build_engine_runtime_config(state, config, scope_key, "pi")
-        current_provider = configured_pi_provider(display_config)
-        provider_names = [provider for provider, _description in PI_PROVIDER_CHOICES]
-        buttons: List[Tuple[str, str]] = []
-        for provider_name in provider_names:
-            label = f"{provider_name} *" if provider_name == current_provider else provider_name
-            buttons.append((label, _provider_callback_data("set", provider_name)))
-        rows = _compact_inline_keyboard(buttons, columns=2).get("inline_keyboard", [])
-        rows.append(
-            [
-                {"text": "Back to Engine", "callback_data": _engine_callback_data("pi", "menu")},
-            ]
-        )
-        return {"inline_keyboard": rows} if rows else None
-
-def _build_effort_picker_markup(state: State, config, scope_key: str) -> Optional[Dict[str, object]]:
-    return engine_control_views.build_effort_picker_markup(
+    return engine_control_actions.build_provider_picker_markup(
         state,
         config,
         scope_key,
-        model_active_engine_name=_model_active_engine_name,
+        view_builder=lambda current_state, current_config, current_scope_key: engine_control_views.build_provider_picker_markup(
+            current_state,
+            current_config,
+            current_scope_key,
+            build_engine_runtime_config=build_engine_runtime_config,
+            configured_pi_provider=configured_pi_provider,
+            pi_available_provider_names=_pi_available_provider_names,
+        ),
         build_engine_runtime_config=build_engine_runtime_config,
-        configured_codex_model=configured_codex_model,
-        configured_codex_reasoning_effort=configured_codex_reasoning_effort,
-        supported_codex_efforts_for_model=_supported_codex_efforts_for_model,
+        configured_pi_provider=configured_pi_provider,
+        provider_choices=PI_PROVIDER_CHOICES,
+        provider_callback_data=_provider_callback_data,
+        compact_inline_keyboard=_compact_inline_keyboard,
+        engine_callback_data=_engine_callback_data,
+    )
+
+def _build_effort_picker_markup(state: State, config, scope_key: str) -> Optional[Dict[str, object]]:
+    return engine_control_actions.build_effort_picker_markup(
+        state,
+        config,
+        scope_key,
+        view_builder=lambda current_state, current_config, current_scope_key: engine_control_views.build_effort_picker_markup(
+            current_state,
+            current_config,
+            current_scope_key,
+            model_active_engine_name=_model_active_engine_name,
+            build_engine_runtime_config=build_engine_runtime_config,
+            configured_codex_model=configured_codex_model,
+            configured_codex_reasoning_effort=configured_codex_reasoning_effort,
+            supported_codex_efforts_for_model=_supported_codex_efforts_for_model,
+        ),
     )
 
 def build_model_status_text(state: State, config, scope_key: str) -> str:
