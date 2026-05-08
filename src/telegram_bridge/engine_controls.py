@@ -1,9 +1,9 @@
-import copy
 import subprocess
 from typing import Dict, List, Optional, Tuple
 
 from telegram_bridge.channel_adapter import ChannelAdapter
 from telegram_bridge import engine_control_views
+from telegram_bridge import engine_control_mutations
 from telegram_bridge.engine_catalog import (
     ENGINE_NAME_ALIASES,
     PI_PROVIDER_ALIASES,
@@ -101,19 +101,24 @@ def _build_engine_picker_markup(state: State, config, scope_key: str) -> Optiona
     )
 
 def _set_engine_for_scope(state: State, config, scope_key: str, engine_name: str) -> str:
-    normalized_engine = normalize_engine_name(engine_name)
-    if normalized_engine == "venice" and not str(getattr(config, "venice_api_key", "") or "").strip():
-        return "Venice engine is configured in the bridge, but VENICE_API_KEY is missing."
-    allowed = selectable_engine_plugins(config)
-    if normalized_engine not in allowed:
-        return f"Unknown or unavailable engine: {normalized_engine}\nSelectable engines: {', '.join(allowed)}"
-    set_chat_engine(state, scope_key, normalized_engine)
-    return f"This chat now uses engine: {normalized_engine}"
+    return engine_control_mutations.set_engine_for_scope(
+        state,
+        config,
+        scope_key,
+        engine_name,
+        normalize_engine_name=normalize_engine_name,
+        selectable_engine_plugins=selectable_engine_plugins,
+        set_chat_engine=set_chat_engine,
+    )
 
 def _reset_engine_for_scope(state: State, config, scope_key: str) -> str:
-    removed = clear_chat_engine(state, scope_key)
-    suffix = "removed" if removed else "already using default"
-    return f"Engine override {suffix}. This chat now uses {configured_default_engine(config)}."
+    return engine_control_mutations.reset_engine_for_scope(
+        state,
+        config,
+        scope_key,
+        clear_chat_engine=clear_chat_engine,
+        configured_default_engine=configured_default_engine,
+    )
 
 def _send_control_result(
     client: ChannelAdapter,
@@ -497,102 +502,90 @@ def build_effort_list_text(state: State, config, scope_key: str) -> str:
     )
 
 def _set_codex_model_for_scope(state: State, config, scope_key: str, model_name: str) -> str:
-    resolved_model = _resolve_codex_model_candidate(model_name)
-    set_chat_codex_model(state, scope_key, resolved_model)
-    updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
-    current_effort = configured_codex_reasoning_effort(updated_config)
-    if current_effort and _resolve_codex_effort_candidate(resolved_model, current_effort) is None:
-        supported_efforts = _supported_codex_efforts_for_model(resolved_model)
-        if supported_efforts:
-            set_chat_codex_effort(state, scope_key, supported_efforts[0])
-            updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
-    return (
-        f"Codex model for this chat is now {configured_codex_model(updated_config) or '(default)'} "
-        f"({_build_codex_model_source_text(state, scope_key)})."
+    return engine_control_mutations.set_codex_model_for_scope(
+        state,
+        config,
+        scope_key,
+        model_name,
+        resolve_codex_model_candidate=_resolve_codex_model_candidate,
+        set_chat_codex_model=set_chat_codex_model,
+        build_engine_runtime_config=build_engine_runtime_config,
+        configured_codex_model=configured_codex_model,
+        configured_codex_reasoning_effort=configured_codex_reasoning_effort,
+        resolve_codex_effort_candidate=_resolve_codex_effort_candidate,
+        supported_codex_efforts_for_model=_supported_codex_efforts_for_model,
+        set_chat_codex_effort=set_chat_codex_effort,
+        build_codex_model_source_text=_build_codex_model_source_text,
     )
 
 def _reset_model_for_scope(state: State, config, scope_key: str, active_engine: str) -> str:
-    if active_engine == "codex":
-        removed = clear_chat_codex_model(state, scope_key)
-        updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
-        source = "chat override cleared" if removed else "no chat override was set"
-        return (
-            f"{source}. Codex model is now {configured_codex_model(updated_config) or '(default)'} "
-            f"({_build_codex_model_source_text(state, scope_key)})."
-        )
-    if active_engine == "pi":
-        removed = clear_chat_pi_model(state, scope_key)
-        updated_config = build_engine_runtime_config(state, config, scope_key, "pi")
-        source = "chat override cleared" if removed else "no chat override was set"
-        return (
-            f"{source}. Pi model is now {configured_pi_model(updated_config)} "
-            f"({_build_pi_model_source_text(state, scope_key)})."
-        )
-    return build_model_status_text(state, config, scope_key)
+    return engine_control_mutations.reset_model_for_scope(
+        state,
+        config,
+        scope_key,
+        active_engine,
+        clear_chat_codex_model=clear_chat_codex_model,
+        clear_chat_pi_model=clear_chat_pi_model,
+        build_engine_runtime_config=build_engine_runtime_config,
+        configured_codex_model=configured_codex_model,
+        configured_pi_model=configured_pi_model,
+        build_codex_model_source_text=_build_codex_model_source_text,
+        build_pi_model_source_text=_build_pi_model_source_text,
+        build_model_status_text=build_model_status_text,
+    )
 
 def _set_pi_provider_for_scope(state: State, config, scope_key: str, provider_name: str) -> str:
-    normalized_provider = normalize_pi_provider_name(provider_name)
-    temp_config = copy.copy(config)
-    temp_config.pi_provider = normalized_provider
-    available_models = _pi_provider_model_names(temp_config)
-    if not available_models:
-        return (
-            f"Provider `{normalized_provider}` did not report any models.\n"
-            "Pi provider was not changed."
-        )
-    current_model = get_chat_pi_model(state, scope_key)
-    resolved_model = _resolve_pi_model_candidate(available_models, current_model or "")
-    if resolved_model is None:
-        resolved_model = available_models[0]
-    set_chat_pi_provider(state, scope_key, normalized_provider)
-    set_chat_pi_model(state, scope_key, resolved_model)
-    return (
-        f"Pi provider for this chat is now {normalized_provider}. "
-        f"Pi model is now {resolved_model}."
+    return engine_control_mutations.set_pi_provider_for_scope(
+        state,
+        config,
+        scope_key,
+        provider_name,
+        normalize_pi_provider_name=normalize_pi_provider_name,
+        pi_provider_model_names=_pi_provider_model_names,
+        get_chat_pi_model=get_chat_pi_model,
+        resolve_pi_model_candidate=_resolve_pi_model_candidate,
+        set_chat_pi_provider=set_chat_pi_provider,
+        set_chat_pi_model=set_chat_pi_model,
     )
 
 def _set_pi_model_for_scope(state: State, config, scope_key: str, model_name: str) -> str:
-    display_config = build_engine_runtime_config(state, config, scope_key, "pi")
-    available_models = _pi_provider_model_names(display_config)
-    resolved_model = _resolve_pi_model_candidate(available_models, model_name)
-    if resolved_model is None:
-        provider = configured_pi_provider(display_config)
-        return (
-            f"Model not available for Pi provider `{provider}`: `{model_name}`\n"
-            "Use /model list to see the allowed model names."
-        )
-    set_chat_pi_model(state, scope_key, resolved_model)
-    updated_config = build_engine_runtime_config(state, config, scope_key, "pi")
-    return (
-        f"Pi model for this chat is now {configured_pi_model(updated_config)} "
-        f"({_build_pi_model_source_text(state, scope_key)})."
+    return engine_control_mutations.set_pi_model_for_scope(
+        state,
+        config,
+        scope_key,
+        model_name,
+        build_engine_runtime_config=build_engine_runtime_config,
+        pi_provider_model_names=_pi_provider_model_names,
+        resolve_pi_model_candidate=_resolve_pi_model_candidate,
+        configured_pi_provider=configured_pi_provider,
+        set_chat_pi_model=set_chat_pi_model,
+        configured_pi_model=configured_pi_model,
+        build_pi_model_source_text=_build_pi_model_source_text,
     )
 
 def _set_codex_effort_for_scope(state: State, config, scope_key: str, effort_name: str) -> str:
-    display_config = build_engine_runtime_config(state, config, scope_key, "codex")
-    current_model = configured_codex_model(display_config)
-    resolved_effort = _resolve_codex_effort_candidate(current_model, effort_name)
-    if resolved_effort is None:
-        return (
-            f"Reasoning effort not supported for Codex model `{current_model or '(default)'}`: "
-            f"`{effort_name}`\nUse /effort list to see the allowed effort names."
-        )
-    set_chat_codex_effort(state, scope_key, resolved_effort)
-    updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
-    return (
-        f"Codex reasoning effort for this chat is now "
-        f"{configured_codex_reasoning_effort(updated_config) or '(default)'} "
-        f"({_build_codex_effort_source_text(state, scope_key)})."
+    return engine_control_mutations.set_codex_effort_for_scope(
+        state,
+        config,
+        scope_key,
+        effort_name,
+        build_engine_runtime_config=build_engine_runtime_config,
+        configured_codex_model=configured_codex_model,
+        resolve_codex_effort_candidate=_resolve_codex_effort_candidate,
+        set_chat_codex_effort=set_chat_codex_effort,
+        configured_codex_reasoning_effort=configured_codex_reasoning_effort,
+        build_codex_effort_source_text=_build_codex_effort_source_text,
     )
 
 def _reset_codex_effort_for_scope(state: State, config, scope_key: str) -> str:
-    removed = clear_chat_codex_effort(state, scope_key)
-    updated_config = build_engine_runtime_config(state, config, scope_key, "codex")
-    source = "chat override cleared" if removed else "no chat override was set"
-    return (
-        f"{source}. Codex reasoning effort is now "
-        f"{configured_codex_reasoning_effort(updated_config) or '(default)'} "
-        f"({_build_codex_effort_source_text(state, scope_key)})."
+    return engine_control_mutations.reset_codex_effort_for_scope(
+        state,
+        config,
+        scope_key,
+        clear_chat_codex_effort=clear_chat_codex_effort,
+        build_engine_runtime_config=build_engine_runtime_config,
+        configured_codex_reasoning_effort=configured_codex_reasoning_effort,
+        build_codex_effort_source_text=_build_codex_effort_source_text,
     )
 
 def _parse_page_index(raw_value: str) -> Optional[int]:
@@ -702,13 +695,13 @@ def resolve_engine_for_scope(
     scope_key: str,
     default_engine: Optional[EngineAdapter],
 ) -> EngineAdapter:
-    selected = get_chat_engine(state, scope_key)
-    if not selected:
-        if default_engine is not None:
-            return default_engine
-        return build_default_plugin_registry().build_engine(configured_default_engine(config))
-    engine_name = normalize_engine_name(selected)
-    if default_engine is not None and getattr(default_engine, "engine_name", "") == engine_name:
-        return default_engine
-    registry = build_default_plugin_registry()
-    return registry.build_engine(engine_name)
+    return engine_control_mutations.resolve_engine_for_scope(
+        state,
+        config,
+        scope_key,
+        default_engine,
+        get_chat_engine=get_chat_engine,
+        normalize_engine_name=normalize_engine_name,
+        build_default_plugin_registry=build_default_plugin_registry,
+        configured_default_engine=configured_default_engine,
+    )

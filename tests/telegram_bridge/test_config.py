@@ -2,6 +2,7 @@
 
 import io
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -520,6 +521,71 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(loaded["threads"]["path"], state_paths["chat_threads"])
         self.assertEqual(loaded["in_flight"]["path"], state_paths["in_flight_requests"])
 
+    def test_load_saved_update_offset_ignores_invalid_and_negative_values(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            offset_path = Path(tmpdir) / "telegram_update_offset.txt"
+
+            offset_path.write_text("not-a-number\n", encoding="utf-8")
+            self.assertEqual(
+                bridge_state_bootstrap.load_saved_update_offset(str(offset_path)),
+                0,
+            )
+
+            offset_path.write_text("-9\n", encoding="utf-8")
+            self.assertEqual(
+                bridge_state_bootstrap.load_saved_update_offset(str(offset_path)),
+                0,
+            )
+
+    def test_persist_saved_update_offset_writes_sanitized_value(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            offset_path = Path(tmpdir) / "telegram_update_offset.txt"
+
+            bridge_state_bootstrap.persist_saved_update_offset(str(offset_path), -4)
+
+            self.assertEqual(offset_path.read_text(encoding="utf-8"), "0\n")
+
+    def test_load_state_mapping_or_empty_quarantines_and_emits_on_failure(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_path = Path(tmpdir) / "chat_threads.json"
+            state_path.write_text("{}", encoding="utf-8")
+
+            with (
+                mock.patch.object(
+                    bridge_state_bootstrap,
+                    "quarantine_corrupt_state_file",
+                    return_value=f"{state_path}.corrupt",
+                ) as quarantine,
+                mock.patch.object(bridge_state_bootstrap, "emit_event") as emit_event,
+            ):
+                loaded = bridge_state_bootstrap.load_state_mapping_or_empty(
+                    str(state_path),
+                    mock.Mock(side_effect=RuntimeError("boom")),
+                    description="chat thread mappings",
+                )
+
+            self.assertEqual(loaded, {})
+            quarantine.assert_called_once_with(str(state_path))
+            emit_event.assert_called_once_with(
+                "bridge.state_load_failed",
+                level=logging.WARNING,
+                fields={"state_file": str(state_path)},
+            )
+
+    def test_load_canonical_session_bootstrap_returns_disabled_when_feature_off(self):
+        config = make_config(canonical_sessions_enabled=False)
+
+        loaded, source = bridge_state_bootstrap.load_canonical_session_bootstrap(
+            config,
+            {"chat_sessions": "/tmp/chat_sessions.json"},
+            loaded_threads={1: "thread-1"},
+            loaded_worker_sessions={},
+            loaded_in_flight={},
+        )
+
+        self.assertEqual(loaded, {})
+        self.assertEqual(source, "disabled")
+
     def test_load_canonical_session_bootstrap_uses_json_when_sqlite_disabled(self):
         config = make_config(
             canonical_sessions_enabled=True,
@@ -599,3 +665,122 @@ class TestConfig(unittest.TestCase):
         )
         self.assertIs(loaded, legacy_sessions)
         self.assertEqual(source, "sqlite_imported_from_legacy_json")
+
+    def test_load_canonical_session_bootstrap_uses_existing_sqlite_sessions(self):
+        config = make_config(
+            canonical_sessions_enabled=True,
+            canonical_sqlite_enabled=True,
+            canonical_sqlite_path="/tmp/canonical.sqlite3",
+        )
+        state_paths = {"chat_sessions": "/tmp/chat_sessions.json"}
+        sqlite_sessions = {"tg:1": bridge.CanonicalSession(thread_id="sqlite-thread")}
+
+        with mock.patch.object(
+            bridge_state_bootstrap,
+            "load_canonical_sessions_sqlite",
+            return_value=sqlite_sessions,
+        ):
+            loaded, source = bridge_state_bootstrap.load_canonical_session_bootstrap(
+                config,
+                state_paths,
+                loaded_threads={},
+                loaded_worker_sessions={},
+                loaded_in_flight={},
+            )
+
+        self.assertIs(loaded, sqlite_sessions)
+        self.assertEqual(source, "sqlite")
+
+    def test_load_canonical_session_bootstrap_returns_reset_source_after_sqlite_load_failure(self):
+        config = make_config(
+            canonical_sessions_enabled=True,
+            canonical_sqlite_enabled=True,
+            canonical_sqlite_path="/tmp/canonical.sqlite3",
+        )
+        state_paths = {"chat_sessions": "/tmp/chat_sessions.json"}
+
+        with (
+            mock.patch.object(
+                bridge_state_bootstrap,
+                "load_canonical_sessions_sqlite",
+                side_effect=RuntimeError("sqlite failed"),
+            ),
+            mock.patch.object(
+                bridge_state_bootstrap,
+                "_load_canonical_json_with_fallback",
+                return_value=({}, "none"),
+            ),
+            mock.patch.object(
+                bridge_state_bootstrap,
+                "build_canonical_sessions_from_legacy",
+                return_value={},
+            ),
+            mock.patch.object(
+                bridge_state_bootstrap,
+                "load_or_import_canonical_sessions_sqlite",
+                return_value=({}, False),
+            ),
+            mock.patch.object(
+                bridge_state_bootstrap,
+                "quarantine_corrupt_state_file",
+                return_value="/tmp/canonical.sqlite3.corrupt",
+            ),
+            mock.patch.object(bridge_state_bootstrap, "emit_event"),
+        ):
+            loaded, source = bridge_state_bootstrap.load_canonical_session_bootstrap(
+                config,
+                state_paths,
+                loaded_threads={},
+                loaded_worker_sessions={},
+                loaded_in_flight={},
+            )
+
+        self.assertEqual(loaded, {})
+        self.assertEqual(source, "sqlite_reset_after_load_failure")
+
+    def test_load_canonical_session_bootstrap_returns_reset_source_after_import_failure(self):
+        config = make_config(
+            canonical_sessions_enabled=True,
+            canonical_sqlite_enabled=True,
+            canonical_sqlite_path="/tmp/canonical.sqlite3",
+        )
+        state_paths = {"chat_sessions": "/tmp/chat_sessions.json"}
+
+        with (
+            mock.patch.object(
+                bridge_state_bootstrap,
+                "load_canonical_sessions_sqlite",
+                return_value={},
+            ),
+            mock.patch.object(
+                bridge_state_bootstrap,
+                "_load_canonical_json_with_fallback",
+                return_value=({}, "none"),
+            ),
+            mock.patch.object(
+                bridge_state_bootstrap,
+                "build_canonical_sessions_from_legacy",
+                return_value={},
+            ),
+            mock.patch.object(
+                bridge_state_bootstrap,
+                "load_or_import_canonical_sessions_sqlite",
+                side_effect=RuntimeError("import failed"),
+            ),
+            mock.patch.object(
+                bridge_state_bootstrap,
+                "quarantine_corrupt_state_file",
+                return_value="/tmp/canonical.sqlite3.corrupt",
+            ),
+            mock.patch.object(bridge_state_bootstrap, "emit_event"),
+        ):
+            loaded, source = bridge_state_bootstrap.load_canonical_session_bootstrap(
+                config,
+                state_paths,
+                loaded_threads={},
+                loaded_worker_sessions={},
+                loaded_in_flight={},
+            )
+
+        self.assertEqual(loaded, {})
+        self.assertEqual(source, "sqlite_reset_after_import_failure")
