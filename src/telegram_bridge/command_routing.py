@@ -3,6 +3,7 @@ import subprocess
 from typing import Callable, Dict, Optional, Tuple
 
 from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge import command_callback_routing
 from telegram_bridge import control_commands
 from telegram_bridge.diary_processing import build_diary_queue_status, build_diary_today_status
 from telegram_bridge.diary_store import diary_mode_enabled
@@ -255,7 +256,11 @@ def _resolve_callback_action_handler(
     kind: str,
     engine_name: str,
 ):
-    return CALLBACK_ACTION_HANDLERS.get((kind, engine_name)) or CALLBACK_ACTION_HANDLERS.get((kind, None))
+    return command_callback_routing.resolve_callback_action_handler(
+        kind,
+        engine_name,
+        callback_action_handlers=CALLBACK_ACTION_HANDLERS,
+    )
 
 def handle_callback_query(
     state: State,
@@ -263,73 +268,14 @@ def handle_callback_query(
     client: ChannelAdapter,
     update: Dict[str, object],
 ) -> bool:
-    message, conversation_scope, message_id, callback_query_id, callback_data = extract_callback_query_context(update)
-    if message is None or conversation_scope is None or not callback_query_id or not callback_data:
-        return False
-    chat_id = conversation_scope.chat_id
-    message_thread_id = conversation_scope.message_thread_id
-    scope_key = conversation_scope.scope_key
-    chat_obj = message.get("chat")
-    chat_type = chat_obj.get("type") if isinstance(chat_obj, dict) else None
-    is_private_chat = isinstance(chat_type, str) and chat_type == "private"
-    allow_private_unlisted = bool(getattr(config, "allow_private_chats_unlisted", False))
-    allow_group_unlisted = bool(getattr(config, "allow_group_chats_unlisted", False))
-    if chat_id not in config.allowed_chat_ids and not (
-        (allow_private_unlisted and is_private_chat) or (allow_group_unlisted and not is_private_chat)
-    ):
-        client.answer_callback_query(callback_query_id, text="Access denied.")
-        return True
-
-    parts = callback_data.split("|", 4)
-    if len(parts) < 4 or parts[0] != "cfg":
-        client.answer_callback_query(callback_query_id, text="Unknown action.")
-        return True
-    kind = parts[1]
-    engine_name = parts[2]
-    action = parts[3]
-    value = parts[4] if len(parts) > 4 else ""
-    ctx = CallbackActionContext(
-        state=state,
-        config=config,
-        client=client,
-        scope_key=scope_key,
-        chat_id=chat_id,
-        message_thread_id=message_thread_id,
-        message_id=message_id,
-        callback_query_id=callback_query_id,
-        kind=kind,
-        engine_name=engine_name,
-        action=action,
-        value=value,
+    return command_callback_routing.handle_callback_query(
+        state,
+        config,
+        client,
+        update,
+        extract_callback_query_context=extract_callback_query_context,
+        resolve_callback_action_handler_fn=_resolve_callback_action_handler,
+        callback_action_context_cls=CallbackActionContext,
+        callback_action_result_cls=CallbackActionResult,
+        brief_health_error=engine_controls._brief_health_error,
     )
-    handler = _resolve_callback_action_handler(kind, engine_name)
-
-    try:
-        if handler is not None:
-            result = handler(ctx)
-        else:
-            result = CallbackActionResult(
-                text="Unsupported action.",
-                toast_text="Unsupported action.",
-            )
-    except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-        result = CallbackActionResult(
-            text=f"Action failed.\nError: {engine_controls._brief_health_error(exc)}",
-            toast_text="Action failed.",
-        )
-
-    client.answer_callback_query(callback_query_id, text=result.toast_text)
-    if isinstance(message_id, int):
-        try:
-            client.edit_message(chat_id, message_id, result.text, reply_markup=result.reply_markup)
-            return True
-        except Exception:
-            logging.exception("Failed to edit callback menu message for chat_id=%s", chat_id)
-    client.send_message(
-        chat_id,
-        result.text,
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
-        reply_markup=result.reply_markup,
-    )
-    return True
