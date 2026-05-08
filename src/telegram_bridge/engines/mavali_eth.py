@@ -1,11 +1,16 @@
-import json
+import os
 import re
 import subprocess
+import sys
 import threading
+from pathlib import Path
 from typing import Optional
 
 from telegram_bridge.engines._base import ProgressCallback
-from telegram_bridge.executor import ExecutorCancelledError
+from telegram_bridge.engines.codex import CodexEngineAdapter
+from telegram_bridge.executor import ExecutorCancelledError, parse_executor_output
+
+
 class MavaliEthEngineAdapter:
     engine_name = "mavali_eth"
     _CONFIRM_INVITE_RE = re.compile(r"reply\s+`?confirm`?\s+to\s+execute", re.IGNORECASE)
@@ -41,6 +46,22 @@ class MavaliEthEngineAdapter:
             stderr="",
         )
 
+    def _ensure_runtime_import_path(self) -> None:
+        candidate_roots: list[Path] = []
+        runtime_root_raw = os.getenv("TELEGRAM_RUNTIME_ROOT", "").strip()
+        if runtime_root_raw:
+            candidate_roots.append(Path(runtime_root_raw).expanduser() / "src")
+        candidate_roots.append(Path("/home/architect/gitea-server2/mavali_eth/src"))
+        shared_src_root = Path(__file__).resolve().parents[2]
+        candidate_roots.append(shared_src_root)
+        for candidate in reversed(candidate_roots):
+            if not candidate.is_dir():
+                continue
+            candidate_text = str(candidate)
+            if candidate_text in sys.path:
+                sys.path.remove(candidate_text)
+            sys.path.insert(0, candidate_text)
+
     def run(
         self,
         config,
@@ -56,9 +77,7 @@ class MavaliEthEngineAdapter:
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
         codex_fallback = CodexEngineAdapter()
-        src_root = Path(__file__).resolve().parents[1]
-        if str(src_root) not in sys.path:
-            sys.path.insert(0, str(src_root))
+        self._ensure_runtime_import_path()
         try:
             from mavali_eth.config import MavaliEthConfig
             from mavali_eth.service import MavaliEthService
@@ -129,4 +148,3 @@ class MavaliEthEngineAdapter:
             output = str(exc) or "mavali_eth execution failed."
 
         return self._completed_process_with_output(thread_id=None, output=output)
-
