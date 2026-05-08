@@ -16,6 +16,7 @@ from telegram_bridge.state_store import (
     StateRepository,
     WorkerSession,
     canonical_session_is_empty,
+    clear_worker_session,
     clear_in_flight_request,
     persist_canonical_sessions,
     persist_chat_threads,
@@ -457,7 +458,52 @@ def expire_idle_worker_sessions(
     config,
     client,
 ) -> None:
-    return
+    del client
+    if not config.persistent_workers_enabled:
+        return
+
+    timeout_seconds = int(getattr(config, "persistent_workers_idle_timeout_seconds", 0) or 0)
+    if timeout_seconds <= 0:
+        return
+
+    cutoff = time.time() - timeout_seconds
+    expired_scope_keys: List[str] = []
+
+    with state.lock:
+        if state.canonical_sessions_enabled:
+            for scope_key, session in state.chat_sessions.items():
+                if (
+                    session.worker_created_at is None
+                    or session.worker_last_used_at is None
+                    or session.worker_last_used_at > cutoff
+                    or _scope_is_busy(state, scope_key)
+                ):
+                    continue
+                expired_scope_keys.append(scope_key)
+        else:
+            for scope_key, session in state.worker_sessions.items():
+                if session.last_used_at > cutoff or _scope_is_busy(state, scope_key):
+                    continue
+                expired_scope_keys.append(_normalize_scope_key(scope_key))
+
+    if not expired_scope_keys:
+        return
+
+    expired_count = 0
+    for scope_key in expired_scope_keys:
+        if clear_worker_session(state, scope_key):
+            expired_count += 1
+            emit_event(
+                "bridge.worker_session_expired",
+                fields={"scope_key": scope_key, "idle_timeout_seconds": timeout_seconds},
+            )
+
+    if expired_count:
+        logging.info(
+            "Expired %s idle persistent worker session(s) after %ss timeout.",
+            expired_count,
+            timeout_seconds,
+        )
 
 def request_safe_restart(
     state: State,

@@ -311,10 +311,15 @@ def run_bridge(config: Config) -> int:
         state_paths["chat_threads"],
     )
     logging.info(
-        "Persistent workers enabled=%s count=%s max=%s idle_expiry=disabled idle_timeout_setting=%ss ignored",
+        "Persistent workers enabled=%s count=%s max=%s idle_expiry=%s idle_timeout_setting=%ss",
         config.persistent_workers_enabled,
         len(bootstrap.loaded_worker_sessions),
         config.persistent_workers_max,
+        (
+            "enabled"
+            if config.persistent_workers_enabled and config.persistent_workers_idle_timeout_seconds > 0
+            else "disabled"
+        ),
         config.persistent_workers_idle_timeout_seconds,
     )
     logging.info(

@@ -277,6 +277,91 @@ class TestSessions(unittest.TestCase):
         self.assertIn("tg:1", state.chat_sessions)
         self.assertEqual(state.chat_sessions["tg:1"].thread_id, "")
 
+    def test_expire_idle_worker_sessions_reclaims_legacy_capacity_without_clearing_thread(self):
+        state = bridge.State(
+            chat_threads={"tg:2": "thread-2"},
+            worker_sessions={
+                "tg:2": bridge.WorkerSession(
+                    created_at=1.0,
+                    last_used_at=10.0,
+                    thread_id="thread-2",
+                    policy_fingerprint="fp",
+                )
+            },
+        )
+        client = FakeTelegramClient()
+        config = make_config(
+            persistent_workers_enabled=True,
+            persistent_workers_max=1,
+            persistent_workers_idle_timeout_seconds=60,
+        )
+
+        with mock.patch.object(bridge_session_manager.time, "time", return_value=100.0):
+            bridge.expire_idle_worker_sessions(state, config, client)
+
+        self.assertNotIn("tg:2", state.worker_sessions)
+        self.assertEqual(state.chat_threads["tg:2"], "thread-2")
+
+        allowed = bridge.ensure_chat_worker_session(state, config, client, chat_id=1, message_id=99)
+        self.assertTrue(allowed)
+        self.assertFalse(client.messages)
+
+    def test_expire_idle_worker_sessions_reclaims_canonical_capacity_without_clearing_thread(self):
+        state = bridge.State(
+            canonical_sessions_enabled=True,
+            chat_sessions={
+                "tg:2": bridge.CanonicalSession(
+                    thread_id="thread-2",
+                    worker_created_at=1.0,
+                    worker_last_used_at=10.0,
+                    worker_policy_fingerprint="fp",
+                )
+            },
+        )
+        client = FakeTelegramClient()
+        config = make_config(
+            persistent_workers_enabled=True,
+            persistent_workers_max=1,
+            persistent_workers_idle_timeout_seconds=60,
+            canonical_sessions_enabled=True,
+        )
+
+        with mock.patch.object(bridge_session_manager.time, "time", return_value=100.0):
+            bridge.expire_idle_worker_sessions(state, config, client)
+
+        self.assertIn("tg:2", state.chat_sessions)
+        self.assertEqual(state.chat_sessions["tg:2"].thread_id, "thread-2")
+        self.assertIsNone(state.chat_sessions["tg:2"].worker_created_at)
+        self.assertIsNone(state.chat_sessions["tg:2"].worker_last_used_at)
+        self.assertEqual(state.chat_sessions["tg:2"].worker_policy_fingerprint, "")
+
+        allowed = bridge.ensure_chat_worker_session(state, config, client, chat_id=1, message_id=99)
+        self.assertTrue(allowed)
+        self.assertFalse(client.messages)
+
+    def test_expire_idle_worker_sessions_keeps_busy_scope_allocated(self):
+        state = bridge.State(
+            worker_sessions={
+                "tg:2": bridge.WorkerSession(
+                    created_at=1.0,
+                    last_used_at=10.0,
+                    thread_id="thread-2",
+                    policy_fingerprint="fp",
+                )
+            },
+        )
+        state.busy_chats.add("tg:2")
+        client = FakeTelegramClient()
+        config = make_config(
+            persistent_workers_enabled=True,
+            persistent_workers_idle_timeout_seconds=60,
+        )
+
+        with mock.patch.object(bridge_session_manager.time, "time", return_value=100.0):
+            bridge.expire_idle_worker_sessions(state, config, client)
+
+        self.assertIn("tg:2", state.worker_sessions)
+
     def test_finalize_chat_work_clears_busy_when_inflight_clear_fails(self):
         state = bridge.State()
         state.busy_chats.add(1)
