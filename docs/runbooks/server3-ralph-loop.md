@@ -71,6 +71,13 @@ Commit behavior:
 - if the worktree is already dirty, Ralph still runs and reports the pre-existing dirty paths
 - if a run touches files that were already dirty before the run, Ralph reports the result but skips commit/push for that pass rather than mixing autonomous work with existing local edits
 
+Target selection behavior:
+- Ralph still ranks targets from live telemetry first
+- some targets can be treated as low-agency when the owner already accepts that the core bottleneck is upstream-dominated
+- the live low-agency rule currently applies to `codex_exec_latency`
+- after `3` consecutive high-score selections where that target still remains at or above score `90`, Ralph applies a `35` point cooldown penalty so another local target can take the next execute pass
+- Ralph still reports the raw latency problem in telemetry, but it no longer spends every hourly run grinding on the same marginal Codex-latency path
+
 Telegram reporting:
 - each hourly execute run sends a short status update to the configured chat/topic
 - the daily report is a `.md` document covering the last 24 hours of Ralph results, findings, applied fixes, commits, and attention items

@@ -49,6 +49,9 @@ TZ_NAME = os.getenv("RALPH_LOOP_TZ", "Australia/Brisbane")
 STATE_DIR = Path(os.getenv("RALPH_LOOP_STATE_DIR", "/var/lib/server3-ralph-loop"))
 TELEGRAM_UNIT = os.getenv("RALPH_LOOP_TELEGRAM_UNIT", "telegram-architect-bridge.service").strip()
 WINDOW_HOURS = max(1, int(os.getenv("RALPH_LOOP_WINDOW_HOURS", "6") or "6"))
+LOW_AGENCY_REPEAT_THRESHOLD = max(1, int(os.getenv("RALPH_LOOP_LOW_AGENCY_REPEAT_THRESHOLD", "3") or "3"))
+LOW_AGENCY_SCORE_FLOOR = max(0, int(os.getenv("RALPH_LOOP_LOW_AGENCY_SCORE_FLOOR", "90") or "90"))
+LOW_AGENCY_SCORE_PENALTY = max(0, int(os.getenv("RALPH_LOOP_LOW_AGENCY_SCORE_PENALTY", "35") or "35"))
 LATEST_REPORT_PATH = STATE_DIR / "latest.md"
 LATEST_BACKLOG_PATH = STATE_DIR / "optimization_backlog.json"
 HISTORY_PATH = STATE_DIR / "history.jsonl"
@@ -69,6 +72,9 @@ class Candidate:
     next_action: str
     evidence: Dict[str, object]
     target_paths: List[str]
+
+
+LOW_AGENCY_CANDIDATES = {"codex_exec_latency"}
 
 
 @dataclass(frozen=True)
@@ -385,6 +391,50 @@ def build_candidates(rows: List[Dict[str, object]]) -> List[Candidate]:
     return sorted(candidates, key=lambda item: item.score, reverse=True)
 
 
+def recent_repeat_count(results: Sequence["ExecutionResult"], candidate_id: str) -> int:
+    count = 0
+    for item in reversed(results):
+        if item.selected_candidate_id != candidate_id:
+            break
+        count += 1
+    return count
+
+
+def apply_low_agency_cooldowns(
+    candidates: Sequence[Candidate],
+    *,
+    recent_results: Sequence["ExecutionResult"],
+) -> List[Candidate]:
+    adjusted: List[Candidate] = []
+    for item in candidates:
+        if item.id not in LOW_AGENCY_CANDIDATES or item.score < LOW_AGENCY_SCORE_FLOOR:
+            adjusted.append(item)
+            continue
+        repeat_count = recent_repeat_count(recent_results, item.id)
+        if repeat_count < LOW_AGENCY_REPEAT_THRESHOLD:
+            adjusted.append(item)
+            continue
+        cooldown_evidence = dict(item.evidence)
+        cooldown_evidence["low_agency_repeat_count"] = repeat_count
+        cooldown_evidence["low_agency_penalty"] = LOW_AGENCY_SCORE_PENALTY
+        adjusted.append(
+            Candidate(
+                id=item.id,
+                title=item.title,
+                score=max(0, item.score - LOW_AGENCY_SCORE_PENALTY),
+                category=item.category,
+                why=item.why,
+                next_action=(
+                    item.next_action
+                    + " Ralph cooldown applied after repeated high-score low-agency passes; prefer another local target this round."
+                ),
+                evidence=cooldown_evidence,
+                target_paths=item.target_paths,
+            )
+        )
+    return sorted(adjusted, key=lambda item: item.score, reverse=True)
+
+
 def qa_python_command() -> List[str]:
     override = os.getenv("RALPH_LOOP_QA_PYTHON", "").strip()
     if override:
@@ -517,7 +567,9 @@ def collect_snapshot(*, persist: bool) -> Dict[str, object]:
     since_dt = observed_at - timedelta(hours=WINDOW_HOURS)
     snapshot = runtime_observer.build_snapshot(observed_at)
     rows = load_bridge_events(TELEGRAM_UNIT, since_dt)
-    candidates = build_candidates(rows)
+    raw_candidates = build_candidates(rows)
+    recent_results = load_execution_results()
+    candidates = apply_low_agency_cooldowns(raw_candidates, recent_results=recent_results)
     backlog = {
         "observed_at_utc": observed_at.isoformat(),
         "timezone": TZ_NAME,
@@ -526,6 +578,7 @@ def collect_snapshot(*, persist: bool) -> Dict[str, object]:
         "candidate_count": len(candidates),
         "top_candidate_id": candidates[0].id if candidates else None,
         "candidates": [asdict(item) for item in candidates],
+        "raw_top_candidate_id": raw_candidates[0].id if raw_candidates else None,
         "kpi_snapshot": snapshot.get("kpis", {}),
     }
     report = format_report(

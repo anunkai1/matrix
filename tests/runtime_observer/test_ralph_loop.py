@@ -118,6 +118,103 @@ class RalphLoopTests(unittest.TestCase):
             self.assertEqual(backlog["top_candidate_id"], "worker_capacity_pressure")
             self.assertTrue((tmpdir_path / "latest.md").exists())
 
+    def test_apply_low_agency_cooldowns_deranks_repeated_codex_latency_target(self) -> None:
+        candidates = [
+            ralph_loop.Candidate(
+                id="codex_exec_latency",
+                title="Reduce Codex executor latency",
+                score=100,
+                category="latency",
+                why="Slow Codex turns dominate latency.",
+                next_action="Trim local overhead.",
+                evidence={"codex_exec": {"p95_ms": 400000}},
+                target_paths=["src/telegram_bridge/executor.py"],
+            ),
+            ralph_loop.Candidate(
+                id="progress_edit_noise",
+                title="Reduce progress update noise",
+                score=100,
+                category="api_noise",
+                why="Too many edits.",
+                next_action="Throttle edits.",
+                evidence={"progress_edit_attempts_last_window": 453},
+                target_paths=["src/telegram_bridge/handler_progress.py"],
+            ),
+        ]
+        repeated_results = [
+            ralph_loop.ExecutionResult(
+                observed_at_utc=f"2026-05-09T0{hour}:00:00+00:00",
+                selected_candidate_id="codex_exec_latency",
+                selected_candidate_score=100,
+                handler_found=True,
+                status="applied",
+                summary="Optimization applied and verification passed.",
+                codex_returncode=0,
+                codex_stdout="",
+                codex_stderr="",
+                verification_results=[],
+                changed_files=["src/telegram_bridge/prompt_runtime.py"],
+                preexisting_dirty_files=[],
+                git_head_before="a",
+                git_head_after="b",
+            )
+            for hour in range(1, 4)
+        ]
+
+        adjusted = ralph_loop.apply_low_agency_cooldowns(candidates, recent_results=repeated_results)
+
+        self.assertEqual(adjusted[0].id, "progress_edit_noise")
+        cooled = next(item for item in adjusted if item.id == "codex_exec_latency")
+        self.assertEqual(cooled.score, 65)
+        self.assertEqual(cooled.evidence["low_agency_repeat_count"], 3)
+
+    def test_apply_low_agency_cooldowns_keeps_codex_latency_top_before_threshold(self) -> None:
+        candidates = [
+            ralph_loop.Candidate(
+                id="codex_exec_latency",
+                title="Reduce Codex executor latency",
+                score=100,
+                category="latency",
+                why="Slow Codex turns dominate latency.",
+                next_action="Trim local overhead.",
+                evidence={"codex_exec": {"p95_ms": 400000}},
+                target_paths=["src/telegram_bridge/executor.py"],
+            ),
+            ralph_loop.Candidate(
+                id="progress_edit_noise",
+                title="Reduce progress update noise",
+                score=90,
+                category="api_noise",
+                why="Too many edits.",
+                next_action="Throttle edits.",
+                evidence={"progress_edit_attempts_last_window": 200},
+                target_paths=["src/telegram_bridge/handler_progress.py"],
+            ),
+        ]
+        repeated_results = [
+            ralph_loop.ExecutionResult(
+                observed_at_utc=f"2026-05-09T0{hour}:00:00+00:00",
+                selected_candidate_id="codex_exec_latency",
+                selected_candidate_score=100,
+                handler_found=True,
+                status="applied",
+                summary="Optimization applied and verification passed.",
+                codex_returncode=0,
+                codex_stdout="",
+                codex_stderr="",
+                verification_results=[],
+                changed_files=["src/telegram_bridge/prompt_runtime.py"],
+                preexisting_dirty_files=[],
+                git_head_before="a",
+                git_head_after="b",
+            )
+            for hour in range(1, 3)
+        ]
+
+        adjusted = ralph_loop.apply_low_agency_cooldowns(candidates, recent_results=repeated_results)
+
+        self.assertEqual(adjusted[0].id, "codex_exec_latency")
+
     def test_ensure_state_dir_falls_back_when_primary_is_not_writable(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             fallback = Path(tmpdir) / "fallback"
