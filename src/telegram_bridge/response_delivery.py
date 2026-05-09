@@ -57,6 +57,9 @@ class OutboundRenderPlan:
     follow_up_text: Optional[str]
 
 
+OutboundMediaHandler = Callable[[OutboundDeliveryContext, OutboundRenderPlan], None]
+
+
 def parse_outbound_media_directive(output: str) -> tuple[str, Optional[OutboundMediaDirective]]:
     text = output or ""
     as_voice = bool(AUDIO_AS_VOICE_TAG_RE.search(text))
@@ -385,17 +388,27 @@ def _send_document(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -
     )
 
 
+def _dispatch_audio_delivery(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> None:
+    if plan.directive.as_voice and is_voice_compatible_media(plan.directive.media_ref):
+        _send_voice_with_audio_fallback(context, plan)
+        return
+    _send_audio(context, plan)
+
+
+MEDIA_DELIVERY_HANDLERS: Dict[str, OutboundMediaHandler] = {
+    "photo": _send_photo,
+    "audio": _dispatch_audio_delivery,
+    "document": _send_document,
+}
+
+
+def _resolve_media_delivery_handler(media_kind: str) -> OutboundMediaHandler:
+    return MEDIA_DELIVERY_HANDLERS.get(media_kind, _send_document)
+
+
 def _execute_media_delivery(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> None:
-    if plan.media_kind == "photo":
-        _send_photo(context, plan)
-        return
-    if plan.media_kind == "audio":
-        if plan.directive.as_voice and is_voice_compatible_media(plan.directive.media_ref):
-            _send_voice_with_audio_fallback(context, plan)
-            return
-        _send_audio(context, plan)
-        return
-    _send_document(context, plan)
+    handler = _resolve_media_delivery_handler(plan.media_kind)
+    handler(context, plan)
 
 
 def _finalize_media_delivery(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> str:

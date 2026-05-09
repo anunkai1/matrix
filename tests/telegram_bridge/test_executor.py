@@ -541,6 +541,86 @@ class TestExecutor(unittest.TestCase):
         self.assertEqual(len(client.documents), 1)
         self.assertEqual(client.chat_actions, [(1, "upload_photo"), (1, "upload_document")])
 
+    def test_execute_media_delivery_dispatches_unknown_kind_to_document_handler(self):
+        context = bridge_handlers.response_delivery.OutboundDeliveryContext(
+            client=mock.Mock(),
+            chat_id=1,
+            message_id=9,
+            message_thread_id=None,
+            output="ignored",
+        )
+        plan = bridge_handlers.response_delivery.OutboundRenderPlan(
+            rendered_text="doc caption",
+            directive=bridge_handlers.OutboundMediaDirective(media_ref="/tmp/file.bin", as_voice=False),
+            media_kind="binary_blob",
+            caption="doc caption",
+            follow_up_text=None,
+        )
+
+        with mock.patch.object(
+            bridge_handlers.response_delivery,
+            "_send_document",
+        ) as send_document:
+            bridge_handlers.response_delivery._execute_media_delivery(context, plan)
+
+        send_document.assert_called_once_with(context, plan)
+
+    def test_execute_media_delivery_routes_voice_request_by_audio_strategy(self):
+        context = bridge_handlers.response_delivery.OutboundDeliveryContext(
+            client=mock.Mock(),
+            chat_id=1,
+            message_id=10,
+            message_thread_id=None,
+            output="ignored",
+        )
+        plan = bridge_handlers.response_delivery.OutboundRenderPlan(
+            rendered_text="voice caption",
+            directive=bridge_handlers.OutboundMediaDirective(media_ref="/tmp/note.ogg", as_voice=True),
+            media_kind="audio",
+            caption="voice caption",
+            follow_up_text=None,
+        )
+
+        with (
+            mock.patch.object(
+                bridge_handlers.response_delivery,
+                "_send_voice_with_audio_fallback",
+            ) as send_voice,
+            mock.patch.object(bridge_handlers.response_delivery, "_send_audio") as send_audio,
+        ):
+            bridge_handlers.response_delivery._execute_media_delivery(context, plan)
+
+        send_voice.assert_called_once_with(context, plan)
+        send_audio.assert_not_called()
+
+    def test_execute_media_delivery_keeps_audio_when_voice_request_is_incompatible(self):
+        context = bridge_handlers.response_delivery.OutboundDeliveryContext(
+            client=mock.Mock(),
+            chat_id=1,
+            message_id=11,
+            message_thread_id=None,
+            output="ignored",
+        )
+        plan = bridge_handlers.response_delivery.OutboundRenderPlan(
+            rendered_text="audio caption",
+            directive=bridge_handlers.OutboundMediaDirective(media_ref="/tmp/note.wav", as_voice=True),
+            media_kind="audio",
+            caption="audio caption",
+            follow_up_text=None,
+        )
+
+        with (
+            mock.patch.object(
+                bridge_handlers.response_delivery,
+                "_send_voice_with_audio_fallback",
+            ) as send_voice,
+            mock.patch.object(bridge_handlers.response_delivery, "_send_audio") as send_audio,
+        ):
+            bridge_handlers.response_delivery._execute_media_delivery(context, plan)
+
+        send_audio.assert_called_once_with(context, plan)
+        send_voice.assert_not_called()
+
     def test_send_executor_output_preserves_message_thread_id_for_documents(self):
         client = mock.Mock()
         client.channel_name = "telegram"
