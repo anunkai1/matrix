@@ -93,13 +93,8 @@ class TestPromptPreparation(unittest.TestCase):
         with (
             mock.patch.object(
                 prompt_preparation.attachment_processing,
-                "build_archived_attachment_summary_context",
-                return_value="Archived file summary",
-            ),
-            mock.patch.object(
-                prompt_preparation.attachment_processing,
                 "resolve_attachment_binary_or_summary",
-                return_value=(None, ""),
+                return_value=(None, "Archived file summary"),
             ),
             mock.patch.object(
                 prompt_preparation.attachment_processing,

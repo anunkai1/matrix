@@ -2,8 +2,10 @@ import logging
 import os
 import re
 import subprocess
+from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Tuple
+from enum import Enum
+from typing import Callable, Dict, List, Optional, Tuple
 
 from telegram_bridge.channel_adapter import ChannelAdapter
 from telegram_bridge.handler_models import DocumentPayload
@@ -11,6 +13,18 @@ from telegram_bridge.media import TelegramFileDownloadSpec, download_telegram_fi
 from telegram_bridge.runtime_profile import is_whatsapp_channel
 from telegram_bridge.state_store import State
 from telegram_bridge.structured_logging import emit_event
+
+class AttachmentResolutionStatus(str, Enum):
+    BINARY = "binary"
+    SUMMARY = "summary"
+
+@dataclass(frozen=True)
+class AttachmentResolution:
+    status: AttachmentResolutionStatus
+    local_path: Optional[str] = None
+    summary_context: str = ""
+    cleanup_path: Optional[str] = None
+    size_bytes: Optional[int] = None
 
 def download_photo_to_temp(
     client: ChannelAdapter,
@@ -131,6 +145,91 @@ def resolve_attachment_binary_or_summary(
     if not summary:
         return None, ""
     return None, build_archived_attachment_summary_context(media_label, summary)
+
+def _normalize_downloaded_attachment(
+    download_result: object,
+) -> tuple[str, Optional[int]]:
+    if isinstance(download_result, tuple):
+        temp_path, size_bytes = download_result
+        return temp_path, size_bytes
+    return str(download_result), None
+
+def _remove_temporary_attachment(temp_path: str, media_label: str) -> None:
+    try:
+        os.remove(temp_path)
+    except OSError:
+        logging.warning(
+            "Failed to remove temporary %s after archiving: %s",
+            media_label,
+            temp_path,
+        )
+
+def resolve_attachment_for_prompt(
+    attachment_store,
+    *,
+    channel_name: str,
+    file_id: str,
+    media_label: str,
+    media_kind: str,
+    downloader: Callable[[], object],
+    archiver: Optional[Callable[..., Optional[str]]] = None,
+    file_name: str = "",
+    mime_type: str = "",
+) -> AttachmentResolution:
+    record_path, summary_context = resolve_attachment_binary_or_summary(
+        attachment_store,
+        channel_name=channel_name,
+        file_id=file_id,
+        media_label=media_label,
+    )
+    if record_path is not None:
+        return AttachmentResolution(
+            status=AttachmentResolutionStatus.BINARY,
+            local_path=record_path,
+            size_bytes=os.path.getsize(record_path),
+        )
+
+    try:
+        temp_path, size_bytes = _normalize_downloaded_attachment(downloader())
+    except ValueError:
+        if summary_context:
+            return AttachmentResolution(
+                status=AttachmentResolutionStatus.SUMMARY,
+                summary_context=summary_context,
+            )
+        raise
+    except Exception:
+        if summary_context:
+            return AttachmentResolution(
+                status=AttachmentResolutionStatus.SUMMARY,
+                summary_context=summary_context,
+            )
+        raise
+
+    archive_fn = archiver or archive_media_path
+    archived_path = archive_fn(
+        attachment_store,
+        channel_name=channel_name,
+        file_id=file_id,
+        media_kind=media_kind,
+        source_path=temp_path,
+        file_name=file_name,
+        mime_type=mime_type,
+    )
+    if archived_path:
+        _remove_temporary_attachment(temp_path, media_label)
+        return AttachmentResolution(
+            status=AttachmentResolutionStatus.BINARY,
+            local_path=archived_path,
+            size_bytes=os.path.getsize(archived_path),
+        )
+
+    return AttachmentResolution(
+        status=AttachmentResolutionStatus.BINARY,
+        local_path=temp_path,
+        cleanup_path=temp_path,
+        size_bytes=size_bytes,
+    )
 
 def build_voice_transcribe_command(cmd_template: List[str], voice_path: str) -> List[str]:
     cmd: List[str] = []

@@ -48,66 +48,42 @@ def _handle_photo_attachments(
     )
     for current_photo_file_id in normalized_photo_file_ids:
         preparation.attachment_file_ids.append(current_photo_file_id)
-        resolved_image_path, archived_summary_context = (
-            attachment_processing.resolve_attachment_binary_or_summary(
+        try:
+            resolution = attachment_processing.resolve_attachment_for_prompt(
                 attachment_store,
                 channel_name=channel_name,
                 file_id=current_photo_file_id,
                 media_label="image",
-            )
-        )
-        if resolved_image_path is None:
-            try:
-                downloaded_image_path = attachment_processing.download_photo_to_temp(
+                media_kind="photo",
+                downloader=lambda: attachment_processing.download_photo_to_temp(
                     request.client,
                     request.config,
                     current_photo_file_id,
-                )
-                archived_image_path = attachment_processing.archive_media_path(
-                    attachment_store,
-                    channel_name=channel_name,
-                    file_id=current_photo_file_id,
-                    media_kind="photo",
-                    source_path=downloaded_image_path,
-                )
-                if archived_image_path:
-                    resolved_image_path = archived_image_path
-                    try:
-                        os.remove(downloaded_image_path)
-                    except OSError:
-                        logging.warning(
-                            "Failed to remove temporary image after archiving: %s",
-                            downloaded_image_path,
-                        )
-                else:
-                    resolved_image_path = downloaded_image_path
-                    preparation.cleanup_paths.append(downloaded_image_path)
-            except ValueError as exc:
-                if archived_summary_context:
-                    preparation.append_context(archived_summary_context)
-                    continue
-                logging.warning("Photo rejected for chat_id=%s: %s", request.chat_id, exc)
-                progress.mark_failure("Image request rejected.")
-                request.client.send_message(request.chat_id, str(exc), reply_to_message_id=request.message_id)
-                return None
-            except Exception:
-                if archived_summary_context:
-                    logging.warning(
-                        "Photo redownload failed for chat_id=%s; using archived summary fallback.",
-                        request.chat_id,
-                    )
-                    preparation.append_context(archived_summary_context)
-                    continue
-                logging.exception("Photo download failed for chat_id=%s", request.chat_id)
-                progress.mark_failure("Image download failed.")
-                request.client.send_message(
-                    request.chat_id,
-                    request.config.image_download_error_message,
-                    reply_to_message_id=request.message_id,
-                )
-                return None
-        if resolved_image_path is not None:
-            preparation.image_paths.append(resolved_image_path)
+                ),
+            )
+        except ValueError as exc:
+            logging.warning("Photo rejected for chat_id=%s: %s", request.chat_id, exc)
+            progress.mark_failure("Image request rejected.")
+            request.client.send_message(request.chat_id, str(exc), reply_to_message_id=request.message_id)
+            return None
+        except Exception:
+            logging.exception("Photo download failed for chat_id=%s", request.chat_id)
+            progress.mark_failure("Image download failed.")
+            request.client.send_message(
+                request.chat_id,
+                request.config.image_download_error_message,
+                reply_to_message_id=request.message_id,
+            )
+            return None
+
+        if resolution.status == attachment_processing.AttachmentResolutionStatus.SUMMARY:
+            preparation.append_context(resolution.summary_context)
+            continue
+
+        if resolution.local_path is not None:
+            preparation.image_paths.append(resolution.local_path)
+        if resolution.cleanup_path:
+            preparation.cleanup_paths.append(resolution.cleanup_path)
 
     if preparation.image_paths:
         preparation.image_path = preparation.image_paths[0]
@@ -213,83 +189,29 @@ def _handle_document_attachment(
         return preparation
 
     preparation.attachment_file_ids.append(document.file_id)
-    archived_document_summary = ""
-    if attachment_store is not None:
-        archived_document_summary = attachment_processing.build_archived_attachment_summary_context(
-            "file",
-            attachment_store.get_summary(channel_name, document.file_id),
-        )
-    document_record_path, _ = attachment_processing.resolve_attachment_binary_or_summary(
-        attachment_store,
-        channel_name=channel_name,
-        file_id=document.file_id,
-        media_label="file",
-    )
-    if document_record_path is not None:
-        preparation.document_path = document_record_path
-        file_size = os.path.getsize(preparation.document_path)
-        preparation.append_context(
-            attachment_processing.build_document_analysis_context(
-                preparation.document_path,
-                document,
-                file_size,
-            )
-        )
-        return preparation
 
     progress.set_phase("Downloading file from Telegram.")
     try:
-        downloaded_document_path, file_size = attachment_processing.download_document_to_temp(
-            request.client,
-            request.config,
-            document,
-        )
-        archived_document_path = attachment_processing.archive_media_path(
+        resolution = attachment_processing.resolve_attachment_for_prompt(
             attachment_store,
             channel_name=channel_name,
             file_id=document.file_id,
+            media_label="file",
             media_kind="document",
-            source_path=downloaded_document_path,
+            downloader=lambda: attachment_processing.download_document_to_temp(
+                request.client,
+                request.config,
+                document,
+            ),
             file_name=document.file_name,
             mime_type=document.mime_type,
         )
-        if archived_document_path:
-            preparation.document_path = archived_document_path
-            try:
-                os.remove(downloaded_document_path)
-            except OSError:
-                logging.warning(
-                    "Failed to remove temporary document after archiving: %s",
-                    downloaded_document_path,
-                )
-            file_size = os.path.getsize(preparation.document_path)
-        else:
-            preparation.document_path = downloaded_document_path
-            preparation.cleanup_paths.append(downloaded_document_path)
-        preparation.append_context(
-            attachment_processing.build_document_analysis_context(
-                preparation.document_path,
-                document,
-                file_size,
-            )
-        )
-        return preparation
     except ValueError as exc:
-        if archived_document_summary:
-            preparation.append_context(archived_document_summary)
-            return preparation
         logging.warning("Document rejected for chat_id=%s: %s", request.chat_id, exc)
         progress.mark_failure("File request rejected.")
         request.client.send_message(request.chat_id, str(exc), reply_to_message_id=request.message_id)
         return None
     except Exception:
-        if archived_document_summary:
-            logging.warning(
-                "Document redownload failed for chat_id=%s; using archived summary fallback.",
-                request.chat_id,
-            )
-            preparation.append_context(archived_document_summary)
-            return preparation
         logging.exception("Document download failed for chat_id=%s", request.chat_id)
         progress.mark_failure("File download failed.")
         request.client.send_message(
@@ -298,6 +220,22 @@ def _handle_document_attachment(
             reply_to_message_id=request.message_id,
         )
         return None
+
+    if resolution.status == attachment_processing.AttachmentResolutionStatus.SUMMARY:
+        preparation.append_context(resolution.summary_context)
+        return preparation
+
+    preparation.document_path = resolution.local_path
+    if resolution.cleanup_path:
+        preparation.cleanup_paths.append(resolution.cleanup_path)
+    preparation.append_context(
+        attachment_processing.build_document_analysis_context(
+            preparation.document_path,
+            document,
+            resolution.size_bytes or os.path.getsize(preparation.document_path),
+        )
+    )
+    return preparation
 
 
 def _finalize_prompt_preparation(
@@ -405,57 +343,41 @@ def prewarm_attachment_archive_for_message(
     photo_file_ids = extract_message_photo_file_ids_fn(message)
     _, _, document = extract_message_media_payload_fn(message)
     for photo_file_id in photo_file_ids:
-        record, _ = attachment_processing.resolve_attachment_binary_or_summary(
-            attachment_store,
-            channel_name=channel_name,
-            file_id=photo_file_id,
-            media_label="image",
-        )
-        if record is None:
-            try:
-                temp_path = download_photo_to_temp_fn(client, config, photo_file_id)
-                archived_path = archive_media_path_fn(
-                    attachment_store,
-                    channel_name=channel_name,
-                    file_id=photo_file_id,
-                    media_kind="photo",
-                    source_path=temp_path,
-                )
-                if archived_path:
-                    os.remove(temp_path)
-            except Exception:
-                logging.warning(
-                    "Failed to prewarm attachment archive for chat_id=%s photo_file_id=%s",
-                    chat_id,
-                    photo_file_id,
-                    exc_info=True,
-                )
+        try:
+            attachment_processing.resolve_attachment_for_prompt(
+                attachment_store,
+                channel_name=channel_name,
+                file_id=photo_file_id,
+                media_label="image",
+                media_kind="photo",
+                downloader=lambda file_id=photo_file_id: download_photo_to_temp_fn(client, config, file_id),
+                archiver=archive_media_path_fn,
+            )
+        except Exception:
+            logging.warning(
+                "Failed to prewarm attachment archive for chat_id=%s photo_file_id=%s",
+                chat_id,
+                photo_file_id,
+                exc_info=True,
+            )
 
     if document is not None:
-        record, _ = attachment_processing.resolve_attachment_binary_or_summary(
-            attachment_store,
-            channel_name=channel_name,
-            file_id=document.file_id,
-            media_label="file",
-        )
-        if record is None:
-            try:
-                temp_path, _ = download_document_to_temp_fn(client, config, document)
-                archived_path = archive_media_path_fn(
-                    attachment_store,
-                    channel_name=channel_name,
-                    file_id=document.file_id,
-                    media_kind="document",
-                    source_path=temp_path,
-                    file_name=document.file_name,
-                    mime_type=document.mime_type,
-                )
-                if archived_path:
-                    os.remove(temp_path)
-            except Exception:
-                logging.warning(
-                    "Failed to prewarm attachment archive for chat_id=%s document_file_id=%s",
-                    chat_id,
-                    document.file_id,
-                    exc_info=True,
-                )
+        try:
+            attachment_processing.resolve_attachment_for_prompt(
+                attachment_store,
+                channel_name=channel_name,
+                file_id=document.file_id,
+                media_label="file",
+                media_kind="document",
+                downloader=lambda: download_document_to_temp_fn(client, config, document),
+                archiver=archive_media_path_fn,
+                file_name=document.file_name,
+                mime_type=document.mime_type,
+            )
+        except Exception:
+            logging.warning(
+                "Failed to prewarm attachment archive for chat_id=%s document_file_id=%s",
+                chat_id,
+                document.file_id,
+                exc_info=True,
+            )

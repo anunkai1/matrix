@@ -55,6 +55,102 @@ class TestAttachmentProcessing(unittest.TestCase):
             "",
         )
 
+    def test_resolve_attachment_for_prompt_uses_existing_record(self):
+        attachment_store = mock.Mock()
+        attachment_store.get_record.return_value = mock.Mock(local_path="/tmp/existing.pdf")
+
+        with mock.patch.object(
+            attachment_processing.os.path,
+            "getsize",
+            return_value=321,
+        ) as getsize:
+            result = attachment_processing.resolve_attachment_for_prompt(
+                attachment_store,
+                channel_name="telegram",
+                file_id="doc-1",
+                media_label="file",
+                media_kind="document",
+                downloader=mock.Mock(),
+            )
+
+        self.assertEqual(result.status, attachment_processing.AttachmentResolutionStatus.BINARY)
+        self.assertEqual(result.local_path, "/tmp/existing.pdf")
+        self.assertEqual(result.size_bytes, 321)
+        getsize.assert_called_once_with("/tmp/existing.pdf")
+
+    def test_resolve_attachment_for_prompt_returns_summary_on_redownload_failure(self):
+        attachment_store = mock.Mock()
+        attachment_store.get_record.return_value = None
+        attachment_store.get_summary.return_value = "Prior OCR summary"
+
+        result = attachment_processing.resolve_attachment_for_prompt(
+            attachment_store,
+            channel_name="telegram",
+            file_id="doc-1",
+            media_label="file",
+            media_kind="document",
+            downloader=mock.Mock(side_effect=RuntimeError("boom")),
+        )
+
+        self.assertEqual(result.status, attachment_processing.AttachmentResolutionStatus.SUMMARY)
+        self.assertIn("Prior OCR summary", result.summary_context)
+
+    def test_resolve_attachment_for_prompt_archives_and_cleans_up_temp_file(self):
+        attachment_store = mock.Mock()
+        attachment_store.get_record.return_value = None
+        attachment_store.get_summary.return_value = ""
+
+        with mock.patch.object(
+            attachment_processing,
+            "archive_media_path",
+            return_value="/tmp/archive.jpg",
+        ) as archive_media_path, mock.patch.object(
+            attachment_processing.os,
+            "remove",
+        ) as remove_mock, mock.patch.object(
+            attachment_processing.os.path,
+            "getsize",
+            return_value=456,
+        ):
+            result = attachment_processing.resolve_attachment_for_prompt(
+                attachment_store,
+                channel_name="telegram",
+                file_id="photo-1",
+                media_label="image",
+                media_kind="photo",
+                downloader=mock.Mock(return_value="/tmp/photo.jpg"),
+            )
+
+        self.assertEqual(result.status, attachment_processing.AttachmentResolutionStatus.BINARY)
+        self.assertEqual(result.local_path, "/tmp/archive.jpg")
+        self.assertIsNone(result.cleanup_path)
+        archive_media_path.assert_called_once()
+        remove_mock.assert_called_once_with("/tmp/photo.jpg")
+
+    def test_resolve_attachment_for_prompt_preserves_temp_path_when_not_archived(self):
+        attachment_store = mock.Mock()
+        attachment_store.get_record.return_value = None
+        attachment_store.get_summary.return_value = ""
+
+        with mock.patch.object(
+            attachment_processing,
+            "archive_media_path",
+            return_value=None,
+        ):
+            result = attachment_processing.resolve_attachment_for_prompt(
+                attachment_store,
+                channel_name="telegram",
+                file_id="doc-1",
+                media_label="file",
+                media_kind="document",
+                downloader=mock.Mock(return_value=("/tmp/upload.bin", 789)),
+            )
+
+        self.assertEqual(result.status, attachment_processing.AttachmentResolutionStatus.BINARY)
+        self.assertEqual(result.local_path, "/tmp/upload.bin")
+        self.assertEqual(result.cleanup_path, "/tmp/upload.bin")
+        self.assertEqual(result.size_bytes, 789)
+
     def test_archive_media_path_returns_none_on_store_failure(self):
         attachment_store = mock.Mock()
         attachment_store.remember_file.side_effect = RuntimeError("boom")
