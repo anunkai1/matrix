@@ -17,8 +17,7 @@ Environment=RALPH_LOOP_TELEGRAM_UNIT=telegram-architect-bridge.service
 Environment=RALPH_LOOP_WINDOW_HOURS=6
 Environment=RALPH_LOOP_NOTIFY_CHAT_ID=-1003894351534
 Environment=RALPH_LOOP_NOTIFY_TOPIC_ID=1853
-Environment=RALPH_LOOP_DAILY_REPORT_CHAT_ID=-1003894351534
-Environment=RALPH_LOOP_DAILY_REPORT_TOPIC_ID=1853
+Environment=RALPH_LOOP_DAILY_REPORT_CHAT_ID=211761499
 EnvironmentFile=-/etc/default/server3-ralph-loop
 EnvironmentFile=-/etc/default/telegram-architect-bridge
 StateDirectory=server3-ralph-loop

@@ -74,3 +74,4 @@ Commit behavior:
 Telegram reporting:
 - each hourly execute run sends a short status update to the configured chat/topic
 - the daily report is a `.md` document covering the last 24 hours of Ralph results, findings, applied fixes, commits, and attention items
+- live daily delivery is centralized through `staker_alerts_bot` to chat `211761499`
