@@ -335,6 +335,49 @@ class TestExecutor(unittest.TestCase):
             self.assertEqual(result.returncode, 0, msg=result.stderr)
             self.assertEqual(marker_path.read_text(encoding="utf-8"), "synced\n")
 
+    def test_executor_script_rejects_empty_prompt_without_running_codex(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            repo_root = temp_root / "matrix"
+            script_dir = repo_root / "src" / "telegram_bridge"
+            script_dir.mkdir(parents=True)
+            script_path = script_dir / "executor.sh"
+            script_path.write_text(
+                (ROOT / "src" / "telegram_bridge" / "executor.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            script_path.chmod(0o755)
+
+            bin_dir = temp_root / "bin"
+            bin_dir.mkdir()
+            fake_codex = bin_dir / "codex"
+            marker_path = repo_root / "codex-ran.marker"
+            fake_codex.write_text(
+                "#!/usr/bin/env bash\n"
+                "set -euo pipefail\n"
+                f"printf 'ran\\n' > {str(marker_path)!r}\n",
+                encoding="utf-8",
+            )
+            fake_codex.chmod(0o755)
+
+            env = os.environ.copy()
+            env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+            env["CODEX_BIN"] = str(fake_codex)
+
+            result = subprocess.run(
+                ["bash", str(script_path), "new"],
+                input="",
+                text=True,
+                capture_output=True,
+                cwd=str(ROOT),
+                env=env,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("Prompt is empty", result.stderr)
+            self.assertFalse(marker_path.exists())
+
     def test_send_executor_output_supports_structured_envelope(self):
         client = FakeTelegramClient()
         rendered = bridge_handlers.send_executor_output(

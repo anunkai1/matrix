@@ -58,11 +58,6 @@ while (($#)); do
 done
 
 bootstrap_started_ms="$(now_ms)"
-prompt="$(</dev/stdin)"
-if [[ -z "${prompt}" ]]; then
-  echo "Prompt is empty" >&2
-  exit 2
-fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 shared_core_root="${TELEGRAM_SHARED_CORE_ROOT:-$(cd "${script_dir}/../.." && pwd)}"
@@ -97,12 +92,17 @@ fi
 cd "${codex_workdir}"
 
 style_hint="${TELEGRAM_RESPONSE_STYLE_HINT:-}"
-assembled_prompt=""
-if [[ -n "${style_hint//[[:space:]]/}" ]]; then
-  assembled_prompt+=$'Response style guidance:\n'"${style_hint}"$'\n\n'
-fi
-assembled_prompt+=$'User request:\n'"${prompt}"
-prompt="${assembled_prompt}"
+first_prompt_line=""
+
+stream_assembled_prompt() {
+  # Stream the formatted prompt directly into Codex so large requests do not
+  # pay an extra full-buffer copy inside the bash wrapper before exec starts.
+  if [[ -n "${style_hint//[[:space:]]/}" ]]; then
+    printf 'Response style guidance:\n%s\n\n' "${style_hint}"
+  fi
+  printf 'User request:\n%s\n' "${first_prompt_line}"
+  cat <&3
+}
 
 CODEX_BIN="${CODEX_BIN:-codex}"
 if ! command -v "${CODEX_BIN}" >/dev/null 2>&1; then
@@ -134,9 +134,22 @@ emit_phase_timing "wrapper_bootstrap" "$((bootstrap_finished_ms - bootstrap_star
 
 codex_started_ms="$(now_ms)"
 set +e
-printf '%s\n' "${prompt}" | "${CMD[@]}"
-codex_rc=$?
+exec 3<&0
+if ! IFS= read -r first_prompt_line <&3; then
+  exec 3<&-
+  set -e
+  echo "Prompt is empty" >&2
+  exit 2
+fi
+stream_assembled_prompt | "${CMD[@]}"
+pipeline_status=("${PIPESTATUS[@]}")
+exec 3<&-
 set -e
 codex_finished_ms="$(now_ms)"
 emit_phase_timing "codex_exec" "$((codex_finished_ms - codex_started_ms))"
+prompt_rc="${pipeline_status[0]}"
+codex_rc="${pipeline_status[1]}"
+if [[ "${prompt_rc}" -ne 0 ]]; then
+  exit "${prompt_rc}"
+fi
 exit "${codex_rc}"
