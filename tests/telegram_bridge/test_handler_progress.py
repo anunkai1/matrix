@@ -138,6 +138,24 @@ class HandlerProgressTests(unittest.TestCase):
             handler_progress.COMPACT_PROGRESS_HEARTBEAT_EDIT_SECONDS,
         )
 
+    def test_compact_progress_does_not_schedule_non_rendered_phase_edits(self):
+        reporter = handler_progress.ProgressReporter(
+            client=FakeClient(),
+            chat_id=1,
+            reply_to_message_id=5,
+            message_thread_id=None,
+            assistant_name="Architect",
+            progress_label="Architect is thinking",
+        )
+        reporter.pending_update = False
+
+        reporter.handle_executor_event(
+            ExecutorProgressEvent(kind="reasoning", detail="Inspecting files", exit_code=None)
+        )
+
+        self.assertEqual(reporter.phase, "Inspecting files")
+        self.assertFalse(reporter.pending_update)
+
     def test_close_emits_stats_after_forced_final_edit(self):
         reporter = handler_progress.ProgressReporter(
             client=FakeClient(),

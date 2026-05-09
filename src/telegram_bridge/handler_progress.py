@@ -123,9 +123,14 @@ class ProgressReporter:
     def set_phase(self, phase: str, immediate: bool = False) -> None:
         with self._lock:
             self.phase = phase
-            self.pending_update = True
+            self.pending_update = self._should_schedule_phase_edit(immediate=immediate)
         if immediate:
             self._maybe_edit(force=True)
+
+    def _should_schedule_phase_edit(self, immediate: bool) -> bool:
+        if immediate:
+            return True
+        return not self._is_compact_progress
 
     def handle_executor_event(self, event: ExecutorProgressEvent) -> None:
         if event.kind == "turn_started":
