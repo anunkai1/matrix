@@ -25,6 +25,8 @@ class ExecutorCancelledError(Exception):
     """Raised when a running executor subprocess is canceled by user request."""
 
 _EXECUTOR_ENV_CACHE_ATTR = "_cached_executor_env"
+_EXECUTOR_RESULT_THREAD_ID_ATTR = "_executor_thread_id"
+_EXECUTOR_RESULT_OUTPUT_ATTR = "_executor_output"
 
 
 def _build_executor_env(config) -> Optional[Dict[str, str]]:
@@ -172,6 +174,11 @@ def run_executor(
         head_chars=EXECUTOR_STREAM_BUFFER_HEAD_CHARS,
         truncation_marker=EXECUTOR_STREAM_TRUNCATION_MARKER,
     )
+    parsed_thread_id: Optional[str] = None
+    parsed_last_agent_message: Optional[str] = None
+    saw_json_events = False
+    saw_legacy_thread_id = False
+    saw_output_begin_marker = False
 
     if process.stdin is None or process.stdout is None or process.stderr is None:
         raise RuntimeError("Failed to initialize executor process pipes")
@@ -185,11 +192,33 @@ def run_executor(
                 pass
 
     def drain_stdout() -> None:
+        nonlocal parsed_thread_id, parsed_last_agent_message
+        nonlocal saw_json_events, saw_legacy_thread_id, saw_output_begin_marker
         for raw_line in process.stdout:
             stdout_buffer.append(raw_line)
+            stripped_line = raw_line.strip()
+            if raw_line.startswith("THREAD_ID="):
+                parsed_thread_id = raw_line[len("THREAD_ID="):].strip() or parsed_thread_id
+                saw_legacy_thread_id = True
+                continue
+            if stripped_line == OUTPUT_BEGIN_MARKER:
+                saw_output_begin_marker = True
+                continue
             payload = parse_stream_json_line(raw_line)
             if payload is None:
                 continue
+            saw_json_events = True
+            payload_type = payload.get("type")
+            if payload_type == "thread.started":
+                payload_thread_id = payload.get("thread_id")
+                if isinstance(payload_thread_id, str) and payload_thread_id.strip():
+                    parsed_thread_id = payload_thread_id.strip()
+            elif payload_type == "item.completed":
+                item = payload.get("item")
+                if isinstance(item, dict) and item.get("type") == "agent_message":
+                    text = item.get("text")
+                    if isinstance(text, str):
+                        parsed_last_agent_message = text
             event = extract_executor_progress_event(payload)
             if event and progress_callback:
                 try:
@@ -288,12 +317,34 @@ def run_executor(
         },
     )
 
-    return subprocess.CompletedProcess(
+    result = subprocess.CompletedProcess(
         args=cmd,
         returncode=return_code,
         stdout=stdout_buffer.render(),
         stderr=stderr_buffer.render(),
     )
+    if (
+        saw_json_events
+        and parsed_last_agent_message is not None
+        and not saw_legacy_thread_id
+        and not saw_output_begin_marker
+    ):
+        setattr(result, _EXECUTOR_RESULT_THREAD_ID_ATTR, parsed_thread_id)
+        setattr(result, _EXECUTOR_RESULT_OUTPUT_ATTR, parsed_last_agent_message.strip())
+    return result
+
+
+def cached_executor_result_output(
+    result: subprocess.CompletedProcess[str],
+) -> Optional[tuple[Optional[str], str]]:
+    cached_output = getattr(result, _EXECUTOR_RESULT_OUTPUT_ATTR, None)
+    if not isinstance(cached_output, str):
+        return None
+    cached_thread_id = getattr(result, _EXECUTOR_RESULT_THREAD_ID_ATTR, None)
+    if not isinstance(cached_thread_id, str) or not cached_thread_id.strip():
+        cached_thread_id = None
+    return cached_thread_id, cached_output
+
 
 def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:
     lines = (stdout or "").splitlines()

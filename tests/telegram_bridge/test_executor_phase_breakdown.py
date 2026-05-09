@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -22,6 +23,8 @@ if str(BRIDGE_DIR) not in sys.path:
     sys.path.insert(0, str(BRIDGE_DIR))
 sys.modules[spec.name] = executor
 spec.loader.exec_module(executor)
+import telegram_bridge.prompt_runtime as prompt_runtime
+from telegram_bridge.state_models import State
 
 
 def make_executable_script(path: Path, contents: str) -> None:
@@ -126,6 +129,82 @@ printf '%s\\n' '{"type":"item.completed","item":{"type":"agent_message","status"
             ),
             {"phase": "codex_exec", "duration_ms": 42},
         )
+
+    def test_run_executor_caches_thread_id_and_output_from_json_stream(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="executor-output-cache-") as tmpdir:
+            tmp_path = Path(tmpdir)
+            fake_executor = tmp_path / "fake_executor.sh"
+            make_executable_script(
+                fake_executor,
+                """#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+printf '%s\\n' '{"type":"thread.started","thread_id":"thread-123"}'
+printf '%s\\n' '{"type":"item.completed","item":{"type":"agent_message","status":"completed","text":"done"}}'
+""",
+            )
+            config = SimpleNamespace(
+                executor_cmd=[str(fake_executor)],
+                exec_timeout_seconds=5,
+            )
+
+            result = executor.run_executor(
+                config=config,
+                prompt="hello",
+                thread_id=None,
+            )
+
+        self.assertEqual(executor.cached_executor_result_output(result), ("thread-123", "done"))
+
+    def test_finalize_prompt_success_uses_cached_executor_output(self) -> None:
+        state = State()
+        state_repo = prompt_runtime.StateRepository(state)
+        result = subprocess.CompletedProcess(args=["executor"], returncode=0, stdout="{}", stderr="")
+        setattr(result, executor._EXECUTOR_RESULT_THREAD_ID_ATTR, "thread-123")
+        setattr(result, executor._EXECUTOR_RESULT_OUTPUT_ATTR, "done")
+
+        runtime_hooks = prompt_runtime.PromptRuntimeHooks(
+            build_scope_key_fn=lambda chat_id, message_thread_id=None: f"tg:{chat_id}",
+            emit_event_fn=lambda *args, **kwargs: None,
+            emit_phase_timing_fn=lambda *args, **kwargs: None,
+            send_canceled_response_fn=lambda *args, **kwargs: None,
+            send_executor_failure_message_fn=lambda *args, **kwargs: None,
+            extract_executor_failure_message_fn=lambda *args, **kwargs: "",
+            should_reset_thread_after_resume_failure_fn=lambda *_args, **_kwargs: False,
+            resume_retry_phase_fn=lambda _config: "retry",
+            parse_executor_output_fn=mock.Mock(side_effect=AssertionError("parse should not run")),
+            output_contains_control_directive_fn=lambda output: False,
+            trim_output_fn=lambda output, _limit: output,
+            deliver_output_and_emit_success_fn=lambda **kwargs: kwargs["output"],
+            retry_with_new_session_phase="retry",
+        )
+
+        class FakeProgress:
+            def __init__(self) -> None:
+                self.marked_success = False
+
+            def mark_success(self) -> None:
+                self.marked_success = True
+
+        progress = FakeProgress()
+        client = object()
+        config = SimpleNamespace(empty_output_message="(empty)", max_output_chars=1000)
+
+        new_thread_id, output = prompt_runtime.finalize_prompt_success(
+            state_repo=state_repo,
+            config=config,
+            client=client,
+            chat_id=1,
+            message_id=2,
+            result=result,
+            progress=progress,
+            runtime_hooks=runtime_hooks,
+        )
+
+        self.assertEqual(new_thread_id, "thread-123")
+        self.assertEqual(output, "done")
+        self.assertEqual(state.chat_threads["tg:1"], "thread-123")
+        self.assertTrue(progress.marked_success)
 
 
 if __name__ == "__main__":

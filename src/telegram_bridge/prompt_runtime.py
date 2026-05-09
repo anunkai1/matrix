@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from telegram_bridge.channel_adapter import ChannelAdapter
 from telegram_bridge.engine_adapter import EngineAdapter
+from telegram_bridge.executor import cached_executor_result_output
 from telegram_bridge.executor import ExecutorCancelledError
 from telegram_bridge.state_store import StateRepository
 
@@ -407,7 +408,11 @@ def finalize_prompt_success(
     runtime_hooks = runtime_hooks or build_prompt_runtime_hooks()
     if scope_key is None:
         scope_key = runtime_hooks.build_scope_key_fn(chat_id, message_thread_id=message_thread_id)
-    new_thread_id, output = runtime_hooks.parse_executor_output_fn(result.stdout or "")
+    cached_output = cached_executor_result_output(result)
+    if cached_output is not None:
+        new_thread_id, output = cached_output
+    else:
+        new_thread_id, output = runtime_hooks.parse_executor_output_fn(result.stdout or "")
     if new_thread_id:
         state_repo.set_thread_id(scope_key, new_thread_id)
     if not output:
