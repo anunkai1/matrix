@@ -1,0 +1,114 @@
+{
+  "campaign_id": "server3_code_review_may_2026",
+  "title": "Server3 Review Fix Loop",
+  "summary": "Resolve the seven bounded architecture and QA follow-up tasks end to end, with verification and persisted resume support.",
+  "default_max_attempts_per_task": 5,
+  "commit_prefix": "Mavali Loop",
+  "notify_prefix": "MAVALI_LOOP_NOTIFY",
+  "legacy_state_dirs": [
+    "${ROOT}/.state/server3-review-fix-loop",
+    "/var/lib/server3-review-fix-loop"
+  ],
+  "tasks": [
+    {
+      "task_id": "split_request_orchestration",
+      "title": "Split monolithic request orchestration",
+      "summary": "Break up the long Telegram bridge orchestration functions into smaller staged helpers or handlers so change risk stops accumulating in one branch-heavy flow.",
+      "guidance": "Prioritize the request entry path, prompt preparation, response delivery, and other long orchestration functions. Prefer typed intermediate results and small helper stages over moving code around without reducing branching.",
+      "target_paths": [
+        "src/telegram_bridge/prompt_preparation.py",
+        "src/telegram_bridge/response_delivery.py",
+        "src/telegram_bridge/update_flow.py"
+      ],
+      "verification_commands": [
+        ["${QA_PYTHON}", "-m", "pytest", "tests/telegram_bridge/test_handlers.py", "-q"],
+        ["${QA_PYTHON}", "-m", "pytest", "tests/telegram_bridge/test_special_request_processing.py", "-q"]
+      ]
+    },
+    {
+      "task_id": "group_runtime_config",
+      "title": "Group runtime configuration into submodels",
+      "summary": "Replace the flat bridge config shape with grouped sub-configs or another declarative schema so env loading and test setup stop spreading across one giant config object.",
+      "guidance": "Keep compatibility with existing env names. The goal is to reduce manual wiring and constructor churn, not change runtime semantics.",
+      "target_paths": [
+        "src/telegram_bridge/runtime_config.py",
+        "tests/telegram_bridge/test_config.py"
+      ],
+      "verification_commands": [
+        ["${QA_PYTHON}", "-m", "pytest", "tests/telegram_bridge/test_config.py", "-q"],
+        ["${QA_PYTHON}", "-m", "pytest", "tests/telegram_bridge/test_handlers.py", "-q"]
+      ]
+    },
+    {
+      "task_id": "dedupe_attachment_resolution",
+      "title": "Deduplicate attachment resolution flow",
+      "summary": "Unify the repeated resolve-download-archive-fallback flow for photos and documents into a reusable attachment-resolution service or helper with typed outcomes.",
+      "guidance": "Reduce real duplication instead of just extracting tiny helpers. Preserve archived-summary fallback behavior and user-visible rejection messages.",
+      "target_paths": [
+        "src/telegram_bridge/prompt_preparation.py",
+        "src/telegram_bridge/attachment_processing.py"
+      ],
+      "verification_commands": [
+        ["${QA_PYTHON}", "-m", "pytest", "tests/telegram_bridge/test_handlers.py", "-q"],
+        ["${QA_PYTHON}", "-m", "pytest", "tests/telegram_bridge/test_special_request_processing.py", "-q"]
+      ]
+    },
+    {
+      "task_id": "dispatch_outbound_media",
+      "title": "Dispatch outbound media by strategy",
+      "summary": "Refactor outbound media delivery to use per-media handlers or a dispatch table instead of one central branch-heavy function.",
+      "guidance": "Preserve current fallback semantics, especially sendVoice to sendAudio downgrade and text fallback on media send failure.",
+      "target_paths": [
+        "src/telegram_bridge/response_delivery.py",
+        "tests/telegram_bridge/test_executor.py"
+      ],
+      "verification_commands": [
+        ["${QA_PYTHON}", "-m", "pytest", "tests/telegram_bridge/test_executor.py", "-q"],
+        ["${QA_PYTHON}", "-m", "pytest", "tests/telegram_bridge/test_handlers.py", "-q"]
+      ]
+    },
+    {
+      "task_id": "remove_lazy_handler_imports",
+      "title": "Replace lazy handler import indirection",
+      "summary": "Reduce cyclic-import workarounds by introducing cleaner dependency boundaries so update flow and related modules do not need runtime import helpers.",
+      "guidance": "Prefer explicit dependency passing or a small service container at bootstrap. Keep the change scoped and avoid broad rewrites.",
+      "target_paths": [
+        "src/telegram_bridge/update_flow.py",
+        "src/telegram_bridge/handlers.py",
+        "src/telegram_bridge/bridge_runtime_setup.py"
+      ],
+      "verification_commands": [
+        ["${QA_PYTHON}", "-m", "pytest", "tests/telegram_bridge/test_handlers.py", "-q"],
+        ["${QA_PYTHON}", "-m", "pytest", "tests/telegram_bridge/test_command_callback_routing.py", "-q"]
+      ]
+    },
+    {
+      "task_id": "dedupe_browser_brain_js",
+      "title": "Deduplicate Browser Brain DOM helper JS",
+      "summary": "Move duplicated Browser Brain DOM helper logic into a shared source so collect and find flows cannot drift independently.",
+      "guidance": "Keep the external API stable. The win is reducing duplicated locator logic, not changing Browser Brain behavior for users.",
+      "target_paths": [
+        "src/browser_brain/service.py",
+        "tests/browser_brain/test_service.py"
+      ],
+      "verification_commands": [
+        ["${QA_PYTHON}", "-m", "pytest", "tests/browser_brain/test_service.py", "-q"],
+        ["${QA_PYTHON}", "-m", "pytest", "tests/browser_brain/test_server.py", "-q"]
+      ]
+    },
+    {
+      "task_id": "tighten_python_qa",
+      "title": "Tighten Python QA guardrails",
+      "summary": "Raise the repo baseline with stricter lint/static checks or stronger QA wiring that fits the current bridge size and complexity.",
+      "guidance": "Prefer practical guardrails that the repo can keep passing. Do not add aspirational checks that immediately create permanent noise.",
+      "target_paths": [
+        "pyproject.toml",
+        "ops/dev/run_python_checks.sh",
+        "tests/review_fix_loop/test_review_fix_loop.py"
+      ],
+      "verification_commands": [
+        ["bash", "ops/dev/run_python_checks.sh", "--skip-smoke"]
+      ]
+    }
+  ]
+}
