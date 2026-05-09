@@ -1,0 +1,10 @@
+[Unit]
+Description=Server3 Ralph Daily Report Timer
+
+[Timer]
+OnCalendar=20:15
+Persistent=true
+Unit=server3-ralph-daily-report.service
+
+[Install]
+WantedBy=timers.target

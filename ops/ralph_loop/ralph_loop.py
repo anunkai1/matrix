@@ -11,6 +11,7 @@ against the current top target before re-ranking.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import math
@@ -22,6 +23,9 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
+from urllib import error as urllib_error
+from urllib import parse as urllib_parse
+from urllib import request as urllib_request
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -40,6 +44,7 @@ def _load_runtime_observer():
 runtime_observer = _load_runtime_observer()
 
 
+RALPH_NAME = os.getenv("RALPH_LOOP_NAME", "Server3 Ralph Autopilot").strip() or "Server3 Ralph Autopilot"
 TZ_NAME = os.getenv("RALPH_LOOP_TZ", "Australia/Brisbane")
 STATE_DIR = Path(os.getenv("RALPH_LOOP_STATE_DIR", "/var/lib/server3-ralph-loop"))
 TELEGRAM_UNIT = os.getenv("RALPH_LOOP_TELEGRAM_UNIT", "telegram-architect-bridge.service").strip()
@@ -48,8 +53,10 @@ LATEST_REPORT_PATH = STATE_DIR / "latest.md"
 LATEST_BACKLOG_PATH = STATE_DIR / "optimization_backlog.json"
 HISTORY_PATH = STATE_DIR / "history.jsonl"
 RESULTS_PATH = STATE_DIR / "execution_results.jsonl"
+REPORTS_DIR = STATE_DIR / "reports"
 DEFAULT_EXECUTOR_CMD = [str(ROOT / "src" / "telegram_bridge" / "executor.sh"), "new"]
 DEFAULT_QA_PYTHON = ROOT / ".venv" / "server3-qa" / "bin" / "python"
+DAILY_REPORT_HOURS = max(1, int(os.getenv("RALPH_LOOP_DAILY_REPORT_HOURS", "24") or "24"))
 
 
 @dataclass(frozen=True)
@@ -93,13 +100,15 @@ class ExecutionResult:
     codex_stderr: str
     verification_results: List[Dict[str, object]]
     changed_files: List[str]
+    preexisting_dirty_files: List[str]
     git_head_before: str
     git_head_after: str
-    commit_message: str
-    committed_sha: str
-    push_succeeded: bool
-    push_stdout: str
-    push_stderr: str
+    commit_message: str = ""
+    committed_sha: str = ""
+    push_succeeded: bool = False
+    push_stdout: str = ""
+    push_stderr: str = ""
+    report_only: bool = False
 
 
 def now_utc() -> datetime:
@@ -107,7 +116,7 @@ def now_utc() -> datetime:
 
 
 def ensure_state_dir() -> None:
-    global STATE_DIR, LATEST_REPORT_PATH, LATEST_BACKLOG_PATH, HISTORY_PATH, RESULTS_PATH
+    global STATE_DIR, LATEST_REPORT_PATH, LATEST_BACKLOG_PATH, HISTORY_PATH, RESULTS_PATH, REPORTS_DIR
     fallback = Path(
         os.getenv(
             "RALPH_LOOP_FALLBACK_STATE_DIR",
@@ -125,13 +134,16 @@ def ensure_state_dir() -> None:
         LATEST_BACKLOG_PATH = STATE_DIR / "optimization_backlog.json"
         HISTORY_PATH = STATE_DIR / "history.jsonl"
         RESULTS_PATH = STATE_DIR / "execution_results.jsonl"
+        REPORTS_DIR = STATE_DIR / "reports"
         STATE_DIR.mkdir(parents=True, exist_ok=True)
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
     except PermissionError:
         _switch_to_fallback()
         return
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     if os.access(STATE_DIR, os.W_OK | os.X_OK):
         return
     _switch_to_fallback()
@@ -465,6 +477,18 @@ def format_report(
     return "\n".join(lines) + "\n"
 
 
+def parse_iso_utc(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def save_history(record: Dict[str, object]) -> None:
     ensure_state_dir()
     with open(HISTORY_PATH, "a", encoding="utf-8") as handle:
@@ -522,6 +546,29 @@ def collect_snapshot(*, persist: bool) -> Dict[str, object]:
         "backlog": backlog,
         "report": report,
     }
+
+
+def load_execution_results(*, since_dt: Optional[datetime] = None) -> List[ExecutionResult]:
+    ensure_state_dir()
+    if not RESULTS_PATH.exists():
+        return []
+    rows: List[ExecutionResult] = []
+    for line in RESULTS_PATH.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        payload.setdefault("preexisting_dirty_files", [])
+        payload.setdefault("commit_message", "")
+        payload.setdefault("committed_sha", "")
+        payload.setdefault("push_succeeded", False)
+        payload.setdefault("push_stdout", "")
+        payload.setdefault("push_stderr", "")
+        payload.setdefault("report_only", False)
+        observed_dt = parse_iso_utc(payload.get("observed_at_utc"))
+        if since_dt and observed_dt and observed_dt < since_dt:
+            continue
+        rows.append(ExecutionResult(**payload))
+    return rows
 
 
 def find_candidate(candidates: Sequence[Candidate], candidate_id: Optional[str]) -> Optional[Candidate]:
@@ -609,6 +656,19 @@ def changed_files_since(before: Dict[str, str], after: Dict[str, str]) -> List[s
     return sorted(changed)
 
 
+def file_content_signature(path: str) -> str:
+    full_path = ROOT / path
+    if not full_path.exists() or not full_path.is_file():
+        return ""
+    digest = hashlib.sha256()
+    digest.update(full_path.read_bytes())
+    return digest.hexdigest()
+
+
+def snapshot_file_signatures(paths: Sequence[str]) -> Dict[str, str]:
+    return {path: file_content_signature(path) for path in paths}
+
+
 def commit_message_for_candidate(candidate: Candidate) -> str:
     return f"Ralph: {candidate.title}"
 
@@ -626,6 +686,83 @@ def commit_and_push(commit_message: str, paths: Sequence[str]) -> tuple[str, boo
     branch = current_branch() or "main"
     push_proc = run_command_capture(["git", "push", "origin", branch], cwd=ROOT)
     return committed_sha, push_proc.returncode == 0, push_proc.stdout, push_proc.stderr
+
+
+def telegram_target(prefix: str) -> tuple[str, str]:
+    chat_id = os.getenv(f"{prefix}_CHAT_ID", "").strip()
+    thread_id = os.getenv(f"{prefix}_TOPIC_ID", "").strip()
+    return chat_id, thread_id
+
+
+def send_telegram_message(text: str, *, prefix: str) -> bool:
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    api_base = os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
+    chat_id, thread_id = telegram_target(prefix)
+    if not token or not chat_id:
+        return False
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": "true",
+    }
+    if thread_id:
+        payload["message_thread_id"] = thread_id
+    data = urllib_parse.urlencode(payload).encode("utf-8")
+    request = urllib_request.Request(
+        f"{api_base}/bot{token}/sendMessage",
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=20) as response:
+            _ = response.read()
+    except urllib_error.URLError:
+        return False
+    return True
+
+
+def send_telegram_document(document_path: Path, caption: str, *, prefix: str) -> bool:
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    api_base = os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
+    chat_id, thread_id = telegram_target(prefix)
+    if not token or not chat_id or not document_path.exists():
+        return False
+    boundary = "ralphboundary"
+    body = bytearray()
+
+    def add_field(name: str, value: str) -> None:
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"))
+        body.extend(value.encode("utf-8"))
+        body.extend(b"\r\n")
+
+    add_field("chat_id", chat_id)
+    if thread_id:
+        add_field("message_thread_id", thread_id)
+    add_field("caption", caption[:1024])
+    body.extend(f"--{boundary}\r\n".encode("utf-8"))
+    body.extend(
+        (
+            f'Content-Disposition: form-data; name="document"; filename="{document_path.name}"\r\n'
+            "Content-Type: text/markdown\r\n\r\n"
+        ).encode("utf-8")
+    )
+    body.extend(document_path.read_bytes())
+    body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+    request = urllib_request.Request(
+        f"{api_base}/bot{token}/sendDocument",
+        data=bytes(body),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=30) as response:
+            _ = response.read()
+    except urllib_error.URLError:
+        return False
+    return True
 
 
 def run_verification_commands(commands: Sequence[Sequence[str]]) -> List[VerificationResult]:
@@ -658,6 +795,7 @@ def build_execution_result(
     codex_stderr: str,
     verification_results: List[VerificationResult],
     changed_files: List[str],
+    preexisting_dirty_files: List[str],
     git_head_before: str,
     git_head_after: str,
     commit_message: str = "",
@@ -665,6 +803,7 @@ def build_execution_result(
     push_succeeded: bool = False,
     push_stdout: str = "",
     push_stderr: str = "",
+    report_only: bool = False,
 ) -> ExecutionResult:
     return ExecutionResult(
         observed_at_utc=observed_at.isoformat(),
@@ -686,6 +825,7 @@ def build_execution_result(
             for result in verification_results
         ],
         changed_files=changed_files,
+        preexisting_dirty_files=preexisting_dirty_files,
         git_head_before=git_head_before,
         git_head_after=git_head_after,
         commit_message=commit_message,
@@ -693,32 +833,116 @@ def build_execution_result(
         push_succeeded=push_succeeded,
         push_stdout=push_stdout,
         push_stderr=push_stderr,
+        report_only=report_only,
     )
+
+
+def format_execution_update(result: ExecutionResult) -> str:
+    lines = [
+        f"[{RALPH_NAME}] hourly execute update",
+        f"status={result.status}",
+        f"candidate={result.selected_candidate_id or '-'}",
+    ]
+    if result.changed_files:
+        lines.append(f"changed={', '.join(result.changed_files)}")
+    if result.preexisting_dirty_files:
+        lines.append(f"preexisting_dirty={', '.join(result.preexisting_dirty_files[:8])}")
+    if result.committed_sha:
+        push_state = "pushed" if result.push_succeeded else "push_failed"
+        lines.append(f"commit={result.committed_sha[:7]} {push_state}")
+    lines.append(f"summary={result.summary}")
+    return "\n".join(lines)
+
+
+def render_daily_report(*, observed_at: datetime, results: Sequence[ExecutionResult], backlog: Dict[str, object]) -> str:
+    local_observed = observed_at.astimezone(runtime_observer.ZoneInfo(TZ_NAME)).isoformat()
+    applied = [item for item in results if item.status == "applied"]
+    blocked = [item for item in results if item.status not in {"applied", "no_change"}]
+    lines = [
+        f"# {RALPH_NAME} Daily Report",
+        "",
+        f"- Observed at: {local_observed}",
+        f"- Window: last {DAILY_REPORT_HOURS} hour(s)",
+        f"- Total runs: {len(results)}",
+        f"- Applied: {len(applied)}",
+        f"- Blocked/attention: {len(blocked)}",
+        "",
+        "## Current Top Target",
+    ]
+    top_candidate_id = backlog.get("top_candidate_id")
+    if top_candidate_id:
+        lines.append(f"- `{top_candidate_id}`")
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "## Runs"])
+    if not results:
+        lines.append("- No Ralph execute results in this window.")
+    for item in results:
+        observed = parse_iso_utc(item.observed_at_utc)
+        observed_local = observed.astimezone(runtime_observer.ZoneInfo(TZ_NAME)).isoformat() if observed else item.observed_at_utc
+        lines.append(f"- {observed_local} status={item.status} candidate={item.selected_candidate_id or '-'}")
+        if item.changed_files:
+            lines.append(f"  changed: {', '.join(item.changed_files)}")
+        if item.committed_sha:
+            push_state = "pushed" if item.push_succeeded else "push_failed"
+            lines.append(f"  commit: {item.committed_sha} {push_state}")
+        if item.preexisting_dirty_files:
+            lines.append(f"  preexisting dirty: {', '.join(item.preexisting_dirty_files[:8])}")
+        lines.append(f"  summary: {item.summary}")
+
+    lines.extend(["", "## Important Info"])
+    if blocked:
+        for item in blocked[:10]:
+            lines.append(f"- attention: status={item.status} candidate={item.selected_candidate_id or '-'} summary={item.summary}")
+    else:
+        lines.append("- No blocked Ralph runs in this window.")
+
+    return "\n".join(lines) + "\n"
+
+
+def write_daily_report(observed_at: datetime, text: str) -> Path:
+    ensure_state_dir()
+    report_path = REPORTS_DIR / f"ralph-daily-{observed_at.astimezone(runtime_observer.ZoneInfo(TZ_NAME)).date().isoformat()}.md"
+    report_path.write_text(text, encoding="utf-8")
+    return report_path
+
+
+def notify_daily_report() -> int:
+    observed_at = now_utc()
+    since_dt = observed_at - timedelta(hours=DAILY_REPORT_HOURS)
+    results = load_execution_results(since_dt=since_dt)
+    collected = collect_snapshot(persist=True)
+    report_text = render_daily_report(
+        observed_at=observed_at,
+        results=results,
+        backlog=collected["backlog"],
+    )
+    report_path = write_daily_report(observed_at, report_text)
+    sent = send_telegram_document(
+        report_path,
+        f"{RALPH_NAME} daily report",
+        prefix="RALPH_LOOP_DAILY_REPORT",
+    )
+    if not sent:
+        raise RuntimeError(f"failed to send daily report document: {report_path}")
+    print(report_path)
+    return 0
 
 
 def execute_candidate(candidate: Candidate, handler: ExecutionHandler, observed_at: datetime) -> ExecutionResult:
     prompt = build_execution_prompt(candidate, handler)
     worktree_before = git_status_entries()
-    if worktree_before:
-        return build_execution_result(
-            observed_at=observed_at,
-            selected_candidate_id=candidate.id,
-            selected_candidate_score=candidate.score,
-            handler_found=True,
-            status="blocked",
-            summary="Worktree was already dirty before execute; refusing to mix Ralph changes with existing edits.",
-            codex_returncode=None,
-            codex_stdout="",
-            codex_stderr="",
-            verification_results=[],
-            changed_files=[],
-            git_head_before=git_head(),
-            git_head_after=git_head(),
-        )
+    dirty_before = sorted(worktree_before)
+    dirty_before_signatures = snapshot_file_signatures(dirty_before)
     head_before = git_head()
     codex_proc = run_command_capture(executor_command(), input_text=prompt, cwd=ROOT)
     worktree_after = git_status_entries()
     changed_files = changed_files_since(worktree_before, worktree_after)
+    for path in dirty_before:
+        if file_content_signature(path) != dirty_before_signatures.get(path, "") and path not in changed_files:
+            changed_files.append(path)
+    changed_files = sorted(changed_files)
     verification_results = run_verification_commands(handler.verification_commands)
     head_after = git_head()
 
@@ -729,6 +953,7 @@ def execute_candidate(candidate: Candidate, handler: ExecutionHandler, observed_
     push_succeeded = False
     push_stdout = ""
     push_stderr = ""
+    report_only = False
     if codex_proc.returncode != 0:
         status = "blocked"
         summary = "Codex execute pass failed before verification completed."
@@ -739,18 +964,26 @@ def execute_candidate(candidate: Candidate, handler: ExecutionHandler, observed_
         status = "qa_failed"
         summary = "Optimization changed files but verification failed."
     else:
-        commit_message = commit_message_for_candidate(candidate)
-        committed_sha, push_succeeded, push_stdout, push_stderr = commit_and_push(
-            commit_message,
-            changed_files,
-        )
-        head_after = git_head()
-        if not committed_sha:
-            status = "commit_failed"
-            summary = "Optimization passed verification but Ralph could not create the commit."
-        elif not push_succeeded:
-            status = "push_failed"
-            summary = "Optimization passed verification and was committed locally, but push failed."
+        dirty_overlap = sorted(set(dirty_before) & set(changed_files))
+        if dirty_overlap:
+            report_only = True
+            summary = (
+                "Optimization applied and verified, but Ralph left it uncommitted because the run touched files "
+                "that were already dirty before execution."
+            )
+        else:
+            commit_message = commit_message_for_candidate(candidate)
+            committed_sha, push_succeeded, push_stdout, push_stderr = commit_and_push(
+                commit_message,
+                changed_files,
+            )
+            head_after = git_head()
+            if not committed_sha:
+                status = "commit_failed"
+                summary = "Optimization passed verification but Ralph could not create the commit."
+            elif not push_succeeded:
+                status = "push_failed"
+                summary = "Optimization passed verification and was committed locally, but push failed."
 
     return build_execution_result(
         observed_at=observed_at,
@@ -764,6 +997,7 @@ def execute_candidate(candidate: Candidate, handler: ExecutionHandler, observed_
         codex_stderr=codex_proc.stderr,
         verification_results=verification_results,
         changed_files=changed_files,
+        preexisting_dirty_files=dirty_before,
         git_head_before=head_before,
         git_head_after=head_after,
         commit_message=commit_message,
@@ -771,6 +1005,7 @@ def execute_candidate(candidate: Candidate, handler: ExecutionHandler, observed_
         push_succeeded=push_succeeded,
         push_stdout=push_stdout,
         push_stderr=push_stderr,
+        report_only=report_only,
     )
 
 
@@ -792,6 +1027,7 @@ def execute_once(*, candidate_id: Optional[str]) -> int:
             codex_stderr="",
             verification_results=[],
             changed_files=[],
+            preexisting_dirty_files=[],
             git_head_before=git_head(),
             git_head_after=git_head(),
         )
@@ -813,6 +1049,7 @@ def execute_once(*, candidate_id: Optional[str]) -> int:
             codex_stderr="",
             verification_results=[],
             changed_files=[],
+            preexisting_dirty_files=[],
             git_head_before=git_head(),
             git_head_after=git_head(),
         )
@@ -823,6 +1060,7 @@ def execute_once(*, candidate_id: Optional[str]) -> int:
     result = execute_candidate(selected, handler, observed_at)
     save_execution_result(result)
     collect_snapshot(persist=True)
+    send_telegram_message(format_execution_update(result), prefix="RALPH_LOOP_NOTIFY")
     print(json.dumps(asdict(result), indent=2, sort_keys=True))
     return 0 if result.status in {"applied", "no_change"} else 1
 
@@ -837,7 +1075,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Ralph loop for live operational optimization ranking and execution."
     )
-    parser.add_argument("command", choices=("collect", "execute"))
+    parser.add_argument("command", choices=("collect", "execute", "notify-daily"))
     parser.add_argument("--candidate-id", dest="candidate_id")
     return parser
 
@@ -848,6 +1086,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return collect_once()
     if args.command == "execute":
         return execute_once(candidate_id=args.candidate_id)
+    if args.command == "notify-daily":
+        return notify_daily_report()
     raise RuntimeError(f"unsupported command: {args.command}")
 
 

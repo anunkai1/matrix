@@ -1,5 +1,5 @@
 [Unit]
-Description=Server3 Ralph Optimization Loop
+Description=Server3 Ralph Daily Report
 After=network-online.target
 Wants=network-online.target
 
@@ -14,12 +14,10 @@ Environment="RALPH_LOOP_NAME=Server3 Ralph Autopilot"
 Environment=RALPH_LOOP_STATE_DIR=/var/lib/server3-ralph-loop
 Environment=RALPH_LOOP_TZ=Australia/Brisbane
 Environment=RALPH_LOOP_TELEGRAM_UNIT=telegram-architect-bridge.service
-Environment=RALPH_LOOP_WINDOW_HOURS=6
-Environment=RALPH_LOOP_NOTIFY_CHAT_ID=-1003894351534
-Environment=RALPH_LOOP_NOTIFY_TOPIC_ID=1853
+Environment=RALPH_LOOP_DAILY_REPORT_HOURS=24
 Environment=RALPH_LOOP_DAILY_REPORT_CHAT_ID=-1003894351534
 Environment=RALPH_LOOP_DAILY_REPORT_TOPIC_ID=1853
 EnvironmentFile=-/etc/default/server3-ralph-loop
 EnvironmentFile=-/etc/default/telegram-architect-bridge
 StateDirectory=server3-ralph-loop
-ExecStart=/usr/bin/python3 /home/architect/matrix/ops/ralph_loop/ralph_loop.py execute
+ExecStart=/usr/bin/python3 /home/architect/matrix/ops/ralph_loop/ralph_loop.py notify-daily

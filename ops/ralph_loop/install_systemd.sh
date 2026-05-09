@@ -3,36 +3,43 @@ set -euo pipefail
 
 MODE="${1:-apply}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SERVICE_NAME="server3-ralph-loop.service"
-TIMER_NAME="server3-ralph-loop.timer"
-SERVICE_SRC="${REPO_ROOT}/infra/systemd/${SERVICE_NAME}"
-TIMER_SRC="${REPO_ROOT}/infra/systemd/${TIMER_NAME}"
-SERVICE_DST="/etc/systemd/system/${SERVICE_NAME}"
-TIMER_DST="/etc/systemd/system/${TIMER_NAME}"
+UNIT_NAMES=(
+  "server3-ralph-loop.service"
+  "server3-ralph-loop.timer"
+  "server3-ralph-daily-report.service"
+  "server3-ralph-daily-report.timer"
+)
 
-if [[ ! -f "${SERVICE_SRC}" || ! -f "${TIMER_SRC}" ]]; then
-  echo "Missing unit file(s) under ${REPO_ROOT}/infra/systemd" >&2
-  exit 1
-fi
+for unit_name in "${UNIT_NAMES[@]}"; do
+  if [[ ! -f "${REPO_ROOT}/infra/systemd/${unit_name}" ]]; then
+    echo "Missing unit file under ${REPO_ROOT}/infra/systemd: ${unit_name}" >&2
+    exit 1
+  fi
+done
 
 case "${MODE}" in
   apply)
-    sudo install -m 0644 "${SERVICE_SRC}" "${SERVICE_DST}"
-    sudo install -m 0644 "${TIMER_SRC}" "${TIMER_DST}"
+    for unit_name in "${UNIT_NAMES[@]}"; do
+      sudo install -m 0644 "${REPO_ROOT}/infra/systemd/${unit_name}" "/etc/systemd/system/${unit_name}"
+    done
     sudo systemctl daemon-reload
-    sudo systemctl enable --now "${TIMER_NAME}"
-    echo "Installed and enabled ${TIMER_NAME}"
+    sudo systemctl enable --now server3-ralph-loop.timer server3-ralph-daily-report.timer
+    echo "Installed and enabled Ralph timers"
     ;;
   rollback)
-    if sudo systemctl is-active --quiet "${TIMER_NAME}"; then
-      sudo systemctl stop "${TIMER_NAME}"
-    fi
-    if sudo systemctl is-enabled --quiet "${TIMER_NAME}"; then
-      sudo systemctl disable "${TIMER_NAME}"
-    fi
-    sudo rm -f "${TIMER_DST}" "${SERVICE_DST}"
+    for timer_name in server3-ralph-loop.timer server3-ralph-daily-report.timer; do
+      if sudo systemctl is-active --quiet "${timer_name}"; then
+        sudo systemctl stop "${timer_name}"
+      fi
+      if sudo systemctl is-enabled --quiet "${timer_name}"; then
+        sudo systemctl disable "${timer_name}"
+      fi
+    done
+    for unit_name in "${UNIT_NAMES[@]}"; do
+      sudo rm -f "/etc/systemd/system/${unit_name}"
+    done
     sudo systemctl daemon-reload
-    echo "Removed ${SERVICE_NAME} and ${TIMER_NAME}"
+    echo "Removed Ralph loop and daily report units"
     ;;
   *)
     echo "Usage: $0 [apply|rollback]" >&2

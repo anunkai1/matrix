@@ -1,11 +1,16 @@
-# Server3 Ralph Loop
+# Server3 Ralph Autopilot
 
 `Ralph` means `Reliability, Availability, Latency, Price, Health`.
+
+Canonical name:
+- `Server3 Ralph Autopilot`
+- short name in conversation: `Ralph`
 
 Purpose:
 - continuously inspect live Architect bridge telemetry
 - rank the highest-value operational optimization target
 - refresh a machine-readable backlog plus a human-readable latest report
+- report its activity back to Telegram
 
 Scope:
 - reads live bridge/system telemetry
@@ -47,12 +52,14 @@ Commands:
 - run once: `python3 /home/architect/matrix/ops/ralph_loop/ralph_loop.py collect`
 - execute top live target once: `python3 /home/architect/matrix/ops/ralph_loop/ralph_loop.py execute`
 - execute a named target once: `python3 /home/architect/matrix/ops/ralph_loop/ralph_loop.py execute --candidate-id progress_edit_noise`
+- generate/send the daily report now: `python3 /home/architect/matrix/ops/ralph_loop/ralph_loop.py notify-daily`
 - install timer: `bash /home/architect/matrix/ops/ralph_loop/install_systemd.sh apply`
 - remove timer: `bash /home/architect/matrix/ops/ralph_loop/install_systemd.sh rollback`
 
 Default cadence:
 - `server3-ralph-loop.timer` runs hourly with a small randomized delay
 - the live service is now wired to `execute`, so each timer fire can rank, act once, verify, record a result, and re-rank
+- `server3-ralph-daily-report.timer` sends one Markdown daily report document at `20:15` AEST
 
 Current intent:
 - keep the next optimization target fresh without owner prompting
@@ -61,4 +68,9 @@ Current intent:
 Commit behavior:
 - Ralph keeps commit/push responsibility in the loop layer, not inside the Codex worker prompt
 - a successful `applied` run now stages only the files created by that run, commits them, and pushes the current branch to `origin`
-- Ralph refuses to execute on top of a pre-dirty worktree, so it does not silently mix its own changes with existing human edits
+- if the worktree is already dirty, Ralph still runs and reports the pre-existing dirty paths
+- if a run touches files that were already dirty before the run, Ralph reports the result but skips commit/push for that pass rather than mixing autonomous work with existing local edits
+
+Telegram reporting:
+- each hourly execute run sends a short status update to the configured chat/topic
+- the daily report is a `.md` document covering the last 24 hours of Ralph results, findings, applied fixes, commits, and attention items

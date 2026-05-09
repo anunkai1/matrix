@@ -144,7 +144,7 @@ class RalphLoopTests(unittest.TestCase):
             ), mock.patch.object(
                 Path,
                 "mkdir",
-                side_effect=[PermissionError("denied"), None],
+                side_effect=[PermissionError("denied"), None, None],
             ):
                 ralph_loop.ensure_state_dir()
                 self.assertEqual(ralph_loop.STATE_DIR, fallback)
@@ -240,6 +240,8 @@ class RalphLoopTests(unittest.TestCase):
             self.assertEqual(payload["status"], "blocked")
             self.assertFalse(payload["handler_found"])
             self.assertEqual(payload["selected_candidate_id"], "unknown_target")
+            self.assertEqual(payload["preexisting_dirty_files"], [])
+            self.assertFalse(payload["push_succeeded"])
 
     def test_execute_candidate_records_applied_result(self) -> None:
         candidate = ralph_loop.Candidate(
@@ -301,11 +303,13 @@ class RalphLoopTests(unittest.TestCase):
         self.assertEqual(result.commit_message, "Ralph: Reduce progress update noise")
         self.assertEqual(result.committed_sha, "after")
         self.assertTrue(result.push_succeeded)
+        self.assertEqual(result.preexisting_dirty_files, [])
+        self.assertFalse(result.report_only)
         self.assertEqual(result.git_head_before, "before")
         self.assertEqual(result.git_head_after, "after")
         run_capture.assert_called_once()
 
-    def test_execute_candidate_blocks_when_worktree_already_dirty(self) -> None:
+    def test_execute_candidate_reports_only_when_worktree_already_dirty_and_overlap_exists(self) -> None:
         candidate = ralph_loop.Candidate(
             id="progress_edit_noise",
             title="Reduce progress update noise",
@@ -318,11 +322,42 @@ class RalphLoopTests(unittest.TestCase):
         )
         handler = ralph_loop.EXECUTION_HANDLERS["progress_edit_noise"]
         observed_at = datetime(2026, 5, 9, 1, 2, 3, tzinfo=timezone.utc)
+        codex_result = subprocess.CompletedProcess(
+            args=["executor.sh", "new"],
+            returncode=0,
+            stdout="applied",
+            stderr="",
+        )
+        verification_ok = [
+            ralph_loop.VerificationResult(
+                command=["python3", "-m", "pytest", "tests/telegram_bridge/test_handler_progress.py", "-q"],
+                returncode=0,
+                stdout="ok",
+                stderr="",
+            )
+        ]
 
         with mock.patch.object(
             ralph_loop,
             "git_status_entries",
-            return_value={"README.md": " M"},
+            side_effect=[
+                {"src/telegram_bridge/handler_progress.py": " M", "README.md": " M"},
+                {"src/telegram_bridge/handler_progress.py": " M", "README.md": " M"},
+            ],
+        ), mock.patch.object(
+            ralph_loop,
+            "snapshot_file_signatures",
+            return_value={
+                "README.md": "before-readme",
+                "src/telegram_bridge/handler_progress.py": "before-handler",
+            },
+        ), mock.patch.object(
+            ralph_loop,
+            "file_content_signature",
+            side_effect=lambda path: {
+                "README.md": "before-readme",
+                "src/telegram_bridge/handler_progress.py": "after-handler",
+            }.get(path, ""),
         ), mock.patch.object(
             ralph_loop,
             "git_head",
@@ -330,13 +365,87 @@ class RalphLoopTests(unittest.TestCase):
         ), mock.patch.object(
             ralph_loop,
             "run_command_capture",
-        ) as run_capture:
+            return_value=codex_result,
+        ) as run_capture, mock.patch.object(
+            ralph_loop,
+            "run_verification_commands",
+            return_value=verification_ok,
+        ), mock.patch.object(
+            ralph_loop,
+            "commit_and_push",
+        ) as commit_and_push:
             result = ralph_loop.execute_candidate(candidate, handler, observed_at)
 
-        self.assertEqual(result.status, "blocked")
-        self.assertIn("already dirty", result.summary)
-        self.assertEqual(result.changed_files, [])
-        run_capture.assert_not_called()
+        self.assertEqual(result.status, "applied")
+        self.assertTrue(result.report_only)
+        self.assertIn("uncommitted", result.summary)
+        self.assertEqual(result.changed_files, ["src/telegram_bridge/handler_progress.py"])
+        self.assertEqual(
+            result.preexisting_dirty_files,
+            ["README.md", "src/telegram_bridge/handler_progress.py"],
+        )
+        commit_and_push.assert_not_called()
+        run_capture.assert_called_once()
+
+    def test_render_daily_report_includes_run_counts(self) -> None:
+        observed_at = datetime(2026, 5, 9, 2, 0, 0, tzinfo=timezone.utc)
+        results = [
+            ralph_loop.ExecutionResult(
+                observed_at_utc="2026-05-09T01:00:00+00:00",
+                selected_candidate_id="codex_exec_latency",
+                selected_candidate_score=100,
+                handler_found=True,
+                status="applied",
+                summary="Optimization applied and verification passed.",
+                codex_returncode=0,
+                codex_stdout="",
+                codex_stderr="",
+                verification_results=[],
+                changed_files=["src/telegram_bridge/prompt_runtime.py"],
+                preexisting_dirty_files=[],
+                git_head_before="a",
+                git_head_after="b",
+                commit_message="Ralph: Reduce Codex executor latency",
+                committed_sha="abc123",
+                push_succeeded=True,
+                push_stdout="ok",
+                push_stderr="",
+                report_only=False,
+            ),
+            ralph_loop.ExecutionResult(
+                observed_at_utc="2026-05-09T01:30:00+00:00",
+                selected_candidate_id="progress_edit_noise",
+                selected_candidate_score=100,
+                handler_found=True,
+                status="blocked",
+                summary="Codex execute pass failed before verification completed.",
+                codex_returncode=1,
+                codex_stdout="",
+                codex_stderr="error",
+                verification_results=[],
+                changed_files=[],
+                preexisting_dirty_files=["README.md"],
+                git_head_before="b",
+                git_head_after="b",
+                commit_message="",
+                committed_sha="",
+                push_succeeded=False,
+                push_stdout="",
+                push_stderr="",
+                report_only=True,
+            ),
+        ]
+
+        report = ralph_loop.render_daily_report(
+            observed_at=observed_at,
+            results=results,
+            backlog={"top_candidate_id": "codex_exec_latency"},
+        )
+
+        self.assertIn("Server3 Ralph Autopilot Daily Report", report)
+        self.assertIn("- Total runs: 2", report)
+        self.assertIn("- Applied: 1", report)
+        self.assertIn("attention: status=blocked", report)
 
 
 if __name__ == "__main__":
