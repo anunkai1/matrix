@@ -49,6 +49,7 @@ LATEST_BACKLOG_PATH = STATE_DIR / "optimization_backlog.json"
 HISTORY_PATH = STATE_DIR / "history.jsonl"
 RESULTS_PATH = STATE_DIR / "execution_results.jsonl"
 DEFAULT_EXECUTOR_CMD = [str(ROOT / "src" / "telegram_bridge" / "executor.sh"), "new"]
+DEFAULT_QA_PYTHON = ROOT / ".venv" / "server3-qa" / "bin" / "python"
 
 
 @dataclass(frozen=True)
@@ -367,14 +368,27 @@ def build_candidates(rows: List[Dict[str, object]]) -> List[Candidate]:
     return sorted(candidates, key=lambda item: item.score, reverse=True)
 
 
+def qa_python_command() -> List[str]:
+    override = os.getenv("RALPH_LOOP_QA_PYTHON", "").strip()
+    if override:
+        return shlex.split(override)
+    if DEFAULT_QA_PYTHON.exists():
+        return [str(DEFAULT_QA_PYTHON)]
+    return ["python3"]
+
+
+def pytest_command(*args: str) -> List[str]:
+    return qa_python_command() + ["-m", "pytest", *args]
+
+
 EXECUTION_HANDLERS: Dict[str, ExecutionHandler] = {
     "codex_exec_latency": ExecutionHandler(
         candidate_id="codex_exec_latency",
         summary="Inspect Codex executor hot paths and land one concrete latency improvement.",
         verification_commands=[
-            ["python3", "-m", "pytest", "tests/telegram_bridge/test_executor.py", "-q"],
-            ["python3", "-m", "pytest", "tests/telegram_bridge/test_executor_phase_breakdown.py", "-q"],
-            ["python3", "-m", "pytest", "tests/runtime_observer/test_ralph_loop.py", "-q"],
+            pytest_command("tests/telegram_bridge/test_executor.py", "-q"),
+            pytest_command("tests/telegram_bridge/test_executor_phase_breakdown.py", "-q"),
+            pytest_command("tests/runtime_observer/test_ralph_loop.py", "-q"),
         ],
         guidance=(
             "Prefer setup, retry, or wrapper overhead reductions before changing model behavior. "
@@ -385,9 +399,9 @@ EXECUTION_HANDLERS: Dict[str, ExecutionHandler] = {
         candidate_id="progress_edit_noise",
         summary="Reduce Telegram progress edit volume without regressing visible progress quality.",
         verification_commands=[
-            ["python3", "-m", "pytest", "tests/telegram_bridge/test_handler_progress.py", "-q"],
-            ["python3", "-m", "pytest", "tests/telegram_bridge/test_executor.py", "-q"],
-            ["python3", "-m", "pytest", "tests/runtime_observer/test_ralph_loop.py", "-q"],
+            pytest_command("tests/telegram_bridge/test_handler_progress.py", "-q"),
+            pytest_command("tests/telegram_bridge/test_executor.py", "-q"),
+            pytest_command("tests/runtime_observer/test_ralph_loop.py", "-q"),
         ],
         guidance=(
             "Prefer throttling, deduplication, or compact progress semantics over removing progress entirely. "

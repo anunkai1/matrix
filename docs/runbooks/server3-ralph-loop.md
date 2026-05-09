@@ -52,6 +52,7 @@ Commands:
 
 Default cadence:
 - `server3-ralph-loop.timer` runs hourly with a small randomized delay
+- the live service is now wired to `execute`, so each timer fire can rank, act once, verify, record a result, and re-rank
 
 Current intent:
 - keep the next optimization target fresh without owner prompting
