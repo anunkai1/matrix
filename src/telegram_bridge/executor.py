@@ -24,14 +24,28 @@ class ExecutorProgressEvent:
 class ExecutorCancelledError(Exception):
     """Raised when a running executor subprocess is canceled by user request."""
 
-def _build_executor_env(config) -> Dict[str, str]:
-    env = os.environ.copy()
+_EXECUTOR_ENV_CACHE_ATTR = "_cached_executor_env"
+
+
+def _build_executor_env(config) -> Optional[Dict[str, str]]:
     model = str(getattr(config, "codex_model", "") or "").strip()
+    effort = str(getattr(config, "codex_reasoning_effort", "") or "").strip().lower()
+    if not model and not effort:
+        return None
+
+    cache_key = (model, effort)
+    cached = getattr(config, _EXECUTOR_ENV_CACHE_ATTR, None)
+    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] == cache_key:
+        cached_env = cached[1]
+        if isinstance(cached_env, dict):
+            return cached_env
+
+    env = os.environ.copy()
     if model:
         env["CODEX_MODEL"] = model
-    effort = str(getattr(config, "codex_reasoning_effort", "") or "").strip().lower()
     if effort:
         env["CODEX_REASONING_EFFORT"] = effort
+    setattr(config, _EXECUTOR_ENV_CACHE_ATTR, (cache_key, env))
     return env
 
 def parse_stream_json_line(raw_line: str) -> Optional[Dict[str, object]]:

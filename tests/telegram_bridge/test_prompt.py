@@ -748,5 +748,5 @@ class TestPrompt(unittest.TestCase):
         self.assertEqual(first.returncode, 0)
         self.assertEqual(second.returncode, 0)
         self.assertEqual(engine.calls, 2)
-        self.assertEqual(signature_mock.call_count, 1)
+        self.assertEqual(signature_mock.call_count, 0)
         self.assertIn(signature_target, bridge_prompt_runtime._ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE)

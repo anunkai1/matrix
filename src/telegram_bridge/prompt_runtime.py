@@ -73,6 +73,16 @@ def _engine_run_supports_extended_kwargs(engine_run: object) -> bool:
     cached = _ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE.get(signature_target)
     if cached is not None:
         return cached
+    code_object = getattr(signature_target, "__code__", None)
+    if code_object is not None:
+        parameter_names = code_object.co_varnames[:code_object.co_argcount]
+        supports_var_kwargs = bool(code_object.co_flags & inspect.CO_VARKEYWORDS)
+        if supports_var_kwargs:
+            _ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE[signature_target] = True
+            return True
+        supports_extended_kwargs = all(name in parameter_names for name in _EXTENDED_ENGINE_RUN_KWARGS)
+        _ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE[signature_target] = supports_extended_kwargs
+        return supports_extended_kwargs
     try:
         signature = inspect.signature(signature_target)
     except (TypeError, ValueError):
