@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import shlex
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
 
 from telegram_bridge.env_parser import Env, build_voice_alias_replacements
 from telegram_bridge.runtime_paths import (
@@ -20,7 +20,7 @@ from telegram_bridge.runtime_paths import (
 from telegram_bridge.transport import TELEGRAM_LIMIT
 
 @dataclass
-class Config:
+class CoreConfig:
     token: str
     allowed_chat_ids: Set[int]
     api_base: str
@@ -36,6 +36,11 @@ class Config:
     attachment_max_total_bytes: int
     rate_limit_per_minute: int
     executor_cmd: List[str]
+    state_dir: str
+
+
+@dataclass
+class VoiceConfig:
     voice_transcribe_cmd: List[str]
     voice_transcribe_timeout_seconds: int
     voice_alias_replacements: List[Tuple[str, str]]
@@ -46,7 +51,10 @@ class Config:
     voice_low_confidence_confirmation_enabled: bool
     voice_low_confidence_threshold: float
     voice_low_confidence_message: str
-    state_dir: str
+
+
+@dataclass
+class SessionConfig:
     persistent_workers_enabled: bool
     persistent_workers_max: int
     persistent_workers_idle_timeout_seconds: int
@@ -61,8 +69,19 @@ class Config:
     require_prefix_in_private: bool
     allow_private_chats_unlisted: bool
     allow_group_chats_unlisted: bool
+
+
+@dataclass
+class IdentityConfig:
     assistant_name: str
     channel_plugin: str
+    progress_label: str = ""
+    progress_elapsed_prefix: str = "Already"
+    progress_elapsed_suffix: str = "s"
+
+
+@dataclass
+class EngineConfig:
     engine_plugin: str
     selectable_engine_plugins: List[str]
     codex_model: str
@@ -108,6 +127,10 @@ class Config:
     pi_ollama_tunnel_remote_host: str
     pi_ollama_tunnel_remote_port: int
     pi_request_timeout_seconds: int
+
+
+@dataclass
+class TransportConfig:
     whatsapp_plugin_enabled: bool
     whatsapp_bridge_api_base: str
     whatsapp_bridge_auth_token: str
@@ -117,6 +140,10 @@ class Config:
     signal_bridge_auth_token: str
     signal_poll_timeout_seconds: int
     keyword_routing_enabled: bool
+
+
+@dataclass
+class DiaryConfig:
     diary_mode_enabled: bool = False
     diary_capture_quiet_window_seconds: int = 75
     diary_timezone: str = "Australia/Brisbane"
@@ -126,13 +153,18 @@ class Config:
     diary_nextcloud_username: str = ""
     diary_nextcloud_app_password: str = ""
     diary_nextcloud_remote_root: str = "/Diary"
+
+
+@dataclass
+class AffectiveConfig:
     affective_runtime_enabled: bool = False
     affective_runtime_db_path: str = ""
     affective_runtime_ping_target: str = "1.1.1.1"
     policy_reset_memory_on_change: bool = False
-    progress_label: str = ""
-    progress_elapsed_prefix: str = "Already"
-    progress_elapsed_suffix: str = "s"
+
+
+@dataclass
+class MessageConfig:
     busy_message: str = "Another request is still running. Please wait."
     denied_message: str = "Access denied for this chat."
     timeout_message: str = "Request timed out. Please try a shorter prompt."
@@ -148,6 +180,77 @@ class Config:
         "Voice transcription was empty. Please send clearer audio."
     )
     empty_output_message: str = "(No output from assistant)"
+
+
+class Config:
+    """Grouped bridge runtime configuration with flat-attribute compatibility."""
+
+    _GROUP_TYPES = {
+        "core": CoreConfig,
+        "voice": VoiceConfig,
+        "session": SessionConfig,
+        "identity": IdentityConfig,
+        "engines": EngineConfig,
+        "transport": TransportConfig,
+        "diary": DiaryConfig,
+        "affective": AffectiveConfig,
+        "messages": MessageConfig,
+    }
+    _FIELD_TO_GROUP = {
+        field.name: group_name
+        for group_name, group_type in _GROUP_TYPES.items()
+        for field in fields(group_type)
+    }
+
+    def __init__(self, **values: Any) -> None:
+        pending = dict(values)
+        for group_name, group_type in self._GROUP_TYPES.items():
+            object.__setattr__(
+                self,
+                group_name,
+                self._build_group(group_name, group_type, pending),
+            )
+        if pending:
+            unknown = ", ".join(sorted(pending))
+            raise TypeError(f"Unexpected config values: {unknown}")
+
+    @classmethod
+    def _build_group(
+        cls,
+        group_name: str,
+        group_type: type[Any],
+        pending: Dict[str, Any],
+    ) -> Any:
+        explicit = pending.pop(group_name, None)
+        if isinstance(explicit, group_type):
+            return explicit
+        if explicit is None:
+            group_values: Dict[str, Any] = {}
+        elif isinstance(explicit, Mapping):
+            group_values = dict(explicit)
+        else:
+            raise TypeError(f"{group_name} must be a {group_type.__name__} or mapping")
+
+        for field in fields(group_type):
+            if field.name in pending and field.name not in group_values:
+                group_values[field.name] = pending.pop(field.name)
+        return group_type(**group_values)
+
+    def __getattr__(self, name: str) -> Any:
+        group_name = self._FIELD_TO_GROUP.get(name)
+        if group_name is None:
+            raise AttributeError(name)
+        return getattr(getattr(self, group_name), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in self._GROUP_TYPES:
+            object.__setattr__(self, name, value)
+            return
+        group_name = self._FIELD_TO_GROUP.get(name)
+        if group_name is not None:
+            setattr(getattr(self, group_name), name, value)
+            return
+        object.__setattr__(self, name, value)
 
 # -- backward-compatible wrappers (prefer Env in new code) -------------------
 
@@ -447,7 +550,6 @@ def load_identity_config_values(
     progress_label: str,
     progress_elapsed_prefix: str,
     progress_elapsed_suffix: str,
-    busy_message: str,
     channel_plugin: str,
 ) -> Dict[str, object]:
     return {
@@ -455,7 +557,6 @@ def load_identity_config_values(
         "progress_label": progress_label,
         "progress_elapsed_prefix": progress_elapsed_prefix,
         "progress_elapsed_suffix": progress_elapsed_suffix,
-        "busy_message": busy_message,
         "channel_plugin": channel_plugin,
     }
 
@@ -616,11 +717,9 @@ def load_channel_and_feature_config_values() -> Dict[str, object]:
         ),
     }
 
-def load_diary_and_affective_config_values(
+def load_diary_config_values(
     *,
     state_dir: str,
-    affective_runtime_db_path: str,
-    affective_runtime_ping_target: str,
 ) -> Dict[str, object]:
     default_diary_root = os.path.join(state_dir, "diary")
     return {
@@ -661,6 +760,14 @@ def load_diary_and_affective_config_values(
             os.getenv("TELEGRAM_DIARY_NEXTCLOUD_REMOTE_ROOT", "/Diary").strip()
             or "/Diary"
         ),
+    }
+
+def load_affective_config_values(
+    *,
+    affective_runtime_db_path: str,
+    affective_runtime_ping_target: str,
+) -> Dict[str, object]:
+    return {
         "affective_runtime_enabled": parse_bool_env(
             "TELEGRAM_AFFECTIVE_RUNTIME_ENABLED",
             False,
@@ -673,8 +780,13 @@ def load_diary_and_affective_config_values(
         ),
     }
 
-def load_message_config_values(*, assistant_name: str) -> Dict[str, object]:
+def load_message_config_values(
+    *,
+    assistant_name: str,
+    busy_message: str,
+) -> Dict[str, object]:
     return {
+        "busy_message": busy_message,
         "empty_output_message": f"(No output from {assistant_name})",
     }
 
@@ -710,39 +822,35 @@ def load_config() -> Config:
         busy_message,
     ) = resolve_runtime_identity()
     exec_timeout_seconds = parse_int_env("TELEGRAM_EXEC_TIMEOUT_SECONDS", 36000)
-    values: Dict[str, object] = {}
-    values.update(
-        load_core_config_values(
+    return Config(
+        core=load_core_config_values(
             token=token,
             allowed_chat_ids=allowed_chat_ids,
             state_dir=state_dir,
             exec_timeout_seconds=exec_timeout_seconds,
-        )
-    )
-    values.update(load_voice_config_values(state_dir=state_dir))
-    values.update(
-        load_session_config_values(
+        ),
+        voice=load_voice_config_values(state_dir=state_dir),
+        session=load_session_config_values(
             canonical_sqlite_path=canonical_sqlite_path,
-        )
-    )
-    values.update(
-        load_identity_config_values(
+        ),
+        identity=load_identity_config_values(
             assistant_name=assistant_name,
             progress_label=progress_label,
             progress_elapsed_prefix=progress_elapsed_prefix,
             progress_elapsed_suffix=progress_elapsed_suffix,
-            busy_message=busy_message,
             channel_plugin=channel_plugin,
-        )
-    )
-    values.update(load_engine_config_values())
-    values.update(load_channel_and_feature_config_values())
-    values.update(
-        load_diary_and_affective_config_values(
+        ),
+        engines=load_engine_config_values(),
+        transport=load_channel_and_feature_config_values(),
+        diary=load_diary_config_values(
             state_dir=state_dir,
+        ),
+        affective=load_affective_config_values(
             affective_runtime_db_path=affective_runtime_db_path,
             affective_runtime_ping_target=affective_runtime_ping_target,
-        )
+        ),
+        messages=load_message_config_values(
+            assistant_name=assistant_name,
+            busy_message=busy_message,
+        ),
     )
-    values.update(load_message_config_values(assistant_name=assistant_name))
-    return Config(**values)
