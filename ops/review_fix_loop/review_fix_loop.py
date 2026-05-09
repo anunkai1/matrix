@@ -259,15 +259,27 @@ def current_branch() -> str:
     return proc.stdout.strip() if proc.returncode == 0 else ""
 
 
+def state_paths_within_repo() -> List[str]:
+    try:
+        state_dir_relative = STATE_DIR.resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        return []
+    return [str(state_dir_relative)]
+
+
 def git_status_entries() -> Dict[str, str]:
     proc = run_command_capture(["git", "status", "--short"], cwd=ROOT)
     if proc.returncode != 0:
         return {}
     entries: Dict[str, str] = {}
+    ignored_prefixes = tuple(state_paths_within_repo())
     for line in proc.stdout.splitlines():
         if len(line) < 4:
             continue
-        entries[line[3:].strip()] = line[:2]
+        path = line[3:].strip()
+        if ignored_prefixes and any(path == prefix or path.startswith(f"{prefix}/") for prefix in ignored_prefixes):
+            continue
+        entries[path] = line[:2]
     return entries
 
 

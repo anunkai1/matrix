@@ -63,6 +63,26 @@ class ReviewFixLoopTests(unittest.TestCase):
         self.assertEqual(issue_state["attempts"], 1)
         self.assertEqual(issue_state["history"][0]["status"], "applied")
 
+    def test_git_status_entries_ignores_internal_state_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            state_dir = repo_root / ".state" / "server3-review-fix-loop"
+            state_dir.mkdir(parents=True)
+            output = "?? .state/server3-review-fix-loop/state.json\n M src/example.py\n"
+            proc = mock.Mock(returncode=0, stdout=output)
+            with mock.patch.object(review_fix_loop, "ROOT", repo_root), mock.patch.object(
+                review_fix_loop,
+                "STATE_DIR",
+                state_dir,
+            ), mock.patch.object(
+                review_fix_loop,
+                "run_command_capture",
+                return_value=proc,
+            ):
+                entries = review_fix_loop.git_status_entries()
+
+        self.assertEqual(entries, {"src/example.py": " M"})
+
     def test_run_loop_retries_issue_until_completed(self) -> None:
         issues = [
             review_fix_loop.ReviewIssue(
