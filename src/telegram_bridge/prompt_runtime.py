@@ -318,27 +318,9 @@ def execute_prompt_with_retry(
                 chat_id,
                 failure_message,
             )
-        elif allow_automatic_retry and not retry_attempted:
-            logging.warning(
-                "Executor failed for chat_id=%s; retrying once as new. returncode=%s stderr=%r",
-                chat_id,
-                result.returncode,
-                (result.stderr or "")[-1000:],
-            )
-            reset_and_retry_new = True
-            retry_attempted = True
-            progress.set_phase(runtime_hooks.retry_with_new_session_phase)
-            runtime_hooks.emit_event_fn(
-                "bridge.request_retry_scheduled",
-                level=logging.WARNING,
-                fields={
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "attempt": attempt,
-                    "reason": "nonzero_exit",
-                    "returncode": result.returncode,
-                },
-            )
+        # Generic nonzero exits are often long-running Codex failures that will
+        # simply repeat on a fresh session. Only pay the retry cost when the
+        # stored resume thread itself is invalid and a new session can help.
 
         if reset_and_retry_new:
             if session_continuity_enabled:
@@ -369,7 +351,7 @@ def execute_prompt_with_retry(
             config=config,
             chat_id=chat_id,
             message_id=message_id,
-            allow_automatic_retry=allow_automatic_retry,
+            allow_automatic_retry=retry_attempted,
             failure_message=failure_message,
             message_thread_id=message_thread_id,
         )

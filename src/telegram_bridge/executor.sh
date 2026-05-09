@@ -83,11 +83,11 @@ fi
 codex_workdir="$(cd "${codex_workdir}" && pwd)"
 
 auth_sync_script="${shared_core_root}/ops/codex/sync_shared_auth.sh"
-if [[ -x "${auth_sync_script}" ]]; then
+auth_sync_mode="${TELEGRAM_CODEX_AUTH_SYNC_MODE:-watcher}"
+if [[ -x "${auth_sync_script}" && "${auth_sync_mode}" == "always" ]]; then
   auth_sync_started_ms="$(now_ms)"
-  # `codex login` can replace Architect's auth symlink with a standalone file.
-  # Refresh the shared auth before each exec so sibling runtimes follow the
-  # latest Architect CLI account automatically.
+  # Shared auth drift is normally handled by the dedicated watcher service.
+  # Keep a legacy opt-in path for runtimes that still need sync-on-every-exec.
   "${auth_sync_script}" >/dev/null 2>&1 || true
   auth_sync_finished_ms="$(now_ms)"
   emit_phase_timing "auth_sync" "$((auth_sync_finished_ms - auth_sync_started_ms))"

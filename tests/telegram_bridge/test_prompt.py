@@ -381,6 +381,219 @@ class TestPrompt(unittest.TestCase):
             "The runtime has hit its usage limit. Try again after 2:00 PM.",
         )
 
+    def test_execute_prompt_with_retry_does_not_rerun_new_session_nonzero_exit(self):
+        class NonzeroEngine:
+            engine_name = "nonzero"
+
+            def __init__(self):
+                self.calls = 0
+
+            def run(
+                self,
+                config,
+                prompt,
+                thread_id,
+                image_path=None,
+                progress_callback=None,
+                cancel_event=None,
+            ):
+                del config, prompt, image_path, progress_callback, cancel_event
+                self.calls += 1
+                self.last_thread_id = thread_id
+                return subprocess.CompletedProcess(
+                    args=["codex", "exec"],
+                    returncode=1,
+                    stdout="",
+                    stderr="executor failed",
+                )
+
+        class FakeProgress:
+            def __init__(self):
+                self.last_failure = ""
+
+            def handle_executor_event(self, _event):
+                return None
+
+            def set_phase(self, _phase):
+                return None
+
+            def mark_failure(self, detail):
+                self.last_failure = detail
+
+        state = bridge.State()
+        state_repo = bridge.StateRepository(state)
+        client = FakeTelegramClient()
+        config = make_config(persistent_workers_enabled=True)
+        progress = FakeProgress()
+        engine = NonzeroEngine()
+
+        result = bridge_handlers.execute_prompt_with_retry(
+            state_repo=state_repo,
+            config=config,
+            client=client,
+            engine=engine,
+            chat_id=1,
+            message_id=53,
+            prompt_text="hello",
+            previous_thread_id=None,
+            image_path=None,
+            progress=progress,
+            cancel_event=threading.Event(),
+            session_continuity_enabled=True,
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(engine.calls, 1)
+        self.assertIsNone(engine.last_thread_id)
+        self.assertEqual(progress.last_failure, "Execution failed.")
+        self.assertTrue(client.messages)
+        self.assertEqual(client.messages[-1][1], config.generic_error_message)
+
+    def test_execute_prompt_with_retry_does_not_rerun_resume_nonzero_exit_without_invalid_thread_marker(self):
+        class NonzeroResumeEngine:
+            engine_name = "nonzero-resume"
+
+            def __init__(self):
+                self.calls = 0
+                self.thread_ids = []
+
+            def run(
+                self,
+                config,
+                prompt,
+                thread_id,
+                image_path=None,
+                progress_callback=None,
+                cancel_event=None,
+            ):
+                del config, prompt, image_path, progress_callback, cancel_event
+                self.calls += 1
+                self.thread_ids.append(thread_id)
+                return subprocess.CompletedProcess(
+                    args=["codex", "exec"],
+                    returncode=1,
+                    stdout="",
+                    stderr="executor failed for unrelated reason",
+                )
+
+        class FakeProgress:
+            def __init__(self):
+                self.last_failure = ""
+
+            def handle_executor_event(self, _event):
+                return None
+
+            def set_phase(self, _phase):
+                return None
+
+            def mark_failure(self, detail):
+                self.last_failure = detail
+
+        state = bridge.State()
+        state_repo = bridge.StateRepository(state)
+        client = FakeTelegramClient()
+        config = make_config(persistent_workers_enabled=True)
+        progress = FakeProgress()
+        engine = NonzeroResumeEngine()
+
+        result = bridge_handlers.execute_prompt_with_retry(
+            state_repo=state_repo,
+            config=config,
+            client=client,
+            engine=engine,
+            chat_id=1,
+            message_id=54,
+            prompt_text="hello",
+            previous_thread_id="thread-123",
+            image_path=None,
+            progress=progress,
+            cancel_event=threading.Event(),
+            session_continuity_enabled=True,
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(engine.calls, 1)
+        self.assertEqual(engine.thread_ids, ["thread-123"])
+        self.assertEqual(progress.last_failure, "Execution failed.")
+        self.assertTrue(client.messages)
+        self.assertEqual(client.messages[-1][1], config.generic_error_message)
+
+    def test_execute_prompt_with_retry_retries_resume_when_thread_is_invalid(self):
+        class InvalidResumeEngine:
+            engine_name = "invalid-resume"
+
+            def __init__(self):
+                self.calls = 0
+                self.thread_ids = []
+
+            def run(
+                self,
+                config,
+                prompt,
+                thread_id,
+                image_path=None,
+                progress_callback=None,
+                cancel_event=None,
+            ):
+                del config, prompt, image_path, progress_callback, cancel_event
+                self.calls += 1
+                self.thread_ids.append(thread_id)
+                if self.calls == 1:
+                    return subprocess.CompletedProcess(
+                        args=["codex", "exec", "resume"],
+                        returncode=1,
+                        stdout="",
+                        stderr="Thread not found for resume",
+                    )
+                return subprocess.CompletedProcess(
+                    args=["codex", "exec"],
+                    returncode=0,
+                    stdout='{"type":"item.completed","item":{"type":"agent_message","text":"ok"}}\n',
+                    stderr="",
+                )
+
+        class FakeProgress:
+            def __init__(self):
+                self.phases = []
+
+            def handle_executor_event(self, _event):
+                return None
+
+            def set_phase(self, phase):
+                self.phases.append(phase)
+
+            def mark_failure(self, _detail):
+                return None
+
+        state = bridge.State(chat_threads={"tg:1": "thread-123"})
+        state_repo = bridge.StateRepository(state)
+        client = FakeTelegramClient()
+        config = make_config(persistent_workers_enabled=True)
+        progress = FakeProgress()
+        engine = InvalidResumeEngine()
+
+        result = bridge_handlers.execute_prompt_with_retry(
+            state_repo=state_repo,
+            config=config,
+            client=client,
+            engine=engine,
+            chat_id=1,
+            message_id=55,
+            prompt_text="hello",
+            previous_thread_id="thread-123",
+            image_path=None,
+            progress=progress,
+            cancel_event=threading.Event(),
+            session_continuity_enabled=True,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(engine.calls, 2)
+        self.assertEqual(engine.thread_ids, ["thread-123", None])
+        self.assertEqual(state.chat_threads, {})
+        self.assertEqual(progress.phases, [bridge_handlers.resume_retry_phase(config)])
+
     def test_execute_prompt_with_retry_falls_back_when_actor_identity_kwargs_unsupported(self):
         class LegacyEngine:
             engine_name = "legacy"
