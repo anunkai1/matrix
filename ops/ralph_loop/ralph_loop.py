@@ -95,6 +95,11 @@ class ExecutionResult:
     changed_files: List[str]
     git_head_before: str
     git_head_after: str
+    commit_message: str
+    committed_sha: str
+    push_succeeded: bool
+    push_stdout: str
+    push_stderr: str
 
 
 def now_utc() -> datetime:
@@ -548,7 +553,7 @@ def build_execution_prompt(candidate: Candidate, handler: ExecutionHandler) -> s
         "- Make one concrete optimization pass for this candidate.\n"
         "- Prefer the smallest change that produces a measurable operational win.\n"
         "- Run the relevant verification yourself before finishing.\n"
-        "- Do not commit or push.\n"
+        "- Do not commit or push; Ralph handles that after verification.\n"
         "- If no safe improvement is justified, leave the tree unchanged and say so plainly.\n\n"
         "Required verification commands:\n"
         f"{verification_lines}\n\n"
@@ -574,17 +579,53 @@ def git_head() -> str:
     return proc.stdout.strip()
 
 
-def changed_files_for_paths(paths: Sequence[str]) -> List[str]:
-    args = ["git", "status", "--short", "--"] + list(paths)
+def current_branch() -> str:
+    proc = run_command_capture(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ROOT)
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout.strip()
+
+
+def git_status_entries(paths: Optional[Sequence[str]] = None) -> Dict[str, str]:
+    args = ["git", "status", "--short"]
+    if paths:
+        args.extend(["--"] + list(paths))
     proc = run_command_capture(args, cwd=ROOT)
     if proc.returncode != 0:
-        return []
-    changed: List[str] = []
+        return {}
+    entries: Dict[str, str] = {}
     for line in proc.stdout.splitlines():
         if len(line) < 4:
             continue
-        changed.append(line[3:].strip())
-    return changed
+        entries[line[3:].strip()] = line[:2]
+    return entries
+
+
+def changed_files_since(before: Dict[str, str], after: Dict[str, str]) -> List[str]:
+    changed = set(after) - set(before)
+    for path, status in after.items():
+        if before.get(path) != status:
+            changed.add(path)
+    return sorted(changed)
+
+
+def commit_message_for_candidate(candidate: Candidate) -> str:
+    return f"Ralph: {candidate.title}"
+
+
+def commit_and_push(commit_message: str, paths: Sequence[str]) -> tuple[str, bool, str, str]:
+    if not paths:
+        return "", False, "", ""
+    add_proc = run_command_capture(["git", "add", "--", *paths], cwd=ROOT)
+    if add_proc.returncode != 0:
+        return "", False, add_proc.stdout, add_proc.stderr
+    commit_proc = run_command_capture(["git", "commit", "-m", commit_message], cwd=ROOT)
+    if commit_proc.returncode != 0:
+        return "", False, commit_proc.stdout, commit_proc.stderr
+    committed_sha = git_head()
+    branch = current_branch() or "main"
+    push_proc = run_command_capture(["git", "push", "origin", branch], cwd=ROOT)
+    return committed_sha, push_proc.returncode == 0, push_proc.stdout, push_proc.stderr
 
 
 def run_verification_commands(commands: Sequence[Sequence[str]]) -> List[VerificationResult]:
@@ -604,25 +645,90 @@ def run_verification_commands(commands: Sequence[Sequence[str]]) -> List[Verific
     return results
 
 
+def build_execution_result(
+    *,
+    observed_at: datetime,
+    selected_candidate_id: Optional[str],
+    selected_candidate_score: int,
+    handler_found: bool,
+    status: str,
+    summary: str,
+    codex_returncode: Optional[int],
+    codex_stdout: str,
+    codex_stderr: str,
+    verification_results: List[VerificationResult],
+    changed_files: List[str],
+    git_head_before: str,
+    git_head_after: str,
+    commit_message: str = "",
+    committed_sha: str = "",
+    push_succeeded: bool = False,
+    push_stdout: str = "",
+    push_stderr: str = "",
+) -> ExecutionResult:
+    return ExecutionResult(
+        observed_at_utc=observed_at.isoformat(),
+        selected_candidate_id=selected_candidate_id,
+        selected_candidate_score=selected_candidate_score,
+        handler_found=handler_found,
+        status=status,
+        summary=summary,
+        codex_returncode=codex_returncode,
+        codex_stdout=codex_stdout,
+        codex_stderr=codex_stderr,
+        verification_results=[
+            {
+                "command": result.command,
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            }
+            for result in verification_results
+        ],
+        changed_files=changed_files,
+        git_head_before=git_head_before,
+        git_head_after=git_head_after,
+        commit_message=commit_message,
+        committed_sha=committed_sha,
+        push_succeeded=push_succeeded,
+        push_stdout=push_stdout,
+        push_stderr=push_stderr,
+    )
+
+
 def execute_candidate(candidate: Candidate, handler: ExecutionHandler, observed_at: datetime) -> ExecutionResult:
     prompt = build_execution_prompt(candidate, handler)
+    worktree_before = git_status_entries()
+    if worktree_before:
+        return build_execution_result(
+            observed_at=observed_at,
+            selected_candidate_id=candidate.id,
+            selected_candidate_score=candidate.score,
+            handler_found=True,
+            status="blocked",
+            summary="Worktree was already dirty before execute; refusing to mix Ralph changes with existing edits.",
+            codex_returncode=None,
+            codex_stdout="",
+            codex_stderr="",
+            verification_results=[],
+            changed_files=[],
+            git_head_before=git_head(),
+            git_head_after=git_head(),
+        )
     head_before = git_head()
     codex_proc = run_command_capture(executor_command(), input_text=prompt, cwd=ROOT)
-    changed_files = changed_files_for_paths(candidate.target_paths)
+    worktree_after = git_status_entries()
+    changed_files = changed_files_since(worktree_before, worktree_after)
     verification_results = run_verification_commands(handler.verification_commands)
-    verification_payload = [
-        {
-            "command": result.command,
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-        }
-        for result in verification_results
-    ]
     head_after = git_head()
 
     status = "applied"
     summary = "Optimization applied and verification passed."
+    commit_message = ""
+    committed_sha = ""
+    push_succeeded = False
+    push_stdout = ""
+    push_stderr = ""
     if codex_proc.returncode != 0:
         status = "blocked"
         summary = "Codex execute pass failed before verification completed."
@@ -632,9 +738,22 @@ def execute_candidate(candidate: Candidate, handler: ExecutionHandler, observed_
     elif any(result.returncode != 0 for result in verification_results):
         status = "qa_failed"
         summary = "Optimization changed files but verification failed."
+    else:
+        commit_message = commit_message_for_candidate(candidate)
+        committed_sha, push_succeeded, push_stdout, push_stderr = commit_and_push(
+            commit_message,
+            changed_files,
+        )
+        head_after = git_head()
+        if not committed_sha:
+            status = "commit_failed"
+            summary = "Optimization passed verification but Ralph could not create the commit."
+        elif not push_succeeded:
+            status = "push_failed"
+            summary = "Optimization passed verification and was committed locally, but push failed."
 
-    return ExecutionResult(
-        observed_at_utc=observed_at.isoformat(),
+    return build_execution_result(
+        observed_at=observed_at,
         selected_candidate_id=candidate.id,
         selected_candidate_score=candidate.score,
         handler_found=True,
@@ -643,10 +762,15 @@ def execute_candidate(candidate: Candidate, handler: ExecutionHandler, observed_
         codex_returncode=codex_proc.returncode,
         codex_stdout=codex_proc.stdout,
         codex_stderr=codex_proc.stderr,
-        verification_results=verification_payload,
+        verification_results=verification_results,
         changed_files=changed_files,
         git_head_before=head_before,
         git_head_after=head_after,
+        commit_message=commit_message,
+        committed_sha=committed_sha,
+        push_succeeded=push_succeeded,
+        push_stdout=push_stdout,
+        push_stderr=push_stderr,
     )
 
 
@@ -656,8 +780,8 @@ def execute_once(*, candidate_id: Optional[str]) -> int:
     observed_at = collected["observed_at"]
     selected = find_candidate(candidates, candidate_id)
     if selected is None:
-        result = ExecutionResult(
-            observed_at_utc=observed_at.isoformat(),
+        result = build_execution_result(
+            observed_at=observed_at,
             selected_candidate_id=candidate_id,
             selected_candidate_score=0,
             handler_found=False,
@@ -677,8 +801,8 @@ def execute_once(*, candidate_id: Optional[str]) -> int:
 
     handler = EXECUTION_HANDLERS.get(selected.id)
     if handler is None:
-        result = ExecutionResult(
-            observed_at_utc=observed_at.isoformat(),
+        result = build_execution_result(
+            observed_at=observed_at,
             selected_candidate_id=selected.id,
             selected_candidate_score=selected.score,
             handler_found=False,

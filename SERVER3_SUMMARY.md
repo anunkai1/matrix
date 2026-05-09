@@ -33,7 +33,7 @@ Last updated: 2026-05-09 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 - Runtime observer daily Telegram summary now appends a plain-English operator line indicating whether attention is needed.
 - Runtime observer daily health delivery is centralized through `staker_alerts_bot` to chat `211761499` (single destination).
-- Ralph loop now has a repo-backed hourly optimization executor (`server3-ralph-loop.timer`) plus a live `execute` path in `ops/ralph_loop/ralph_loop.py` that can select a backlog target, run one Codex optimization pass, verify it, record `execution_results.jsonl`, and then re-rank from fresh telemetry.
+- Ralph loop now has a repo-backed hourly optimization executor (`server3-ralph-loop.timer`) plus a live `execute` path in `ops/ralph_loop/ralph_loop.py` that can select a backlog target, run one Codex optimization pass, verify it, commit/push successful work, record `execution_results.jsonl`, and then re-rank from fresh telemetry.
 
 ## Runtime Inventory
 - Canonical manifest: `infra/server3-runtime-manifest.json`
@@ -64,6 +64,7 @@ Last updated: 2026-05-09 (AEST, +10:00)
 ## Recent Changes (Rolling Max 8)
 - 2026-05-09: added live Ralph execute mode. `ops/ralph_loop/ralph_loop.py execute` now refreshes the backlog, selects a handler-backed target, runs one Codex optimization pass with target-specific verification, appends `/var/lib/server3-ralph-loop/execution_results.jsonl`, and then re-ranks from fresh telemetry.
 - 2026-05-09: switched the live `server3-ralph-loop.service` unit from `collect` to `execute`, so the hourly timer now ranks and acts automatically instead of only refreshing backlog state.
+- 2026-05-09: updated Ralph execute mode so successful runs commit and push their own verified changes, while runs now block early on a pre-dirty worktree instead of mixing autonomous edits with existing local changes.
 - 2026-05-09: added the bounded `Ralph` optimization loop for Server3 operations. The new hourly `server3-ralph-loop` service/timer reads existing bridge telemetry and runtime observer KPIs, ranks live bottlenecks like worker-capacity pressure and latency spikes, and writes `/var/lib/server3-ralph-loop/latest.md` plus `optimization_backlog.json` so future optimization passes can start from current operational evidence instead of ad-hoc guesses.
 - 2026-05-09: updated the Ralph runbook contract to match owner preference for broad autonomous Server3 optimization work: repo edits, non-repo file edits, and service restarts are in scope when needed, with only the base workspace stop conditions retained.
 - 2026-05-05: code infrastructure overhaul. Eliminated pervasive `try/except ImportError` anti-pattern from all 54 bridge modules (-1,116 lines) by adding proper package structure with `__init__.py`, `pyproject.toml` build system, and `PYTHONPATH` in systemd units. Extracted reusable `Env` parser class (`env_parser.py`, 187 lines) replacing 11 duplicated parse functions. Split `engine_adapter.py` (1,407 lines) into 8 focused files under `engines/` subpackage. Removed vestigial memory systemd units from live system. Net source reduction: -3,087 / +492 = -2,595 lines.

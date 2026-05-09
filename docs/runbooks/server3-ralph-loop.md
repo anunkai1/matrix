@@ -56,4 +56,9 @@ Default cadence:
 
 Current intent:
 - keep the next optimization target fresh without owner prompting
-- let Ralph pick one live target, run a real Codex optimization pass, record the outcome, then re-rank from fresh telemetry
+- let Ralph pick one live target, run a real Codex optimization pass, verify it, commit and push successful work, record the outcome, then re-rank from fresh telemetry
+
+Commit behavior:
+- Ralph keeps commit/push responsibility in the loop layer, not inside the Codex worker prompt
+- a successful `applied` run now stages only the files created by that run, commits them, and pushes the current branch to `origin`
+- Ralph refuses to execute on top of a pre-dirty worktree, so it does not silently mix its own changes with existing human edits

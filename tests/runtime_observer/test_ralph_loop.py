@@ -276,24 +276,67 @@ class RalphLoopTests(unittest.TestCase):
             return_value=codex_result,
         ) as run_capture, mock.patch.object(
             ralph_loop,
-            "changed_files_for_paths",
-            return_value=["src/telegram_bridge/handler_progress.py"],
+            "git_status_entries",
+            side_effect=[
+                {},
+                {"src/telegram_bridge/handler_progress.py": " M"},
+            ],
         ), mock.patch.object(
             ralph_loop,
             "run_verification_commands",
             return_value=verification_ok,
         ), mock.patch.object(
             ralph_loop,
+            "commit_and_push",
+            return_value=("after", True, "pushed", ""),
+        ), mock.patch.object(
+            ralph_loop,
             "git_head",
-            side_effect=["before", "after"],
+            side_effect=["before", "mid", "after"],
         ):
             result = ralph_loop.execute_candidate(candidate, handler, observed_at)
 
         self.assertEqual(result.status, "applied")
         self.assertEqual(result.changed_files, ["src/telegram_bridge/handler_progress.py"])
+        self.assertEqual(result.commit_message, "Ralph: Reduce progress update noise")
+        self.assertEqual(result.committed_sha, "after")
+        self.assertTrue(result.push_succeeded)
         self.assertEqual(result.git_head_before, "before")
         self.assertEqual(result.git_head_after, "after")
         run_capture.assert_called_once()
+
+    def test_execute_candidate_blocks_when_worktree_already_dirty(self) -> None:
+        candidate = ralph_loop.Candidate(
+            id="progress_edit_noise",
+            title="Reduce progress update noise",
+            score=100,
+            category="api_noise",
+            why="Too many edits.",
+            next_action="Throttle edits.",
+            evidence={},
+            target_paths=["src/telegram_bridge/handler_progress.py"],
+        )
+        handler = ralph_loop.EXECUTION_HANDLERS["progress_edit_noise"]
+        observed_at = datetime(2026, 5, 9, 1, 2, 3, tzinfo=timezone.utc)
+
+        with mock.patch.object(
+            ralph_loop,
+            "git_status_entries",
+            return_value={"README.md": " M"},
+        ), mock.patch.object(
+            ralph_loop,
+            "git_head",
+            return_value="deadbeef",
+        ), mock.patch.object(
+            ralph_loop,
+            "run_command_capture",
+        ) as run_capture:
+            result = ralph_loop.execute_candidate(candidate, handler, observed_at)
+
+        self.assertEqual(result.status, "blocked")
+        self.assertIn("already dirty", result.summary)
+        self.assertEqual(result.changed_files, [])
+        run_capture.assert_not_called()
 
 
 if __name__ == "__main__":
