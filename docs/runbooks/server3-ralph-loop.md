@@ -73,10 +73,9 @@ Commit behavior:
 
 Target selection behavior:
 - Ralph still ranks targets from live telemetry first
-- some targets can be treated as low-agency when the owner already accepts that the core bottleneck is upstream-dominated
-- the live low-agency rule currently applies to `codex_exec_latency`
-- after `3` consecutive high-score selections where that target still remains at or above score `90`, Ralph applies a `35` point cooldown penalty so another local target can take the next execute pass
-- Ralph still reports the raw latency problem in telemetry, but it no longer spends every hourly run grinding on the same marginal Codex-latency path
+- some targets can be permanently excluded from execute mode when the owner explicitly accepts that they are upstream-dominated and not worth further autonomous work
+- the live execution-skip rule currently applies to `codex_exec_latency`
+- Ralph still reports the raw latency problem in telemetry through `raw_top_candidate_id`, but it will not select that target for autonomous fixes
 
 Telegram reporting:
 - each hourly execute run sends a short status update to the configured chat/topic
