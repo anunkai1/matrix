@@ -384,6 +384,33 @@ class ReviewFixLoopTests(unittest.TestCase):
             self.assertEqual(state["issues"]["issue-one"]["last_status"], "interrupted")
             self.assertNotIn("active_attempt", state)
 
+    def test_install_signal_handlers_keeps_ignored_sighup_ignored(self) -> None:
+        handlers = {
+            review_fix_loop.signal.SIGINT: "old-int",
+            review_fix_loop.signal.SIGTERM: "old-term",
+            review_fix_loop.signal.SIGHUP: review_fix_loop.signal.SIG_IGN,
+        }
+        installed = []
+
+        def fake_getsignal(signum):
+            return handlers[signum]
+
+        def fake_signal(signum, handler):
+            installed.append(signum)
+            return handler
+
+        with mock.patch.object(review_fix_loop.signal, "getsignal", side_effect=fake_getsignal), mock.patch.object(
+            review_fix_loop.signal,
+            "signal",
+            side_effect=fake_signal,
+        ):
+            previous = review_fix_loop.install_signal_handlers()
+
+        self.assertEqual(previous[review_fix_loop.signal.SIGHUP], review_fix_loop.signal.SIG_IGN)
+        self.assertIn(review_fix_loop.signal.SIGINT, installed)
+        self.assertIn(review_fix_loop.signal.SIGTERM, installed)
+        self.assertNotIn(review_fix_loop.signal.SIGHUP, installed)
+
 
 if __name__ == "__main__":
     unittest.main()

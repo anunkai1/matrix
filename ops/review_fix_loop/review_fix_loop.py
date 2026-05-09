@@ -408,10 +408,7 @@ def save_result(result: AttemptResult) -> None:
 
 
 def install_signal_handlers():
-    previous_handlers = {
-        signum: signal.getsignal(signum)
-        for signum in INTERRUPT_SIGNALS
-    }
+    previous_handlers = {}
 
     def _handle_interrupt(signum, _frame) -> None:
         global LAST_INTERRUPT_SIGNAL
@@ -425,6 +422,10 @@ def install_signal_handlers():
         raise LoopInterrupted(f"received signal {signum}")
 
     for signum in INTERRUPT_SIGNALS:
+        previous = signal.getsignal(signum)
+        previous_handlers[signum] = previous
+        if previous is signal.SIG_IGN:
+            continue
         signal.signal(signum, _handle_interrupt)
     return previous_handlers
 
