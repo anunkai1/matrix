@@ -10,11 +10,11 @@ Purpose:
 Scope:
 - reads live bridge/system telemetry
 - writes ranked outputs under `RALPH_LOOP_STATE_DIR`
-- does not edit code or deploy changes by itself
+- can run one autonomous optimization pass and then re-rank
 
 Execution contract:
 - Ralph measure/rank mode is live now.
-- Ralph execute mode is intended to operate with broad owner-authorized autonomy on Server3.
+- Ralph execute mode is live now with broad owner-authorized autonomy on Server3.
 
 Allowed in execute mode:
 - edit repo files anywhere needed for the selected optimization target
@@ -41,9 +41,12 @@ Primary files:
 - latest report: `/var/lib/server3-ralph-loop/latest.md`
 - latest backlog: `/var/lib/server3-ralph-loop/optimization_backlog.json`
 - history: `/var/lib/server3-ralph-loop/history.jsonl`
+- execution results: `/var/lib/server3-ralph-loop/execution_results.jsonl`
 
 Commands:
 - run once: `python3 /home/architect/matrix/ops/ralph_loop/ralph_loop.py collect`
+- execute top live target once: `python3 /home/architect/matrix/ops/ralph_loop/ralph_loop.py execute`
+- execute a named target once: `python3 /home/architect/matrix/ops/ralph_loop/ralph_loop.py execute --candidate-id progress_edit_noise`
 - install timer: `bash /home/architect/matrix/ops/ralph_loop/install_systemd.sh apply`
 - remove timer: `bash /home/architect/matrix/ops/ralph_loop/install_systemd.sh rollback`
 
@@ -52,4 +55,4 @@ Default cadence:
 
 Current intent:
 - keep the next optimization target fresh without owner prompting
-- feed autonomous engineering passes with real operational evidence instead of guesswork
+- let Ralph pick one live target, run a real Codex optimization pass, record the outcome, then re-rank from fresh telemetry

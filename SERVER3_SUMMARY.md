@@ -33,7 +33,7 @@ Last updated: 2026-05-09 (AEST, +10:00)
 - Repo workflow: direct-to-`main` with mandatory commit/push proof for non-exempt changes
 - Runtime observer daily Telegram summary now appends a plain-English operator line indicating whether attention is needed.
 - Runtime observer daily health delivery is centralized through `staker_alerts_bot` to chat `211761499` (single destination).
-- Ralph loop now has a repo-backed hourly optimization ranker (`server3-ralph-loop.timer`) that reads live Architect bridge telemetry and refreshes a scored operational backlog under `/var/lib/server3-ralph-loop`; its intended next stage is broad owner-authorized autonomous execution on Server3 rather than a narrow repo-only contract.
+- Ralph loop now has a repo-backed hourly optimization ranker (`server3-ralph-loop.timer`) plus a live `execute` path in `ops/ralph_loop/ralph_loop.py` that can select a backlog target, run one Codex optimization pass, record `execution_results.jsonl`, and then re-rank from fresh telemetry.
 
 ## Runtime Inventory
 - Canonical manifest: `infra/server3-runtime-manifest.json`
@@ -62,6 +62,7 @@ Last updated: 2026-05-09 (AEST, +10:00)
 - Server4/API/browser engine integration keeps Server3 as the bot/control-plane host: use `/engine gemma`, `/engine pi`, `/engine codex`, `/engine chatgptweb`, `/engine reset`, and `/engine status` per chat/topic. Gemma is a direct text-only Ollama path; the shared Pi engine runs locally in the runtime root and can use `ollama`, `venice`, or `deepseek` backends depending on env; `chatgptweb` is a brittle Browser Brain-backed lab engine; all report live health details in `/engine status` where applicable.
 
 ## Recent Changes (Rolling Max 8)
+- 2026-05-09: added live Ralph execute mode. `ops/ralph_loop/ralph_loop.py execute` now refreshes the backlog, selects a handler-backed target, runs one Codex optimization pass with target-specific verification, appends `/var/lib/server3-ralph-loop/execution_results.jsonl`, and then re-ranks from fresh telemetry.
 - 2026-05-09: added the bounded `Ralph` optimization loop for Server3 operations. The new hourly `server3-ralph-loop` service/timer reads existing bridge telemetry and runtime observer KPIs, ranks live bottlenecks like worker-capacity pressure and latency spikes, and writes `/var/lib/server3-ralph-loop/latest.md` plus `optimization_backlog.json` so future optimization passes can start from current operational evidence instead of ad-hoc guesses.
 - 2026-05-09: updated the Ralph runbook contract to match owner preference for broad autonomous Server3 optimization work: repo edits, non-repo file edits, and service restarts are in scope when needed, with only the base workspace stop conditions retained.
 - 2026-05-05: code infrastructure overhaul. Eliminated pervasive `try/except ImportError` anti-pattern from all 54 bridge modules (-1,116 lines) by adding proper package structure with `__init__.py`, `pyproject.toml` build system, and `PYTHONPATH` in systemd units. Extracted reusable `Env` parser class (`env_parser.py`, 187 lines) replacing 11 duplicated parse functions. Split `engine_adapter.py` (1,407 lines) into 8 focused files under `engines/` subpackage. Removed vestigial memory systemd units from live system. Net source reduction: -3,087 / +492 = -2,595 lines.
