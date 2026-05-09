@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlparse
@@ -30,6 +31,31 @@ REQUEST_CANCELED_MESSAGE = "Request canceled."
 
 EXECUTOR_USAGE_LIMIT_RE = re.compile(r"\bhit your usage limit\b", re.IGNORECASE)
 EXECUTOR_RETRY_AT_RE = re.compile(r"\btry again at ([0-9]{1,2}:\d{2}\s*[AP]M)\b", re.IGNORECASE)
+
+@dataclass(frozen=True)
+class ParsedOutboundPayload:
+    rendered_text: str
+    directive: Optional[OutboundMediaDirective]
+    payload_format: str
+
+
+@dataclass(frozen=True)
+class OutboundDeliveryContext:
+    client: ChannelAdapter
+    chat_id: int
+    message_id: Optional[int]
+    message_thread_id: Optional[int]
+    output: str
+
+
+@dataclass(frozen=True)
+class OutboundRenderPlan:
+    rendered_text: str
+    directive: OutboundMediaDirective
+    media_kind: str
+    caption: Optional[str]
+    follow_up_text: Optional[str]
+
 
 def parse_outbound_media_directive(output: str) -> tuple[str, Optional[OutboundMediaDirective]]:
     text = output or ""
@@ -143,226 +169,282 @@ def send_executor_output(
     output: str,
     message_thread_id: Optional[int] = None,
 ) -> str:
-    payload_format = "plain_text"
-    structured_payload, parse_error = parse_structured_outbound_payload(output)
-    if parse_error is not None:
-        emit_event(
-            "bridge.outbound_payload_parse_failed",
-            level=logging.WARNING,
-            fields={
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "reason": parse_error,
-            },
-        )
-        fallback_text = apply_outbound_reply_prefix(client, output or "")
-        client.send_message(
-            chat_id,
-            fallback_text,
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return fallback_text
-
-    if structured_payload is not None:
-        rendered_text, directive = structured_payload
-        payload_format = "json_envelope"
-    else:
-        rendered_text, directive = parse_outbound_media_directive(output)
-        if directive is not None:
-            payload_format = "legacy_directive"
+    context = OutboundDeliveryContext(
+        client=client,
+        chat_id=chat_id,
+        message_id=message_id,
+        message_thread_id=message_thread_id,
+        output=output,
+    )
+    parsed_payload = _parse_outbound_payload(context)
+    if parsed_payload is None:
+        return _send_raw_text_fallback(context, output or "")
 
     emit_event(
         "bridge.outbound_payload_parsed",
         fields={
             "chat_id": chat_id,
             "message_id": message_id,
-            "payload_format": payload_format,
-            "has_media_directive": directive is not None,
+            "payload_format": parsed_payload.payload_format,
+            "has_media_directive": parsed_payload.directive is not None,
         },
     )
 
-    if directive is None:
-        rendered_text = apply_outbound_reply_prefix(client, rendered_text)
-        client.send_message(
-            chat_id,
-            rendered_text,
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return rendered_text
+    if parsed_payload.directive is None:
+        return _send_plain_text(context, parsed_payload.rendered_text)
 
-    caption = apply_outbound_reply_prefix(client, rendered_text) if rendered_text else None
-    follow_up_text: Optional[str] = None
+    delivery_plan = _build_outbound_render_plan(context, parsed_payload)
+    return _deliver_outbound_media(context, delivery_plan)
+
+def _parse_outbound_payload(context: OutboundDeliveryContext) -> Optional[ParsedOutboundPayload]:
+    structured_payload, parse_error = parse_structured_outbound_payload(context.output)
+    if parse_error is not None:
+        emit_event(
+            "bridge.outbound_payload_parse_failed",
+            level=logging.WARNING,
+            fields={
+                "chat_id": context.chat_id,
+                "message_id": context.message_id,
+                "reason": parse_error,
+            },
+        )
+        return None
+
+    if structured_payload is not None:
+        rendered_text, directive = structured_payload
+        return ParsedOutboundPayload(
+            rendered_text=rendered_text,
+            directive=directive,
+            payload_format="json_envelope",
+        )
+    rendered_text, directive = parse_outbound_media_directive(context.output)
+    return ParsedOutboundPayload(
+        rendered_text=rendered_text,
+        directive=directive,
+        payload_format="legacy_directive" if directive is not None else "plain_text",
+    )
+
+
+def _send_raw_text_fallback(context: OutboundDeliveryContext, text: str) -> str:
+    fallback_text = apply_outbound_reply_prefix(context.client, text)
+    context.client.send_message(
+        context.chat_id,
+        fallback_text,
+        reply_to_message_id=context.message_id,
+        message_thread_id=context.message_thread_id,
+    )
+    return fallback_text
+
+
+def _send_plain_text(context: OutboundDeliveryContext, rendered_text: str) -> str:
+    return _send_raw_text_fallback(context, rendered_text)
+
+
+def _build_outbound_render_plan(
+    context: OutboundDeliveryContext,
+    parsed_payload: ParsedOutboundPayload,
+) -> OutboundRenderPlan:
+    caption = (
+        apply_outbound_reply_prefix(context.client, parsed_payload.rendered_text)
+        if parsed_payload.rendered_text
+        else None
+    )
+    follow_up_text = None
     if caption and len(caption) > TELEGRAM_CAPTION_LIMIT:
         follow_up_text = caption
         caption = None
+    return OutboundRenderPlan(
+        rendered_text=parsed_payload.rendered_text,
+        directive=parsed_payload.directive,
+        media_kind=infer_media_kind(parsed_payload.directive.media_ref),
+        caption=caption,
+        follow_up_text=follow_up_text,
+    )
 
+
+def _send_photo(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> None:
+    send_chat_action_safe(context.client, context.chat_id, "upload_photo", context.message_thread_id)
+    context.client.send_photo(
+        chat_id=context.chat_id,
+        photo=plan.directive.media_ref,
+        caption=plan.caption,
+        reply_to_message_id=context.message_id,
+        message_thread_id=context.message_thread_id,
+    )
+    emit_event(
+        "bridge.outbound_delivery_succeeded",
+        fields={
+            "chat_id": context.chat_id,
+            "message_id": context.message_id,
+            "media_kind": plan.media_kind,
+            "send_method": "sendPhoto",
+            "fallback_used": False,
+        },
+    )
+
+
+def _send_audio(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> None:
+    send_chat_action_safe(context.client, context.chat_id, "upload_audio", context.message_thread_id)
+    context.client.send_audio(
+        chat_id=context.chat_id,
+        audio=plan.directive.media_ref,
+        caption=plan.caption,
+        reply_to_message_id=context.message_id,
+        message_thread_id=context.message_thread_id,
+    )
+    emit_event(
+        "bridge.outbound_delivery_succeeded",
+        fields={
+            "chat_id": context.chat_id,
+            "message_id": context.message_id,
+            "media_kind": plan.media_kind,
+            "send_method": "sendAudio",
+            "fallback_used": False,
+        },
+    )
+
+
+def _send_voice_with_audio_fallback(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> None:
+    send_chat_action_safe(context.client, context.chat_id, "record_voice", context.message_thread_id)
+    send_chat_action_safe(context.client, context.chat_id, "upload_voice", context.message_thread_id)
     try:
-        media_kind = infer_media_kind(directive.media_ref)
+        context.client.send_voice(
+            chat_id=context.chat_id,
+            voice=plan.directive.media_ref,
+            caption=plan.caption,
+            reply_to_message_id=context.message_id,
+            message_thread_id=context.message_thread_id,
+        )
+        emit_event(
+            "bridge.outbound_delivery_succeeded",
+            fields={
+                "chat_id": context.chat_id,
+                "message_id": context.message_id,
+                "media_kind": plan.media_kind,
+                "send_method": "sendVoice",
+                "fallback_used": False,
+            },
+        )
+    except Exception as exc:
+        if not is_voice_messages_forbidden_error(exc):
+            raise
+        logging.warning(
+            "sendVoice forbidden for chat_id=%s; falling back to sendAudio",
+            context.chat_id,
+        )
+        emit_event(
+            "bridge.outbound_delivery_fallback",
+            level=logging.WARNING,
+            fields={
+                "chat_id": context.chat_id,
+                "message_id": context.message_id,
+                "media_kind": plan.media_kind,
+                "from_method": "sendVoice",
+                "to_method": "sendAudio",
+                "reason": "VOICE_MESSAGES_FORBIDDEN",
+            },
+        )
+        send_chat_action_safe(context.client, context.chat_id, "upload_audio", context.message_thread_id)
+        context.client.send_audio(
+            chat_id=context.chat_id,
+            audio=plan.directive.media_ref,
+            caption=plan.caption,
+            reply_to_message_id=context.message_id,
+            message_thread_id=context.message_thread_id,
+        )
+        emit_event(
+            "bridge.outbound_delivery_succeeded",
+            fields={
+                "chat_id": context.chat_id,
+                "message_id": context.message_id,
+                "media_kind": plan.media_kind,
+                "send_method": "sendAudio",
+                "fallback_used": True,
+            },
+        )
+
+
+def _send_document(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> None:
+    send_chat_action_safe(context.client, context.chat_id, "upload_document", context.message_thread_id)
+    context.client.send_document(
+        chat_id=context.chat_id,
+        document=plan.directive.media_ref,
+        caption=plan.caption,
+        reply_to_message_id=context.message_id,
+        message_thread_id=context.message_thread_id,
+    )
+    emit_event(
+        "bridge.outbound_delivery_succeeded",
+        fields={
+            "chat_id": context.chat_id,
+            "message_id": context.message_id,
+            "media_kind": plan.media_kind,
+            "send_method": "sendDocument",
+            "fallback_used": False,
+        },
+    )
+
+
+def _execute_media_delivery(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> None:
+    if plan.media_kind == "photo":
+        _send_photo(context, plan)
+        return
+    if plan.media_kind == "audio":
+        if plan.directive.as_voice and is_voice_compatible_media(plan.directive.media_ref):
+            _send_voice_with_audio_fallback(context, plan)
+            return
+        _send_audio(context, plan)
+        return
+    _send_document(context, plan)
+
+
+def _finalize_media_delivery(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> str:
+    if plan.follow_up_text:
+        context.client.send_message(
+            context.chat_id,
+            plan.follow_up_text,
+            reply_to_message_id=context.message_id,
+            message_thread_id=context.message_thread_id,
+        )
+        return plan.follow_up_text
+    if plan.caption:
+        return plan.caption
+    if plan.rendered_text:
+        return plan.rendered_text
+    return f"[media sent: {plan.directive.media_ref}]"
+
+
+def _deliver_outbound_media(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> str:
+    try:
         emit_event(
             "bridge.outbound_delivery_attempt",
             fields={
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "media_kind": media_kind,
-                "as_voice_requested": directive.as_voice,
+                "chat_id": context.chat_id,
+                "message_id": context.message_id,
+                "media_kind": plan.media_kind,
+                "as_voice_requested": plan.directive.as_voice,
             },
         )
-        if media_kind == "photo":
-            send_chat_action_safe(client, chat_id, "upload_photo", message_thread_id)
-            client.send_photo(
-                chat_id=chat_id,
-                photo=directive.media_ref,
-                caption=caption,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
-            emit_event(
-                "bridge.outbound_delivery_succeeded",
-                fields={
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "media_kind": media_kind,
-                    "send_method": "sendPhoto",
-                    "fallback_used": False,
-                },
-            )
-        elif media_kind == "audio":
-            if directive.as_voice and is_voice_compatible_media(directive.media_ref):
-                send_chat_action_safe(client, chat_id, "record_voice", message_thread_id)
-                send_chat_action_safe(client, chat_id, "upload_voice", message_thread_id)
-                try:
-                    client.send_voice(
-                        chat_id=chat_id,
-                        voice=directive.media_ref,
-                        caption=caption,
-                        reply_to_message_id=message_id,
-                        message_thread_id=message_thread_id,
-                    )
-                    emit_event(
-                        "bridge.outbound_delivery_succeeded",
-                        fields={
-                            "chat_id": chat_id,
-                            "message_id": message_id,
-                            "media_kind": media_kind,
-                            "send_method": "sendVoice",
-                            "fallback_used": False,
-                        },
-                    )
-                except Exception as exc:
-                    if not is_voice_messages_forbidden_error(exc):
-                        raise
-                    logging.warning(
-                        "sendVoice forbidden for chat_id=%s; falling back to sendAudio",
-                        chat_id,
-                    )
-                    emit_event(
-                        "bridge.outbound_delivery_fallback",
-                        level=logging.WARNING,
-                        fields={
-                            "chat_id": chat_id,
-                            "message_id": message_id,
-                            "media_kind": media_kind,
-                            "from_method": "sendVoice",
-                            "to_method": "sendAudio",
-                            "reason": "VOICE_MESSAGES_FORBIDDEN",
-                        },
-                    )
-                    send_chat_action_safe(client, chat_id, "upload_audio", message_thread_id)
-                    client.send_audio(
-                        chat_id=chat_id,
-                        audio=directive.media_ref,
-                        caption=caption,
-                        reply_to_message_id=message_id,
-                        message_thread_id=message_thread_id,
-                    )
-                    emit_event(
-                        "bridge.outbound_delivery_succeeded",
-                        fields={
-                            "chat_id": chat_id,
-                            "message_id": message_id,
-                            "media_kind": media_kind,
-                            "send_method": "sendAudio",
-                            "fallback_used": True,
-                        },
-                    )
-            else:
-                send_chat_action_safe(client, chat_id, "upload_audio", message_thread_id)
-                client.send_audio(
-                    chat_id=chat_id,
-                    audio=directive.media_ref,
-                    caption=caption,
-                    reply_to_message_id=message_id,
-                    message_thread_id=message_thread_id,
-                )
-                emit_event(
-                    "bridge.outbound_delivery_succeeded",
-                    fields={
-                        "chat_id": chat_id,
-                        "message_id": message_id,
-                        "media_kind": media_kind,
-                        "send_method": "sendAudio",
-                        "fallback_used": False,
-                    },
-                )
-        else:
-            send_chat_action_safe(client, chat_id, "upload_document", message_thread_id)
-            client.send_document(
-                chat_id=chat_id,
-                document=directive.media_ref,
-                caption=caption,
-                reply_to_message_id=message_id,
-                message_thread_id=message_thread_id,
-            )
-            emit_event(
-                "bridge.outbound_delivery_succeeded",
-                fields={
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "media_kind": media_kind,
-                    "send_method": "sendDocument",
-                    "fallback_used": False,
-                },
-            )
+        _execute_media_delivery(context, plan)
     except Exception as exc:
         logging.exception(
             "Failed to send outbound media for chat_id=%s; falling back to text",
-            chat_id,
+            context.chat_id,
         )
         emit_event(
             "bridge.outbound_delivery_failed",
             level=logging.ERROR,
             fields={
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "media_kind": infer_media_kind(directive.media_ref),
+                "chat_id": context.chat_id,
+                "message_id": context.message_id,
+                "media_kind": plan.media_kind,
                 "error_type": type(exc).__name__,
                 "fallback_to_text": True,
             },
         )
-        fallback_text = apply_outbound_reply_prefix(client, rendered_text or output)
-        client.send_message(
-            chat_id,
-            fallback_text,
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return fallback_text
+        return _send_raw_text_fallback(context, plan.rendered_text or context.output)
 
-    if follow_up_text:
-        client.send_message(
-            chat_id,
-            follow_up_text,
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
-        )
-        return follow_up_text
-    if caption:
-        return caption
-    if rendered_text:
-        return rendered_text
-    return f"[media sent: {directive.media_ref}]"
+    return _finalize_media_delivery(context, plan)
 
 def compact_progress_text(text: str, max_chars: int = 120) -> str:
     cleaned = " ".join(text.replace("\n", " ").split())
