@@ -46,14 +46,17 @@ cd "${repo_root}"
 "${ruff_bin}" check src/telegram_bridge tests/telegram_bridge
 "${ruff_bin}" check \
   ops/ralph_loop/ralph_loop.py \
+  ops/review_fix_loop/review_fix_loop.py \
   ops/server3_runtime_status.py \
   ops/runtime_overlays/sync_server3_runtime_overlays.py \
+  tests/review_fix_loop/test_review_fix_loop.py \
   tests/runtime_observer/test_ralph_loop.py \
   tests/test_server3_runtime_status.py \
   tests/test_sync_server3_runtime_overlays.py \
   --select E4,E7,E9,F,I
 "${python_bin}" -m py_compile \
   ops/ralph_loop/ralph_loop.py \
+  ops/review_fix_loop/review_fix_loop.py \
   src/telegram_bridge/main.py \
   src/telegram_bridge/executor.py \
   src/telegram_bridge/handlers.py \
@@ -68,6 +71,7 @@ cd "${repo_root}"
 "${python_bin}" -m coverage run -m unittest discover -s tests/telegram_bridge -p 'test_*.py'
 "${python_bin}" -m coverage report -m
 "${python_bin}" -m unittest \
+  tests.review_fix_loop.test_review_fix_loop \
   tests.runtime_observer.test_ralph_loop \
   tests.test_server3_runtime_status \
   tests.test_sync_server3_runtime_overlays
