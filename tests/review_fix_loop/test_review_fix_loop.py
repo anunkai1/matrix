@@ -16,6 +16,12 @@ SPEC.loader.exec_module(review_fix_loop)
 
 
 class ReviewFixLoopTests(unittest.TestCase):
+    def test_tighten_python_qa_issue_uses_repo_python_checks(self) -> None:
+        issue = next(issue for issue in review_fix_loop.ISSUES if issue.issue_id == "tighten_python_qa")
+
+        self.assertEqual(issue.target_paths, ["pyproject.toml", "ops/dev/run_python_checks.sh", "tests/review_fix_loop/test_review_fix_loop.py"])
+        self.assertEqual(issue.verification_commands, [["bash", "ops/dev/run_python_checks.sh", "--skip-smoke"]])
+
     def test_build_prompt_includes_recent_history(self) -> None:
         issue = review_fix_loop.ISSUES[0]
         issue_state = {

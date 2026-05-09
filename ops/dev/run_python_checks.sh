@@ -5,6 +5,15 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 venv_path="${repo_root}/.venv/server3-qa"
 run_smoke="yes"
+coverage_file="$(mktemp "${TMPDIR:-/tmp}/server3-qa-coverage.XXXXXX")"
+review_loop_state_dir="$(mktemp -d "${TMPDIR:-/tmp}/server3-review-fix-loop-tests.XXXXXX")"
+
+cleanup() {
+  rm -f "${coverage_file}"
+  rm -rf "${review_loop_state_dir}"
+}
+
+trap cleanup EXIT
 
 usage() {
   cat <<'EOF'
@@ -43,6 +52,15 @@ ruff_bin="${resolved_venv}/bin/ruff"
 
 cd "${repo_root}"
 
+COVERAGE_FILE="${coverage_file}"
+export COVERAGE_FILE
+SERVER3_REVIEW_FIX_LOOP_FALLBACK_STATE_DIR="${review_loop_state_dir}"
+export SERVER3_REVIEW_FIX_LOOP_FALLBACK_STATE_DIR
+
+bash -n \
+  ops/dev/bootstrap_python_checks.sh \
+  ops/dev/run_python_checks.sh \
+  src/telegram_bridge/smoke_test.sh
 "${ruff_bin}" check src/telegram_bridge tests/telegram_bridge
 "${ruff_bin}" check \
   ops/ralph_loop/ralph_loop.py \
@@ -67,7 +85,8 @@ cd "${repo_root}"
   src/telegram_bridge/stream_buffer.py \
   src/telegram_bridge/transport.py \
   ops/server3_runtime_status.py \
-  ops/runtime_overlays/sync_server3_runtime_overlays.py
+  ops/runtime_overlays/sync_server3_runtime_overlays.py \
+  tests/review_fix_loop/test_review_fix_loop.py
 "${python_bin}" -m coverage run -m unittest discover -s tests/telegram_bridge -p 'test_*.py'
 "${python_bin}" -m coverage report -m
 "${python_bin}" -m unittest \

@@ -47,7 +47,7 @@ class RuntimeBootstrap:
     canonical_bootstrap_source: str
     affective_runtime: object
     voice_alias_learning_store: Optional[VoiceAliasLearningStore]
-    update_flow_dependencies: UpdateFlowDependencies
+    update_flow_dependencies: Optional[UpdateFlowDependencies] = None
 
 
 def build_update_flow_dependencies() -> UpdateFlowDependencies:

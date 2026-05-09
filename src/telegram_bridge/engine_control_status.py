@@ -30,7 +30,7 @@ brief_health_error = engine_health._brief_health_error
 
 
 def build_engine_runtime_config(state, config, scope_key: str, engine_name: str):
-    runtime_config = copy.copy(config)
+    runtime_config = copy.deepcopy(config)
     normalized_engine = normalize_engine_name(engine_name)
     if normalized_engine == "codex":
         override_model = get_chat_codex_model(state, scope_key)
