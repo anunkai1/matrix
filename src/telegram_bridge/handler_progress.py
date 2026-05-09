@@ -12,6 +12,9 @@ from telegram_bridge.transport import TELEGRAM_LIMIT
 PROGRESS_TYPING_INTERVAL_SECONDS = 4
 PROGRESS_EDIT_MIN_INTERVAL_SECONDS = 6
 PROGRESS_HEARTBEAT_EDIT_SECONDS = 30
+COMPACT_PROGRESS_EDIT_MIN_INTERVAL_SECONDS = 5
+COMPACT_PROGRESS_HEARTBEAT_EDIT_SECONDS = 15
+COMPACT_PROGRESS_ELAPSED_STEP_SECONDS = 5
 
 
 def trim_output(text: str, limit: int) -> str:
@@ -59,10 +62,14 @@ class ProgressReporter:
         self.last_rendered_text = ""
         self._is_compact_progress = bool(self.progress_label)
         self._edit_min_interval_seconds = (
-            1.0 if self._is_compact_progress else PROGRESS_EDIT_MIN_INTERVAL_SECONDS
+            COMPACT_PROGRESS_EDIT_MIN_INTERVAL_SECONDS
+            if self._is_compact_progress
+            else PROGRESS_EDIT_MIN_INTERVAL_SECONDS
         )
         self._heartbeat_edit_seconds = (
-            1.0 if self._is_compact_progress else PROGRESS_HEARTBEAT_EDIT_SECONDS
+            COMPACT_PROGRESS_HEARTBEAT_EDIT_SECONDS
+            if self._is_compact_progress
+            else PROGRESS_HEARTBEAT_EDIT_SECONDS
         )
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -191,6 +198,7 @@ class ProgressReporter:
         else:
             label = f"{self.assistant_name} is working"
         if self._is_compact_progress:
+            elapsed = self._compact_elapsed_seconds(elapsed)
             if not self.compact_elapsed_prefix and not self.compact_elapsed_suffix:
                 text = f"{label}..."
             else:
@@ -224,7 +232,7 @@ class ProgressReporter:
             return
 
         text = self._render_progress_text()
-        if not force and text == self.last_rendered_text:
+        if text == self.last_rendered_text:
             with self._lock:
                 self.pending_update = False
             return
@@ -255,3 +263,11 @@ class ProgressReporter:
         self.last_edit_at = now
         with self._lock:
             self.pending_update = False
+
+    @staticmethod
+    def _compact_elapsed_seconds(elapsed: int) -> int:
+        return max(
+            1,
+            (elapsed // COMPACT_PROGRESS_ELAPSED_STEP_SECONDS)
+            * COMPACT_PROGRESS_ELAPSED_STEP_SECONDS,
+        )

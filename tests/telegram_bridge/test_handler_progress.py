@@ -75,6 +75,24 @@ class HandlerProgressTests(unittest.TestCase):
         self.assertFalse(reporter.pending_update)
         self.assertEqual(reporter.edit_attempts, 0)
 
+    def test_maybe_edit_clears_pending_update_when_forced_text_is_unchanged(self):
+        reporter = handler_progress.ProgressReporter(
+            client=FakeClient(),
+            chat_id=1,
+            reply_to_message_id=5,
+            message_thread_id=None,
+            assistant_name="Architect",
+        )
+        reporter.progress_message_id = 101
+        reporter.pending_update = True
+        reporter.last_rendered_text = "same"
+
+        with mock.patch.object(reporter, "_render_progress_text", return_value="same"):
+            reporter._maybe_edit(force=True)
+
+        self.assertFalse(reporter.pending_update)
+        self.assertEqual(reporter.edit_attempts, 0)
+
     def test_maybe_edit_counts_not_modified_runtime_error_as_400(self):
         client = FakeClient()
         client.edit_message = mock.Mock(side_effect=RuntimeError("Message is not modified"))
@@ -93,6 +111,32 @@ class HandlerProgressTests(unittest.TestCase):
         self.assertEqual(reporter.edit_failures_400, 1)
         self.assertFalse(reporter.pending_update)
         self.assertEqual(reporter.edit_failures_other, 0)
+
+    def test_compact_progress_uses_bucketed_elapsed_and_slower_cadence(self):
+        reporter = handler_progress.ProgressReporter(
+            client=FakeClient(),
+            chat_id=1,
+            reply_to_message_id=5,
+            message_thread_id=None,
+            assistant_name="Architect",
+            progress_label="Architect is thinking",
+        )
+        reporter.started_at = 100.0
+
+        with mock.patch.object(handler_progress.time, "time", return_value=112.0):
+            self.assertEqual(
+                reporter._render_progress_text(),
+                "Architect is thinking... Already 10s",
+            )
+
+        self.assertEqual(
+            reporter._edit_min_interval_seconds,
+            handler_progress.COMPACT_PROGRESS_EDIT_MIN_INTERVAL_SECONDS,
+        )
+        self.assertEqual(
+            reporter._heartbeat_edit_seconds,
+            handler_progress.COMPACT_PROGRESS_HEARTBEAT_EDIT_SECONDS,
+        )
 
     def test_close_emits_stats_after_forced_final_edit(self):
         reporter = handler_progress.ProgressReporter(
