@@ -13,6 +13,7 @@ import json
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -41,6 +42,9 @@ DEFAULT_MAX_ATTEMPTS_PER_ISSUE = max(
     int(os.getenv("SERVER3_REVIEW_FIX_LOOP_MAX_ATTEMPTS_PER_ISSUE", "5") or "5"),
 )
 CAMPAIGN_ID = "server3_code_review_may_2026"
+INTERRUPT_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+ACTIVE_CHILD_PROCESS: Optional[subprocess.Popen[str]] = None
+LAST_INTERRUPT_SIGNAL: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +85,10 @@ class AttemptResult:
     push_succeeded: bool = False
     push_stdout: str = ""
     push_stderr: str = ""
+
+
+class LoopInterrupted(RuntimeError):
+    """Raised when the review loop receives an external termination signal."""
 
 
 def now_utc() -> datetime:
@@ -231,14 +239,28 @@ def run_command_capture(
     *,
     cwd: Optional[Path] = None,
     input_text: Optional[str] = None,
+    timeout_seconds: Optional[int] = None,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    global ACTIVE_CHILD_PROCESS
+    proc = subprocess.Popen(
         list(args),
         cwd=str(cwd) if cwd else None,
-        input=input_text,
-        capture_output=True,
+        stdin=subprocess.PIPE if input_text is not None else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        check=False,
+        start_new_session=True,
+    )
+    ACTIVE_CHILD_PROCESS = proc
+    try:
+        stdout, stderr = proc.communicate(input=input_text, timeout=timeout_seconds)
+    finally:
+        ACTIVE_CHILD_PROCESS = None
+    return subprocess.CompletedProcess(
+        list(args),
+        proc.returncode,
+        stdout,
+        stderr,
     )
 
 
@@ -383,6 +405,93 @@ def save_result(result: AttemptResult) -> None:
     with open(RESULTS_PATH, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(asdict(result), sort_keys=True, ensure_ascii=True))
         handle.write("\n")
+
+
+def install_signal_handlers():
+    previous_handlers = {
+        signum: signal.getsignal(signum)
+        for signum in INTERRUPT_SIGNALS
+    }
+
+    def _handle_interrupt(signum, _frame) -> None:
+        global LAST_INTERRUPT_SIGNAL
+        LAST_INTERRUPT_SIGNAL = signum
+        child = ACTIVE_CHILD_PROCESS
+        if child is not None and child.poll() is None:
+            try:
+                os.killpg(child.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        raise LoopInterrupted(f"received signal {signum}")
+
+    for signum in INTERRUPT_SIGNALS:
+        signal.signal(signum, _handle_interrupt)
+    return previous_handlers
+
+
+def restore_signal_handlers(previous_handlers) -> None:
+    for signum, previous in previous_handlers.items():
+        signal.signal(signum, previous)
+
+
+def begin_active_attempt(
+    state: Dict[str, object],
+    *,
+    issue: ReviewIssue,
+    attempt: int,
+    git_head_before: str,
+) -> None:
+    state["active_attempt"] = {
+        "issue_id": issue.issue_id,
+        "attempt": attempt,
+        "git_head_before": git_head_before,
+        "started_at_utc": now_utc().isoformat(),
+    }
+
+
+def clear_active_attempt(state: Dict[str, object]) -> None:
+    state.pop("active_attempt", None)
+
+
+def recover_abandoned_attempt(
+    state: Dict[str, object],
+    *,
+    reason: str,
+) -> Optional[AttemptResult]:
+    active_attempt = state.get("active_attempt")
+    if not isinstance(active_attempt, dict):
+        return None
+    issue_id = str(active_attempt.get("issue_id") or "")
+    issue = issue_map().get(issue_id)
+    if issue is None:
+        clear_active_attempt(state)
+        return None
+    changed_files = sorted(git_status_entries())
+    reverted_files: List[str] = []
+    if changed_files:
+        reverted_files = restore_paths(changed_files)
+    result = AttemptResult(
+        observed_at_utc=now_utc().isoformat(),
+        issue_id=issue.issue_id,
+        attempt=int(active_attempt.get("attempt") or 1),
+        status="interrupted",
+        summary=reason,
+        codex_returncode=-(LAST_INTERRUPT_SIGNAL or 1),
+        codex_stdout="",
+        codex_stderr="loop interrupted before attempt completed",
+        verification_results=[],
+        changed_files=changed_files,
+        reverted_files=reverted_files,
+        git_head_before=str(active_attempt.get("git_head_before") or ""),
+        git_head_after=git_head(),
+    )
+    issue_state = ensure_issue_state(state, issue.issue_id)
+    save_result(result)
+    update_issue_state(issue_state, result)
+    clear_active_attempt(state)
+    state["updated_at_utc"] = now_utc().isoformat()
+    save_state(state)
+    return result
 
 
 def ensure_issue_state(state: Dict[str, object], issue_id: str) -> Dict[str, object]:
@@ -695,29 +804,60 @@ def run_loop(*, max_attempts_per_issue: int) -> int:
     state["campaign_id"] = CAMPAIGN_ID
     state["updated_at_utc"] = now_utc().isoformat()
     save_state(state)
+    recover_abandoned_attempt(
+        state,
+        reason="Previous attempt ended before completion; the loop restored leftover changes.",
+    )
+    signal_handlers = install_signal_handlers()
 
-    for index, issue in enumerate(ISSUES, start=1):
-        issue_state = ensure_issue_state(state, issue.issue_id)
-        if issue_state.get("status") == "completed":
-            continue
-        attempts_this_run = 0
-        while issue_state.get("status") != "completed":
-            if attempts_this_run >= max_attempts_per_issue:
-                save_state(state)
-                print(render_status(state))
-                return 1
-            attempt_no = int(issue_state.get("attempts") or 0) + 1
-            result = run_issue_attempt(issue, issue_state, attempt_no, index, len(ISSUES))
-            save_result(result)
-            update_issue_state(issue_state, result)
-            state["updated_at_utc"] = now_utc().isoformat()
-            save_state(state)
-            attempts_this_run += 1
+    try:
+        for index, issue in enumerate(ISSUES, start=1):
+            issue_state = ensure_issue_state(state, issue.issue_id)
             if issue_state.get("status") == "completed":
-                break
+                continue
+            attempts_this_run = 0
+            while issue_state.get("status") != "completed":
+                if attempts_this_run >= max_attempts_per_issue:
+                    save_state(state)
+                    print(render_status(state))
+                    return 1
+                attempt_no = int(issue_state.get("attempts") or 0) + 1
+                begin_active_attempt(
+                    state,
+                    issue=issue,
+                    attempt=attempt_no,
+                    git_head_before=git_head(),
+                )
+                state["updated_at_utc"] = now_utc().isoformat()
+                save_state(state)
+                try:
+                    result = run_issue_attempt(issue, issue_state, attempt_no, index, len(ISSUES))
+                except LoopInterrupted:
+                    recover_abandoned_attempt(
+                        state,
+                        reason="Attempt interrupted by external termination signal; restored leftover changes.",
+                    )
+                    print(render_status(state))
+                    return 1
+                except Exception:
+                    recover_abandoned_attempt(
+                        state,
+                        reason="Attempt crashed before completion; restored leftover changes.",
+                    )
+                    raise
+                clear_active_attempt(state)
+                save_result(result)
+                update_issue_state(issue_state, result)
+                state["updated_at_utc"] = now_utc().isoformat()
+                save_state(state)
+                attempts_this_run += 1
+                if issue_state.get("status") == "completed":
+                    break
 
-    print(render_status(state))
-    return 0
+        print(render_status(state))
+        return 0
+    finally:
+        restore_signal_handlers(signal_handlers)
 
 
 def reset_state() -> int:

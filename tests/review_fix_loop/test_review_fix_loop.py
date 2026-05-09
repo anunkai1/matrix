@@ -252,6 +252,138 @@ class ReviewFixLoopTests(unittest.TestCase):
             self.assertEqual(state["issues"]["issue-one"]["status"], "pending")
             self.assertEqual(state["issues"]["issue-one"]["attempts"], 1)
 
+    def test_recover_abandoned_attempt_reverts_dirty_files_and_records_result(self) -> None:
+        issue = review_fix_loop.ReviewIssue(
+            issue_id="issue-one",
+            title="Issue One",
+            summary="one",
+            guidance="fix one",
+            target_paths=["a.py"],
+            verification_commands=[["true"]],
+        )
+        t0 = datetime(2026, 5, 9, 0, 0, tzinfo=timezone.utc)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            state = {
+                "campaign_id": review_fix_loop.CAMPAIGN_ID,
+                "issues": {},
+                "active_attempt": {
+                    "issue_id": "issue-one",
+                    "attempt": 2,
+                    "git_head_before": "abc123",
+                    "started_at_utc": t0.isoformat(),
+                },
+            }
+            with mock.patch.object(review_fix_loop, "ISSUES", [issue]), mock.patch.object(
+                review_fix_loop,
+                "STATE_DIR",
+                tmpdir_path,
+            ), mock.patch.object(
+                review_fix_loop,
+                "STATE_PATH",
+                tmpdir_path / "state.json",
+            ), mock.patch.object(
+                review_fix_loop,
+                "RESULTS_PATH",
+                tmpdir_path / "results.jsonl",
+            ), mock.patch.object(
+                review_fix_loop,
+                "git_status_entries",
+                return_value={"src/example.py": " M"},
+            ), mock.patch.object(
+                review_fix_loop,
+                "restore_paths",
+                return_value=["src/example.py"],
+            ) as restore_paths, mock.patch.object(
+                review_fix_loop,
+                "git_head",
+                return_value="def456",
+            ), mock.patch.object(
+                review_fix_loop,
+                "now_utc",
+                return_value=t0,
+            ):
+                result = review_fix_loop.recover_abandoned_attempt(
+                    state,
+                    reason="previous run disappeared",
+                )
+
+            self.assertIsNotNone(result)
+            assert result is not None
+            self.assertEqual(result.status, "interrupted")
+            self.assertEqual(result.changed_files, ["src/example.py"])
+            self.assertEqual(result.reverted_files, ["src/example.py"])
+            restore_paths.assert_called_once_with(["src/example.py"])
+            self.assertNotIn("active_attempt", state)
+            self.assertEqual(state["issues"]["issue-one"]["attempts"], 1)
+            self.assertEqual(state["issues"]["issue-one"]["last_status"], "interrupted")
+
+    def test_run_loop_records_interrupted_attempt(self) -> None:
+        issue = review_fix_loop.ReviewIssue(
+            issue_id="issue-one",
+            title="Issue One",
+            summary="one",
+            guidance="fix one",
+            target_paths=["a.py"],
+            verification_commands=[["true"]],
+        )
+        t0 = datetime(2026, 5, 9, 0, 0, tzinfo=timezone.utc)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            state_path = tmpdir_path / "state.json"
+            results_path = tmpdir_path / "results.jsonl"
+            with mock.patch.object(review_fix_loop, "ISSUES", [issue]), mock.patch.object(
+                review_fix_loop,
+                "STATE_DIR",
+                tmpdir_path,
+            ), mock.patch.object(
+                review_fix_loop,
+                "STATE_PATH",
+                state_path,
+            ), mock.patch.object(
+                review_fix_loop,
+                "RESULTS_PATH",
+                results_path,
+            ), mock.patch.object(
+                review_fix_loop,
+                "run_issue_attempt",
+                side_effect=review_fix_loop.LoopInterrupted("received signal"),
+            ), mock.patch.object(
+                review_fix_loop,
+                "git_status_entries",
+                return_value={"src/example.py": " M"},
+            ), mock.patch.object(
+                review_fix_loop,
+                "restore_paths",
+                return_value=["src/example.py"],
+            ), mock.patch.object(
+                review_fix_loop,
+                "git_head",
+                return_value="abc123",
+            ), mock.patch.object(
+                review_fix_loop,
+                "now_utc",
+                return_value=t0,
+            ), mock.patch.object(
+                review_fix_loop,
+                "install_signal_handlers",
+                return_value={},
+            ), mock.patch.object(
+                review_fix_loop,
+                "restore_signal_handlers",
+            ), mock.patch("builtins.print"):
+                rc = review_fix_loop.run_loop(max_attempts_per_issue=1)
+
+            state = json.loads(state_path.read_text())
+            results = results_path.read_text().strip().splitlines()
+            self.assertEqual(rc, 1)
+            self.assertEqual(len(results), 1)
+            self.assertEqual(state["issues"]["issue-one"]["attempts"], 1)
+            self.assertEqual(state["issues"]["issue-one"]["last_status"], "interrupted")
+            self.assertNotIn("active_attempt", state)
+
 
 if __name__ == "__main__":
     unittest.main()
