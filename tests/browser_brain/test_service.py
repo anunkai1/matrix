@@ -8,7 +8,13 @@ from types import SimpleNamespace
 from unittest import mock
 
 from src.browser_brain.config import BrowserBrainConfig
-from src.browser_brain.service import BrowserBrainError, BrowserBrainService
+from src.browser_brain.service import (
+    BrowserBrainError,
+    BrowserBrainService,
+    COLLECT_ELEMENTS_JS,
+    FIND_ELEMENT_JS,
+    _BROWSER_BRAIN_DOM_HELPERS_JS,
+)
 
 
 class FakePage:
@@ -198,6 +204,14 @@ class BrowserBrainServiceTests(unittest.TestCase):
         self.assertIs(service._find_element(page, element), handle)
         frame.get_by_role.assert_called_once_with("button", name="Submit", exact=True)
         locator.element_handle.assert_called_once_with(timeout=123)
+
+    def test_collect_and_find_share_dom_helper_source(self) -> None:
+        self.assertIn(_BROWSER_BRAIN_DOM_HELPERS_JS, COLLECT_ELEMENTS_JS)
+        self.assertIn(_BROWSER_BRAIN_DOM_HELPERS_JS, FIND_ELEMENT_JS)
+        self.assertEqual(COLLECT_ELEMENTS_JS.count("const describe ="), 1)
+        self.assertEqual(FIND_ELEMENT_JS.count("const describe ="), 1)
+        self.assertEqual(COLLECT_ELEMENTS_JS.count("const inferRole ="), 1)
+        self.assertEqual(FIND_ELEMENT_JS.count("const inferRole ="), 1)
 
     def test_navigation_policy_blocks_untrusted_origin(self) -> None:
         service = BrowserBrainService(

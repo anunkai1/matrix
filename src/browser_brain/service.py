@@ -14,8 +14,7 @@ from urllib.parse import urlparse
 from .config import BrowserBrainConfig
 
 
-COLLECT_ELEMENTS_JS = r"""
-() => {
+_BROWSER_BRAIN_DOM_HELPERS_JS = r"""
   const normalize = (value) => (value || "").replace(/\s+/g, " ").trim();
   const isVisible = (element) => {
     const style = window.getComputedStyle(element);
@@ -66,7 +65,7 @@ COLLECT_ELEMENTS_JS = r"""
   };
   const actionTags = new Set(["a", "button", "input", "select", "textarea", "summary"]);
   const actionRoles = new Set(["button", "link", "textbox", "combobox", "checkbox", "radio", "switch", "tab", "menuitem", "option"]);
-  const describe = (element) => {
+  const describe = (element, { lowerCase = false } = {}) => {
     const tag = element.tagName.toLowerCase();
     const text = normalize(element.innerText || element.textContent || "");
     const ariaLabel = normalize(element.getAttribute("aria-label"));
@@ -76,115 +75,78 @@ COLLECT_ELEMENTS_JS = r"""
     const value = normalize(element.value);
     const name = ariaLabel || alt || title || placeholder || text || value;
     const role = inferRole(element);
+    const maybeLower = (value) => (lowerCase ? value.toLowerCase() : value);
     return {
       tag,
-      role,
-      name,
-      text,
+      role: maybeLower(role),
+      name: maybeLower(name),
+      text: maybeLower(text),
       visible: isVisible(element),
       enabled: !(element.disabled || normalize(element.getAttribute("aria-disabled")).toLowerCase() === "true"),
-      input_type: tag === "input" ? normalize(element.getAttribute("type")).toLowerCase() : "",
-      placeholder,
-      title,
-      href: tag === "a" ? normalize(element.href) : "",
-      aria_label: ariaLabel,
+      input_type: tag === "input" ? maybeLower(normalize(element.getAttribute("type"))) : "",
+      placeholder: maybeLower(placeholder),
+      title: maybeLower(title),
+      href: tag === "a" ? maybeLower(normalize(element.href)) : "",
+      aria_label: maybeLower(ariaLabel),
       content_editable: element.isContentEditable,
     };
   };
-  const candidates = Array.from(document.querySelectorAll("a,button,input,select,textarea,summary,[role],[contenteditable='true'],[contenteditable='']"));
-  const results = [];
-  for (const element of candidates) {
-    const info = describe(element);
+  const actionable = (info) => {
     if (!actionTags.has(info.tag) && !actionRoles.has(info.role)) {
-      continue;
+      return false;
     }
     if (!info.name && !info.text && !info.role) {
+      return false;
+    }
+    return true;
+  };
+  const candidates = () =>
+    Array.from(document.querySelectorAll("a,button,input,select,textarea,summary,[role],[contenteditable='true'],[contenteditable='']"));
+  const scoreCandidate = (fingerprint, info) => {
+    let score = 0;
+    if (normalize(fingerprint.tag).toLowerCase() && normalize(fingerprint.tag).toLowerCase() === info.tag) score += 2;
+    if (normalize(fingerprint.role).toLowerCase() && normalize(fingerprint.role).toLowerCase() === info.role) score += 5;
+    if (normalize(fingerprint.name).toLowerCase() && normalize(fingerprint.name).toLowerCase() === info.name) score += 7;
+    if (normalize(fingerprint.text).toLowerCase() && normalize(fingerprint.text).toLowerCase() === info.text) score += 4;
+    if (normalize(fingerprint.input_type).toLowerCase() && normalize(fingerprint.input_type).toLowerCase() === info.input_type) score += 3;
+    if (normalize(fingerprint.placeholder).toLowerCase() && normalize(fingerprint.placeholder).toLowerCase() === info.placeholder) score += 2;
+    if (normalize(fingerprint.title).toLowerCase() && normalize(fingerprint.title).toLowerCase() === info.title) score += 1;
+    if (normalize(fingerprint.href).toLowerCase() && normalize(fingerprint.href).toLowerCase() === info.href) score += 2;
+    if (fingerprint.visible === info.visible) score += 1;
+    if (fingerprint.enabled === info.enabled) score += 1;
+    return score;
+  };
+"""
+
+
+COLLECT_ELEMENTS_JS = """
+() => {
+%s
+  const results = [];
+  for (const element of candidates()) {
+    const info = describe(element);
+    if (!actionable(info)) {
       continue;
     }
     results.push(info);
   }
   return results;
 }
-"""
+""" % _BROWSER_BRAIN_DOM_HELPERS_JS
 
 
-FIND_ELEMENT_JS = r"""
+FIND_ELEMENT_JS = """
 (fingerprint) => {
-  const normalize = (value) => (value || "").replace(/\s+/g, " ").trim().toLowerCase();
-  const isVisible = (element) => {
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    if (style.display === "none" || style.visibility === "hidden") {
-      return false;
-    }
-    return rect.width > 0 && rect.height > 0;
-  };
-  const inferRole = (element) => {
-    const explicit = normalize(element.getAttribute("role"));
-    if (explicit) {
-      return explicit;
-    }
-    const tag = element.tagName.toLowerCase();
-    if (tag === "a" && element.href) return "link";
-    if (tag === "button") return "button";
-    if (tag === "textarea") return "textbox";
-    if (tag === "select") return "combobox";
-    if (tag === "summary") return "button";
-    if (tag === "input") {
-      const inputType = normalize(element.getAttribute("type"));
-      if (["button", "submit", "reset"].includes(inputType)) return "button";
-      if (["checkbox"].includes(inputType)) return "checkbox";
-      if (["radio"].includes(inputType)) return "radio";
-      return "textbox";
-    }
-    if (element.isContentEditable) return "textbox";
-    return "";
-  };
-  const describe = (element) => {
-    const tag = element.tagName.toLowerCase();
-    const text = normalize(element.innerText || element.textContent || "");
-    const ariaLabel = normalize(element.getAttribute("aria-label"));
-    const placeholder = normalize(element.getAttribute("placeholder"));
-    const title = normalize(element.getAttribute("title"));
-    const alt = normalize(element.getAttribute("alt"));
-    const value = normalize(element.value);
-    const name = ariaLabel || alt || title || placeholder || text || value;
-    const role = inferRole(element);
-    return {
-      tag,
-      role,
-      name,
-      text,
-      visible: isVisible(element),
-      enabled: !(element.disabled || normalize(element.getAttribute("aria-disabled")) === "true"),
-      input_type: tag === "input" ? normalize(element.getAttribute("type")) : "",
-      placeholder,
-      title,
-      href: tag === "a" ? normalize(element.href) : "",
-      aria_label: ariaLabel,
-      content_editable: element.isContentEditable,
-    };
-  };
-  const candidates = Array.from(document.querySelectorAll("a,button,input,select,textarea,summary,[role],[contenteditable='true'],[contenteditable='']"));
+%s
   let best = null;
   let bestScore = -1;
   let secondScore = -1;
-  for (const candidate of candidates) {
-    const info = describe(candidate);
-    let score = 0;
+  for (const candidate of candidates()) {
+    const info = describe(candidate, { lowerCase: true });
+    let score = scoreCandidate(fingerprint, info);
     if (fingerprint.frame_id && normalize(fingerprint.frame_id) !== normalize(window.location.href)) {
       // Python binds per-frame. Keep JS generic.
     }
-    if (normalize(fingerprint.tag) && normalize(fingerprint.tag) === info.tag) score += 2;
-    if (normalize(fingerprint.role) && normalize(fingerprint.role) === info.role) score += 5;
-    if (normalize(fingerprint.name) && normalize(fingerprint.name) === info.name) score += 7;
-    if (normalize(fingerprint.text) && normalize(fingerprint.text) === info.text) score += 4;
-    if (normalize(fingerprint.input_type) && normalize(fingerprint.input_type) === info.input_type) score += 3;
-    if (normalize(fingerprint.placeholder) && normalize(fingerprint.placeholder) === normalize(info.placeholder)) score += 2;
-    if (normalize(fingerprint.title) && normalize(fingerprint.title) === normalize(info.title)) score += 1;
-    if (normalize(fingerprint.href) && normalize(fingerprint.href) === normalize(info.href)) score += 2;
-    if (fingerprint.visible === info.visible) score += 1;
-    if (fingerprint.enabled === info.enabled) score += 1;
     if (score > bestScore) {
       secondScore = bestScore;
       bestScore = score;
@@ -201,7 +163,7 @@ FIND_ELEMENT_JS = r"""
   }
   return best;
 }
-"""
+""" % _BROWSER_BRAIN_DOM_HELPERS_JS
 
 
 class BrowserBrainError(RuntimeError):
