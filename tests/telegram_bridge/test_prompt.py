@@ -36,6 +36,7 @@ import telegram_bridge.http_channel as bridge_http_channel
 import telegram_bridge.main as bridge
 import telegram_bridge.plugin_registry as bridge_plugin_registry
 import telegram_bridge.prompt_execution as bridge_prompt_execution
+import telegram_bridge.prompt_runtime as bridge_prompt_runtime
 import telegram_bridge.session_manager as bridge_session_manager
 import telegram_bridge.signal_channel as bridge_signal_channel
 import telegram_bridge.special_request_processing as bridge_special_request_processing
@@ -657,3 +658,95 @@ class TestPrompt(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.returncode, 0)
         self.assertEqual(engine.calls, 1)
+
+    def test_execute_prompt_with_retry_caches_legacy_engine_signature_detection(self):
+        class LegacyEngine:
+            engine_name = "legacy"
+
+            def __init__(self):
+                self.calls = 0
+
+            def run(
+                self,
+                config,
+                prompt,
+                thread_id,
+                image_path=None,
+                progress_callback=None,
+                cancel_event=None,
+            ):
+                del config, thread_id, image_path, progress_callback, cancel_event
+                self.calls += 1
+                stdout = json.dumps(
+                    {
+                        "type": "item.completed",
+                        "item": {"type": "agent_message", "text": f"ok:{prompt}"},
+                    }
+                )
+                return subprocess.CompletedProcess(args=["legacy"], returncode=0, stdout=stdout, stderr="")
+
+        class FakeProgress:
+            def handle_executor_event(self, _event):
+                return None
+
+            def set_phase(self, _phase):
+                return None
+
+            def mark_failure(self, _detail):
+                return None
+
+        state = bridge.State()
+        state_repo = bridge.StateRepository(state)
+        client = FakeTelegramClient()
+        config = make_config()
+        engine = LegacyEngine()
+        signature_target = bridge_prompt_runtime._engine_run_signature_target(engine.run)
+        bridge_prompt_runtime._ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE.clear()
+
+        with mock.patch.object(
+            bridge_prompt_runtime.inspect,
+            "signature",
+            wraps=bridge_prompt_runtime.inspect.signature,
+        ) as signature_mock:
+            first = bridge_handlers.execute_prompt_with_retry(
+                state_repo=state_repo,
+                config=config,
+                client=client,
+                engine=engine,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=52,
+                prompt_text="hello",
+                previous_thread_id=None,
+                image_path=None,
+                actor_user_id=123,
+                progress=FakeProgress(),
+                cancel_event=threading.Event(),
+                session_continuity_enabled=True,
+            )
+            second = bridge_handlers.execute_prompt_with_retry(
+                state_repo=state_repo,
+                config=config,
+                client=client,
+                engine=engine,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=53,
+                prompt_text="hello again",
+                previous_thread_id=None,
+                image_path=None,
+                actor_user_id=123,
+                progress=FakeProgress(),
+                cancel_event=threading.Event(),
+                session_continuity_enabled=True,
+            )
+
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(second)
+        self.assertEqual(first.returncode, 0)
+        self.assertEqual(second.returncode, 0)
+        self.assertEqual(engine.calls, 2)
+        self.assertEqual(signature_mock.call_count, 1)
+        self.assertIn(signature_target, bridge_prompt_runtime._ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE)

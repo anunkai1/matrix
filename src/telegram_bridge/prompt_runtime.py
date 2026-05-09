@@ -1,4 +1,5 @@
 import logging
+import inspect
 import subprocess
 import threading
 import time
@@ -51,6 +52,40 @@ def build_prompt_runtime_hooks() -> PromptRuntimeHooks:
         deliver_output_and_emit_success_fn=handlers.deliver_output_and_emit_success,
         retry_with_new_session_phase=handlers.RETRY_WITH_NEW_SESSION_PHASE,
     )
+
+
+_EXTENDED_ENGINE_RUN_KWARGS = (
+    "session_key",
+    "channel_name",
+    "actor_chat_id",
+    "actor_user_id",
+    "image_paths",
+)
+_ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE: dict[object, bool] = {}
+
+
+def _engine_run_signature_target(engine_run: object) -> object:
+    return getattr(engine_run, "__func__", engine_run)
+
+
+def _engine_run_supports_extended_kwargs(engine_run: object) -> bool:
+    signature_target = _engine_run_signature_target(engine_run)
+    cached = _ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE.get(signature_target)
+    if cached is not None:
+        return cached
+    try:
+        signature = inspect.signature(signature_target)
+    except (TypeError, ValueError):
+        _ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE[signature_target] = True
+        return True
+    parameters = signature.parameters.values()
+    if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters):
+        _ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE[signature_target] = True
+        return True
+    parameter_names = {parameter.name for parameter in parameters}
+    supports_extended_kwargs = all(name in parameter_names for name in _EXTENDED_ENGINE_RUN_KWARGS)
+    _ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE[signature_target] = supports_extended_kwargs
+    return supports_extended_kwargs
 
 
 def execute_prompt_with_retry(
@@ -111,7 +146,8 @@ def execute_prompt_with_retry(
         )
         engine_started_at = time.monotonic()
         try:
-            try:
+            run_supports_extended_kwargs = _engine_run_supports_extended_kwargs(engine.run)
+            if run_supports_extended_kwargs:
                 result = engine.run(
                     config=config,
                     prompt=prompt_text,
@@ -133,19 +169,7 @@ def execute_prompt_with_retry(
                     success=True,
                     returncode=result.returncode,
                 )
-            except TypeError as exc:
-                exc_text = str(exc)
-                if not any(
-                    token in exc_text
-                    for token in (
-                        "unexpected keyword argument 'session_key'",
-                        "unexpected keyword argument 'channel_name'",
-                        "unexpected keyword argument 'actor_chat_id'",
-                        "unexpected keyword argument 'actor_user_id'",
-                        "unexpected keyword argument 'image_paths'",
-                    )
-                ):
-                    raise
+            else:
                 result = engine.run(
                     config=config,
                     prompt=prompt_text,

@@ -2,7 +2,8 @@
 set -euo pipefail
 
 now_ms() {
-  date +%s%3N
+  local epoch="${EPOCHREALTIME/./}"
+  printf '%s\n' "${epoch::-3}"
 }
 
 emit_phase_timing() {
@@ -57,7 +58,7 @@ while (($#)); do
 done
 
 bootstrap_started_ms="$(now_ms)"
-prompt="$(cat)"
+prompt="$(</dev/stdin)"
 if [[ -z "${prompt}" ]]; then
   echo "Prompt is empty" >&2
   exit 2
