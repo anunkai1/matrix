@@ -83,6 +83,14 @@ class ReviewFixLoopTests(unittest.TestCase):
 
         self.assertEqual(entries, {"src/example.py": " M"})
 
+    def test_path_matches_ignored_prefix_handles_parent_directory_entry(self) -> None:
+        self.assertTrue(
+            review_fix_loop.path_matches_ignored_prefix(
+                ".state/",
+                [".state/server3-review-fix-loop"],
+            )
+        )
+
     def test_run_loop_retries_issue_until_completed(self) -> None:
         issues = [
             review_fix_loop.ReviewIssue(

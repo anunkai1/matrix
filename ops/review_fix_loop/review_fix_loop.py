@@ -267,6 +267,17 @@ def state_paths_within_repo() -> List[str]:
     return [str(state_dir_relative)]
 
 
+def path_matches_ignored_prefix(path: str, prefixes: Sequence[str]) -> bool:
+    normalized = path.rstrip("/")
+    for prefix in prefixes:
+        clean_prefix = prefix.rstrip("/")
+        if normalized == clean_prefix or normalized.startswith(f"{clean_prefix}/"):
+            return True
+        if clean_prefix.startswith(f"{normalized}/"):
+            return True
+    return False
+
+
 def git_status_entries() -> Dict[str, str]:
     proc = run_command_capture(["git", "status", "--short"], cwd=ROOT)
     if proc.returncode != 0:
@@ -277,7 +288,7 @@ def git_status_entries() -> Dict[str, str]:
         if len(line) < 4:
             continue
         path = line[3:].strip()
-        if ignored_prefixes and any(path == prefix or path.startswith(f"{prefix}/") for prefix in ignored_prefixes):
+        if ignored_prefixes and path_matches_ignored_prefix(path, ignored_prefixes):
             continue
         entries[path] = line[:2]
     return entries
