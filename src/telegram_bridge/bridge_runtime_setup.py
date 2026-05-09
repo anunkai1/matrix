@@ -33,6 +33,7 @@ from telegram_bridge.state_store import (
     persist_worker_sessions,
 )
 from telegram_bridge.structured_logging import emit_event
+from telegram_bridge.update_flow import UpdateFlowDependencies
 from telegram_bridge.voice_alias_learning import VoiceAliasLearningStore
 
 
@@ -46,6 +47,28 @@ class RuntimeBootstrap:
     canonical_bootstrap_source: str
     affective_runtime: object
     voice_alias_learning_store: Optional[VoiceAliasLearningStore]
+    update_flow_dependencies: UpdateFlowDependencies
+
+
+def build_update_flow_dependencies() -> UpdateFlowDependencies:
+    from telegram_bridge import handlers
+
+    return UpdateFlowDependencies(
+        get_recent_scope_photos=handlers.get_recent_scope_photos,
+        mark_busy=handlers.mark_busy,
+        emit_event=handlers.emit_event,
+        register_cancel_event=handlers.register_cancel_event,
+        start_dishframed_worker=handlers.start_dishframed_worker,
+        resolve_engine_for_scope=handlers.resolve_engine_for_scope,
+        ensure_chat_worker_session=handlers.ensure_chat_worker_session,
+        start_youtube_worker=handlers.start_youtube_worker,
+        start_message_worker=handlers.start_message_worker,
+        emit_phase_timing=handlers.emit_phase_timing,
+        dishframed_usage_message=handlers.DISHFRAMED_USAGE_MESSAGE,
+        diary_mode_enabled=handlers.diary_mode_enabled,
+        handle_known_command=handlers.handle_known_command,
+        queue_diary_capture=handlers.queue_diary_capture,
+    )
 
 
 def clear_thread_state_for_policy_change(
@@ -262,6 +285,7 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
         canonical_bootstrap_source=canonical_bootstrap_source,
         affective_runtime=affective_runtime,
         voice_alias_learning_store=voice_alias_learning_store,
+        update_flow_dependencies=build_update_flow_dependencies(),
     )
 
 

@@ -393,7 +393,14 @@ def run_bridge(config: Config) -> int:
             ready_updates = flush_ready_media_group_updates(state)
             if ready_updates:
                 for update in ready_updates:
-                    handle_update(state, config, client, update, engine=engine)
+                    handle_update(
+                        state,
+                        config,
+                        client,
+                        update,
+                        engine=engine,
+                        update_flow_dependencies=bootstrap.update_flow_dependencies,
+                    )
                 continue
 
             poll_timeout_seconds = compute_poll_timeout_seconds(state, config)
@@ -420,7 +427,14 @@ def run_bridge(config: Config) -> int:
                     offset = max(offset, update_id + 1)
             immediate_updates = buffer_pending_media_group_updates(state, updates)
             for update in immediate_updates:
-                handle_update(state, config, client, update, engine=engine)
+                handle_update(
+                    state,
+                    config,
+                    client,
+                    update,
+                    engine=engine,
+                    update_flow_dependencies=bootstrap.update_flow_dependencies,
+                )
             if offset_state_path is not None:
                 persist_saved_update_offset(offset_state_path, offset)
         except (HTTPError, URLError, TimeoutError):

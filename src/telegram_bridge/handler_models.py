@@ -125,6 +125,7 @@ class UpdateDispatchRequest:
     sender_name: str
     stateless: bool
     enforce_voice_prefix_from_transcript: bool
+    dependencies: Any = None
     youtube_route_url: Optional[str] = None
     handle_update_started_at: Optional[float] = None
 
@@ -169,6 +170,7 @@ class UpdateFlowState:
     enforce_voice_prefix_from_transcript: bool
     sender_name: str
     command: Optional[str]
+    dependencies: Any = None
     stateless: bool = False
     priority_keyword_mode: bool = False
     youtube_route_url: Optional[str] = None

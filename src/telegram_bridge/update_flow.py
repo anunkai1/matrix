@@ -1,8 +1,9 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from telegram_bridge.handler_models import UpdateDispatchRequest, UpdateFlowState
+from telegram_bridge.state_store import mark_in_flight_request
 from telegram_bridge.update_preparation import (
     allow_update_chat,
     build_update_flow_state,
@@ -12,16 +13,22 @@ from telegram_bridge.update_preparation import (
 )
 
 
-def _handlers():
-    import telegram_bridge.handlers as handlers
-
-    return handlers
-
-
-def _state_store():
-    import telegram_bridge.state_store as state_store
-
-    return state_store
+@dataclass(frozen=True)
+class UpdateFlowDependencies:
+    get_recent_scope_photos: Callable[[Any, str], list[str]]
+    mark_busy: Callable[[Any, str], bool]
+    emit_event: Callable[..., None]
+    register_cancel_event: Callable[[Any, str], Any]
+    start_dishframed_worker: Callable[..., None]
+    resolve_engine_for_scope: Callable[[Any, Any, str, Any], Any]
+    ensure_chat_worker_session: Callable[..., bool]
+    start_youtube_worker: Callable[..., None]
+    start_message_worker: Callable[..., None]
+    emit_phase_timing: Callable[..., None]
+    dishframed_usage_message: str
+    diary_mode_enabled: Callable[[Any], bool]
+    handle_known_command: Callable[..., bool]
+    queue_diary_capture: Callable[..., None]
 
 @dataclass(frozen=True)
 class DispatchAcceptance:
@@ -33,12 +40,20 @@ class StandardDispatchPlan:
     active_engine: Any
 
 
+def _resolve_dependencies(dependencies: Optional[UpdateFlowDependencies]) -> UpdateFlowDependencies:
+    if dependencies is not None:
+        return dependencies
+    from telegram_bridge.bridge_runtime_setup import build_update_flow_dependencies
+
+    return build_update_flow_dependencies()
+
+
 def _resolve_dishframed_photo_file_ids(request: UpdateDispatchRequest) -> list[str]:
-    handlers = _handlers()
     photo_file_ids = list(request.photo_file_ids)
     if photo_file_ids:
         return photo_file_ids
-    return handlers.get_recent_scope_photos(request.state, request.scope_key)
+    dependencies = _resolve_dependencies(request.dependencies)
+    return dependencies.get_recent_scope_photos(request.state, request.scope_key)
 
 
 def _accept_dispatch_request(
@@ -46,9 +61,9 @@ def _accept_dispatch_request(
     *,
     route: Optional[str] = None,
 ) -> Optional[DispatchAcceptance]:
-    handlers = _handlers()
-    if not handlers.mark_busy(request.state, request.scope_key):
-        handlers.emit_event(
+    dependencies = _resolve_dependencies(request.dependencies)
+    if not dependencies.mark_busy(request.state, request.scope_key):
+        dependencies.emit_event(
             "bridge.request_rejected",
             level=logging.WARNING,
             fields={
@@ -65,8 +80,8 @@ def _accept_dispatch_request(
         )
         return None
 
-    cancel_event = handlers.register_cancel_event(request.state, request.scope_key)
-    _state_store().mark_in_flight_request(request.state, request.scope_key, request.message_id)
+    cancel_event = dependencies.register_cancel_event(request.state, request.scope_key)
+    mark_in_flight_request(request.state, request.scope_key, request.message_id)
     accepted_fields = {
         "chat_id": request.chat_id,
         "message_id": request.message_id,
@@ -78,7 +93,7 @@ def _accept_dispatch_request(
     }
     if route is not None:
         accepted_fields["route"] = route
-    handlers.emit_event("bridge.request_accepted", fields=accepted_fields)
+    dependencies.emit_event("bridge.request_accepted", fields=accepted_fields)
     return DispatchAcceptance(cancel_event=cancel_event)
 
 
@@ -88,8 +103,8 @@ def _start_dishframed_worker(
     photo_file_ids: list[str],
     acceptance: DispatchAcceptance,
 ) -> None:
-    handlers = _handlers()
-    handlers.start_dishframed_worker(
+    dependencies = _resolve_dependencies(request.dependencies)
+    dependencies.start_dishframed_worker(
         state=request.state,
         config=request.config,
         client=request.client,
@@ -100,16 +115,16 @@ def _start_dishframed_worker(
         photo_file_ids=photo_file_ids,
         cancel_event=acceptance.cancel_event,
     )
-    handlers.emit_event(
+    dependencies.emit_event(
         "bridge.worker_started",
         fields={"chat_id": request.chat_id, "message_id": request.message_id, "route": "dishframed"},
     )
 
 
 def _resolve_standard_dispatch_plan(request: UpdateDispatchRequest) -> Optional[StandardDispatchPlan]:
-    handlers = _handlers()
+    dependencies = _resolve_dependencies(request.dependencies)
     try:
-        active_engine = handlers.resolve_engine_for_scope(
+        active_engine = dependencies.resolve_engine_for_scope(
             request.state,
             request.config,
             request.scope_key,
@@ -131,10 +146,10 @@ def _resolve_standard_dispatch_plan(request: UpdateDispatchRequest) -> Optional[
 
 
 def _ensure_standard_dispatch_capacity(request: UpdateDispatchRequest) -> bool:
-    handlers = _handlers()
+    dependencies = _resolve_dependencies(request.dependencies)
     if request.stateless:
         return True
-    if handlers.ensure_chat_worker_session(
+    if dependencies.ensure_chat_worker_session(
         request.state,
         request.config,
         request.client,
@@ -144,7 +159,7 @@ def _ensure_standard_dispatch_capacity(request: UpdateDispatchRequest) -> bool:
         request.message_id,
     ):
         return True
-    handlers.emit_event(
+    dependencies.emit_event(
         "bridge.request_rejected",
         level=logging.WARNING,
         fields={
@@ -161,9 +176,9 @@ def _run_standard_dispatch_worker(
     plan: StandardDispatchPlan,
     acceptance: DispatchAcceptance,
 ) -> None:
-    handlers = _handlers()
+    dependencies = _resolve_dependencies(request.dependencies)
     if request.youtube_route_url:
-        handlers.start_youtube_worker(
+        dependencies.start_youtube_worker(
             state=request.state,
             config=request.config,
             client=request.client,
@@ -178,7 +193,7 @@ def _run_standard_dispatch_worker(
             cancel_event=acceptance.cancel_event,
         )
     else:
-        handlers.start_message_worker(
+        dependencies.start_message_worker(
             state=request.state,
             config=request.config,
             client=request.client,
@@ -198,12 +213,12 @@ def _run_standard_dispatch_worker(
             enforce_voice_prefix_from_transcript=request.enforce_voice_prefix_from_transcript,
             actor_user_id=request.actor_user_id,
         )
-    handlers.emit_event(
+    dependencies.emit_event(
         "bridge.worker_started",
         fields={"chat_id": request.chat_id, "message_id": request.message_id},
     )
     if request.handle_update_started_at is not None:
-        handlers.emit_phase_timing(
+        dependencies.emit_phase_timing(
             chat_id=request.chat_id,
             message_id=request.message_id,
             phase="handle_update_pre_worker",
@@ -216,10 +231,10 @@ def _run_standard_dispatch_worker(
 def start_dishframed_dispatch(request: UpdateDispatchRequest) -> bool:
     photo_file_ids = _resolve_dishframed_photo_file_ids(request)
     if not photo_file_ids:
-        handlers = _handlers()
+        dependencies = _resolve_dependencies(request.dependencies)
         request.client.send_message(
             request.chat_id,
-            handlers.DISHFRAMED_USAGE_MESSAGE,
+            dependencies.dishframed_usage_message,
             reply_to_message_id=request.message_id,
             message_thread_id=request.message_thread_id,
         )
@@ -256,12 +271,13 @@ def maybe_handle_diary_update_flow(flow: UpdateFlowState) -> bool:
 
 
 def _is_diary_mode_enabled(flow: UpdateFlowState) -> bool:
-    return _handlers().diary_mode_enabled(flow.config)
+    dependencies = _resolve_dependencies(flow.dependencies)
+    return dependencies.diary_mode_enabled(flow.config)
 
 
 def _handle_diary_known_command(flow: UpdateFlowState) -> bool:
-    handlers = _handlers()
-    if not handlers.handle_known_command(
+    dependencies = _resolve_dependencies(flow.dependencies)
+    if not dependencies.handle_known_command(
         flow.state,
         flow.config,
         flow.client,
@@ -273,7 +289,7 @@ def _handle_diary_known_command(flow: UpdateFlowState) -> bool:
         flow.prompt_input or "",
     ):
         return False
-    handlers.emit_event(
+    dependencies.emit_event(
         "bridge.command_handled",
         fields={
             "chat_id": flow.ctx.chat_id,
@@ -285,7 +301,8 @@ def _handle_diary_known_command(flow: UpdateFlowState) -> bool:
 
 
 def _queue_diary_message(flow: UpdateFlowState) -> None:
-    _handlers().queue_diary_capture(
+    dependencies = _resolve_dependencies(flow.dependencies)
+    dependencies.queue_diary_capture(
         state=flow.state,
         config=flow.config,
         client=flow.client,

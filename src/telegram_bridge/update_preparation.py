@@ -186,12 +186,14 @@ def build_update_flow_state(
     client: ChannelAdapter,
     engine: Optional[EngineAdapter],
     prepared: PreparedUpdateRequest,
+    dependencies,
 ) -> UpdateFlowState:
     return UpdateFlowState(
         state=state,
         config=config,
         client=client,
         engine=engine,
+        dependencies=dependencies,
         ctx=prepared.ctx,
         prompt_input=prepared.prompt_input,
         photo_file_ids=list(prepared.photo_file_ids),
@@ -372,6 +374,7 @@ def prepare_update_dispatch_request(
         config=flow.config,
         client=flow.client,
         engine=flow.engine,
+        dependencies=flow.dependencies,
         scope_key=flow.ctx.scope_key,
         chat_id=flow.ctx.chat_id,
         message_thread_id=flow.ctx.message_thread_id,

@@ -149,6 +149,7 @@ from telegram_bridge import request_processing
 from telegram_bridge import special_request_processing
 from telegram_bridge.transport import TELEGRAM_CAPTION_LIMIT, TELEGRAM_LIMIT
 from telegram_bridge.update_flow import (
+    UpdateFlowDependencies,
     allow_update_chat,
     build_update_flow_state,
     extract_incoming_update_context,
@@ -321,13 +322,35 @@ _parse_page_index = engine_controls._parse_page_index
 handle_model_command = engine_controls.handle_model_command
 handle_effort_command = engine_controls.handle_effort_command
 
+
+def build_update_flow_dependencies() -> UpdateFlowDependencies:
+    return UpdateFlowDependencies(
+        get_recent_scope_photos=get_recent_scope_photos,
+        mark_busy=mark_busy,
+        emit_event=emit_event,
+        register_cancel_event=register_cancel_event,
+        start_dishframed_worker=start_dishframed_worker,
+        resolve_engine_for_scope=resolve_engine_for_scope,
+        ensure_chat_worker_session=ensure_chat_worker_session,
+        start_youtube_worker=start_youtube_worker,
+        start_message_worker=start_message_worker,
+        emit_phase_timing=emit_phase_timing,
+        dishframed_usage_message=DISHFRAMED_USAGE_MESSAGE,
+        diary_mode_enabled=diary_mode_enabled,
+        handle_known_command=handle_known_command,
+        queue_diary_capture=queue_diary_capture,
+    )
+
 def handle_update(
     state: State,
     config,
     client: ChannelAdapter,
     update: Dict[str, object],
     engine: Optional[EngineAdapter] = None,
+    update_flow_dependencies: Optional[UpdateFlowDependencies] = None,
 ) -> None:
+    if update_flow_dependencies is None:
+        update_flow_dependencies = build_update_flow_dependencies()
     handle_update_started_at = time.monotonic()
     if handle_callback_query(state, config, client, update):
         return
@@ -354,7 +377,14 @@ def handle_update(
     message_id = ctx.message_id
     message_thread_id = ctx.message_thread_id
     scope_key = ctx.scope_key
-    flow = build_update_flow_state(state, config, client, engine, prepared)
+    flow = build_update_flow_state(
+        state,
+        config,
+        client,
+        engine,
+        prepared,
+        update_flow_dependencies,
+    )
 
     if maybe_handle_diary_update_flow(flow):
         return
