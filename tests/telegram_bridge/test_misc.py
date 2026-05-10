@@ -47,6 +47,43 @@ import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
 
 
 class TestMisc(unittest.TestCase):
+    def test_trigger_restart_async_starts_restart_worker_with_positional_args(self):
+        with mock.patch.object(bridge_session_manager, "start_daemon_thread") as start_thread:
+            bridge_session_manager.trigger_restart_async("state", "client", 1, 2, 3)
+
+        start_thread.assert_called_once_with(
+            bridge_session_manager.run_restart_script,
+            "state",
+            "client",
+            1,
+            2,
+            3,
+        )
+
+    def test_override_engine_for_mavali_handoff_swaps_codex_engine(self):
+        config = make_config(assistant_name="Mavali ETH", engine_plugin="mavali_eth")
+        active_engine = bridge_engine_adapter.CodexEngineAdapter()
+
+        runtime_engine = bridge_prompt_execution._override_engine_for_mavali_handoff(
+            active_engine,
+            config,
+            "Current User Message:\nStatus",
+        )
+
+        self.assertIsInstance(runtime_engine, bridge_engine_adapter.MavaliEthEngineAdapter)
+
+    def test_override_engine_for_mavali_handoff_routes_backburner_commands(self):
+        config = make_config(assistant_name="Mavali ETH", engine_plugin="mavali_eth")
+        active_engine = bridge_engine_adapter.CodexEngineAdapter()
+
+        runtime_engine = bridge_prompt_execution._override_engine_for_mavali_handoff(
+            active_engine,
+            config,
+            "Current User Message:\nDisarm xagusdt backburner",
+        )
+
+        self.assertIsInstance(runtime_engine, bridge_engine_adapter.MavaliEthEngineAdapter)
+
     def test_compute_poll_timeout_seconds_shortens_while_waiting_for_album_tail(self):
         state = bridge.State()
         state.pending_media_groups["1:album-1"] = bridge.PendingMediaGroup(
@@ -151,4 +188,3 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(payload["event"], "bridge.request_succeeded")
         self.assertEqual(payload["chat_id"], 1)
         self.assertEqual(payload["message_id"], 2)
-

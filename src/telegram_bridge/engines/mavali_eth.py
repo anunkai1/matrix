@@ -9,11 +9,14 @@ from typing import Optional
 from telegram_bridge.engines._base import ProgressCallback
 from telegram_bridge.engines.codex import CodexEngineAdapter
 from telegram_bridge.executor import ExecutorCancelledError, parse_executor_output
+from mavali_eth.service_runtime import extract_current_message_text
 
 
 class MavaliEthEngineAdapter:
     engine_name = "mavali_eth"
     _CONFIRM_INVITE_RE = re.compile(r"reply\s+`?confirm`?\s+to\s+execute", re.IGNORECASE)
+    _DISABLE_HANDOFF_ENV = "TELEGRAM_DISABLE_MAVALI_HANDOFF"
+    _TRANSLATION_SENTINEL = "NO_MAVALI_COMMAND"
 
     def _looks_like_help_text(self, text: str, expected_help: str) -> bool:
         normalized = str(text or "").strip()
@@ -45,6 +48,35 @@ class MavaliEthEngineAdapter:
             stdout=stdout,
             stderr="",
         )
+
+    def _build_translation_prompt(self, prompt: str) -> str:
+        request_text = extract_current_message_text(prompt).strip() or str(prompt or "").strip()
+        return (
+            "Translate the user request into exactly one canonical Mavali ETH command if and only if it is clearly a "
+            "wallet, Aster, Hyperliquid, or backburner request. Output the command only. If it is not clearly a "
+            f"Mavali request, output exactly {self._TRANSLATION_SENTINEL}.\n\n"
+            "Examples:\n"
+            "- \"what's the wallet status\" -> status\n"
+            "- \"refresh that status\" -> status\n"
+            "- \"show my aster open orders\" -> show aster open orders\n"
+            "- \"turn off the XAG backburner\" -> cancel backburner for XAGUSDT\n"
+            "- \"disarm 1h backburner for xagusdt\" -> cancel backburner for XAGUSDT\n"
+            "- \"arm 1h backburner for xagusdt\" -> arm 1h backburner for XAGUSDT\n"
+            "- \"re-enable the xag backburner\" -> rearm backburner for XAGUSDT\n"
+            "- \"rerun the silver backburner cycle\" -> run backburner cycle for XAGUSDT\n"
+            "- \"arm a 1h xag backburner for 300 usdt\" -> backburner buy XAGUSDT at 1h for total 300 USDT\n"
+            "- \"how are you\" -> NO_MAVALI_COMMAND\n\n"
+            f"User request:\n{request_text}"
+        )
+
+    def _extract_translated_command(self, text: str) -> str:
+        normalized = str(text or "").strip()
+        if not normalized:
+            return ""
+        if normalized.startswith("```") and normalized.endswith("```"):
+            normalized = normalized.strip("`").strip()
+        first_line = normalized.splitlines()[0].strip()
+        return first_line.strip("`").strip()
 
     def _ensure_runtime_import_path(self) -> None:
         candidate_roots: list[Path] = []
@@ -90,7 +122,8 @@ class MavaliEthEngineAdapter:
             )
 
         if image_path or image_paths:
-            return codex_fallback.run(
+            return self._run_codex_fallback(
+                codex_fallback,
                 config=config,
                 prompt=prompt,
                 thread_id=thread_id,
@@ -115,7 +148,36 @@ class MavaliEthEngineAdapter:
                 actor_user_id=actor_user_id,
             )
             if self._looks_like_help_text(output, service.wallet_queries.help_message()):
-                fallback_result = codex_fallback.run(
+                translation_result = self._run_codex_fallback(
+                    codex_fallback,
+                    config=config,
+                    prompt=self._build_translation_prompt(prompt),
+                    thread_id=None,
+                    session_key=None,
+                    channel_name=channel_name,
+                    actor_chat_id=actor_chat_id,
+                    actor_user_id=actor_user_id,
+                    image_path=None,
+                    image_paths=None,
+                    progress_callback=progress_callback,
+                    cancel_event=cancel_event,
+                )
+                _, translation_output = parse_executor_output(translation_result.stdout or "")
+                translated_command = self._extract_translated_command(translation_output)
+                if (
+                    translated_command
+                    and translated_command != self._TRANSLATION_SENTINEL
+                ):
+                    translated_result = service.handle_prompt(
+                        resolved_session_key,
+                        translated_command,
+                        actor_chat_id=actor_chat_id,
+                        actor_user_id=actor_user_id,
+                    )
+                    if not self._looks_like_help_text(translated_result, service.wallet_queries.help_message()):
+                        return self._completed_process_with_output(thread_id=None, output=translated_result)
+                fallback_result = self._run_codex_fallback(
+                    codex_fallback,
                     config=config,
                     prompt=prompt,
                     thread_id=thread_id,
@@ -148,3 +210,18 @@ class MavaliEthEngineAdapter:
             output = str(exc) or "mavali_eth execution failed."
 
         return self._completed_process_with_output(thread_id=None, output=output)
+
+    def _run_codex_fallback(
+        self,
+        codex_fallback: CodexEngineAdapter,
+        **kwargs,
+    ) -> subprocess.CompletedProcess[str]:
+        previous = os.getenv(self._DISABLE_HANDOFF_ENV)
+        os.environ[self._DISABLE_HANDOFF_ENV] = "1"
+        try:
+            return codex_fallback.run(**kwargs)
+        finally:
+            if previous is None:
+                os.environ.pop(self._DISABLE_HANDOFF_ENV, None)
+            else:
+                os.environ[self._DISABLE_HANDOFF_ENV] = previous

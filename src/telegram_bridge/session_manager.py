@@ -658,8 +658,12 @@ def trigger_restart_async(
     reply_to_message_id: Optional[int],
 ) -> None:
     start_daemon_thread(
-        target=run_restart_script,
-        *(state, client, chat_id, message_thread_id, reply_to_message_id),
+        run_restart_script,
+        state,
+        client,
+        chat_id,
+        message_thread_id,
+        reply_to_message_id,
     )
 
 def finalize_chat_work(

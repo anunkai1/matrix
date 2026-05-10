@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
+from telegram_bridge.engines.mavali_eth import MavaliEthEngineAdapter
 from telegram_bridge.handler_models import DocumentPayload, PromptRequest
 from telegram_bridge.state_store import StateRepository
 
@@ -150,6 +151,26 @@ def build_prompt_progress_reporter(
         progress_reporter_cls=progress_reporter_cls,
         assistant_label_fn=assistant_label_fn,
     )
+
+
+def _override_engine_for_mavali_handoff(
+    active_engine: EngineAdapter,
+    config,
+    prompt_text: str,
+) -> EngineAdapter:
+    if getattr(active_engine, "engine_name", "") != "codex":
+        return active_engine
+    codex_adapter = CodexEngineAdapter()
+    if not codex_adapter._is_mavali_eth_runtime(config):
+        return active_engine
+    try:
+        from mavali_eth.service_runtime import prompt_requests_mavali_handoff
+    except Exception:
+        logging.exception("Failed to import Mavali ETH handoff matcher; keeping selected engine.")
+        return active_engine
+    if not prompt_requests_mavali_handoff(prompt_text):
+        return active_engine
+    return MavaliEthEngineAdapter()
 
 def begin_affective_turn(
     affective_runtime,
@@ -362,12 +383,23 @@ def process_prompt_request(
             emit_event_fn=emit_event_fn,
         )
         progress.set_phase(f"Sending request to {assistant_name_label}.")
+        runtime_engine = _override_engine_for_mavali_handoff(active_engine, config, prompt_text)
+        if runtime_engine is not active_engine:
+            emit_event_fn(
+                "bridge.engine_overridden_for_mavali_handoff",
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "from_engine": getattr(active_engine, "engine_name", ""),
+                    "to_engine": getattr(runtime_engine, "engine_name", ""),
+                },
+            )
         execute_started_at = time.monotonic()
         result = execute_prompt_with_retry_fn(
             state_repo=state_repo,
             config=engine_config,
             client=client,
-            engine=active_engine,
+            engine=runtime_engine,
             scope_key=scope_key,
             chat_id=chat_id,
             message_thread_id=message_thread_id,

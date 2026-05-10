@@ -30,6 +30,7 @@ import telegram_bridge.channel_adapter as bridge_channel_adapter
 import telegram_bridge.command_routing as bridge_command_routing
 import telegram_bridge.control_commands as bridge_control_commands
 import telegram_bridge.engine_adapter as bridge_engine_adapter
+import telegram_bridge.engines.codex as bridge_codex_engine
 import telegram_bridge.executor as bridge_executor
 import telegram_bridge.handlers as bridge_handlers
 import telegram_bridge.http_channel as bridge_http_channel
@@ -97,6 +98,140 @@ class TestPlugins(unittest.TestCase):
         self.assertIsInstance(registry.build_engine("gemma"), bridge_engine_adapter.GemmaEngineAdapter)
         self.assertIsInstance(registry.build_engine("pi"), bridge_engine_adapter.PiEngineAdapter)
         self.assertIsInstance(registry.build_engine("venice"), bridge_engine_adapter.VeniceEngineAdapter)
+
+    def test_codex_engine_delegates_mavali_status_prompts_in_mavali_runtime(self):
+        config = make_config(assistant_name="Mavali ETH")
+        adapter = bridge_engine_adapter.CodexEngineAdapter()
+        delegated_result = subprocess.CompletedProcess(args=["mavali_eth"], returncode=0, stdout="status", stderr="")
+        prompt = (
+            "Reply Context:\n"
+            "Message User Replied To:\n"
+            "Status\n\nWallet\n- ETH: 0.1\n\nAster\n- wallet balance: 1\n\nOpen Aster orders\n- empty\n\nHyperliquid\n- account value: 2\n\n"
+            "Current User Message:\nUpdate"
+        )
+
+        with mock.patch.object(
+            bridge_engine_adapter.MavaliEthEngineAdapter,
+            "run",
+            return_value=delegated_result,
+        ) as delegated_run:
+            with mock.patch.object(bridge_codex_engine, "run_executor") as run_executor_mock:
+                result = adapter.run(config, prompt, thread_id="thread-1", session_key="telegram:1")
+
+        self.assertIs(result, delegated_result)
+        delegated_run.assert_called_once()
+        run_executor_mock.assert_not_called()
+
+    def test_codex_engine_delegates_normal_text_prompts_in_mavali_runtime(self):
+        config = make_config(assistant_name="Mavali ETH")
+        adapter = bridge_engine_adapter.CodexEngineAdapter()
+        delegated_result = subprocess.CompletedProcess(args=["mavali_eth"], returncode=0, stdout="normal", stderr="")
+
+        with mock.patch.object(
+            bridge_engine_adapter.MavaliEthEngineAdapter,
+            "run",
+            return_value=delegated_result,
+        ) as delegated_run:
+            with mock.patch.object(bridge_codex_engine, "run_executor") as run_executor_mock:
+                result = adapter.run(config, "Explain this trade", thread_id="thread-1", session_key="telegram:1")
+
+        self.assertIs(result, delegated_result)
+        delegated_run.assert_called_once()
+        run_executor_mock.assert_not_called()
+
+    def test_codex_engine_delegates_mavali_backburner_prompts_in_mavali_runtime(self):
+        config = make_config(assistant_name="Mavali ETH")
+        adapter = bridge_engine_adapter.CodexEngineAdapter()
+        delegated_result = subprocess.CompletedProcess(args=["mavali_eth"], returncode=0, stdout="ok", stderr="")
+
+        with mock.patch.object(
+            bridge_engine_adapter.MavaliEthEngineAdapter,
+            "run",
+            return_value=delegated_result,
+        ) as delegated_run:
+            with mock.patch.object(bridge_codex_engine, "run_executor") as run_executor_mock:
+                result = adapter.run(
+                    config,
+                    "Current User Message:\nDisarm xagusdt backburner",
+                    thread_id="thread-1",
+                    session_key="telegram:1",
+                )
+
+        self.assertIs(result, delegated_result)
+        delegated_run.assert_called_once()
+        run_executor_mock.assert_not_called()
+
+    def test_mavali_engine_fallback_disables_recursive_handoff(self):
+        adapter = bridge_engine_adapter.MavaliEthEngineAdapter()
+        codex_result = subprocess.CompletedProcess(args=["codex"], returncode=0, stdout="normal", stderr="")
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            with mock.patch.object(adapter, "_ensure_runtime_import_path"):
+                with mock.patch("mavali_eth.config.MavaliEthConfig.from_env", return_value=object()):
+                    fake_service = SimpleNamespace(
+                        handle_prompt=lambda *args, **kwargs: "I can show your wallet address\nExamples:",
+                        wallet_queries=SimpleNamespace(help_message=lambda: "I can show your wallet address\nExamples:"),
+                        store=SimpleNamespace(
+                            get_pending_action_envelope=lambda *args, **kwargs: None,
+                            get_pending_action=lambda *args, **kwargs: None,
+                        ),
+                        _now=lambda: 0.0,
+                    )
+                    with mock.patch("mavali_eth.service.MavaliEthService", return_value=fake_service):
+                        with mock.patch.object(
+                            bridge_engine_adapter.CodexEngineAdapter,
+                            "run",
+                            return_value=codex_result,
+                        ) as codex_run:
+                            result = adapter.run(
+                                config=make_config(assistant_name="Mavali ETH"),
+                                prompt="Current User Message:\nDisarm backburner for XAGUSDT",
+                                thread_id="thread-1",
+                                session_key="telegram:1",
+                            )
+
+        self.assertIs(result, codex_result)
+        self.assertEqual(codex_run.call_count, 2)
+        self.assertIsNone(os.getenv("TELEGRAM_DISABLE_MAVALI_HANDOFF"))
+
+    def test_mavali_engine_uses_codex_translation_before_final_fallback(self):
+        adapter = bridge_engine_adapter.MavaliEthEngineAdapter()
+        translated_cancel = "cancel backburner for XAGUSDT"
+        translated_stdout = f"OUTPUT_BEGIN\n{translated_cancel}"
+
+        fake_service = mock.Mock()
+        fake_service.wallet_queries.help_message.return_value = "I can show your wallet address\nExamples:"
+        fake_service.handle_prompt.side_effect = [
+            "I can show your wallet address\nExamples:",
+            "Backburner canceled. symbol=XAGUSDT canceled_orders=3",
+        ]
+        fake_service.store.get_pending_action_envelope.return_value = None
+        fake_service.store.get_pending_action.return_value = None
+        fake_service._now.return_value = 0.0
+
+        with mock.patch.object(adapter, "_ensure_runtime_import_path"):
+            with mock.patch("mavali_eth.config.MavaliEthConfig.from_env", return_value=object()):
+                with mock.patch("mavali_eth.service.MavaliEthService", return_value=fake_service):
+                    with mock.patch.object(
+                        bridge_engine_adapter.CodexEngineAdapter,
+                        "run",
+                        return_value=subprocess.CompletedProcess(
+                            args=["codex"],
+                            returncode=0,
+                            stdout=translated_stdout,
+                            stderr="",
+                        ),
+                    ) as codex_run:
+                        result = adapter.run(
+                            config=make_config(assistant_name="Mavali ETH"),
+                            prompt="disarm 1h backburner fr XAGUSDT",
+                            thread_id="thread-1",
+                            session_key="telegram:1",
+                        )
+
+        self.assertIn("Backburner canceled.", result.stdout)
+        self.assertEqual(fake_service.handle_prompt.call_count, 2)
+        codex_run.assert_called_once()
 
     def test_parse_plugin_name_env_uses_default_for_empty(self):
         with mock.patch.dict(os.environ, {"PLUGIN_TEST": "   "}):
@@ -1637,4 +1772,3 @@ class TestPlugins(unittest.TestCase):
             self.assertIn(str(script_path), argv)
             self.assertIn("--unit", argv)
             self.assertIn("telegram-architect-bridge.service", argv)
-
