@@ -1,0 +1,91 @@
+{
+  "campaign_id": "mavali_eth_followups_may_2026",
+  "last_notified_at_utc": "2026-05-10T00:33:04.548442+00:00",
+  "last_notified_status": "completed",
+  "last_notified_transport": "none",
+  "last_run_finished_at_utc": "2026-05-10T00:33:04.547556+00:00",
+  "last_run_started_at_utc": "2026-05-10T00:13:54.572521+00:00",
+  "run_status": "completed",
+  "tasks": {
+    "add_store_indexes": {
+      "attempts": 1,
+      "completed_at_utc": "2026-05-10T00:15:52.958673+00:00",
+      "history": [
+        {
+          "attempt": 1,
+          "changed_files": [
+            "src/mavali_eth/store.py",
+            "tests/mavali_eth/test_store.py"
+          ],
+          "committed_sha": "b2de1e1dfd9bf3b5b94611220ecd602e1d7713b0",
+          "hook_failures": 0,
+          "observed_at_utc": "2026-05-10T00:15:52.958673+00:00",
+          "push_succeeded": true,
+          "reverted_files": [],
+          "status": "applied",
+          "summary": "Task resolved, verified, committed, and pushed."
+        }
+      ],
+      "last_status": "applied",
+      "last_summary": "Task resolved, verified, committed, and pushed.",
+      "status": "completed",
+      "updated_at_utc": "2026-05-10T00:15:52.958673+00:00"
+    },
+    "extract_shared_swap_execution_helpers": {
+      "attempts": 1,
+      "completed_at_utc": "2026-05-10T00:33:04.545607+00:00",
+      "history": [
+        {
+          "attempt": 1,
+          "changed_files": [
+            "src/mavali_eth/cowswap_actions.py",
+            "src/mavali_eth/swap_execution_helpers.py",
+            "src/mavali_eth/uniswap_actions.py",
+            "tests/mavali_eth/test_cowswap.py",
+            "tests/mavali_eth/test_uniswap.py"
+          ],
+          "committed_sha": "cbe4c42594068de90aabb2394b9275b51b35bf7e",
+          "hook_failures": 0,
+          "observed_at_utc": "2026-05-10T00:33:04.545607+00:00",
+          "push_succeeded": true,
+          "reverted_files": [],
+          "status": "applied",
+          "summary": "Task resolved, verified, committed, and pushed."
+        }
+      ],
+      "last_status": "applied",
+      "last_summary": "Task resolved, verified, committed, and pushed.",
+      "status": "completed",
+      "updated_at_utc": "2026-05-10T00:33:04.545607+00:00"
+    },
+    "table_drive_direct_routes": {
+      "attempts": 1,
+      "completed_at_utc": "2026-05-10T00:29:36.242993+00:00",
+      "history": [
+        {
+          "attempt": 1,
+          "changed_files": [
+            "src/mavali_eth/prompt_router.py",
+            "src/mavali_eth/prompt_router_config.py",
+            "src/mavali_eth/prompt_router_routing.py",
+            "tests/mavali_eth/test_backburner.py",
+            "tests/mavali_eth/test_core.py",
+            "tests/mavali_eth/test_ops.py"
+          ],
+          "committed_sha": "351f38610d8c6ebdfca290c109566aa7d3f5f71c",
+          "hook_failures": 0,
+          "observed_at_utc": "2026-05-10T00:29:36.242993+00:00",
+          "push_succeeded": true,
+          "reverted_files": [],
+          "status": "applied",
+          "summary": "Task resolved, verified, committed, and pushed."
+        }
+      ],
+      "last_status": "applied",
+      "last_summary": "Task resolved, verified, committed, and pushed.",
+      "status": "completed",
+      "updated_at_utc": "2026-05-10T00:29:36.242993+00:00"
+    }
+  },
+  "updated_at_utc": "2026-05-10T00:33:04.547292+00:00"
+}

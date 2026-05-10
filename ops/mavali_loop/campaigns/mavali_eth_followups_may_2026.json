@@ -1,0 +1,121 @@
+{
+  "campaign_id": "mavali_eth_followups_may_2026",
+  "title": "Mavali ETH Followups",
+  "summary": "Resolve the bounded Mavali ETH maintainability and performance follow-ups with verification and persisted resume support.",
+  "repo_root": "/home/architect/gitea-server2/mavali_eth",
+  "default_max_attempts_per_task": 5,
+  "commit_prefix": "Mavali Loop",
+  "notify_prefix": "MAVALI_LOOP_NOTIFY",
+  "allowed_dirty_paths": [
+    "src/telegram_bridge/main.py"
+  ],
+  "tasks": [
+    {
+      "task_id": "add_store_indexes",
+      "title": "Add targeted SQLite indexes",
+      "summary": "Add the missing composite indexes for the pending envelope, execution journal, venue bootstrap, and venue credential lookup patterns so operator queries stop degrading into full scans.",
+      "guidance": "Keep the schema change narrow and explicit. Prefer CREATE INDEX IF NOT EXISTS statements in the SQLite initialization path and add tests that verify the expected indexes exist. Focus on the actual lookup patterns in store.py rather than indexing every column blindly.",
+      "target_paths": [
+        "src/mavali_eth/store.py",
+        "tests/mavali_eth/test_store.py"
+      ],
+      "verification_commands": [
+        [
+          "env",
+          "PYTHONPATH=src",
+          "${QA_PYTHON}",
+          "-m",
+          "unittest",
+          "tests.mavali_eth.test_store"
+        ],
+        [
+          "env",
+          "PYTHONPATH=src",
+          "${QA_PYTHON}",
+          "-m",
+          "unittest",
+          "tests.mavali_eth.test_ops"
+        ]
+      ]
+    },
+    {
+      "task_id": "table_drive_direct_routes",
+      "title": "Move direct routes into declarative tables",
+      "summary": "Reduce the long precedence-sensitive direct-command chain by moving regex and exact routes into the prompt router config layer while preserving current behavior.",
+      "guidance": "Preserve route ordering and user-visible behavior. Reuse the existing prompt_router_config pattern rather than inventing a second configuration mechanism. Add or update tests that cover route precedence for confirm, pending-action commands, execution-journal queries, wallet-address queries, and backburner commands.",
+      "target_paths": [
+        "src/mavali_eth/prompt_router.py",
+        "src/mavali_eth/prompt_router_routing.py",
+        "src/mavali_eth/prompt_router_config.py",
+        "tests/mavali_eth/test_core.py",
+        "tests/mavali_eth/test_ops.py",
+        "tests/mavali_eth/test_backburner.py"
+      ],
+      "verification_commands": [
+        [
+          "env",
+          "PYTHONPATH=src",
+          "${QA_PYTHON}",
+          "-m",
+          "unittest",
+          "tests.mavali_eth.test_core"
+        ],
+        [
+          "env",
+          "PYTHONPATH=src",
+          "${QA_PYTHON}",
+          "-m",
+          "unittest",
+          "tests.mavali_eth.test_ops"
+        ],
+        [
+          "env",
+          "PYTHONPATH=src",
+          "${QA_PYTHON}",
+          "-m",
+          "unittest",
+          "tests.mavali_eth.test_backburner"
+        ]
+      ]
+    },
+    {
+      "task_id": "extract_shared_swap_execution_helpers",
+      "title": "Extract shared ERC20 swap execution helpers",
+      "summary": "Reduce the repeated ETH-wrap, approval, staging, and journaling flow shared by the Uniswap and CowSwap handlers without flattening the venue-specific behavior that differs after quote creation.",
+      "guidance": "Prefer helper extraction or a small shared component over inheritance-heavy abstractions. Keep venue-specific preview text, quote handling, and confirmation semantics intact. Add or update tests for both Uniswap and CowSwap to prove the shared helper did not change observable behavior.",
+      "target_paths": [
+        "src/mavali_eth/uniswap_actions.py",
+        "src/mavali_eth/cowswap_actions.py",
+        "src/mavali_eth/store.py",
+        "tests/mavali_eth/test_uniswap.py",
+        "tests/mavali_eth/test_cowswap.py"
+      ],
+      "verification_commands": [
+        [
+          "env",
+          "PYTHONPATH=src",
+          "${QA_PYTHON}",
+          "-m",
+          "unittest",
+          "tests.mavali_eth.test_uniswap"
+        ],
+        [
+          "env",
+          "PYTHONPATH=src",
+          "${QA_PYTHON}",
+          "-m",
+          "unittest",
+          "tests.mavali_eth.test_cowswap"
+        ],
+        [
+          "env",
+          "PYTHONPATH=src",
+          "${QA_PYTHON}",
+          "-m",
+          "unittest",
+          "tests.mavali_eth.test_store"
+        ]
+      ]
+    }
+  ]
+}

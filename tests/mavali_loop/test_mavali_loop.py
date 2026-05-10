@@ -83,21 +83,30 @@ class MavaliLoopTests(unittest.TestCase):
         self.assertIn(task.task_id, prompt)
         self.assertIn("tests failed", prompt)
         self.assertIn("src/example.py", prompt)
+        self.assertIn(f"Repository root: {mavali_loop.campaign_repo_root(spec)}", prompt)
+
+    def test_executor_command_defaults_to_local_mavali_wrapper(self) -> None:
+        spec = self.build_spec()
+
+        command = mavali_loop.executor_command(spec)
+
+        self.assertEqual(command[1:], ["new"])
+        self.assertTrue(command[0].endswith("/mavali-loop/scripts/codex_exec.sh"))
 
     def test_git_status_entries_ignores_internal_state_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir)
-            campaign_dir = repo_root / ".state" / "server3-mavali-loop" / "example"
+            campaign_dir = repo_root / ".state" / "mavali-loop" / "example"
             campaign_dir.mkdir(parents=True)
             paths = mavali_loop.LoopPaths(
-                state_root=repo_root / ".state" / "server3-mavali-loop",
+                state_root=repo_root / ".state" / "mavali-loop",
                 campaign_dir=campaign_dir,
                 state_path=campaign_dir / "state.json",
                 results_path=campaign_dir / "results.jsonl",
                 report_path=campaign_dir / "report.txt",
                 log_path=campaign_dir / "tmux.log",
             )
-            output = "?? .state/server3-mavali-loop/example/state.json\n M src/example.py\n"
+            output = "?? .state/mavali-loop/example/state.json\n M src/example.py\n"
             proc = mock.Mock(returncode=0, stdout=output)
             with mock.patch.object(mavali_loop, "ROOT", repo_root), mock.patch.object(
                 mavali_loop,
@@ -257,6 +266,74 @@ class MavaliLoopTests(unittest.TestCase):
 
             self.assertTrue(paths.report_path.exists())
             self.assertEqual(send_message.call_count, 1)
+
+    def test_recover_abandoned_attempt_preserves_allowlisted_dirty_paths(self) -> None:
+        spec = mavali_loop.CampaignSpec(
+            campaign_id="allowlist_campaign",
+            title="Allowlist Campaign",
+            summary="allowlist",
+            tasks=[
+                mavali_loop.CampaignTask(
+                    task_id="task-one",
+                    title="Task One",
+                    summary="one",
+                    guidance="fix one",
+                    target_paths=["src/app.py"],
+                    verification_commands=[["true"]],
+                    on_success_commands=[],
+                    on_failure_commands=[],
+                )
+            ],
+            allowed_dirty_paths=["src/user_dirty.py"],
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            paths = mavali_loop.LoopPaths(
+                state_root=tmpdir_path,
+                campaign_dir=tmpdir_path / "allowlist_campaign",
+                state_path=tmpdir_path / "allowlist_campaign" / "state.json",
+                results_path=tmpdir_path / "allowlist_campaign" / "results.jsonl",
+                report_path=tmpdir_path / "allowlist_campaign" / "report.txt",
+                log_path=tmpdir_path / "allowlist_campaign" / "tmux.log",
+            )
+            paths.campaign_dir.mkdir(parents=True)
+            state = {
+                "tasks": {},
+                "active_attempt": {
+                    "task_id": "task-one",
+                    "attempt": 1,
+                    "git_head_before": "abc123",
+                },
+            }
+            dirty_entries = {
+                "src/user_dirty.py": " M",
+                "src/generated.py": " M",
+            }
+            with mock.patch.object(mavali_loop, "git_status_entries", return_value=dirty_entries), mock.patch.object(
+                mavali_loop,
+                "restore_paths",
+                return_value=["src/generated.py"],
+            ) as restore_paths, mock.patch.object(
+                mavali_loop,
+                "git_head",
+                return_value="abc123",
+            ), mock.patch.object(
+                mavali_loop,
+                "now_utc",
+                return_value=datetime(2026, 5, 9, 0, 0, tzinfo=timezone.utc),
+            ):
+                result = mavali_loop.recover_abandoned_attempt(
+                    spec,
+                    paths,
+                    state,
+                    reason="Attempt crashed before completion; restored leftover changes.",
+                )
+
+        assert result is not None
+        restore_paths.assert_called_once_with(spec, ["src/generated.py"])
+        self.assertEqual(result.changed_files, ["src/generated.py"])
+        self.assertEqual(result.reverted_files, ["src/generated.py"])
+        self.assertIn("Preserved allowlisted dirty paths: src/user_dirty.py.", result.summary)
 
     def test_load_state_migrates_legacy_review_loop_state(self) -> None:
         spec = mavali_loop.CampaignSpec(

@@ -1,0 +1,11 @@
+[Mavali Loop] Mavali ETH Followups
+campaign=mavali_eth_followups_may_2026
+status=completed
+exit_code=0
+completed=3/3
+attempts=3
+started_at_utc=2026-05-10T00:13:54.572521+00:00
+finished_at_utc=2026-05-10T00:33:04.547556+00:00
+- add_store_indexes: completed attempts=1 commit=b2de1e1dfd9bf3b5b94611220ecd602e1d7713b0 summary=Task resolved, verified, committed, and pushed.
+- table_drive_direct_routes: completed attempts=1 commit=351f38610d8c6ebdfca290c109566aa7d3f5f71c summary=Task resolved, verified, committed, and pushed.
+- extract_shared_swap_execution_helpers: completed attempts=1 commit=cbe4c42594068de90aabb2394b9275b51b35bf7e summary=Task resolved, verified, committed, and pushed.

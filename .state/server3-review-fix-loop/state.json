@@ -1,0 +1,221 @@
+{
+  "campaign_id": "server3_code_review_may_2026",
+  "issues": {
+    "dedupe_attachment_resolution": {
+      "attempts": 1,
+      "completed_at_utc": "2026-05-09T07:21:00.074662+00:00",
+      "history": [
+        {
+          "attempt": 1,
+          "changed_files": [
+            "src/telegram_bridge/attachment_processing.py",
+            "src/telegram_bridge/prompt_preparation.py",
+            "tests/telegram_bridge/test_attachment_processing.py",
+            "tests/telegram_bridge/test_prompt_preparation.py"
+          ],
+          "committed_sha": "d6f077b3ea499b908d6df88a9bce13ddeddaf902",
+          "observed_at_utc": "2026-05-09T07:21:00.074662+00:00",
+          "push_succeeded": true,
+          "reverted_files": [],
+          "status": "applied",
+          "summary": "Issue resolved, verified, committed, and pushed."
+        }
+      ],
+      "last_status": "applied",
+      "last_summary": "Issue resolved, verified, committed, and pushed.",
+      "status": "completed",
+      "updated_at_utc": "2026-05-09T07:21:00.074662+00:00"
+    },
+    "dedupe_browser_brain_js": {
+      "attempts": 1,
+      "completed_at_utc": "2026-05-09T07:30:28.116130+00:00",
+      "history": [
+        {
+          "attempt": 1,
+          "changed_files": [
+            "src/browser_brain/service.py",
+            "tests/browser_brain/test_service.py"
+          ],
+          "committed_sha": "4feff382d984233d1599c90d8e73867af42fc64b",
+          "observed_at_utc": "2026-05-09T07:30:28.116130+00:00",
+          "push_succeeded": true,
+          "reverted_files": [],
+          "status": "applied",
+          "summary": "Issue resolved, verified, committed, and pushed."
+        }
+      ],
+      "last_status": "applied",
+      "last_summary": "Issue resolved, verified, committed, and pushed.",
+      "status": "completed",
+      "updated_at_utc": "2026-05-09T07:30:28.116130+00:00"
+    },
+    "dispatch_outbound_media": {
+      "attempts": 1,
+      "completed_at_utc": "2026-05-09T07:22:34.319489+00:00",
+      "history": [
+        {
+          "attempt": 1,
+          "changed_files": [
+            "src/telegram_bridge/response_delivery.py",
+            "tests/telegram_bridge/test_executor.py"
+          ],
+          "committed_sha": "c1bbff02b47baa8f53587cd1a87453a886eabf25",
+          "observed_at_utc": "2026-05-09T07:22:34.319489+00:00",
+          "push_succeeded": true,
+          "reverted_files": [],
+          "status": "applied",
+          "summary": "Issue resolved, verified, committed, and pushed."
+        }
+      ],
+      "last_status": "applied",
+      "last_summary": "Issue resolved, verified, committed, and pushed.",
+      "status": "completed",
+      "updated_at_utc": "2026-05-09T07:22:34.319489+00:00"
+    },
+    "group_runtime_config": {
+      "attempts": 1,
+      "completed_at_utc": "2026-05-09T07:17:43.108240+00:00",
+      "history": [
+        {
+          "attempt": 1,
+          "changed_files": [
+            "src/telegram_bridge/runtime_config.py",
+            "tests/telegram_bridge/test_config.py"
+          ],
+          "committed_sha": "a615780706c4939a3259718a4e621b96293b9f24",
+          "observed_at_utc": "2026-05-09T07:17:43.108240+00:00",
+          "push_succeeded": true,
+          "reverted_files": [],
+          "status": "applied",
+          "summary": "Issue resolved, verified, committed, and pushed."
+        }
+      ],
+      "last_status": "applied",
+      "last_summary": "Issue resolved, verified, committed, and pushed.",
+      "status": "completed",
+      "updated_at_utc": "2026-05-09T07:17:43.108240+00:00"
+    },
+    "remove_lazy_handler_imports": {
+      "attempts": 1,
+      "completed_at_utc": "2026-05-09T07:28:23.659852+00:00",
+      "history": [
+        {
+          "attempt": 1,
+          "changed_files": [
+            "src/telegram_bridge/bridge_runtime_setup.py",
+            "src/telegram_bridge/handler_models.py",
+            "src/telegram_bridge/handlers.py",
+            "src/telegram_bridge/main.py",
+            "src/telegram_bridge/update_flow.py",
+            "src/telegram_bridge/update_preparation.py"
+          ],
+          "committed_sha": "6c5749d776628f8f20c268e6fb4115a4b055241b",
+          "observed_at_utc": "2026-05-09T07:28:23.659852+00:00",
+          "push_succeeded": true,
+          "reverted_files": [],
+          "status": "applied",
+          "summary": "Issue resolved, verified, committed, and pushed."
+        }
+      ],
+      "last_status": "applied",
+      "last_summary": "Issue resolved, verified, committed, and pushed.",
+      "status": "completed",
+      "updated_at_utc": "2026-05-09T07:28:23.659852+00:00"
+    },
+    "split_request_orchestration": {
+      "attempts": 1,
+      "completed_at_utc": "2026-05-09T07:14:06.384131+00:00",
+      "history": [
+        {
+          "attempt": 1,
+          "changed_files": [
+            "src/telegram_bridge/prompt_preparation.py",
+            "src/telegram_bridge/response_delivery.py",
+            "src/telegram_bridge/update_flow.py"
+          ],
+          "committed_sha": "4844d960b89a2c7c6719e5afc798e930372ebaff",
+          "observed_at_utc": "2026-05-09T07:14:06.384131+00:00",
+          "push_succeeded": true,
+          "reverted_files": [],
+          "status": "applied",
+          "summary": "Issue resolved, verified, committed, and pushed."
+        }
+      ],
+      "last_status": "applied",
+      "last_summary": "Issue resolved, verified, committed, and pushed.",
+      "status": "completed",
+      "updated_at_utc": "2026-05-09T07:14:06.384131+00:00"
+    },
+    "tighten_python_qa": {
+      "attempts": 4,
+      "completed_at_utc": "2026-05-09T08:03:17.758992+00:00",
+      "history": [
+        {
+          "attempt": 1,
+          "changed_files": [
+            ".coverage",
+            "ops/dev/run_python_checks.sh",
+            "pyproject.toml",
+            "tests/review_fix_loop/test_review_fix_loop.py"
+          ],
+          "committed_sha": "",
+          "observed_at_utc": "2026-05-09T07:35:56.143060+00:00",
+          "push_succeeded": false,
+          "reverted_files": [
+            ".coverage",
+            "ops/dev/run_python_checks.sh",
+            "pyproject.toml",
+            "tests/review_fix_loop/test_review_fix_loop.py"
+          ],
+          "status": "qa_failed",
+          "summary": "Verification failed after changes; the loop reverted the failed attempt."
+        },
+        {
+          "attempt": 2,
+          "changed_files": [],
+          "committed_sha": "",
+          "observed_at_utc": "2026-05-09T07:36:29.709549+00:00",
+          "push_succeeded": false,
+          "reverted_files": [],
+          "status": "blocked",
+          "summary": "Codex execution failed before the issue was resolved."
+        },
+        {
+          "attempt": 3,
+          "changed_files": [
+            ".coverage"
+          ],
+          "committed_sha": "",
+          "observed_at_utc": "2026-05-09T07:36:29.720629+00:00",
+          "push_succeeded": false,
+          "reverted_files": [
+            ".coverage"
+          ],
+          "status": "interrupted",
+          "summary": "Attempt crashed before completion; restored leftover changes."
+        },
+        {
+          "attempt": 4,
+          "changed_files": [
+            "ops/dev/run_python_checks.sh",
+            "pyproject.toml",
+            "src/telegram_bridge/bridge_runtime_setup.py",
+            "src/telegram_bridge/engine_control_status.py",
+            "tests/review_fix_loop/test_review_fix_loop.py"
+          ],
+          "committed_sha": "70f4ff5f1361b1909e1ff18d2877cc444915a974",
+          "observed_at_utc": "2026-05-09T08:03:17.758992+00:00",
+          "push_succeeded": true,
+          "reverted_files": [],
+          "status": "applied",
+          "summary": "Issue resolved, verified, committed, and pushed."
+        }
+      ],
+      "last_status": "applied",
+      "last_summary": "Issue resolved, verified, committed, and pushed.",
+      "status": "completed",
+      "updated_at_utc": "2026-05-09T08:03:17.758992+00:00"
+    }
+  },
+  "updated_at_utc": "2026-05-09T08:03:17.762681+00:00"
+}

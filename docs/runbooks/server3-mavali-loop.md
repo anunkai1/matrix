@@ -1,16 +1,22 @@
 # Server3 Mavali Loop
 
+Canonical repo:
+- `/home/architect/mavali-loop`
+
+Compatibility wrappers remain in `matrix` under `ops/mavali_loop`, but the standalone repo is now the source of truth.
+
 Purpose:
 - reusable bounded end-to-end task runner for Server3 repo work
 - spec-driven successor to one-off temporary loops
 - suitable for small to medium campaigns where each task has clear target paths and verification
 
 Primary files:
-- runner: `ops/mavali_loop/mavali_loop.py`
-- tmux launcher: `ops/mavali_loop/tmux_control.sh`
-- example campaign: `ops/mavali_loop/campaigns/server3_code_review_may_2026.json`
-- state root: `/var/lib/server3-mavali-loop`
-- fallback state root: `.state/server3-mavali-loop`
+- runner: `/home/architect/mavali-loop/src/mavali_loop/runner.py`
+- executor: `/home/architect/mavali-loop/scripts/codex_exec.sh`
+- tmux launcher: `/home/architect/mavali-loop/scripts/tmux_control.sh`
+- example campaign: `/home/architect/mavali-loop/campaigns/examples/server3_code_review_may_2026.json`
+- state root: `/var/lib/mavali-loop`
+- fallback state root: `/home/architect/mavali-loop/.state/mavali-loop`
 
 Campaign spec shape:
 - `campaign_id`
@@ -33,19 +39,24 @@ Campaign spec shape:
   - `on_failure_commands`
 
 Commands:
-- run a campaign: `python3 /home/architect/matrix/ops/mavali_loop/mavali_loop.py run /abs/path/to/campaign.json`
-- preferred detached launch: `bash /home/architect/matrix/ops/mavali_loop/tmux_control.sh start /abs/path/to/campaign.json`
-- tmux-backed status: `bash /home/architect/matrix/ops/mavali_loop/tmux_control.sh status /abs/path/to/campaign.json`
-- tmux-backed logs: `bash /home/architect/matrix/ops/mavali_loop/tmux_control.sh logs /abs/path/to/campaign.json`
-- stop the detached loop: `bash /home/architect/matrix/ops/mavali_loop/tmux_control.sh stop /abs/path/to/campaign.json`
-- show current status: `python3 /home/architect/matrix/ops/mavali_loop/mavali_loop.py status /abs/path/to/campaign.json`
-- reset state/results: `python3 /home/architect/matrix/ops/mavali_loop/mavali_loop.py reset-state /abs/path/to/campaign.json`
-- create a starter campaign from a plain task list file: `python3 /home/architect/matrix/ops/mavali_loop/mavali_loop.py create-campaign --output /abs/path/to/campaign.json --campaign-id my_campaign --title "My Campaign" --summary "..." --tasks-file /abs/path/to/tasks.txt`
+- default detached launch: `bash /home/architect/mavali-loop/scripts/tmux_control.sh /abs/path/to/campaign.json`
+- explicit detached launch: `bash /home/architect/mavali-loop/scripts/tmux_control.sh start /abs/path/to/campaign.json`
+- tmux-backed status: `bash /home/architect/mavali-loop/scripts/tmux_control.sh status /abs/path/to/campaign.json`
+- tmux-backed logs: `bash /home/architect/mavali-loop/scripts/tmux_control.sh logs /abs/path/to/campaign.json`
+- stop the detached loop: `bash /home/architect/mavali-loop/scripts/tmux_control.sh stop /abs/path/to/campaign.json`
+- show current status: `PYTHONPATH=/home/architect/mavali-loop/src python3 -m mavali_loop status /abs/path/to/campaign.json`
+- reset state/results: `PYTHONPATH=/home/architect/mavali-loop/src python3 -m mavali_loop reset-state /abs/path/to/campaign.json`
+- create a starter campaign from a plain task list file: `PYTHONPATH=/home/architect/mavali-loop/src python3 -m mavali_loop create-campaign --output /abs/path/to/campaign.json --campaign-id my_campaign --title "My Campaign" --summary "..." --tasks-file /abs/path/to/tasks.txt`
+- foreground debug run only: `PYTHONPATH=/home/architect/mavali-loop/src python3 -m mavali_loop run /abs/path/to/campaign.json`
 
 Path tokens:
-- `${ROOT}` resolves to the loop's own `matrix` repo root
+- `${ROOT}` resolves to the standalone loop repo root
 - `${REPO_ROOT}` resolves to the campaign target repo root
 - `${QA_PYTHON}` prefers `<repo_root>/.venv/server3-qa/bin/python`, then falls back to the loop repo QA venv, then `python3`
+
+Execution model:
+- the default executor now lives in the standalone repo and runs `codex exec` directly from the campaign `repo_root`
+- external-repo campaigns no longer depend on the shared Telegram bridge executor wrapper
 
 Behavior:
 - processes tasks in the listed order
@@ -61,6 +72,7 @@ Behavior:
 - treats `applied` and `no_change` as complete
 - writes persisted state/results per campaign so runs can resume
 - writes a richer final report with task attempts and commit SHAs and, when configured, sends it to Telegram
+- tmux is the operational default for launches because foreground runs stop when the caller session is torn down
 
 Completion notification:
 - set `TELEGRAM_BOT_TOKEN`
@@ -74,6 +86,6 @@ Future workflow:
 - create a plain task list file
 - generate a starter JSON campaign
 - fill in task guidance, target paths, verification commands, and optional hooks
-- launch it through `mavali_loop`
+- launch it through `tmux_control.sh` by default
 - check status or logs while it runs
 - wait for the final completion report

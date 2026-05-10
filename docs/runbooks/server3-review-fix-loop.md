@@ -13,7 +13,8 @@ Primary files:
 
 Commands:
 - run the full loop: `python3 /home/architect/matrix/ops/review_fix_loop/review_fix_loop.py run`
-- preferred detached launch: `bash /home/architect/matrix/ops/review_fix_loop/tmux_control.sh start`
+- default detached launch: `bash /home/architect/matrix/ops/review_fix_loop/tmux_control.sh`
+- explicit detached launch: `bash /home/architect/matrix/ops/review_fix_loop/tmux_control.sh start`
 - tmux-backed status: `bash /home/architect/matrix/ops/review_fix_loop/tmux_control.sh status`
 - tmux-backed logs: `bash /home/architect/matrix/ops/review_fix_loop/tmux_control.sh logs`
 - stop the detached loop: `bash /home/architect/matrix/ops/review_fix_loop/tmux_control.sh stop`
@@ -29,7 +30,7 @@ Behavior:
 - if an attempt changes files and then fails verification, the loop restores those files back to `HEAD` before retrying
 - on success, the loop commits and pushes that issue before moving to the next one
 - `applied` and `no_change` both count as complete; `no_change` means the loop judged the issue already fixed and verification passed
-- when launching from chat-bound or other interactive tooling, prefer the tmux wrapper so the loop survives caller teardown
+- the tmux wrapper is the default launch path so the loop survives caller teardown
 
 QA:
 - targeted tests: `./.venv/server3-qa/bin/python3 -m pytest tests/review_fix_loop/test_review_fix_loop.py -q`
