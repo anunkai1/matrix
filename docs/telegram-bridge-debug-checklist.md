@@ -52,17 +52,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 1200 --no-pager | \
 
 ## 4) Use the latency benchmark harness
 
-For stable replay benchmarking, build a frozen corpus from recent traffic and run the local harness.
-
-Build a corpus from Architect memory:
-
-```bash
-python3 ops/telegram-bridge/build_latency_corpus.py \
-  --db /home/architect/.local/state/telegram-architect-bridge/memory.sqlite3 \
-  --conversation-key shared:architect:main \
-  --output /tmp/architect_latency_corpus.json \
-  --count 24
-```
+For stable replay benchmarking, use an existing benchmark corpus JSON and run the local harness.
 
 Replay it through the bridge:
 

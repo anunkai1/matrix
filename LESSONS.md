@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-05-12T14:53:59+10:00 - Never Double-Send Telegram Replies For Bridge-Originated Turns
+- Mistake pattern: I manually sent Telegram replies with the Bot API for messages that had already arrived through `telegram-architect-bridge.service`, while the bridge also sent its normal final response. That produced duplicate bot replies for the same user turn and unnecessary extra token usage.
+- Prevention rule: For bridge-originated Telegram turns, use the bridge's normal final response as the only default outbound path. Do not manually call `sendMessage` or helper scripts for the same turn unless the user explicitly wants a separate out-of-band Telegram post or attachment in addition to the normal reply.
+- Where/when applied: Any Architect turn whose prompt includes `Current Telegram Context`, especially when considering `ops/telegram/send_message.py`, raw Bot API calls, or other manual outbound Telegram actions.
+
 ### 2026-05-05T09:30:00+10:00 - Engine-Native Sessions Make SQLite Memory Redundant
 - Mistake pattern: The bridge maintained a separate SQLite memory layer (~590 lines) that stored ~10k tokens of recent messages and injected them into every prompt, even though both Pi and Codex already maintain their own full session files (JSONL) that replay the entire conversation history to the provider API on every turn. The SQLite layer was a strict subset of what the engine sessions already carried.
 - Prevention rule: Before adding a new state/memory/caching layer, verify whether the underlying engine (Pi, Codex, etc.) already provides equivalent or better persistence. Engine-native sessions are the source of truth for conversation continuity; don't duplicate them in bridge code.

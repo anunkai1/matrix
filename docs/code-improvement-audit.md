@@ -255,7 +255,6 @@ The repo already has meaningful tests for many bridge areas, including:
 - `test_bridge_core.py`
 - `test_runtime_config.py`
 - `test_pi_plugin.py`
-- `test_memory_engine.py`
 - `test_affective_runtime.py`
 
 But the testing style is still skewed toward large integration-style test modules.

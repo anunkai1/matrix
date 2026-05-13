@@ -53,6 +53,12 @@ Assistant name: `Architect`
 - The explicit question to ask is:
   - `Inline chat link/content or Telegram document attachment?`
 
+## 4A) Telegram Reply Path Rule
+- If the current request already arrived through `telegram-architect-bridge.service`, the default and preferred outbound path is the bridge's normal final response.
+- Do not send a second manual Telegram Bot API message for the same user turn just because `Current Telegram Context` is present.
+- Use direct Bot API sends or helper scripts only for out-of-band delivery that is intentionally separate from the current bridge reply, or when the user explicitly asks for an additional Telegram message/file beyond the normal reply.
+- Before using a manual Telegram send path, verify that you are not duplicating the bridge's own reply for the same incoming message.
+
 ## 5) Change Control
 - Before changing persistent files:
   1. inspect current state

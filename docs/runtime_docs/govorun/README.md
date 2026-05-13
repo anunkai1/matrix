@@ -33,7 +33,6 @@ Repo-backed companion README for the live Govorun runtime root at `/home/govorun
 - Chat-routing contract: `infra/contracts/server3-chat-routing.contract.env`
 - Bridge state dir: `/home/govorun/.local/state/govorun-whatsapp-bridge`
 - Canonical session DB: `/home/govorun/.local/state/govorun-whatsapp-bridge/chat_sessions.sqlite3`
-- Memory DB: `/home/govorun/.local/state/govorun-whatsapp-bridge/memory.sqlite3`
 
 ## Common Operations
 

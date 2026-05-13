@@ -115,7 +115,6 @@ bash ops/dev/run_python_checks.sh
 - Sync shared-core overlay shims into sibling runtime roots: `sudo python3 ops/runtime_overlays/sync_server3_runtime_overlays.py`
 - Check Architect-only unit detail: `bash ops/telegram-bridge/status_service.sh`
 - Check logs: `sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager`
-- Build a frozen latency corpus: `python3 ops/telegram-bridge/build_latency_corpus.py --help`
 - Replay the latency benchmark: `python3 ops/telegram-bridge/latency_benchmark.py --help`
 - Roll back systemd install: `bash ops/telegram-bridge/install_systemd.sh rollback`
 - Runtime observer:

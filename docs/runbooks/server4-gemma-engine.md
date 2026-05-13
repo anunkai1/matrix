@@ -89,5 +89,5 @@ When the effective engine is `gemma`, `/engine status` also performs a short liv
 ## Current Capability
 
 - Gemma engine supports text requests through Ollama.
-- Chat memory is still owned by the bridge memory layer.
+- Bridge-side continuity is now owned by canonical session state plus the engine-native session model where applicable.
 - Gemma does not yet have a tool/action harness. Use Codex for server operations, repo edits, image handling, and high-risk actions until the harness is added.

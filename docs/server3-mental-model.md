@@ -40,8 +40,7 @@ The main reusable runtime lives in [`src/telegram_bridge`](../src/telegram_bridg
 - [`http_channel.py`](../src/telegram_bridge/http_channel.py), [`signal_channel.py`](../src/telegram_bridge/signal_channel.py), and [`whatsapp_channel.py`](../src/telegram_bridge/whatsapp_channel.py): non-Telegram channel integrations around the same core.
 - [`executor.py`](../src/telegram_bridge/executor.py) and [`executor.sh`](../src/telegram_bridge/executor.sh): invoke local Codex safely and stream output back.
 - [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py): pluggable engine layer for Codex, Gemma, Pi, Venice, ChatGPT Web, and the Mavali ETH deterministic wallet engine.
-- [`memory_engine.py`](../src/telegram_bridge/memory_engine.py): durable chat memory and summaries.
-- [`memory_summary_utils.py`](../src/telegram_bridge/memory_summary_utils.py), [`memory_scope.py`](../src/telegram_bridge/memory_scope.py), [`memory_merge.py`](../src/telegram_bridge/memory_merge.py), and [`conversation_scope.py`](../src/telegram_bridge/conversation_scope.py): summary helpers, scope-key normalization, and memory/session merge helpers.
+- [`canonical_state_store.py`](../src/telegram_bridge/canonical_state_store.py) and [`canonical_runtime_state_store.py`](../src/telegram_bridge/canonical_runtime_state_store.py): canonical session persistence and sync for thread IDs, worker session metadata, and in-flight request tracking.
 - [`llm_summarizer.py`](../src/telegram_bridge/llm_summarizer.py): local gemma3:4b summarizer via Ollama (primary summary path).
 - [`session_manager.py`](../src/telegram_bridge/session_manager.py): worker/session lifecycle, busy state, and safe restart coordination.
 - [`state_store.py`](../src/telegram_bridge/state_store.py): persisted chat state, engine/model overrides, and canonical session backing stores.
@@ -122,7 +121,7 @@ This is the primary Server3 brain.
 - Service: `telegram-architect-bridge.service`
 - User: `architect`
 - Workspace: `/home/architect/matrix`
-- Purpose: general assistant, file/image/voice handling, memory-backed conversation, and operator routing into HA/Browser Brain/TV/Nextcloud modes.
+- Purpose: general assistant, file/image/voice handling, canonical-session-backed bridge state, and operator routing into HA/Browser Brain/TV/Nextcloud modes.
 - Main docs:
   - [`docs/telegram-architect-bridge.md`](./telegram-architect-bridge.md)
   - [`SERVER3_SUMMARY.md`](../SERVER3_SUMMARY.md)
@@ -140,12 +139,12 @@ Tank is a separate Telegram runtime/profile, not just a command inside Architect
 - Service: `telegram-tank-bridge.service`
 - User: `tank`
 - Workspace: `/home/tank/tankbot`
-- Purpose: isolated bot identity/profile with its own env, memory, Joplin path, and sudo scope.
+- Purpose: isolated bot identity/profile with its own env, canonical session state, Joplin path, and sudo scope.
 - Runtime model: shared core from `/home/architect/matrix` plus Tank runtime root identity at `/home/tank/tankbot`
 
 Mental shortcut:
 - Tank uses the same bridge architecture as Architect.
-- Tank is separated because identity, memory, and permissions matter.
+- Tank is separated because identity, state, and permissions matter.
 
 ### Oracle Signal
 

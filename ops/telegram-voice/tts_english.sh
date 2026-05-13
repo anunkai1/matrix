@@ -5,7 +5,7 @@
 # Output: path to OGG Opus file (suitable for Telegram sendVoice)
 set -euo pipefail
 
-VOICE="${TTS_VOICE:-en-US-AriaNeural}"
+VOICE="${TTS_VOICE:-en-US-JennyNeural}"
 SPEED="${TTS_SPEED:-1.35}"
 OUT_DIR="${TTS_OUT_DIR:-/tmp/tts}"
 TEXT="${1:-}"

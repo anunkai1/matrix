@@ -197,8 +197,8 @@ Per chat/topic:
 
 - Pi supports text requests through local non-interactive Pi on Server3.
 - Server4 supplies only the model backend.
-- Chat memory is still owned by the bridge memory layer.
-- Pi runs with `--no-session` by default; Server3 bridge memory provides conversation context.
+- Bridge-side continuity is now owned by canonical session state.
+- Pi runs with `--no-session` only when native Pi sessions are not enabled; when `PI_SESSION_MODE=telegram_scope` is active, Pi maintains its own per-scope JSONL session files.
 - Optional native Pi sessions are available with `PI_SESSION_MODE=telegram_scope`; this maps each Telegram scope key to a stable JSONL file under `PI_SESSION_DIR` or `~/.pi/agent/telegram-sessions`.
-- Pi session files are rotated on size/age thresholds so the active JSONL stays short-lived while `memory.sqlite3` keeps durable memory.
+- Pi session files are rotated on size/age thresholds so the active JSONL stays short-lived while canonical bridge session state remains in `chat_sessions.sqlite3`.
 - Image and document-heavy turns should stay on Codex for now.
