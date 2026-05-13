@@ -1,18 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-05-13 (AEST, +10:00)
-
-## Purpose
-- Fast restart context optimized for execution speed, clarity, and recovery value.
-- Keep this file compact and operator-first; move deep history to `SERVER3_ARCHIVE.md`.
-
-## Summary Policy (Operator-First)
-- Keep only items that materially improve execution speed, correctness, or recovery.
-- Structure limits:
-  - `Operational Memory (Pinned)`: 6-10 items
-  - `Recent Changes (Rolling Max 8)`: newest high-value deltas only
-  - `Current Risks/Watchouts (Max 5)`: active operational caveats only
-- Do not trim by age alone; trim by reuse and operational impact.
+Last updated: 2026-05-14 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
@@ -21,28 +9,19 @@ Last updated: 2026-05-13 (AEST, +10:00)
 - Architect currently defaults to `codex`; selectable chat engines are driven by live env/config (`codex`, `gemma`, `pi`, `chatgptweb` in the current Architect runtime).
 - Core capabilities: text/photo/voice/document handling, persistent workers, safe queued `/restart`, and canonical SQLite session state. Provider-side continuity still relies on engine-native sessions (Pi JSONL per scope, Codex JSONL per exec session).
 - Browser Brain runs in `existing_session` mode on local CDP port `9223`; use the visible `tv` Brave helper for manual-login recovery when needed.
-- Routed operator surfaces currently worth remembering: `HA ...`, `Server3 TV ...`, `Server3 Browser ...` / `Browser Brain ...`, `Nextcloud ...`, `SRO ...`, and bare YouTube links.
-- `Server3 Ralph Autopilot` is live as an hourly executor plus daily Telegram report path.
+- Priority stateless routes: `HA ...`, `Server3 TV ...`, `Server3 Browser ...` / `Browser Brain ...`, `Nextcloud ...`, `SRO ...`, and bare YouTube links.
 
 ## Operational Memory (Pinned)
-- Routing keywords:
-  - `HA ...` / `Home Assistant ...` for stateless HA operation mode
-  - bare YouTube links for transcript-first YouTube analysis mode with `yt-dlp` captions first and local transcription fallback
-  - `Server3 TV ...` for desktop/browser control mode
-  - `Server3 Browser ...` / `Browser Brain ...` for browser automation mode
-  - `Nextcloud ...` for Nextcloud file/calendar operation mode
-  - `SRO ...` / `server3 runtime observer ...` for stateless runtime observer queries
-- Runtime observer is enabled on timer (`server3-runtime-observer.timer`) with Telegram daily summary mode (`RUNTIME_OBSERVER_MODE=telegram_daily_summary`) scheduled for `08:05` AEST.
+- Runtime observer runs from `server3-runtime-observer.timer` every 5 minutes; live mode is currently `telegram_alerts`, not the older daily-summary mode.
 - Govorun cross-channel routing contract guard is enforced by `ops/chat-routing/validate_chat_routing_contract.py` with canonical policy in `infra/contracts/server3-chat-routing.contract.env`; daily drift timer is `server3-chat-routing-contract-check.timer`.
-- Browser Brain `x.com`/manual-login recovery path is: keep Browser Brain in `existing_session` mode, start the visible TV-side Brave helper, let the user log in manually there if needed, then attach Browser Brain over local CDP; do not try to run Browser Brain itself headed on Server3.
-- Tank defaults are hardened: DM prefix bypass in private chats, isolated Joplin profile/path, reasoning effort `low`.
+- Browser Brain `x.com` recovery path: keep `existing_session`, launch the visible TV-side Brave helper, do any needed manual login there, then attach over local CDP. Do not switch Browser Brain itself to headed mode.
+- Tank identity depends on `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot`; preserve it so the shared `src` tree does not collapse Tank back onto the shared repo root.
 - Runtime policy/doc drift should now be checked with `bash /home/architect/matrix/ops/runtime_personas/check_runtime_repo_links.sh` before assuming a live root has diverged from Git.
 - Local media services now use one canonical internal namespace: `/data/downloads` and `/data/media/...`; avoid reintroducing alternate path aliases like `/downloads`, `/tv`, `/movies`, or `/media`.
 - Server3 state resilience now uses a monthly quiesced backup path (`server3-state-backup.service` / `server3-state-backup.timer`) that snapshots rebuild-critical host/app/runtime state to `/srv/external/server3-backups/state`; the Arr media payload stays on the external data disk and is intentionally excluded.
 
 ## Recent Changes (Rolling Max 8)
 - 2026-05-10: added English TTS voice replies via `ops/telegram-voice/tts_english.sh`; the bridge can now return Telegram voice notes through the existing `sendVoice` pipeline.
-- 2026-05-09: promoted `Server3 Ralph Autopilot` to live hourly execution with a daily Telegram report path.
 - 2026-05-05: finished the shared-bridge packaging/refactor cleanup (`pyproject.toml`, package `__init__.py` files, reusable `env_parser.py`, split `engines/` modules) and removed the old SQLite memory-engine codepath/systemd leftovers.
 - 2026-04-30: removed `venice` from the user-facing `/engine` list while keeping it available as `PI_PROVIDER=venice`.
 - 2026-04-28: added automatic Pi scope-session rotation/pruning so JSONL retention stays bounded without losing short-term continuity.
