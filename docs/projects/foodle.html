@@ -17,13 +17,14 @@
       --dairy: #4d8dc7;
       --fasting: #52c7b8;
       --coffee: #8b5a2b;
-      --overeating: #f2c94c;
+      --overeating: #d84c4c;
       --ok: #2f8f5b;
       --bad: #c64545;
       --shadow: 0 20px 60px rgba(70, 44, 11, 0.12);
       --radius: 24px;
-      --cell-size: 16px;
-      --cell-gap: 4px;
+      --cell-size: 18px;
+      --cell-gap: 5px;
+      --cell-height: calc(var(--cell-size) + 8px);
     }
 
     * {
@@ -301,7 +302,7 @@
     .dairy { background: var(--dairy); }
     .fasting { background: var(--fasting); color: #10211d; }
     .coffee { background: var(--coffee); color: #fff8f0; }
-    .overeating { background: var(--overeating); color: #2b2100; }
+    .overeating { background: var(--overeating); color: #fff4f4; }
 
     .actions {
       display: flex;
@@ -362,10 +363,10 @@
 
     .heatmap-shell {
       margin-top: 18px;
-      padding: 16px;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.48);
-      border: 1px solid var(--line);
+      padding: 18px;
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.34));
+      border: 1px solid rgba(63, 50, 33, 0.16);
       overflow-x: auto;
     }
 
@@ -378,10 +379,10 @@
 
     .calendar-focus {
       display: grid;
-      gap: 8px;
-      margin-bottom: 14px;
-      padding: 14px 16px;
-      border-radius: 18px;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding: 16px 18px;
+      border-radius: 20px;
       background: linear-gradient(135deg, rgba(58, 167, 109, 0.12), rgba(77, 141, 199, 0.12));
       border: 1px solid rgba(58, 167, 109, 0.16);
     }
@@ -405,8 +406,8 @@
     .focus-date {
       display: inline-flex;
       align-items: center;
-      min-height: 38px;
-      padding: 8px 14px;
+      min-height: 42px;
+      padding: 9px 15px;
       border-radius: 999px;
       border: 1px solid rgba(31, 27, 22, 0.08);
       background: rgba(255, 255, 255, 0.72);
@@ -425,25 +426,26 @@
 
     .focus-note {
       color: var(--muted);
-      font-size: 0.84rem;
+      font-size: 0.9rem;
       line-height: 1.4;
     }
 
     .heatmap-frame {
       display: grid;
-      grid-template-columns: 42px minmax(480px, 1fr);
-      gap: 10px;
-      min-width: 540px;
+      grid-template-columns: 46px minmax(0, 1fr);
+      gap: 12px;
+      min-width: 0;
+      align-items: start;
     }
 
     .weekday-rail {
       display: grid;
-      grid-template-rows: 30px repeat(7, var(--cell-size)) auto;
+      grid-template-rows: 32px repeat(7, var(--cell-height)) auto;
       align-items: center;
       justify-items: end;
       gap: var(--cell-gap);
       color: var(--muted);
-      font-size: 0.76rem;
+      font-size: 0.8rem;
       font-weight: 700;
     }
 
@@ -467,7 +469,8 @@
 
     .calendar-side {
       display: grid;
-      gap: 10px;
+      gap: 12px;
+      min-width: 0;
     }
 
     .month-row {
@@ -475,17 +478,18 @@
       grid-auto-flow: column;
       grid-template-columns: repeat(26, var(--cell-size));
       gap: var(--cell-gap);
-      min-height: 18px;
+      min-height: 24px;
       color: var(--muted);
-      font-size: 0.74rem;
+      font-size: 0.78rem;
+      padding: 0 6px;
     }
 
     .month-tag {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 24px;
-      padding: 0 6px;
+      min-height: 26px;
+      padding: 0 8px;
       border-radius: 999px;
       white-space: nowrap;
       line-height: 1;
@@ -501,28 +505,45 @@
     .combined-grid {
       display: grid;
       grid-template-columns: repeat(26, var(--cell-size));
-      grid-template-rows: repeat(7, var(--cell-size));
+      grid-template-rows: repeat(7, var(--cell-height));
       gap: var(--cell-gap);
+      padding: 10px 6px;
+      border-radius: 18px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.12)),
+        rgba(31, 27, 22, 0.03);
+      border: 1px solid rgba(63, 50, 33, 0.12);
+      width: max-content;
     }
 
     .combined-cell {
+      appearance: none;
       width: var(--cell-size);
-      height: calc(var(--cell-size) + 8px);
-      border-radius: 4px;
-      border: 1px solid rgba(31, 27, 22, 0.05);
-      background: rgba(255, 255, 255, 0.18);
-      padding: 2px;
+      height: var(--cell-height);
+      border-radius: 6px;
+      border: 1px solid rgba(31, 27, 22, 0.14);
+      background: rgba(255, 255, 255, 0.58);
+      padding: 3px;
       position: relative;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      cursor: pointer;
     }
 
-    .combined-cell.today {
-      outline: 2px solid rgba(255, 255, 255, 0.75);
-      outline-offset: 1px;
-      box-shadow: 0 0 0 2px rgba(240, 187, 93, 0.26);
+    .combined-cell.selected {
+      outline: 2px solid rgba(255, 255, 255, 0.92);
+      outline-offset: 2px;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.5),
+        0 0 0 3px rgba(240, 187, 93, 0.34);
     }
 
-    body[data-theme="dark"] .combined-cell.today {
+    body[data-theme="dark"] .combined-cell.selected {
       outline-color: #f2c66d;
+    }
+
+    .combined-cell:focus-visible {
+      outline: 2px solid rgba(58, 167, 109, 0.95);
+      outline-offset: 2px;
     }
 
     .combined-stack {
@@ -535,7 +556,7 @@
     .combined-bar {
       display: block;
       min-height: 0;
-      border-radius: 2px;
+      border-radius: 999px;
       background: rgba(31, 27, 22, 0.08);
     }
 
@@ -547,13 +568,14 @@
 
     .combined-marker {
       position: absolute;
-      top: -2px;
-      right: -2px;
-      width: 6px;
-      height: 6px;
+      top: -3px;
+      right: -3px;
+      width: 8px;
+      height: 8px;
       border-radius: 999px;
       border: 1px solid rgba(8, 13, 19, 0.55);
       background: transparent;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
     }
 
     .combined-marker.good.track-fasting { background: var(--fasting); }
@@ -563,15 +585,15 @@
     .combined-marker.good.track-overeating { background: var(--overeating); }
     .combined-marker.miss.track-overeating { background: #8d2929; }
     .combined-marker.track-coffee {
-      left: -2px;
+      left: -3px;
       right: auto;
     }
     .combined-marker.track-overeating {
       top: auto;
-      bottom: -2px;
-      left: 50%;
+      bottom: -3px;
+      left: -3px;
       right: auto;
-      transform: translateX(-50%);
+      transform: none;
     }
 
     .legend {
@@ -580,7 +602,7 @@
       gap: 12px;
       align-items: center;
       color: var(--muted);
-      font-size: 0.78rem;
+      font-size: 0.82rem;
     }
 
     .legend-group {
@@ -690,15 +712,15 @@
         gap: 12px;
       }
 
-      .heatmap-frame {
-        min-width: 520px;
+      .heatmap-shell {
+        padding: 16px;
       }
     }
 
     @media (max-width: 640px) {
       :root {
-        --cell-size: 14px;
-        --cell-gap: 4px;
+        --cell-size: 19px;
+        --cell-gap: 5px;
       }
 
       .wrap {
@@ -790,17 +812,17 @@
       }
 
       .heatmap-shell {
-        margin-inline: -4px;
-        padding: 12px;
+        margin-inline: 0;
+        padding: 14px;
       }
 
       .heatmap-frame {
-        grid-template-columns: 34px minmax(0, 1fr);
-        min-width: 0;
+        grid-template-columns: 40px minmax(0, 1fr);
+        gap: 10px;
       }
 
       .calendar-focus {
-        padding: 12px 12px 13px;
+        padding: 14px;
       }
 
       .focus-main {
@@ -809,14 +831,14 @@
 
       .focus-weekday,
       .focus-date {
-        min-height: 34px;
-        padding: 7px 12px;
+        min-height: 38px;
+        padding: 8px 13px;
       }
 
       .weekday-rail,
       .month-row,
       .legend {
-        font-size: 0.76rem;
+        font-size: 0.8rem;
       }
 
       .legend {
@@ -829,6 +851,11 @@
     }
 
     @media (max-width: 420px) {
+      :root {
+        --cell-size: 17px;
+        --cell-gap: 4px;
+      }
+
       .tracker-list {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
@@ -924,7 +951,7 @@
       <section class="panel">
         <h2 class="section-title">Log today</h2>
         <p class="section-copy">
-          Choose one result for today for each category. That is enough to keep the streak going.
+          Choose one result for the selected day for each category. That is enough to keep the streak going.
         </p>
         <div class="heatmap-shell">
           <p class="calendar-intro">One shared calendar. Each day cell has three bands for sugar, carbs, dairy, plus dots for fasting, coffee, and over eating.</p>
@@ -937,7 +964,7 @@
         <section class="panel date-box">
           <div class="date-label">Logging day</div>
           <div class="date-value" id="todayLabel"></div>
-          <p class="tiny">This page is set up for end-of-day check-ins, so the buttons update yesterday's date. If a friend opens it, they get their own private streaks in their own browser.</p>
+          <p class="tiny">This page defaults to yesterday for end-of-day check-ins, and you can tap any calendar day to edit it instead. If a friend opens it, they get their own private streaks in their own browser.</p>
         </section>
 
         <section class="share-card">
@@ -957,7 +984,9 @@
     const LEGACY_MIGRATION_KEY = "foodle-v2-migrated";
     const THEME_KEY = "foodle-theme";
     const DESKTOP_CALENDAR_WEEKS = 26;
-    const MOBILE_CALENDAR_WEEKS = 18;
+    const MOBILE_CALENDAR_WEEKS = 12;
+    const SMALL_MOBILE_CALENDAR_WEEKS = 10;
+    let selectedDateKey = keyForDate(logDate());
     const trackers = [
       {
         id: "sugar",
@@ -1012,7 +1041,7 @@
         label: "Over eating",
         accent: "overeating",
         mode: "count",
-        copy: "Optional yellow dot for days when you over ate.",
+        copy: "Optional red dot for days when you over ate.",
         countLabel: "over eating days",
         countNoun: "over eating day",
         actionGoodText: "Over ate yesterday",
@@ -1067,6 +1096,10 @@
       date.setHours(0, 0, 0, 0);
       date.setDate(date.getDate() - 1);
       return date;
+    }
+
+    function selectedLogDate() {
+      return dateFromKey(selectedDateKey);
     }
 
     function loadData() {
@@ -1136,6 +1169,9 @@
     }
 
     function currentCalendarWeeks() {
+      if (window.matchMedia("(max-width: 420px)").matches) {
+        return SMALL_MOBILE_CALENDAR_WEEKS;
+      }
       return window.matchMedia("(max-width: 640px)").matches
         ? MOBILE_CALENDAR_WEEKS
         : DESKTOP_CALENDAR_WEEKS;
@@ -1229,12 +1265,16 @@
 
     function trackerStatusText(tracker, status) {
       if (status === true) {
-        return tracker.statusGoodText || "Yesterday: success";
+        return (tracker.statusGoodText || "Selected day: success").replace(/^Yesterday:/, "Selected day:");
       }
       if (status === false) {
-        return tracker.statusBadText || "Yesterday: streak broken";
+        return (tracker.statusBadText || "Selected day: streak broken").replace(/^Yesterday:/, "Selected day:");
       }
-      return tracker.statusEmptyText || "Yesterday: not logged yet";
+      return (tracker.statusEmptyText || "Selected day: not logged yet").replace(/^Yesterday:/, "Selected day:");
+    }
+
+    function trackerActionText(text) {
+      return text.replace(/\s+yesterday$/i, "");
     }
 
     function trackerCountLabel(tracker) {
@@ -1256,11 +1296,10 @@
       return "not logged";
     }
 
-    function combinedCalendarFor(data) {
+    function combinedCalendarFor(data, activeDate) {
       const weeks = currentCalendarWeeks();
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const activeDate = logDate();
       const activeKey = keyForDate(activeDate);
       const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -1291,7 +1330,8 @@
           cells.push({
             weekIndex,
             dayIndex,
-            isToday: key === activeKey,
+            isSelected: key === activeKey,
+            key,
             title: [
               formatDate(date),
               ...trackers.map((tracker) => {
@@ -1369,7 +1409,7 @@
 
     function update() {
       const data = loadData();
-      const targetDate = logDate();
+      const targetDate = selectedLogDate();
 
       document.getElementById("todayLabel").textContent = formatDate(targetDate);
       document.getElementById("sharePreview").textContent = shareText(data);
@@ -1384,7 +1424,7 @@
       document.getElementById("heroCoffee").textContent = successCountFor(data, "coffee");
       document.getElementById("heroOvereating").textContent = successCountFor(data, "overeating");
 
-      const combinedCalendar = combinedCalendarFor(data);
+      const combinedCalendar = combinedCalendarFor(data, targetDate);
       document.getElementById("combinedCalendar").innerHTML = `
         <div class="calendar-focus">
           <span class="focus-kicker">Logging day</span>
@@ -1392,7 +1432,7 @@
             <span class="focus-weekday">${formatWeekday(combinedCalendar.activeDate)}</span>
             <span class="focus-date">${formatShortDate(combinedCalendar.activeDate)}</span>
           </div>
-          <span class="focus-note">The highlighted cell below is the date you are marking right now.</span>
+          <span class="focus-note">Tap any day below to choose which date you are marking right now.</span>
         </div>
         <div class="heatmap-frame">
           <div class="weekday-rail">
@@ -1410,8 +1450,11 @@
             </div>
                 <div class="combined-grid" style="grid-template-columns: repeat(${combinedCalendar.weeks}, var(--cell-size));">
                   ${combinedCalendar.cells.map((cell) => `
-                    <span
-                      class="combined-cell${cell.isToday ? " today" : ""}"
+                    <button
+                      class="combined-cell${cell.isSelected ? " selected" : ""}"
+                      type="button"
+                      data-date-key="${cell.key}"
+                      aria-label="${cell.title}"
                       style="grid-column:${cell.weekIndex + 1}; grid-row:${cell.dayIndex + 1};"
                       title="${cell.title}"
                     >
@@ -1423,7 +1466,7 @@
                       ${cell.fasting === "empty" ? "" : `<span class="combined-marker ${cell.fasting} track-fasting"></span>`}
                       ${cell.coffee === "empty" ? "" : `<span class="combined-marker ${cell.coffee} track-coffee"></span>`}
                       ${cell.overeating === "empty" ? "" : `<span class="combined-marker ${cell.overeating} track-overeating"></span>`}
-                    </span>
+                    </button>
                   `).join("")}
                 </div>
             <div class="legend">
@@ -1461,8 +1504,8 @@
         const isCounter = tracker.mode === "scheduled" || tracker.mode === "count";
         const primaryValue = isCounter ? successCountFor(data, tracker.id) : streakFor(data, tracker.id);
         const primaryLabel = isCounter ? trackerCountLabel(tracker) : "current streak";
-        const actionGoodText = tracker.actionGoodText || "Stayed clean yesterday";
-        const actionBadText = tracker.actionBadText || "Had some yesterday";
+        const actionGoodText = trackerActionText(tracker.actionGoodText || "Stayed clean yesterday");
+        const actionBadText = trackerActionText(tracker.actionBadText || "Had some yesterday");
         const secondaryText = isCounter
           ? `Last ${tracker.label.toLowerCase()}: ${lastSuccessDateFor(data, tracker.id, tracker.lastSuccessEmptyText)}`
           : `Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}`;
@@ -1497,11 +1540,17 @@
     document.addEventListener("click", (event) => {
       const button = event.target.closest("[data-action]");
       if (!button) {
+        const dateButton = event.target.closest("[data-date-key]");
+        if (!dateButton) {
+          return;
+        }
+        selectedDateKey = dateButton.dataset.dateKey;
+        update();
         return;
       }
 
       const data = loadData();
-      const targetDate = logDate();
+      const targetDate = selectedLogDate();
       const todayKey = keyForDate(targetDate);
       data.days[todayKey] = data.days[todayKey] || {};
 
