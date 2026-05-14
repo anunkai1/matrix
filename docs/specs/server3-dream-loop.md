@@ -384,7 +384,30 @@ Suggested contents:
 - whether stale-context warnings are required
 - which chats or scopes were notified
 
-### 2. Latest Report
+### 2. Read-Only Truth Status
+
+User-facing command:
+
+- `/truth_status`
+
+Purpose:
+
+- let a user inspect the current truth-alignment state for the current chat or scope
+
+The output should stay compact and operator-readable.
+
+Suggested fields:
+
+- last dream-loop run time
+- whether the last run succeeded or failed
+- whether truth changed on the last run
+- which watched truth files changed
+- whether this current chat or topic has a stale-context warning outstanding
+- whether `/refresh` has already been used in this chat or topic since the last truth change
+- short summary of what was aligned
+- unresolved items that were skipped because they needed human judgment
+
+### 3. Latest Report
 
 Suggested path:
 
@@ -402,7 +425,7 @@ Suggested contents:
 - what was updated
 - what still needs human attention
 
-### 3. History
+### 4. History
 
 Suggested path:
 
@@ -466,6 +489,69 @@ That means:
 
 This is how corrected truth reaches the live assistant behavior without hidden session loss.
 
+### Warning Scope
+
+The notification should not go to every possible chat.
+
+It should go to:
+
+- scopes with active persisted sessions
+- scopes with recent activity
+
+Recent activity window for the initial design:
+
+- last 7 days
+
+Initial rollout scope:
+
+- Architect first
+
+### Warning Frequency
+
+Do not keep repeating the same warning unnecessarily.
+
+Initial behavior:
+
+- one warning per truth change per scope
+- suppress repeated warnings until either:
+  - the user runs `/refresh`
+  - a later truth change creates a new warning condition
+
+### Warning Message
+
+The warning should be short and explicit.
+
+It should include:
+
+- that truth files changed
+- that carried session context may now be stale
+- the changed watched truth files
+- that the user can send `/refresh`
+
+Suggested message shape:
+
+`Truth files changed and this session may now carry stale context. Changed files: SERVER3_SUMMARY.md, LESSONS.md. Send /refresh if you want a fresh session aligned to the new truth.`
+
+## Refresh Command
+
+User-facing command:
+
+- `/refresh`
+
+Meaning:
+
+- clear the carried assistant session context for the current chat or topic
+- do not clear unrelated chats or topics
+- do not clear broad runtime state
+- do not clear model or engine overrides for the scope by default
+- make the next request start from the current truth baseline instead of the older carried context
+
+On success, the bridge should confirm clearly.
+
+Suggested success message:
+
+`Session context cleared for this topic. Next reply will start from current truth.`
+
 ## Daytime Behavior After Nightly Alignment
 
 The dream loop is the baseline refresh, not the only source of truth.
@@ -495,9 +581,49 @@ Likely supporting changes:
 
 - update watched truth files in `src/telegram_bridge/runtime_config.py`
 - add a user-facing `/refresh` command in the bridge command layer
+- add a user-facing `/truth_status` command in the bridge command layer
 - add stale-context notification delivery tied to watched truth-file changes
 - document the truth hierarchy in `ARCHITECT_INSTRUCTION.md`
 - add tests for watched-file warning behavior and dream-loop classification logic
+
+### Nightly Schedule
+
+Initial target schedule:
+
+- around `02:15 AEST`
+
+The timer should be placed so it does not fight with nearby nightly maintenance work if that becomes relevant later.
+
+### Dream Loop Edit Rights
+
+The dream loop may directly edit `SERVER3_SUMMARY.md` wherever edits are needed to align the file to truth.
+
+The intended rule is not section-based ownership.
+
+The intended rule is:
+
+- edit any section that must change to align the summary to current truth
+- do not rewrite the file casually when no truth mismatch exists
+
+### Commit And Push Behavior
+
+The dream loop is allowed to commit and push its tracked doc changes automatically.
+
+Initial intent:
+
+- when the dream loop makes a tracked file change that it is allowed to make
+- and the change verifies cleanly
+- it may commit and push that change to the repo automatically
+
+This is part of the initial design, not a later expansion.
+
+### Uncertain Mismatches
+
+If the dream loop cannot classify a mismatch confidently, it should:
+
+- skip the automatic correction
+- record the unresolved item
+- include it in the report and `/truth_status` output
 
 ## Safety Rules
 
@@ -517,15 +643,10 @@ The dream loop is working if:
 - stable docs stop drifting behind real code and runtime changes
 - users are warned when persistent sessions may now carry stale truth
 - `/refresh` gives users a clean way to realign a chat to the new truth baseline
+- `/truth_status` lets a user inspect the current alignment state of the chat or topic
 - daytime replies need fewer broad re-checks
 - temporary operational incidents are recorded without corrupting permanent docs
 - operators can inspect one daily report and see what was aligned
-
-## Open Questions
-
-- Should `SERVER3_SUMMARY.md` be partially auto-managed, or should a new dedicated truth summary file be added?
-- Which exact files belong in the watched truth set by default?
-- Should the dream loop only update files, or also send one daily Telegram alignment summary?
 
 ## Source Of Truth
 
