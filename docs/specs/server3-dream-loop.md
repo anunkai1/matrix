@@ -15,6 +15,7 @@ It explains:
 - what it updates
 - what it does not update
 - how it fits the current bridge, session, and runtime workflows
+- how stale-session warnings and `/refresh` fit into the design
 
 ## Purpose
 
@@ -24,6 +25,7 @@ The design is:
 
 - use current code and live runtime state as the primary truth
 - use one nightly alignment pass to refresh stable truth across days and sessions
+- warn users when truth changed in a way that may leave old carried context stale
 - keep daytime replies fast by using the nightly truth baseline unless a task depends on fresh live state
 
 This is a truth-maintenance system, not a new assistant runtime.
@@ -83,6 +85,7 @@ Its job is alignment, not open-ended automation.
 
 - Keep Architect aligned to the current system across days and sessions.
 - Reduce stale beliefs in persistent bridge sessions.
+- Make stale-context risk visible to users instead of silently clearing sessions.
 - Keep stable docs consistent with stable reality.
 - Keep temporary live health issues separate from permanent docs.
 - Avoid unnecessary live checks during normal daytime replies.
@@ -168,9 +171,9 @@ Current relevant pieces:
 - `ops/runtime_observer/runtime_observer.py`
   - background health snapshot and daily summary collector
 - `src/telegram_bridge/session_manager.py`
-  - persistent worker session reset logic when watched files change
+  - existing watched-file session handling that can be adapted for stale-context warnings
 - `src/telegram_bridge/bridge_runtime_setup.py`
-  - startup-time session reset logic when watched files changed before boot
+  - startup-time watched-file state handling that can be adapted for stale-context warnings
 
 The dream loop should consume those systems, not duplicate them.
 
@@ -233,7 +236,7 @@ Purpose:
 
 Purpose:
 
-- know whether session invalidation is needed after truth files change
+- know whether stale-context warning delivery is needed after truth files change
 
 ## What The Dream Loop Does Not Need To Scan
 
@@ -252,7 +255,7 @@ For each mismatch, the loop must answer four questions.
 1. Is this mismatch real?
 2. Is it structural or temporary?
 3. Which truth layer is supposed to hold this fact?
-4. Does the mismatch require session invalidation?
+4. Does the mismatch require stale-context warning delivery?
 
 ### If The Mismatch Is Structural
 
@@ -266,7 +269,7 @@ Action:
 
 - update the stable truth doc or summary file
 - record what changed and why
-- ensure watched truth state changes so stale sessions are reset
+- mark that stale-context warnings may need to be sent to active chats
 
 ### If The Mismatch Is Operational
 
@@ -293,6 +296,31 @@ Action:
 - do not promote the claim into truth
 - leave stable docs unchanged
 - rely on code/runtime truth
+
+## Stale Session Handling
+
+The system should not silently discard session context when truth files change.
+
+Instead, it should:
+
+1. detect that watched truth files changed
+2. detect that active chats may still be carrying older session context
+3. send a clear warning message to those chats
+4. let the user decide whether to drop the old context
+
+This keeps the system transparent.
+
+The user-facing command for dropping stale carried context should be:
+
+- `/refresh`
+
+The meaning of `/refresh` in this design is:
+
+- clear the carried session context for this chat or scope
+- keep the runtime alive
+- start the next request from the current truth baseline instead of the older carried context
+
+This is narrower than a broad global reset.
 
 ## How Alignment Is Achieved
 
@@ -322,7 +350,7 @@ Update the right layer:
 
 - structural drift -> stable summary docs
 - temporary operational issue -> nightly state report
-- stale session risk -> truth fingerprint change and next-request reset
+- stale session risk -> truth fingerprint change and stale-context warning eligibility
 
 ### 5. Persist
 
@@ -353,7 +381,8 @@ Suggested contents:
 - structural mismatches found
 - operational issues found
 - files updated
-- whether session invalidation is required
+- whether stale-context warnings are required
+- which chats or scopes were notified
 
 ### 2. Latest Report
 
@@ -402,23 +431,40 @@ Files that should usually not be updated automatically:
 
 `LESSONS.md` should only be updated when a real new validated lesson exists, not as part of normal nightly drift cleanup.
 
-## Session Invalidation
+## Watched Truth Files
 
-This is a key part of the design.
+These files define the currently watched truth set for stale-context warning purposes.
+
+Initial watched truth files:
+
+- `ARCHITECT_INSTRUCTION.md`
+- `SERVER3_SUMMARY.md`
+- `LESSONS.md`
+
+When one or more watched truth files change in a way that changes the truth fingerprint:
+
+- the system should consider long-lived carried context potentially stale
+- the system should notify affected chats
+- the user can choose to run `/refresh`
+
+The watched truth set can be expanded later when more memory layers exist.
+
+## Session Notification
 
 Updating truth files is not enough if persistent sessions still carry old beliefs.
 
-The current bridge already knows how to reset long-lived worker state when watched files change.
+But the design should not silently wipe those sessions.
 
-So the dream loop must be tied into that behavior.
+So the dream loop must be tied into a notification path.
 
 That means:
 
-- truth-defining files must be included in the watched file set
-- a nightly truth update must change the truth fingerprint
-- the next request should clear stale worker session context when needed
+- truth-defining files are watched
+- a nightly truth update changes the truth fingerprint
+- affected chats are notified that their carried context may now be stale
+- the notification tells them to use `/refresh` if they want a fresh session aligned to the new truth
 
-This is how corrected truth reaches the live assistant behavior instead of sitting only in files.
+This is how corrected truth reaches the live assistant behavior without hidden session loss.
 
 ## Daytime Behavior After Nightly Alignment
 
@@ -430,6 +476,7 @@ During the day:
 - if a user makes an unverified claim, it does not become truth
 - if the reply depends on fresh live state, do a small live check
 - otherwise use the nightly baseline plus current verified session changes
+- if a stale-context warning was sent, the user may choose `/refresh` before continuing
 
 The dream loop reduces future drift.
 
@@ -447,8 +494,10 @@ Suggested new files:
 Likely supporting changes:
 
 - update watched truth files in `src/telegram_bridge/runtime_config.py`
+- add a user-facing `/refresh` command in the bridge command layer
+- add stale-context notification delivery tied to watched truth-file changes
 - document the truth hierarchy in `ARCHITECT_INSTRUCTION.md`
-- add tests for watched-file reset behavior and dream-loop classification logic
+- add tests for watched-file warning behavior and dream-loop classification logic
 
 ## Safety Rules
 
@@ -458,6 +507,7 @@ The dream loop must:
 - never treat conversation text as truth by itself
 - not rewrite permanent docs for temporary health issues
 - not silently change broad policy docs
+- not silently drop user session context when truth files change
 - leave a durable record of every correction it makes
 
 ## Success Criteria
@@ -465,7 +515,8 @@ The dream loop must:
 The dream loop is working if:
 
 - stable docs stop drifting behind real code and runtime changes
-- persistent sessions stop carrying stale truth across daily boundaries
+- users are warned when persistent sessions may now carry stale truth
+- `/refresh` gives users a clean way to realign a chat to the new truth baseline
 - daytime replies need fewer broad re-checks
 - temporary operational incidents are recorded without corrupting permanent docs
 - operators can inspect one daily report and see what was aligned
@@ -475,7 +526,6 @@ The dream loop is working if:
 - Should `SERVER3_SUMMARY.md` be partially auto-managed, or should a new dedicated truth summary file be added?
 - Which exact files belong in the watched truth set by default?
 - Should the dream loop only update files, or also send one daily Telegram alignment summary?
-- Should manual approval be required for some classes of structural doc changes?
 
 ## Source Of Truth
 
