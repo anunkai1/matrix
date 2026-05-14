@@ -406,6 +406,7 @@ Suggested fields:
 - whether `/refresh` has already been used in this chat or topic since the last truth change
 - short summary of what was aligned
 - unresolved items that were skipped because they needed human judgment
+- one short global system line
 
 ### 3. Latest Report
 
@@ -419,10 +420,13 @@ Purpose:
 
 Suggested contents:
 
-- what was scanned
-- what matched
-- what drifted
-- what was updated
+- last run time
+- success or failure
+- whether truth changed
+- files changed
+- commit SHA if a push succeeded
+- warning count
+- unresolved items
 - what still needs human attention
 
 ### 4. History
@@ -517,6 +521,10 @@ Initial behavior:
   - the user runs `/refresh`
   - a later truth change creates a new warning condition
 
+Warning delivery rule:
+
+- send stale-context warnings only after truth updates and push both succeeded
+
 ### Warning Message
 
 The warning should be short and explicit.
@@ -582,9 +590,29 @@ Likely supporting changes:
 - update watched truth files in `src/telegram_bridge/runtime_config.py`
 - add a user-facing `/refresh` command in the bridge command layer
 - add a user-facing `/truth_status` command in the bridge command layer
+- add a manual “run now” command or entry point for the dream loop
 - add stale-context notification delivery tied to watched truth-file changes
 - document the truth hierarchy in `ARCHITECT_INSTRUCTION.md`
 - add tests for watched-file warning behavior and dream-loop classification logic
+
+### Execution Order
+
+The dream loop should run in a fixed order.
+
+Recommended order:
+
+1. scan truth sources
+2. compare observed truth against declared truth
+3. classify mismatches
+4. prepare edits
+5. verify edits
+6. write local state and report outputs
+7. commit tracked allowed changes
+8. push tracked allowed changes
+9. send daily Telegram summary
+10. send stale-context notices to affected chats
+
+Stale-context notices must happen after push succeeds, not before.
 
 ### Nightly Schedule
 
@@ -593,6 +621,29 @@ Initial target schedule:
 - around `02:15 AEST`
 
 The timer should be placed so it does not fight with nearby nightly maintenance work if that becomes relevant later.
+
+### Manual Run
+
+There should be a manual way to run the dream loop immediately.
+
+Purpose:
+
+- test the loop without waiting for the nightly timer
+- realign after major changes
+- verify behavior during rollout
+
+### Dry Run
+
+There should be a dry-run mode.
+
+Purpose:
+
+- show what the dream loop would change
+- show what it would report
+- do not edit files
+- do not commit
+- do not push
+- do not notify chats
 
 ### Dream Loop Edit Rights
 
@@ -616,6 +667,13 @@ Initial intent:
 - it may commit and push that change to the repo automatically
 
 This is part of the initial design, not a later expansion.
+
+If push fails:
+
+- attempt push again once
+- if push still fails, keep the local committed or edited change
+- report the failure in the daily summary
+- do not send stale-context notices yet
 
 ### Uncertain Mismatches
 
@@ -644,6 +702,7 @@ The dream loop is working if:
 - users are warned when persistent sessions may now carry stale truth
 - `/refresh` gives users a clean way to realign a chat to the new truth baseline
 - `/truth_status` lets a user inspect the current alignment state of the chat or topic
+- dry-run and manual-run paths make rollout and debugging practical
 - daytime replies need fewer broad re-checks
 - temporary operational incidents are recorded without corrupting permanent docs
 - operators can inspect one daily report and see what was aligned
