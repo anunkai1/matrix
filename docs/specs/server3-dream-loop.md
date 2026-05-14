@@ -23,9 +23,11 @@ The goal is to keep Architect aligned to reality without forcing expensive check
 
 The design is:
 
+- use structured machine-readable truth state as the primary maintained truth target
 - use current code and live runtime state as the primary truth
 - use one nightly alignment pass to refresh stable truth across days and sessions
 - warn users when truth changed in a way that may leave old carried context stale
+- keep human summary files as a secondary rendered explanation layer
 - keep daytime replies fast by using the nightly truth baseline unless a task depends on fresh live state
 
 This is a truth-maintenance system, not a new assistant runtime.
@@ -48,7 +50,7 @@ Examples of drift:
 - a long-lived session still carries older beliefs after files changed
 - an operator statement in conversation is wrong, but it sounds confident
 
-The system needs a repeatable way to pull declared truth back toward actual truth.
+The system needs a repeatable way to pull recorded truth back toward actual truth.
 
 ## Core Principle
 
@@ -60,22 +62,71 @@ Truth comes from:
 2. current live runtime state
 3. direct system signals such as status, logs, tests, and failures
 4. verified changes made during the current working flow
-5. saved summary truth
+5. saved structured truth state
 6. older memory and older conversation
 
 A statement is not true because it was just said.
 
 It is true when the system shows it is true.
 
+## Primary And Secondary Truth
+
+The dream-loop design should separate:
+
+1. primary structured truth state
+2. secondary human-readable explanation
+
+### Primary Structured Truth State
+
+This is the machine-readable self-model of Server3.
+
+It should contain exact facts such as:
+
+- what runtimes exist
+- what services are active
+- what capabilities are configured
+- what recent health signals exist
+- which truth files changed
+- which scopes may now have stale carried context
+
+This is the main alignment target.
+
+The dream loop should primarily keep:
+
+`actual system state <-> structured truth state`
+
+aligned.
+
+### Secondary Human Summary Layer
+
+This is the human-readable explanation of the structured truth.
+
+Examples:
+
+- `SERVER3_SUMMARY.md`
+- dream-loop markdown reports
+- short Telegram alignment summaries
+
+These are important, but they are not the primary truth store.
+
+They should be derived from or updated from the structured truth state, not treated as the deepest truth source.
+
+The dream loop should secondarily keep:
+
+`structured truth state <-> human summary layer`
+
+aligned.
+
 ## What The Dream Loop Is
 
 The dream loop is a nightly alignment pass that:
 
 1. inspects the real system
-2. compares declared truth against observed truth
-3. classifies each mismatch
-4. updates the correct truth layer
-5. records a clean daily baseline for the next day
+2. updates structured truth state from observed truth
+3. compares rendered or declared summaries against structured truth
+4. classifies each mismatch
+5. updates the correct truth layer
+6. records a clean daily baseline for the next day
 
 It is not meant to solve every live operational problem at night.
 
@@ -84,9 +135,10 @@ Its job is alignment, not open-ended automation.
 ## Goals
 
 - Keep Architect aligned to the current system across days and sessions.
+- Make structured truth state the main durable self-model for Server3.
 - Reduce stale beliefs in persistent bridge sessions.
 - Make stale-context risk visible to users instead of silently clearing sessions.
-- Keep stable docs consistent with stable reality.
+- Keep human-readable summary files consistent with structured truth and stable reality.
 - Keep temporary live health issues separate from permanent docs.
 - Avoid unnecessary live checks during normal daytime replies.
 - Make drift visible and auditable.
@@ -114,7 +166,8 @@ Examples:
 - runtime manifest
 - service definitions
 - capability docs
-- stable summary docs
+- structured truth-state outputs
+- rendered summary docs
 
 Structural truth changes when the system is intentionally changed.
 
@@ -130,7 +183,7 @@ Examples:
 - recent restart bursts
 - temporary degraded health
 
-Operational truth is often temporary and should not automatically rewrite stable docs.
+Operational truth is often temporary and should not automatically rewrite rendered summary docs.
 
 ### 3. Session Truth
 
@@ -177,6 +230,27 @@ Current relevant pieces:
 
 The dream loop should consume those systems, not duplicate them.
 
+## Truth State Outputs
+
+The dream loop should produce structured truth outputs first.
+
+Suggested primary outputs:
+
+- `/var/lib/server3-dream-loop/latest_truth_state.json`
+- `/var/lib/server3-dream-loop/latest_health_state.json`
+- `/var/lib/server3-dream-loop/history.jsonl`
+
+Suggested secondary outputs:
+
+- `/var/lib/server3-dream-loop/latest_report.md`
+- `SERVER3_SUMMARY.md`
+- Telegram alignment summaries
+
+Meaning:
+
+- JSON truth and health state are primary maintained truth artifacts
+- markdown and summary files are secondary explanation artifacts
+
 ## What The Dream Loop Scans
 
 The nightly pass should scan a small set of high-value truth sources.
@@ -191,7 +265,7 @@ The nightly pass should scan a small set of high-value truth sources.
 Purpose:
 
 - know the current declared rules
-- know the current summary claims
+- know the current summary claims and rule claims that may need rendering alignment
 - know the current collaboration guidance
 
 ### B. Runtime Shape
@@ -220,12 +294,11 @@ Purpose:
 
 - current branch
 - dirty tracked files
-- selected file existence checks
-- selected config/path checks where capabilities depend on them
+- named targeted checks from the dream-loop check registry
 
 Purpose:
 
-- know whether local reality differs from docs
+- know whether local reality differs from structured truth or rendered explanation files
 - know whether there are uncommitted changes that already altered truth
 
 ### E. Session Risk
@@ -237,6 +310,151 @@ Purpose:
 Purpose:
 
 - know whether stale-context warning delivery is needed after truth files change
+
+### F. Structured Truth State
+
+- current dream-loop truth state files
+- current dream-loop health state files
+
+Purpose:
+
+- know what the machine-readable self-model currently says
+- compare that state against observed reality
+- compare secondary summary outputs against the structured truth state
+
+## Dream Loop Check Registry
+
+To keep the implementation unambiguous, the dream loop should not freely decide what files to inspect.
+
+It should use a declared check registry.
+
+The registry is the source that defines:
+
+- what can be scanned
+- why it can be scanned
+- when it should be scanned
+- what command or file proves the truth
+- what counts as mismatch
+- where correction goes
+
+The registry should primarily describe how observed reality populates structured truth state.
+
+It should secondarily describe how structured truth state updates human-readable summary outputs.
+
+Without this registry, “targeted scans” are too vague.
+
+### Registry Shape
+
+Each check entry should define:
+
+- `check_id`
+- `truth_area`
+- `mode`
+- `trigger`
+- `inputs`
+- `mismatch_rule`
+- `correction_target`
+- `severity`
+
+Meaning:
+
+- `check_id`
+  - stable identifier for the check
+- `truth_area`
+  - what kind of truth is being validated
+- `mode`
+  - `always` or `conditional`
+- `trigger`
+  - when a conditional check should run
+- `inputs`
+  - files or commands used by the check
+- `mismatch_rule`
+  - what disagreement means the truth is not aligned
+- `correction_target`
+  - where the result should be written or corrected
+- `severity`
+  - how important the mismatch is
+
+### Registry Logic
+
+The dream loop should use two scan sets.
+
+#### 1. Fixed Checks
+
+These run every night.
+
+Examples:
+
+- watched truth files
+- runtime manifest
+- runtime status
+- runtime observer summary
+
+#### 2. Named Conditional Checks
+
+These run only when their trigger condition is true.
+
+Examples:
+
+- if the rendered summary claims a capability
+- if a runtime is active in the manifest
+- if yesterday's report flagged an area
+- if the operator explicitly enabled a check
+- if a watched truth file changed for that truth area
+
+The loop should not improvise new scan targets outside the registry.
+
+## Runtime Shape Checks
+
+Runtime shape should be validated by a fixed, explicit set of checks.
+
+Initial runtime shape sources:
+
+- `infra/server3-runtime-manifest.json`
+- `python3 ops/server3_runtime_status.py --json`
+- matching `infra/systemd/*.service` and `*.timer` files for runtimes in scope
+
+These answer:
+
+- what runtimes should exist
+- what units should exist
+- what the system currently reports as active, inactive, or failed
+
+### Runtime Shape Files In Scope
+
+The initial runtime shape file set should include:
+
+- `infra/server3-runtime-manifest.json`
+- `ops/server3_runtime_status.py`
+- `infra/systemd/telegram-architect-bridge.service`
+- `infra/systemd/server3-runtime-observer.service`
+- `infra/systemd/server3-runtime-observer.timer`
+
+Additional systemd unit files may be checked when:
+
+- the manifest includes them in the Architect scope
+- the structured truth or rendered summary claims behavior that depends on them
+- a named conditional check explicitly references them
+
+### Targeted Capability Checks
+
+Targeted capability checks should also come from the registry.
+
+Examples:
+
+- `telegram_context_routing_truth`
+  - validates current Telegram target-context behavior
+  - input source: `src/telegram_bridge/message_inputs.py`
+- `policy_watch_truth`
+  - validates watched truth-file behavior
+  - input source: `src/telegram_bridge/runtime_config.py`
+- `observer_summary_truth`
+  - validates observer summary and alert behavior
+  - input source: `ops/runtime_observer/runtime_observer.py`
+
+These are not “free scans.”
+
+They are predeclared named checks.
 
 ## What The Dream Loop Does Not Need To Scan
 
@@ -261,13 +479,14 @@ For each mismatch, the loop must answer four questions.
 
 Examples:
 
-- summary doc says a runtime works one way, but code or manifest says otherwise
+- rendered summary says a runtime works one way, but structured truth or code says otherwise
 - capability docs name the wrong current behavior
-- a summary file is stale after a deliberate code/config change
+- a rendered summary file is stale after a deliberate code/config change
 
 Action:
 
-- update the stable truth doc or summary file
+- update structured truth state first
+- then update any rendered stable truth doc or summary file that is now out of date
 - record what changed and why
 - mark that stale-context warnings may need to be sent to active chats
 
@@ -281,8 +500,8 @@ Examples:
 
 Action:
 
-- write it into the nightly state report
-- do not rewrite permanent summary docs just because of a temporary health issue
+- write it into structured health state and the nightly report
+- do not rewrite permanent rendered summary docs just because of a temporary health issue
 
 ### If The Mismatch Is Only A Conversation Claim
 
@@ -332,7 +551,7 @@ Collect the current observed truth from code, manifest, status commands, and hea
 
 ### 2. Compare
 
-Compare observed truth against declared truth in the summary and policy files.
+Compare observed truth against structured truth state first, then compare rendered summaries against structured truth state.
 
 ### 3. Classify
 
@@ -348,8 +567,8 @@ Decide whether each mismatch is:
 
 Update the right layer:
 
-- structural drift -> stable summary docs
-- temporary operational issue -> nightly state report
+- structural drift -> structured truth state first, then rendered summary docs
+- temporary operational issue -> structured health state and nightly report
 - stale session risk -> truth fingerprint change and stale-context warning eligibility
 
 ### 5. Persist
@@ -358,17 +577,17 @@ Write the results in machine-readable and human-readable form.
 
 ## Outputs
 
-The loop should write three main outputs.
+The loop should write primary structured outputs and secondary explanation outputs.
 
-### 1. Latest State
+### 1. Latest Truth State
 
 Suggested path:
 
-- `/var/lib/server3-dream-loop/latest_state.json`
+- `/var/lib/server3-dream-loop/latest_truth_state.json`
 
 Purpose:
 
-- machine-readable nightly baseline
+- primary machine-readable truth baseline
 - input for future automation or status commands
 
 Suggested contents:
@@ -377,14 +596,34 @@ Suggested contents:
 - timezone
 - truth sources scanned
 - runtime status summary
+- normalized runtime truth facts
+- normalized capability truth facts
+- normalized watched-file truth facts
+- normalized stale-context warning facts
+- files updated
+- commit and push results
+
+### 2. Latest Health State
+
+Suggested path:
+
+- `/var/lib/server3-dream-loop/latest_health_state.json`
+
+Purpose:
+
+- primary machine-readable health and pain baseline
+
+Suggested contents:
+
+- observed timestamp
+- timezone
 - observer summary
-- structural mismatches found
 - operational issues found
 - files updated
 - whether stale-context warnings are required
 - which chats or scopes were notified
 
-### 2. Read-Only Truth Status
+### 3. Read-Only Truth Status
 
 User-facing command:
 
@@ -408,7 +647,7 @@ Suggested fields:
 - unresolved items that were skipped because they needed human judgment
 - one short global system line
 
-### 3. Latest Report
+### 4. Latest Report
 
 Suggested path:
 
@@ -416,7 +655,7 @@ Suggested path:
 
 Purpose:
 
-- human-readable nightly report
+- human-readable explanation of the current structured truth and health state
 
 Suggested contents:
 
@@ -429,7 +668,7 @@ Suggested contents:
 - unresolved items
 - what still needs human attention
 
-### 4. History
+### 5. History
 
 Suggested path:
 
@@ -441,7 +680,9 @@ Purpose:
 
 ## Which Files Should Be Updated
 
-The dream loop should be conservative.
+The dream loop should be conservative about human-readable files.
+
+Its primary write target should be structured truth and health state.
 
 Files that can reasonably be updated by the loop:
 
@@ -569,7 +810,7 @@ During the day:
 - if code or runtime state was just changed and verified, that fresh truth wins
 - if a user makes an unverified claim, it does not become truth
 - if the reply depends on fresh live state, do a small live check
-- otherwise use the nightly baseline plus current verified session changes
+- otherwise use the structured nightly truth baseline plus current verified session changes
 - if a stale-context warning was sent, the user may choose `/refresh` before continuing
 
 The dream loop reduces future drift.
@@ -656,6 +897,8 @@ The intended rule is:
 - edit any section that must change to align the summary to current truth
 - do not rewrite the file casually when no truth mismatch exists
 
+In this design, `SERVER3_SUMMARY.md` is a secondary rendered explanation layer, not the primary truth store.
+
 ### Commit And Push Behavior
 
 The dream loop is allowed to commit and push its tracked doc changes automatically.
@@ -698,7 +941,8 @@ The dream loop must:
 
 The dream loop is working if:
 
-- stable docs stop drifting behind real code and runtime changes
+- rendered summary docs stop drifting behind structured truth and real code/runtime changes
+- structured truth state stays aligned to real code and runtime changes
 - users are warned when persistent sessions may now carry stale truth
 - `/refresh` gives users a clean way to realign a chat to the new truth baseline
 - `/truth_status` lets a user inspect the current alignment state of the chat or topic
