@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-05-14 (AEST, +10:00)
+Last updated: 2026-05-15 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
@@ -21,6 +21,7 @@ Last updated: 2026-05-14 (AEST, +10:00)
 - Server3 state resilience now uses a monthly quiesced backup path (`server3-state-backup.service` / `server3-state-backup.timer`) that snapshots rebuild-critical host/app/runtime state to `/srv/external/server3-backups/state`; the Arr media payload stays on the external data disk and is intentionally excluded.
 
 ## Recent Changes (Rolling Max 8)
+- 2026-05-15: runtime observer now classifies Telegram poll incidents by outage bursts/duration instead of raw retry-attempt totals, and WhatsApp reconnect alerts now include close status-code context (for example `428`, `503`) to make transport instability easier to diagnose.
 - 2026-05-10: added English TTS voice replies via `ops/telegram-voice/tts_english.sh`; the bridge can now return Telegram voice notes through the existing `sendVoice` pipeline.
 - 2026-05-05: finished the shared-bridge packaging/refactor cleanup (`pyproject.toml`, package `__init__.py` files, reusable `env_parser.py`, split `engines/` modules) and removed the old SQLite memory-engine codepath/systemd leftovers.
 - 2026-04-30: removed `venice` from the user-facing `/engine` list while keeping it available as `PI_PROVIDER=venice`.

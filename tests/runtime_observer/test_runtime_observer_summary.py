@@ -62,7 +62,7 @@ def test_operator_summary_line_healthy_with_warning_spikes() -> None:
     }
     text = runtime_observer.format_summary(_summary_with_kpis(kpis))
     assert text.endswith(
-        "Summary: system is healthy overall, but you had intermittent Telegram edit-400 spikes, some restarts that triggered warnings."
+        "Summary: system is healthy overall, but you had intermittent Telegram edit-400 spikes."
     )
 
 

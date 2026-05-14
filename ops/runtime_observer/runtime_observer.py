@@ -197,6 +197,18 @@ def collect_error_descriptions(
     return descriptions
 
 
+def parse_iso_datetime(value: object) -> Optional[datetime]:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 @dataclass(frozen=True)
 class Threshold:
     warn: float
@@ -313,11 +325,96 @@ def load_telegram_events(since_dt: datetime) -> List[Dict[str, object]]:
     return events
 
 
-def count_wa_reconnects(since_dt: datetime, path: Path) -> int:
+def summarize_telegram_retry_bursts(
+    rows: Iterable[Dict[str, object]],
+) -> Dict[str, object]:
+    relevant_rows: List[Tuple[datetime, Dict[str, object]]] = []
+    raw_retry_attempts = 0
+    for row in rows:
+        if row.get("method") != "getUpdates":
+            continue
+        event_name = row.get("event")
+        if event_name not in {
+            "bridge.telegram_api_retry_scheduled",
+            "bridge.telegram_api_failed",
+            "bridge.telegram_api_retry_succeeded",
+        }:
+            continue
+        ts = parse_iso_datetime(row.get("ts"))
+        if ts is None:
+            continue
+        if event_name == "bridge.telegram_api_retry_scheduled":
+            raw_retry_attempts += 1
+        relevant_rows.append((ts, row))
+
+    relevant_rows.sort(key=lambda item: item[0])
+    bursts: List[Dict[str, object]] = []
+    current: Optional[Dict[str, object]] = None
+
+    for ts, row in relevant_rows:
+        event_name = str(row.get("event"))
+        if event_name == "bridge.telegram_api_retry_succeeded":
+            if current is not None:
+                current["last_ts"] = ts
+                current["recovered_at"] = ts
+                bursts.append(current)
+                current = None
+            continue
+
+        if current is None:
+            current = {
+                "started_at": ts,
+                "last_ts": ts,
+                "recovered_at": None,
+                "error_descriptions": [],
+            }
+        else:
+            current["last_ts"] = ts
+
+        description = normalize_error_description(row.get("error_description"))
+        if (
+            description
+            and isinstance(current.get("error_descriptions"), list)
+            and description not in current["error_descriptions"]
+        ):
+            current["error_descriptions"].append(description)
+
+    if current is not None:
+        bursts.append(current)
+
+    burst_summaries: List[Dict[str, object]] = []
+    for burst in bursts:
+        started_at = burst["started_at"]
+        ended_at = burst.get("recovered_at") or burst["last_ts"]
+        duration_seconds = max(0.0, (ended_at - started_at).total_seconds())
+        burst_summaries.append(
+            {
+                "started_at": started_at.isoformat(),
+                "ended_at": ended_at.isoformat(),
+                "recovered": burst.get("recovered_at") is not None,
+                "duration_seconds": round(duration_seconds, 3),
+                "error_descriptions": burst.get("error_descriptions", []),
+            }
+        )
+
+    max_burst_duration_seconds = max(
+        (float(burst["duration_seconds"]) for burst in burst_summaries),
+        default=0.0,
+    )
+    return {
+        "burst_count": len(burst_summaries),
+        "raw_retry_attempts": raw_retry_attempts,
+        "max_burst_duration_seconds": round(max_burst_duration_seconds, 3),
+        "bursts": burst_summaries,
+    }
+
+
+def summarize_wa_reconnects(since_dt: datetime, path: Path) -> Dict[str, object]:
     if not path.exists():
-        return 0
+        return {"count": 0, "status_codes": []}
     since_ms = int(since_dt.timestamp() * 1000)
     count = 0
+    status_code_counts: Dict[int, int] = {}
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
         for raw in handle:
             line = raw.strip()
@@ -337,7 +434,21 @@ def count_wa_reconnects(since_dt: datetime, path: Path) -> int:
             if record.get("shouldReconnect") is False:
                 continue
             count += 1
-    return count
+            code = safe_int(record.get("statusCode"), default=-1)
+            if code >= 0:
+                status_code_counts[code] = status_code_counts.get(code, 0) + 1
+    top_codes = [
+        f"{code}x{code_count}"
+        for code, code_count in sorted(
+            status_code_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:3]
+    ]
+    return {"count": count, "status_codes": top_codes}
+
+
+def count_wa_reconnects(since_dt: datetime, path: Path) -> int:
+    return safe_int(summarize_wa_reconnects(since_dt, path).get("count"), default=0)
 
 
 def build_snapshot(now_dt: datetime) -> Dict[str, object]:
@@ -420,23 +531,34 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
     except Exception as exc:  # pragma: no cover - operational fallback
         warnings.append(f"telegram-events-unavailable:{exc}")
 
-    retry_count = sum(
-        1
-        for row in telegram_events
-        if row.get("event") == "bridge.telegram_api_retry_scheduled"
+    retry_summary = summarize_telegram_retry_bursts(telegram_events)
+    retry_count = safe_int(retry_summary.get("raw_retry_attempts"), default=0)
+    retry_burst_count = safe_int(retry_summary.get("burst_count"), default=0)
+    max_burst_duration_seconds = float(
+        retry_summary.get("max_burst_duration_seconds") or 0.0
     )
     retry_descriptions = collect_error_descriptions(
         telegram_events,
         event_name="bridge.telegram_api_retry_scheduled",
     )
-    retry_threshold = Threshold(warn=6.0, critical=15.0)
+    if retry_burst_count >= 2 or max_burst_duration_seconds >= 180.0:
+        retry_severity = "critical"
+    elif retry_burst_count >= 1 and (
+        max_burst_duration_seconds >= 30.0 or retry_count >= 6
+    ):
+        retry_severity = "warn"
+    else:
+        retry_severity = "ok"
     telegram_retry_kpi = {
-        "severity": retry_threshold.classify(float(retry_count)),
+        "severity": retry_severity,
         "window": "15m",
-        "warn_threshold": 6,
-        "critical_threshold": 15,
-        "count_last_15m": retry_count,
+        "warn_threshold": 1,
+        "critical_threshold": 2,
+        "count_last_15m": retry_burst_count,
+        "raw_retry_attempts_last_15m": retry_count,
+        "max_burst_duration_seconds": round(max_burst_duration_seconds, 3),
         "error_descriptions": retry_descriptions,
+        "recent_bursts": retry_summary.get("bursts", [])[:3],
     }
 
     edit_attempts = 0
@@ -526,8 +648,13 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
 
     wa_since = now_dt - timedelta(hours=1)
     wa_reconnects = 0
+    wa_status_codes: List[str] = []
     try:
-        wa_reconnects = count_wa_reconnects(wa_since, WA_RUNTIME_LOG)
+        wa_summary = summarize_wa_reconnects(wa_since, WA_RUNTIME_LOG)
+        wa_reconnects = safe_int(wa_summary.get("count"), default=0)
+        raw_codes = wa_summary.get("status_codes")
+        if isinstance(raw_codes, list):
+            wa_status_codes = [str(item) for item in raw_codes if isinstance(item, str)]
     except Exception as exc:  # pragma: no cover - operational fallback
         warnings.append(f"wa-reconnect-unavailable:{exc}")
         wa_reconnects = -1
@@ -541,6 +668,7 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         "warn_threshold": 4,
         "critical_threshold": 10,
         "count_last_hour": wa_reconnects,
+        "status_codes": wa_status_codes,
         "log_path": str(WA_RUNTIME_LOG),
     }
 
@@ -714,8 +842,12 @@ def format_kpi_alert_line(name: str, metric: Dict[str, object]) -> str:
             f"{metric.get('max_restarts_per_service_last_hour', '-')}{affected_suffix}"
         )
     if name == "telegram_retry_rate":
+        raw_attempts = metric.get("raw_retry_attempts_last_15m", metric.get("count_last_15m", "-"))
+        max_burst_seconds = metric.get("max_burst_duration_seconds", "-")
         return (
-            f"- {name}: {severity} count_last_15m={metric.get('count_last_15m', '-')}"
+            f"- {name}: {severity} bursts_last_15m={metric.get('count_last_15m', '-')}"
+            f" raw_attempts_last_15m={raw_attempts}"
+            f" max_burst_seconds={max_burst_seconds}"
             f"{format_description_suffix(metric.get('error_descriptions'))}"
         )
     if name == "telegram_edit_400_rate":
@@ -728,7 +860,16 @@ def format_kpi_alert_line(name: str, metric: Dict[str, object]) -> str:
             f"{format_description_suffix(metric.get('error_descriptions'))}"
         )
     if name == "wa_reconnect_rate":
-        return f"- {name}: {severity} count_last_hour={metric.get('count_last_hour', '-')}"
+        codes = metric.get("status_codes")
+        code_suffix = (
+            f" status_codes={','.join(codes)}"
+            if isinstance(codes, list) and codes
+            else ""
+        )
+        return (
+            f"- {name}: {severity} count_last_hour={metric.get('count_last_hour', '-')}"
+            f"{code_suffix}"
+        )
     if name == "request_fail_rate":
         return (
             f"- {name}: {severity} rate={format_percent(metric.get('rate_percent'))} "
@@ -908,7 +1049,9 @@ def format_status(snapshot: Dict[str, object]) -> str:
         ),
         (
             "telegram_retry_rate: "
-            f"{retry['severity']} count_last_15m={retry['count_last_15m']}"
+            f"{retry['severity']} bursts_last_15m={retry['count_last_15m']}"
+            f" raw_attempts_last_15m={retry.get('raw_retry_attempts_last_15m', '-')}"
+            f" max_burst_seconds={retry.get('max_burst_duration_seconds', '-')}"
             f"{format_description_suffix(retry.get('error_descriptions'))}"
         ),
         (
@@ -922,6 +1065,7 @@ def format_status(snapshot: Dict[str, object]) -> str:
         (
             "wa_reconnect_rate: "
             f"{wa['severity']} count_last_hour={wa['count_last_hour']} "
+            f"status_codes={','.join(wa['status_codes']) if wa.get('status_codes') else '-'} "
             f"log_path={wa['log_path']}"
         ),
         (
