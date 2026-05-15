@@ -19,7 +19,11 @@ It explains:
 
 ## Purpose
 
-The goal is to keep Architect aligned to reality without forcing expensive checks on every reply.
+The goal is to make actual system truth and maintained machine truth state converge, with human-readable explanation only as a secondary rendered effect.
+
+The desired end state is explicit: actual code/runtime truth should align with structured truth state, and explainer files should derive from that state instead of competing with it.
+
+The core maintenance target is `actual system state <-> structured truth state`.
 
 The design is:
 
@@ -134,6 +138,7 @@ Its job is alignment, not open-ended automation.
 
 ## Goals
 
+- Align actual system state <-> structured truth state.
 - Keep Architect aligned to the current system across days and sessions.
 - Make structured truth state the main durable self-model for Server3.
 - Reduce stale beliefs in persistent bridge sessions.
@@ -250,6 +255,104 @@ Meaning:
 
 - JSON truth and health state are primary maintained truth artifacts
 - markdown and summary files are secondary explanation artifacts
+
+## Machine State Split
+
+V1 should keep three machine-facing records separate and non-overlapping.
+
+### 1. Truth State
+
+Truth state is what the system is.
+
+It is the structured machine self-model and should only contain stable or intentionally updated facts about the Server3 system.
+
+Examples:
+
+- declared runtime inventory
+- capability facts
+- watched truth-file fingerprints
+- stale-context risk markers that reflect current truth conditions
+
+Truth state should not store transient pain, incident detail, or per-run bookkeeping.
+It is the answer to `what is the system?`.
+
+### 2. Health State
+
+Health state is the current pain or recent operational condition.
+
+It should capture whether the system is healthy, degraded, unstable, or recently failed.
+
+Examples:
+
+- recent service failures
+- retry spikes
+- degraded observer signals
+- temporary operational warnings
+
+Health state should not become the canonical record of what the system is or replace truth state.
+It is the answer to `how is the system doing?`.
+
+### 3. Run State
+
+Run state is what the loop did.
+
+It records the execution metadata for a specific nightly pass so operators can audit the run itself.
+
+Examples:
+
+- run start and end timestamps
+- exit status
+- checks executed
+- files updated
+- warnings emitted
+
+Run state should not be treated as machine truth or health truth. It is bookkeeping about the alignment pass.
+It is the answer to `what did the loop do?`.
+
+The key boundary is:
+
+- truth state answers `what is the system?`
+- health state answers `how is the system doing?`
+- run state answers `what did the loop do?`
+
+The split is intentionally strict:
+
+- truth state owns stable machine facts and durable self-model data
+- health state owns pain, degradation, and recent operational condition
+- run state owns loop execution metadata, audit trail data, and pass-specific bookkeeping
+- none of the three should be used as a substitute for the others
+
+## V1 Scope
+
+The first implementation slice should stay tightly bounded.
+
+V1 is only about a bounded runner, in this execution order:
+
+1. dry-run mode that scans, normalizes, classifies, and emits truth, health, and report outputs without side effects
+2. manual run that executes the same bounded runner on demand for rollout and debugging
+3. later automation that schedules the bounded runner nightly once the dry-run and manual run paths are stable
+
+V1 is only about:
+
+- producing and maintaining `latest_truth_state.json`
+- producing and maintaining `latest_health_state.json`
+- producing and maintaining run metadata for each loop pass
+- producing a conservative `latest_report.md` as a rendered explanation of those machine-readable states
+- keeping the scope centered on machine truth first, with human-readable output strictly secondary
+
+V1 is not the full dream-loop system.
+
+It should not expand into:
+
+- broad repo-wide cleanup
+- automatic maintenance of every document in the repository
+- automatic summary rewrites except where needed to render the report layer
+- commits or pushes as a required part of v1
+- open-ended nightly automation outside the bounded truth and health outputs
+- open-ended nightly automation beyond the declared truth and health outputs
+- generalized refactoring of session, bridge, or runtime systems
+
+Any later behavior that touches stale-session delivery, `/refresh`, `/truth_status`, commit/push automation, or wider summary maintenance should be treated as follow-on scope unless it is strictly needed to support the three v1 artifacts above.
 
 ## What The Dream Loop Scans
 
@@ -404,6 +507,39 @@ Examples:
 
 The loop should not improvise new scan targets outside the registry.
 
+For v1, the registry should be narrow enough to support the primary machine truth and health outputs plus the conservative report layer.
+
+### Initial Checks For Affordable Alignment
+
+V1 should start with a small registry of high-signal checks that move the structured truth state toward reality without turning the nightly pass into a broad repo scan.
+
+Required initial checks:
+
+- `truth_files_fingerprint`
+  - purpose: detect whether watched truth files changed and whether carried context may now be stale
+  - inputs: `ARCHITECT_INSTRUCTION.md`, `SERVER3_SUMMARY.md`, `LESSONS.md`
+  - correction target: truth fingerprint and stale-context eligibility in structured truth state
+- `runtime_manifest_vs_status`
+  - purpose: compare declared runtime inventory with live runtime status
+  - inputs: `infra/server3-runtime-manifest.json`, `python3 ops/server3_runtime_status.py --json`
+  - correction target: runtime shape facts in structured truth state
+- `runtime_observer_truth`
+  - purpose: validate the observer snapshot and summary layer against current operational reality
+  - inputs: `python3 ops/runtime_observer/runtime_observer.py status --json`, `python3 ops/runtime_observer/runtime_observer.py summary --hours 24 --json`
+  - correction target: health state and observer-derived truth in structured truth state
+- `policy_watch_truth`
+  - purpose: confirm watched truth-file behavior remains aligned with the current policy
+  - inputs: `src/telegram_bridge/runtime_config.py`, `src/telegram_bridge/session_manager.py`, `src/telegram_bridge/bridge_runtime_setup.py`
+  - correction target: watched-file truth and stale-context trigger rules
+- `telegram_context_routing_truth`
+  - purpose: validate that Telegram context routing still matches the declared bridge behavior
+  - inputs: `src/telegram_bridge/message_inputs.py`, `src/telegram_bridge/session_manager.py`
+  - correction target: session-routing facts in structured truth state
+
+These checks are the first concrete alignment slice because they cover the highest-signal boundaries between declared truth, live runtime status, observer truth, watched-file behavior, and context routing.
+
+Anything beyond these checks should be added only when it is clearly justified by a new truth boundary, a recurring mismatch, or a direct dependency of the primary truth or health outputs.
+
 ## Runtime Shape Checks
 
 Runtime shape should be validated by a fixed, explicit set of checks.
@@ -442,6 +578,15 @@ Targeted capability checks should also come from the registry.
 
 Examples:
 
+- `truth_files_fingerprint`
+  - validates whether the watched truth set changed in a way that should trigger stale-context handling
+  - input source: `ARCHITECT_INSTRUCTION.md`, `SERVER3_SUMMARY.md`, `LESSONS.md`
+- `runtime_manifest_vs_status`
+  - validates that the declared runtime manifest matches the live runtime status shape
+  - input source: `infra/server3-runtime-manifest.json`, `python3 ops/server3_runtime_status.py --json`
+- `runtime_observer_truth`
+  - validates observer truth against the current runtime state and health snapshots
+  - input source: `python3 ops/runtime_observer/runtime_observer.py status --json`, `python3 ops/runtime_observer/runtime_observer.py summary --hours 24 --json`, current observer snapshots from the state directory
 - `telegram_context_routing_truth`
   - validates current Telegram target-context behavior
   - input source: `src/telegram_bridge/message_inputs.py`
@@ -455,6 +600,33 @@ Examples:
 These are not “free scans.”
 
 They are predeclared named checks.
+
+### Initial v1 Check Registry
+
+For the first affordable slice, the registry should stay small and high-value.
+
+Initial fixed checks:
+
+- `truth_files_fingerprint`
+  - watches the small truth-defining set and records when carried context may have gone stale
+  - this is the cheapest high-signal way to detect truth drift without scanning the whole repo
+- `runtime_manifest_vs_status`
+  - compares the declared runtime manifest to the live runtime status output
+  - this is the main structural truth check for declared runtime shape versus actual runtime shape
+- `runtime_observer_truth`
+  - compares observer status and summary snapshots against the live runtime and health picture
+  - this is the main operational truth check for the nightly health baseline
+
+Initial conditional checks:
+
+- `telegram_context_routing_truth`
+  - run when the Telegram bridge routing or target-context behavior is explicitly in scope
+  - keep this as a named check rather than a broad scan of all bridge code
+- `policy_watch_truth`
+  - run when watched truth-file behavior or stale-context notification behavior is in scope
+  - this is the bridge-facing check that ties watched files to warning eligibility
+
+The first slice should not add a larger registry than this unless a later section clearly depends on it.
 
 ## What The Dream Loop Does Not Need To Scan
 
@@ -600,8 +772,6 @@ Suggested contents:
 - normalized capability truth facts
 - normalized watched-file truth facts
 - normalized stale-context warning facts
-- files updated
-- commit and push results
 
 ### 2. Latest Health State
 
@@ -619,15 +789,42 @@ Suggested contents:
 - timezone
 - observer summary
 - operational issues found
-- files updated
 - whether stale-context warnings are required
 - which chats or scopes were notified
 
-### 3. Read-Only Truth Status
+### 3. Latest Run State
+
+Suggested path:
+
+- `/var/lib/server3-dream-loop/latest_run_state.json`
+
+Purpose:
+
+- run-level bookkeeping for the most recent loop pass
+- audit record of the execution itself, not a source of truth about the system
+
+Suggested contents:
+
+- observed timestamp
+- timezone
+- run start and end timestamps
+- exit status
+- checks executed
+- files updated
+- commit and push results
+- warnings emitted
+- skipped checks and reasons
+
+### 4. Read-Only Truth Status
 
 User-facing command:
 
 - `/truth_status`
+
+V1 note:
+
+- the first slice does not need a user-facing status command unless it is required to keep the machine truth outputs coherent
+- if implemented later, it should remain a read-only view over structured state, not a new source of truth
 
 Purpose:
 
@@ -647,7 +844,7 @@ Suggested fields:
 - unresolved items that were skipped because they needed human judgment
 - one short global system line
 
-### 4. Latest Report
+### 5. Latest Report
 
 Suggested path:
 
@@ -656,6 +853,7 @@ Suggested path:
 Purpose:
 
 - human-readable explanation of the current structured truth and health state
+- conservative rendered output, not a new maintenance surface
 
 Suggested contents:
 
@@ -668,7 +866,7 @@ Suggested contents:
 - unresolved items
 - what still needs human attention
 
-### 5. History
+### 6. History
 
 Suggested path:
 
@@ -677,6 +875,10 @@ Suggested path:
 Purpose:
 
 - durable per-run audit trail
+
+V1 note:
+
+- history is optional for the first slice unless needed to support the three primary outputs
 
 ## Which Files Should Be Updated
 
@@ -709,7 +911,7 @@ Initial watched truth files:
 - `SERVER3_SUMMARY.md`
 - `LESSONS.md`
 
-When one or more watched truth files change in a way that changes the truth fingerprint:
+When one or more watched truth files change in a way that changes the machine-truth fingerprint:
 
 - the system should consider long-lived carried context potentially stale
 - the system should notify affected chats
@@ -728,11 +930,13 @@ So the dream loop must be tied into a notification path.
 That means:
 
 - truth-defining files are watched
-- a nightly truth update changes the truth fingerprint
+- a nightly truth update changes the structured truth state or machine-truth fingerprint
 - affected chats are notified that their carried context may now be stale
 - the notification tells them to use `/refresh` if they want a fresh session aligned to the new truth
 
 This is how corrected truth reaches the live assistant behavior without hidden session loss.
+
+The stale-context trigger must key off machine-truth changes, not merely wording changes in human explainer files. If the structured truth state or its fingerprint does not change, the loop should not send stale-context warnings just because prose was edited.
 
 ### Warning Scope
 
@@ -764,7 +968,8 @@ Initial behavior:
 
 Warning delivery rule:
 
-- send stale-context warnings only after truth updates and push both succeeded
+- send stale-context warnings only after structured truth updates or a machine-truth fingerprint change has been recorded
+- do not send stale-context warnings for prose-only edits that leave machine truth unchanged
 
 ### Warning Message
 
@@ -828,13 +1033,32 @@ Suggested new files:
 
 Likely supporting changes:
 
+- add a manual “run now” command or entry point for the dream loop
+- add tests for dream-loop truth and health classification logic
+- add tests for the report layer output shape
+
+Later-phase supporting changes may include:
+
 - update watched truth files in `src/telegram_bridge/runtime_config.py`
 - add a user-facing `/refresh` command in the bridge command layer
 - add a user-facing `/truth_status` command in the bridge command layer
-- add a manual “run now” command or entry point for the dream loop
 - add stale-context notification delivery tied to watched truth-file changes
 - document the truth hierarchy in `ARCHITECT_INSTRUCTION.md`
-- add tests for watched-file warning behavior and dream-loop classification logic
+
+### V1 Implementation Boundary
+
+The first slice should only implement what is necessary to keep the primary machine-readable truth and health outputs correct and to render the conservative report layer from them.
+
+That means v1 should prioritize:
+
+1. collecting the minimum truth inputs needed for the primary outputs
+2. normalizing those inputs into structured truth and health state
+3. writing `latest_truth_state.json`
+4. writing `latest_health_state.json`
+5. rendering `latest_report.md` from those machine-readable states
+6. verifying those three outputs
+
+Later work can extend the registry, notifications, status commands, and broader automation once the bounded core slice is stable.
 
 ### Execution Order
 
@@ -848,12 +1072,10 @@ Recommended order:
 4. prepare rendered-output or state edits
 5. verify edits
 6. write local state and report outputs
-7. commit tracked allowed changes
-8. push tracked allowed changes
-9. send daily Telegram summary
-10. send stale-context notices to affected chats
+7. send daily Telegram summary
+8. send stale-context notices to affected chats
 
-Stale-context notices must happen after push succeeds, not before.
+Stale-context notices must happen after the state write succeeds, not before.
 
 ### Nightly Schedule
 
@@ -872,6 +1094,7 @@ Purpose:
 - test the loop without waiting for the nightly timer
 - realign after major changes
 - verify behavior during rollout
+- exercise the same bounded runner as dry-run mode, but with operator intent
 
 ### Dry Run
 
@@ -885,6 +1108,17 @@ Purpose:
 - do not commit
 - do not push
 - do not notify chats
+
+The dry-run mode is the first safe implementation step because it exercises the bounded scan/normalize/classify/emit path without introducing side effects.
+The manual run comes next so operators can invoke the same bounded runner directly before any full nightly automation is enabled.
+The execution order should stay conservative: dry-run first, manual run second, nightly automation only after both are stable.
+
+Implementation order:
+
+1. build the bounded runner that can scan, normalize, classify, and emit truth, health, and report outputs
+2. expose it in dry-run mode first so the pipeline can be validated without side effects
+3. add the manual run entrypoint so operators can invoke the same bounded runner on demand
+4. enable broader nightly automation only after the dry-run and manual-run paths are stable and trusted
 
 ### Dream Loop Edit Rights
 
@@ -901,22 +1135,11 @@ In this design, `SERVER3_SUMMARY.md` is a secondary rendered explanation layer, 
 
 ### Commit And Push Behavior
 
-The dream loop is allowed to commit and push its tracked doc changes automatically.
+Commit and push behavior is out of scope for the first implementation slice.
 
-Initial intent:
+If added later, it should be an explicit follow-on capability, not a prerequisite for v1 truth outputs.
 
-- when the dream loop makes a tracked file change that it is allowed to make
-- and the change verifies cleanly
-- it may commit and push that change to the repo automatically
-
-This is part of the initial design, not a later expansion.
-
-If push fails:
-
-- attempt push again once
-- if push still fails, keep the local committed or edited change
-- report the failure in the daily summary
-- do not send stale-context notices yet
+If added later, failures should be reported in the daily summary, but they should not block the bounded v1 outputs.
 
 ### Uncertain Mismatches
 
@@ -941,6 +1164,9 @@ The dream loop must:
 
 The dream loop is working if:
 
+- actual system truth and structured truth state stay aligned as the primary maintained self-model
+- the primary maintained self-model is structured truth state, not the human-readable explainer layer
+- human-readable explainers are derived from structured truth state as a secondary rendered explanation
 - rendered summary docs stop drifting behind structured truth and real code/runtime changes
 - structured truth state stays aligned to real code and runtime changes
 - users are warned when persistent sessions may now carry stale truth
