@@ -23,11 +23,11 @@ The goal is to keep Architect aligned to reality without forcing expensive check
 
 The design is:
 
-- use structured machine-readable truth state as the primary maintained truth target
-- use current code and live runtime state as the primary truth
-- use one nightly alignment pass to refresh stable truth across days and sessions
+- use current code and live runtime state as the upstream truth inputs
+- normalize those inputs into structured machine-readable truth state first
+- use one nightly alignment pass to refresh that structured truth baseline across days and sessions
 - warn users when truth changed in a way that may leave old carried context stale
-- keep human summary files as a secondary rendered explanation layer
+- keep human summary files as a secondary rendered explanation layer refreshed from structured truth state
 - keep daytime replies fast by using the nightly truth baseline unless a task depends on fresh live state
 
 This is a truth-maintenance system, not a new assistant runtime.
@@ -50,7 +50,7 @@ Examples of drift:
 - a long-lived session still carries older beliefs after files changed
 - an operator statement in conversation is wrong, but it sounds confident
 
-The system needs a repeatable way to pull recorded truth back toward actual truth.
+The system needs a repeatable way to pull recorded state back toward actual truth, with structured truth state updated first and human-readable explanation rendered from that state.
 
 ## Core Principle
 
@@ -122,8 +122,8 @@ aligned.
 The dream loop is a nightly alignment pass that:
 
 1. inspects the real system
-2. updates structured truth state from observed truth
-3. compares rendered or declared summaries against structured truth
+2. updates structured truth and health state from observed truth
+3. compares secondary rendered summaries against structured truth
 4. classifies each mismatch
 5. updates the correct truth layer
 6. records a clean daily baseline for the next day
@@ -339,7 +339,7 @@ The registry is the source that defines:
 
 The registry should primarily describe how observed reality populates structured truth state.
 
-It should secondarily describe how structured truth state updates human-readable summary outputs.
+It should secondarily describe how structured truth state renders or refreshes human-readable summary outputs.
 
 Without this registry, “targeted scans” are too vague.
 
@@ -551,7 +551,7 @@ Collect the current observed truth from code, manifest, status commands, and hea
 
 ### 2. Compare
 
-Compare observed truth against structured truth state first, then compare rendered summaries against structured truth state.
+Compare observed truth against structured truth state first, then compare rendered summaries against that structured truth state.
 
 ### 3. Classify
 
@@ -573,7 +573,7 @@ Update the right layer:
 
 ### 5. Persist
 
-Write the results in machine-readable and human-readable form.
+Write the results in machine-readable state first, then refresh any secondary rendered explanation outputs.
 
 ## Outputs
 
@@ -843,9 +843,9 @@ The dream loop should run in a fixed order.
 Recommended order:
 
 1. scan truth sources
-2. compare observed truth against declared truth
+2. normalize observed truth into structured truth and health state
 3. classify mismatches
-4. prepare edits
+4. prepare rendered-output or state edits
 5. verify edits
 6. write local state and report outputs
 7. commit tracked allowed changes
