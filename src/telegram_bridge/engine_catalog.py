@@ -7,6 +7,14 @@ from typing import Dict, List, Optional, Set, Tuple
 ENGINE_NAME_ALIASES = {
     "chatgpt": "chatgptweb",
     "chatgpt_web": "chatgptweb",
+    "ollama": "gemma",
+    "ollama(s4)": "gemma",
+    "ollama-s4": "gemma",
+    "ollama_s4": "gemma",
+    "ollamas4": "gemma",
+}
+ENGINE_DISPLAY_NAMES = {
+    "gemma": "ollama(s4)",
 }
 PI_PROVIDER_ALIASES = {
     "ollama_http": "ollama",
@@ -26,6 +34,13 @@ def normalize_engine_name(engine_name: str) -> str:
     return ENGINE_NAME_ALIASES.get(normalized, normalized)
 
 
+def display_engine_name(engine_name: str) -> str:
+    normalized = normalize_engine_name(engine_name)
+    if not normalized:
+        return ""
+    return ENGINE_DISPLAY_NAMES.get(normalized, normalized)
+
+
 def configured_default_engine(config) -> str:
     return normalize_engine_name(getattr(config, "engine_plugin", "codex") or "codex")
 
@@ -42,6 +57,10 @@ def selectable_engine_plugins(config) -> List[str]:
     return configured
 
 
+def selectable_engine_display_names(config) -> List[str]:
+    return [display_engine_name(engine_name) for engine_name in selectable_engine_plugins(config)]
+
+
 def configured_pi_provider(config) -> str:
     provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip().lower()
     return PI_PROVIDER_ALIASES.get(provider, provider) or "ollama"
@@ -54,6 +73,10 @@ def normalize_pi_provider_name(provider_name: str) -> str:
 
 def configured_pi_model(config) -> str:
     return str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip() or "qwen3-coder:30b"
+
+
+def configured_gemma_model(config) -> str:
+    return str(getattr(config, "gemma_model", "gemma4:26b") or "gemma4:26b").strip() or "gemma4:26b"
 
 
 def pi_provider_uses_ollama_tunnel(config) -> bool:

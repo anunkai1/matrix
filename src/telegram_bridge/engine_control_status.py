@@ -1,5 +1,7 @@
 import copy
 import subprocess
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 from typing import Dict, List, Optional, Tuple
 
 from telegram_bridge import engine_control_views
@@ -8,6 +10,7 @@ from telegram_bridge import engine_pi_catalog
 from telegram_bridge.engine_catalog import (
     configured_codex_reasoning_effort,
     configured_default_engine,
+    configured_gemma_model,
     configured_pi_model,
     configured_pi_provider,
     normalize_engine_name,
@@ -19,6 +22,7 @@ from telegram_bridge.state_store import (
     get_chat_codex_effort,
     get_chat_codex_model,
     get_chat_engine,
+    get_chat_gemma_model,
     get_chat_pi_model,
     get_chat_pi_provider,
 )
@@ -32,6 +36,12 @@ brief_health_error = engine_health._brief_health_error
 def build_engine_runtime_config(state, config, scope_key: str, engine_name: str):
     runtime_config = copy.deepcopy(config)
     normalized_engine = normalize_engine_name(engine_name)
+    if normalized_engine == "gemma":
+        override_model = get_chat_gemma_model(state, scope_key)
+        if not override_model:
+            return config
+        runtime_config.gemma_model = override_model
+        return runtime_config
     if normalized_engine == "codex":
         override_model = get_chat_codex_model(state, scope_key)
         override_effort = get_chat_codex_effort(state, scope_key)
@@ -61,6 +71,12 @@ def build_codex_model_source_text(state: State, scope_key: str) -> str:
     return "global default"
 
 
+def build_gemma_model_source_text(state: State, scope_key: str) -> str:
+    if get_chat_gemma_model(state, scope_key):
+        return "chat override"
+    return "global default"
+
+
 def build_codex_effort_source_text(state: State, scope_key: str) -> str:
     if get_chat_codex_effort(state, scope_key):
         return "chat override"
@@ -85,6 +101,75 @@ def pi_provider_choice_lines(current_provider: str) -> List[str]:
 
 def pi_provider_description(provider_name: str) -> str:
     return engine_pi_catalog.pi_provider_description(provider_name)
+
+
+def gemma_model_names(config) -> List[str]:
+    provider = str(getattr(config, "gemma_provider", "ollama_ssh") or "ollama_ssh").strip().lower()
+    if provider == "ollama_http":
+        base_url = str(getattr(config, "gemma_base_url", "http://127.0.0.1:11434") or "").rstrip("/")
+        if not base_url:
+            raise RuntimeError("GEMMA_BASE_URL is empty")
+        try:
+            with urllib_request.urlopen(
+                f"{base_url}/api/tags",
+                timeout=GEMMA_HEALTH_TIMEOUT_SECONDS,
+            ) as response:
+                payload = response.read().decode("utf-8", errors="replace")
+        except urllib_error.URLError as exc:
+            raise RuntimeError(str(exc).strip() or "Ollama HTTP transport failed") from exc
+        return list(dict.fromkeys(engine_pi_catalog.parse_ollama_tags(payload)))
+    if provider == "ollama_ssh":
+        host = str(getattr(config, "gemma_ssh_host", "server4-beast") or "").strip()
+        if not host:
+            raise RuntimeError("GEMMA_SSH_HOST is empty")
+        completed = subprocess.run(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                f"ConnectTimeout={GEMMA_HEALTH_TIMEOUT_SECONDS}",
+                host,
+                (
+                    "curl -sS "
+                    f"--max-time {GEMMA_HEALTH_CURL_TIMEOUT_SECONDS} "
+                    "http://127.0.0.1:11434/api/tags"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=GEMMA_HEALTH_TIMEOUT_SECONDS + 4,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                completed.stderr.strip()
+                or completed.stdout.strip()
+                or f"ssh exited {completed.returncode}"
+            )
+        return list(dict.fromkeys(engine_pi_catalog.parse_ollama_tags(completed.stdout)))
+    raise RuntimeError(f"unsupported provider {provider!r}")
+
+
+def resolve_gemma_model_candidate(available_models: List[str], requested_model: str) -> Optional[str]:
+    requested = str(requested_model or "").strip()
+    if not requested:
+        return None
+    if requested.startswith("idx:"):
+        try:
+            index = int(requested[4:])
+        except ValueError:
+            return None
+        if 0 <= index < len(available_models):
+            return available_models[index]
+        return None
+    for available in available_models:
+        if available == requested:
+            return available
+    folded = requested.casefold()
+    matches = [available for available in available_models if available.casefold() == folded]
+    if len(matches) == 1:
+        return matches[0]
+    return None
 
 
 def pi_available_provider_names(config) -> List[str]:
@@ -180,12 +265,27 @@ def check_venice_health(config) -> Dict[str, object]:
 
 
 def check_pi_health(config) -> Dict[str, object]:
-    return engine_health.check_pi_health(
+    provider = configured_pi_provider(config)
+    health = engine_health.check_pi_health(
         config,
-        provider=configured_pi_provider(config),
+        provider=provider,
         run_pi_command_fn=run_pi_command,
         parse_pi_model_rows_fn=parse_pi_model_rows,
     )
+    if provider != "ollama":
+        return health
+    if health.get("model_available"):
+        return health
+    try:
+        available_models = pi_provider_model_names(config)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
+        return health
+    model = configured_pi_model(config)
+    if model in available_models:
+        health["model_available"] = True
+        if health.get("ok") is False and not health.get("error"):
+            health["ok"] = True
+    return health
 
 
 def check_chatgpt_web_health(config) -> Dict[str, object]:

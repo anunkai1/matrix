@@ -10,7 +10,7 @@ Purpose: run Gemma on Server4 Beast as a selectable Telegram bridge engine while
 
 ## Server4
 
-- Host/IP: `192.168.0.124`
+- Host/IP: `192.168.0.126`
 - SSH alias from Server3 service users: `server4-beast`
 - Login user: `v`
 - Ollama model: `gemma4:26b`
@@ -72,19 +72,30 @@ Per chat/topic:
 
 ```text
 /engine status
-/engine gemma
+/engine ollama(s4)
 /engine codex
 /engine reset
 ```
 
-There is no smart routing in this mode. The service default or explicit chat selection decides the engine.
+There is no smart routing in this mode. The service default or explicit chat selection decides the engine. The internal engine key remains `gemma`; `ollama(s4)` is the user-facing alias.
 
-When the effective engine is `gemma`, `/engine status` also performs a short live health check and reports:
+When the effective engine is `ollama(s4)`, `/engine status` also performs a short live health check and reports:
 
-- Gemma health: `ok` or `error`
-- Gemma response time
+- Ollama (S4) health: `ok` or `error`
+- Ollama (S4) response time
 - Whether the configured model is listed by Ollama
 - The current check error, or `(none)`
+
+Per chat/topic model selection is also available:
+
+```text
+/model
+/model list
+/model <ollama-tag>
+/model reset
+```
+
+The bridge reads the live Server4 Ollama tag catalog over SSH, so newly installed Server4 models become selectable without changing the global `GEMMA_MODEL`.
 
 ## Current Capability
 

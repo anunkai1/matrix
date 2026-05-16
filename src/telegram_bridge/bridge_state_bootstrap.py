@@ -13,6 +13,7 @@ from telegram_bridge.state_store import (
     load_chat_codex_efforts,
     load_chat_codex_models,
     load_chat_engines,
+    load_chat_gemma_models,
     load_chat_pi_models,
     load_chat_pi_providers,
     load_chat_threads,
@@ -129,6 +130,7 @@ def build_bridge_state_paths(state_dir: str) -> Dict[str, str]:
     return {
         "chat_threads": os.path.join(state_dir, "chat_threads.json"),
         "chat_engines": os.path.join(state_dir, "chat_engines.json"),
+        "chat_gemma_models": os.path.join(state_dir, "chat_gemma_models.json"),
         "chat_codex_models": os.path.join(state_dir, "chat_codex_models.json"),
         "chat_codex_efforts": os.path.join(state_dir, "chat_codex_efforts.json"),
         "chat_pi_providers": os.path.join(state_dir, "chat_pi_providers.json"),
@@ -143,6 +145,7 @@ def load_bridge_state_mappings(state_paths: Dict[str, str]) -> Dict[str, Dict[ob
     state_specs = (
         ("threads", "chat_threads", load_chat_threads, "chat thread mappings"),
         ("engines", "chat_engines", load_chat_engines, "chat engine mappings"),
+        ("gemma_models", "chat_gemma_models", load_chat_gemma_models, "chat Ollama (S4) model mappings"),
         ("codex_models", "chat_codex_models", load_chat_codex_models, "chat Codex model mappings"),
         ("codex_efforts", "chat_codex_efforts", load_chat_codex_efforts, "chat Codex effort mappings"),
         ("pi_models", "chat_pi_models", load_chat_pi_models, "chat Pi model mappings"),

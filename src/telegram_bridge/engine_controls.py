@@ -13,8 +13,10 @@ from telegram_bridge.engine_catalog import (
     configured_codex_model,
     configured_codex_reasoning_effort,
     configured_default_engine,
+    configured_gemma_model,
     configured_pi_model,
     configured_pi_provider,
+    display_engine_name,
     normalize_engine_name,
     normalize_pi_provider_name,
     pi_provider_uses_ollama_tunnel,
@@ -31,6 +33,7 @@ from telegram_bridge.engine_control_status import (
     build_codex_model_source_text as _build_codex_model_source_text,
     build_engine_runtime_config,
     build_engine_status_text,
+    build_gemma_model_source_text as _build_gemma_model_source_text,
     build_pi_model_source_text as _build_pi_model_source_text,
     build_pi_models_text,
     build_pi_provider_source_text as _build_pi_provider_source_text,
@@ -40,11 +43,13 @@ from telegram_bridge.engine_control_status import (
     check_gemma_health,
     check_pi_health,
     check_venice_health,
+    gemma_model_names as _gemma_model_names,
     GEMMA_HEALTH_CURL_TIMEOUT_SECONDS,
     GEMMA_HEALTH_TIMEOUT_SECONDS,
     model_active_engine_name as _model_active_engine_name,
     pi_available_provider_names as _pi_available_provider_names,
     pi_provider_model_names as _pi_provider_model_names,
+    resolve_gemma_model_candidate as _resolve_gemma_model_candidate,
     resolve_pi_model_candidate as _resolve_pi_model_candidate,
 )
 from telegram_bridge.engine_adapter import EngineAdapter
@@ -55,16 +60,19 @@ from telegram_bridge.state_store import (
     clear_chat_codex_effort,
     clear_chat_codex_model,
     clear_chat_engine,
+    clear_chat_gemma_model,
     clear_chat_pi_model,
     clear_chat_pi_provider,
     get_chat_codex_effort,
     get_chat_codex_model,
     get_chat_engine,
+    get_chat_gemma_model,
     get_chat_pi_model,
     get_chat_pi_provider,
     set_chat_codex_effort,
     set_chat_codex_model,
     set_chat_engine,
+    set_chat_gemma_model,
     set_chat_pi_model,
     set_chat_pi_provider,
 )
@@ -108,6 +116,7 @@ def _set_engine_for_scope(state: State, config, scope_key: str, engine_name: str
         config,
         scope_key,
         engine_name,
+        display_engine_name=display_engine_name,
         normalize_engine_name=normalize_engine_name,
         selectable_engine_plugins=selectable_engine_plugins,
         set_chat_engine=set_chat_engine,
@@ -120,6 +129,7 @@ def _reset_engine_for_scope(state: State, config, scope_key: str) -> str:
         scope_key,
         clear_chat_engine=clear_chat_engine,
         configured_default_engine=configured_default_engine,
+        display_engine_name=display_engine_name,
     )
 
 def _send_control_result(
@@ -196,6 +206,7 @@ def _build_model_action_result(
         model_active_engine_name=_model_active_engine_name,
         reset_model_for_scope=_reset_model_for_scope,
         set_codex_model_for_scope=_set_codex_model_for_scope,
+        set_gemma_model_for_scope=_set_gemma_model_for_scope,
         set_pi_model_for_scope=_set_pi_model_for_scope,
         build_model_status_text=build_model_status_text,
         build_model_picker_markup=_build_model_picker_markup,
@@ -299,7 +310,9 @@ def _build_model_picker_markup(
             page_index=page_index,
             model_active_engine_name=_model_active_engine_name,
             build_engine_runtime_config=build_engine_runtime_config,
+            gemma_model_names=_gemma_model_names,
             configured_codex_model=configured_codex_model,
+            configured_gemma_model=configured_gemma_model,
             load_codex_model_choices=_load_codex_model_choices,
             pi_provider_model_names=_pi_provider_model_names,
             configured_pi_model=configured_pi_model,
@@ -353,10 +366,12 @@ def build_model_status_text(state: State, config, scope_key: str) -> str:
         build_engine_runtime_config=build_engine_runtime_config,
         configured_codex_model=configured_codex_model,
         configured_codex_reasoning_effort=configured_codex_reasoning_effort,
+        configured_gemma_model=configured_gemma_model,
         configured_pi_provider=configured_pi_provider,
         configured_pi_model=configured_pi_model,
         build_codex_model_source_text=_build_codex_model_source_text,
         build_codex_effort_source_text=_build_codex_effort_source_text,
+        build_gemma_model_source_text=_build_gemma_model_source_text,
         build_pi_model_source_text=_build_pi_model_source_text,
     )
 
@@ -408,11 +423,14 @@ def _reset_model_for_scope(state: State, config, scope_key: str, active_engine: 
         scope_key,
         active_engine,
         clear_chat_codex_model=clear_chat_codex_model,
+        clear_chat_gemma_model=clear_chat_gemma_model,
         clear_chat_pi_model=clear_chat_pi_model,
         build_engine_runtime_config=build_engine_runtime_config,
         configured_codex_model=configured_codex_model,
+        configured_gemma_model=configured_gemma_model,
         configured_pi_model=configured_pi_model,
         build_codex_model_source_text=_build_codex_model_source_text,
+        build_gemma_model_source_text=_build_gemma_model_source_text,
         build_pi_model_source_text=_build_pi_model_source_text,
         build_model_status_text=build_model_status_text,
     )
@@ -429,6 +447,20 @@ def _set_pi_provider_for_scope(state: State, config, scope_key: str, provider_na
         resolve_pi_model_candidate=_resolve_pi_model_candidate,
         set_chat_pi_provider=set_chat_pi_provider,
         set_chat_pi_model=set_chat_pi_model,
+    )
+
+def _set_gemma_model_for_scope(state: State, config, scope_key: str, model_name: str) -> str:
+    return engine_control_mutations.set_gemma_model_for_scope(
+        state,
+        config,
+        scope_key,
+        model_name,
+        build_engine_runtime_config=build_engine_runtime_config,
+        gemma_model_names=_gemma_model_names,
+        resolve_gemma_model_candidate=_resolve_gemma_model_candidate,
+        set_chat_gemma_model=set_chat_gemma_model,
+        configured_gemma_model=configured_gemma_model,
+        build_gemma_model_source_text=_build_gemma_model_source_text,
     )
 
 def _set_pi_model_for_scope(state: State, config, scope_key: str, model_name: str) -> str:
@@ -481,8 +513,10 @@ def build_model_list_text(state: State, config, scope_key: str) -> str:
         scope_key,
         model_active_engine_name=_model_active_engine_name,
         build_engine_runtime_config=build_engine_runtime_config,
+        configured_gemma_model=configured_gemma_model,
         configured_codex_model=configured_codex_model,
         load_codex_model_choices=_load_codex_model_choices,
+        gemma_model_names=_gemma_model_names,
         build_pi_models_text=build_pi_models_text,
     )
 

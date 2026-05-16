@@ -1,7 +1,26 @@
 from typing import Callable, Dict, List, Optional, Tuple
 
-from telegram_bridge.engine_catalog import PI_MODEL_PICKER_PAGE_SIZE, PI_PROVIDER_CHOICES
+from telegram_bridge.engine_catalog import (
+    PI_MODEL_PICKER_PAGE_SIZE,
+    PI_PROVIDER_CHOICES,
+    configured_gemma_model,
+    display_engine_name,
+)
 from telegram_bridge.state_store import State
+
+
+def _shorten_model_button_label(model_name: str, *, current: bool) -> str:
+    label = str(model_name or "").strip()
+    if label.startswith("hf.co/"):
+        label = label.rsplit("/", 1)[-1]
+        label = label.replace("-gguf-v2", "").replace("-gguf", "")
+        label = label.replace("-uncensored-", " uncensored ")
+        label = label.replace("-uncensored", " uncensored")
+        label = label.replace(":", " ")
+        label = " ".join(label.split())
+    if len(label) > 28:
+        label = label[:25].rstrip("-_ :.") + "..."
+    return f"{label} *" if current else label
 
 
 def compact_inline_keyboard(
@@ -206,9 +225,9 @@ def build_engine_status_text(
     effective = normalize_engine_name(selected or configured_default_engine(config))
     display_config = build_engine_runtime_config(state, config, scope_key, effective)
     lines = [
-        f"Default engine: {configured_default_engine(config)}",
-        f"This chat engine: {effective}",
-        f"Selectable engines: {', '.join(selectable_engine_plugins(config))}",
+        f"Default engine: {display_engine_name(configured_default_engine(config))}",
+        f"This chat engine: {display_engine_name(effective)}",
+        f"Selectable engines: {', '.join(display_engine_name(name) for name in selectable_engine_plugins(config))}",
         "Use /engine <name> or tap the buttons below to switch this chat.",
         "Use /engine reset to clear the chat override.",
     ]
@@ -219,14 +238,14 @@ def build_engine_status_text(
             f"Codex effort: {configured_codex_reasoning_effort(display_config) or '(default)'}"
         )
     if effective == "gemma":
-        lines.append(f"Gemma provider: {getattr(config, 'gemma_provider', 'ollama_ssh')}")
-        lines.append(f"Gemma model: {getattr(config, 'gemma_model', 'gemma4:26b')}")
-        lines.append(f"Gemma host: {getattr(config, 'gemma_ssh_host', 'server4-beast')}")
-        health = check_gemma_health(config)
-        lines.append(f"Gemma health: {'ok' if health['ok'] else 'error'}")
-        lines.append(f"Gemma response time: {health['response_ms']}ms")
-        lines.append(f"Gemma model available: {'yes' if health['model_available'] else 'no'}")
-        lines.append(f"Gemma last check error: {health['error'] or '(none)'}")
+        lines.append(f"Ollama (S4) provider: {getattr(display_config, 'gemma_provider', 'ollama_ssh')}")
+        lines.append(f"Ollama (S4) model: {getattr(display_config, 'gemma_model', 'gemma4:26b')}")
+        lines.append(f"Ollama (S4) host: {getattr(display_config, 'gemma_ssh_host', 'server4-beast')}")
+        health = check_gemma_health(display_config)
+        lines.append(f"Ollama (S4) health: {'ok' if health['ok'] else 'error'}")
+        lines.append(f"Ollama (S4) response time: {health['response_ms']}ms")
+        lines.append(f"Ollama (S4) model available: {'yes' if health['model_available'] else 'no'}")
+        lines.append(f"Ollama (S4) last check error: {health['error'] or '(none)'}")
     if effective == "venice":
         lines.append(f"Venice base URL: {getattr(display_config, 'venice_base_url', 'https://api.venice.ai/api/v1')}")
         lines.append(f"Venice model: {getattr(display_config, 'venice_model', 'mistral-31-24b')}")
@@ -289,9 +308,12 @@ def build_engine_picker_markup(
     current_engine = model_active_engine_name(state, config, scope_key)
     buttons: List[Tuple[str, str]] = []
     for engine_name in selectable_engine_plugins(config):
-        label = f"{engine_name} *" if engine_name == current_engine else engine_name
+        display_name = display_engine_name(engine_name)
+        label = f"{display_name} *" if engine_name == current_engine else display_name
         buttons.append((label, engine_callback_data(engine_name, "set")))
     if current_engine == "codex":
+        buttons.append(("Model", model_callback_data(current_engine, "menu")))
+    elif current_engine == "gemma":
         buttons.append(("Model", model_callback_data(current_engine, "menu")))
     elif current_engine == "pi":
         buttons.append(("Provider", provider_callback_data("menu")))
@@ -363,7 +385,9 @@ def build_model_picker_markup(
     page_index: Optional[int] = None,
     model_active_engine_name: Callable,
     build_engine_runtime_config: Callable,
+    gemma_model_names: Callable,
     configured_codex_model: Callable,
+    configured_gemma_model: Callable,
     load_codex_model_choices: Callable,
     pi_provider_model_names: Callable,
     configured_pi_model: Callable,
@@ -383,6 +407,46 @@ def build_model_picker_markup(
         buttons.append(("Reset", model_callback_data("codex", "reset")))
         buttons.append(("Effort", "cfg|effort|codex|menu"))
         buttons.append(("Back to Engine", engine_callback_data("codex", "menu")))
+    elif active_engine == "gemma":
+        model_names = gemma_model_names(display_config)
+        current_model = configured_gemma_model(display_config)
+        current_page = clamp_page_index(
+            page_index
+            if page_index is not None
+            else pi_model_page_for_selection(model_names, current_model, PI_MODEL_PICKER_PAGE_SIZE),
+            len(model_names),
+            PI_MODEL_PICKER_PAGE_SIZE,
+        )
+        start = current_page * PI_MODEL_PICKER_PAGE_SIZE
+        end = start + PI_MODEL_PICKER_PAGE_SIZE
+        for index, model_name in enumerate(model_names[start:end], start=start):
+            label = _shorten_model_button_label(
+                model_name,
+                current=model_name == current_model,
+            )
+            buttons.append((label, model_callback_data("gemma", "set", f"idx:{index}")))
+        rows = compact_inline_keyboard(buttons, columns=1).get("inline_keyboard", [])
+        total_pages = max(((len(model_names) - 1) // PI_MODEL_PICKER_PAGE_SIZE) + 1, 1) if model_names else 1
+        if total_pages > 1:
+            nav_row: List[Dict[str, str]] = []
+            if current_page > 0:
+                nav_row.append({"text": "Prev", "callback_data": model_callback_data("gemma", "page", str(current_page - 1))})
+            nav_row.append(
+                {
+                    "text": f"{current_page + 1}/{total_pages}",
+                    "callback_data": model_callback_data("gemma", "page", str(current_page)),
+                }
+            )
+            if current_page < total_pages - 1:
+                nav_row.append({"text": "Next", "callback_data": model_callback_data("gemma", "page", str(current_page + 1))})
+            rows.append(nav_row)
+        rows.append(
+            [
+                {"text": "Reset", "callback_data": model_callback_data("gemma", "reset")},
+                {"text": "Back to Engine", "callback_data": engine_callback_data("gemma", "menu")},
+            ]
+        )
+        return {"inline_keyboard": rows} if rows else None
     elif active_engine == "pi":
         model_names = pi_provider_model_names(display_config)
         current_model = configured_pi_model(display_config)
@@ -395,9 +459,12 @@ def build_model_picker_markup(
         )
         start = current_page * PI_MODEL_PICKER_PAGE_SIZE
         end = start + PI_MODEL_PICKER_PAGE_SIZE
-        for model_name in model_names[start:end]:
-            label = f"{model_name} *" if model_name == current_model else model_name
-            buttons.append((label, model_callback_data("pi", "set", model_name)))
+        for index, model_name in enumerate(model_names[start:end], start=start):
+            label = _shorten_model_button_label(
+                model_name,
+                current=model_name == current_model,
+            )
+            buttons.append((label, model_callback_data("pi", "set", f"idx:{index}")))
         rows = compact_inline_keyboard(buttons, columns=2).get("inline_keyboard", [])
         total_pages = max(((len(model_names) - 1) // PI_MODEL_PICKER_PAGE_SIZE) + 1, 1) if model_names else 1
         if total_pages > 1:
@@ -435,10 +502,12 @@ def build_model_status_text(
     build_engine_runtime_config: Callable,
     configured_codex_model: Callable,
     configured_codex_reasoning_effort: Callable,
+    configured_gemma_model: Callable,
     configured_pi_provider: Callable,
     configured_pi_model: Callable,
     build_codex_model_source_text: Callable,
     build_codex_effort_source_text: Callable,
+    build_gemma_model_source_text: Callable,
     build_pi_model_source_text: Callable,
 ) -> str:
     active_engine = model_active_engine_name(state, config, scope_key)
@@ -464,10 +533,19 @@ def build_model_status_text(
             "Use /pi provider <name> to switch Pi provider for this chat.",
         ]
         return "\n".join(lines)
+    if active_engine == "gemma":
+        lines = [
+            "Active engine: ollama(s4)",
+            f"Ollama (S4) model: {configured_gemma_model(display_config)}",
+            f"Ollama (S4) model source: {build_gemma_model_source_text(state, scope_key)}",
+            "Use /model list to see available Server4 Ollama models.",
+            "Use /model <name> to set this chat's Ollama (S4) model or tap the buttons below.",
+        ]
+        return "\n".join(lines)
     return (
         f"Active engine: {active_engine}\n"
-        "Model switching is currently supported for `codex` and `pi`.\n"
-        "Use `/engine codex` or `/engine pi` first."
+        "Model switching is currently supported for `codex`, `ollama(s4)`, and `pi`.\n"
+        "Use `/engine codex`, `/engine ollama(s4)`, or `/engine pi` first."
     )
 
 
@@ -544,12 +622,32 @@ def build_model_list_text(
     *,
     model_active_engine_name: Callable,
     build_engine_runtime_config: Callable,
+    configured_gemma_model: Callable,
     configured_codex_model: Callable,
     load_codex_model_choices: Callable,
+    gemma_model_names: Callable,
     build_pi_models_text: Callable,
 ) -> str:
     active_engine = model_active_engine_name(state, config, scope_key)
     display_config = build_engine_runtime_config(state, config, scope_key, active_engine)
+    if active_engine == "gemma":
+        current_model = configured_gemma_model(display_config)
+        default_model = configured_gemma_model(config)
+        model_names = gemma_model_names(display_config)
+        lines = [
+            "Active engine: ollama(s4)",
+            f"Current Ollama (S4) model: {current_model}",
+            f"Bridge default Ollama (S4) model: {default_model}",
+        ]
+        if model_names:
+            lines.append("Available Server4 Ollama models:")
+            for model_name in model_names:
+                marker = " (current)" if model_name == current_model else ""
+                lines.append(f"- {model_name}{marker}")
+            lines.append("Use /model <name> with the exact Ollama tag shown above.")
+        else:
+            lines.append("No Server4 Ollama models were reported.")
+        return "\n".join(lines)
     if active_engine == "codex":
         current_model = configured_codex_model(display_config) or "(default)"
         default_model = configured_codex_model(config) or "(default)"
@@ -576,6 +674,6 @@ def build_model_list_text(
         return build_pi_models_text(state, config, scope_key)
     return (
         f"Active engine: {active_engine}\n"
-        "Model listing is currently supported for `codex` and `pi`.\n"
-        "Use `/engine codex` or `/engine pi` first."
+        "Model listing is currently supported for `codex`, `ollama(s4)`, and `pi`.\n"
+        "Use `/engine codex`, `/engine ollama(s4)`, or `/engine pi` first."
     )

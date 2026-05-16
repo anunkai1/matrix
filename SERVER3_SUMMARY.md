@@ -6,7 +6,7 @@ Last updated: 2026-05-15 (AEST, +10:00)
 - Primary active component: `telegram-architect-bridge.service`
 - Runtime pattern: Telegram long polling + local `codex exec`
 - Live runtime inventory lives in `infra/server3-runtime-manifest.json`; verify actual state with `python3 ops/server3_runtime_status.py`.
-- Architect currently defaults to `codex`; selectable chat engines are driven by live env/config (`codex`, `gemma`, `pi`, `chatgptweb` in the current Architect runtime).
+- Architect currently defaults to `codex`; selectable chat engines are driven by live env/config (`codex`, `gemma`, `pi`, `chatgptweb` in the current Architect runtime), with the user-facing `/engine` alias `ollama(s4)` now mapped to internal engine key `gemma`.
 - Core capabilities: text/photo/voice/document handling, persistent workers, safe queued `/restart`, and canonical SQLite session state. Provider-side continuity still relies on engine-native sessions (Pi JSONL per scope, Codex JSONL per exec session).
 - Browser Brain runs in `existing_session` mode on local CDP port `9223`; use the visible `tv` Brave helper for manual-login recovery when needed.
 - Priority stateless routes: `HA ...`, `Server3 TV ...`, `Server3 Browser ...` / `Browser Brain ...`, `Nextcloud ...`, `SRO ...`, and bare YouTube links.
@@ -21,6 +21,7 @@ Last updated: 2026-05-15 (AEST, +10:00)
 - Server3 state resilience now uses a monthly quiesced backup path (`server3-state-backup.service` / `server3-state-backup.timer`) that snapshots rebuild-critical host/app/runtime state to `/srv/external/server3-backups/state`; the Arr media payload stays on the external data disk and is intentionally excluded.
 
 ## Recent Changes (Rolling Max 8)
+- 2026-05-15: Architect's user-facing `/engine` label for the Server4 Gemma path is now `ollama(s4)`; that engine now supports chat-scoped `/model list` and `/model <name>` selection from the live Server4 Ollama tag catalog, and Pi `ollama` model selection now also merges raw Server4 Ollama tags into `/model list` so freshly pulled tags remain selectable before Pi's own catalog refreshes.
 - 2026-05-15: runtime observer now classifies Telegram poll incidents by outage bursts/duration instead of raw retry-attempt totals, and WhatsApp reconnect alerts now include close status-code context (for example `428`, `503`) to make transport instability easier to diagnose.
 - 2026-05-10: added English TTS voice replies via `ops/telegram-voice/tts_english.sh`; the bridge can now return Telegram voice notes through the existing `sendVoice` pipeline.
 - 2026-05-05: finished the shared-bridge packaging/refactor cleanup (`pyproject.toml`, package `__init__.py` files, reusable `env_parser.py`, split `engines/` modules) and removed the old SQLite memory-engine codepath/systemd leftovers.

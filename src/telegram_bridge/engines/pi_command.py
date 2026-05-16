@@ -1,6 +1,10 @@
 import shlex
 from typing import Optional
 
+_OLLAMA_NO_TOOLS_MODELS = {
+    "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m",
+}
+
 
 def _normalized_provider(config) -> str:
     provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip()
@@ -11,6 +15,13 @@ def _normalized_provider(config) -> str:
 
 def _configured_model(config) -> str:
     return str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip()
+
+
+def _model_requires_no_tools(config) -> bool:
+    return (
+        _normalized_provider(config).strip().lower() == "ollama"
+        and _configured_model(config) in _OLLAMA_NO_TOOLS_MODELS
+    )
 
 
 def build_pi_rpc_args(
@@ -48,6 +59,8 @@ def build_pi_rpc_args(
         args.extend(["--tools", tools_allowlist])
     elif tools_mode not in {"", "default", "all"}:
         raise RuntimeError(f"Unsupported Pi tools mode: {tools_mode}")
+    elif _model_requires_no_tools(config):
+        args.append("--no-tools")
     if extra_args:
         args.extend(shlex.split(extra_args))
     return args

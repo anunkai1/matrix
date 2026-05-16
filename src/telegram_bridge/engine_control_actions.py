@@ -61,6 +61,7 @@ def build_model_action_result(
     model_active_engine_name: Callable,
     reset_model_for_scope: Callable,
     set_codex_model_for_scope: Callable,
+    set_gemma_model_for_scope: Callable,
     set_pi_model_for_scope: Callable,
     build_model_status_text: Callable,
     build_model_picker_markup: Callable,
@@ -69,7 +70,9 @@ def build_model_action_result(
     if action == "reset":
         text = reset_model_for_scope(state, config, scope_key, active_engine)
     elif action == "set":
-        if active_engine == "codex":
+        if active_engine == "gemma":
+            text = set_gemma_model_for_scope(state, config, scope_key, value)
+        elif active_engine == "codex":
             text = set_codex_model_for_scope(state, config, scope_key, value)
         elif active_engine == "pi":
             text = set_pi_model_for_scope(state, config, scope_key, value)

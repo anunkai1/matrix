@@ -93,6 +93,14 @@ def load_chat_codex_models(path: str) -> Dict[ScopeKey, str]:
     )
 
 
+def load_chat_gemma_models(path: str) -> Dict[ScopeKey, str]:
+    return _load_scope_string_map(
+        path,
+        state_label="chat Ollama (S4) model",
+        normalize_value=lambda value: value,
+    )
+
+
 def load_chat_codex_efforts(path: str) -> Dict[ScopeKey, str]:
     return _load_scope_string_map(
         path,
@@ -141,6 +149,12 @@ def persist_chat_codex_models(state: State) -> None:
     with state.lock:
         values = dict(state.chat_codex_models)
     _persist_scope_string_map(state.chat_codex_model_path, values)
+
+
+def persist_chat_gemma_models(state: State) -> None:
+    with state.lock:
+        values = dict(state.chat_gemma_models)
+    _persist_scope_string_map(state.chat_gemma_model_path, values)
 
 
 def persist_chat_codex_efforts(state: State) -> None:
@@ -240,6 +254,10 @@ def get_chat_codex_model(state: State, scope_key: ScopeKey) -> Optional[str]:
     return _get_string_override(state, scope_key, state.chat_codex_models)
 
 
+def get_chat_gemma_model(state: State, scope_key: ScopeKey) -> Optional[str]:
+    return _get_string_override(state, scope_key, state.chat_gemma_models)
+
+
 def set_chat_codex_model(state: State, scope_key: ScopeKey, model_name: str) -> None:
     _set_string_override(
         state,
@@ -250,12 +268,31 @@ def set_chat_codex_model(state: State, scope_key: ScopeKey, model_name: str) -> 
     )
 
 
+def set_chat_gemma_model(state: State, scope_key: ScopeKey, model_name: str) -> None:
+    _set_string_override(
+        state,
+        scope_key,
+        state.chat_gemma_models,
+        model_name,
+        persist_chat_gemma_models,
+    )
+
+
 def clear_chat_codex_model(state: State, scope_key: ScopeKey) -> bool:
     return _clear_string_override(
         state,
         scope_key,
         state.chat_codex_models,
         persist_chat_codex_models,
+    )
+
+
+def clear_chat_gemma_model(state: State, scope_key: ScopeKey) -> bool:
+    return _clear_string_override(
+        state,
+        scope_key,
+        state.chat_gemma_models,
+        persist_chat_gemma_models,
     )
 
 

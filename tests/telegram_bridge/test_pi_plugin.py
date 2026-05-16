@@ -16,6 +16,7 @@ if str(SRC_ROOT) not in sys.path:
 
 import telegram_bridge.engine_adapter as bridge_engine_adapter
 import telegram_bridge.engines.pi as pi_engine
+import telegram_bridge.engines.pi_command as pi_command
 import telegram_bridge.plugin_registry as bridge_plugin_registry
 
 
@@ -133,6 +134,44 @@ def _make_fake_pi_empty_rpc_process():
 
 
 class PiPluginTests(unittest.TestCase):
+    def test_pi_command_disables_tools_for_supergemma_ollama_by_default(self):
+        config = SimpleNamespace(
+            pi_provider="ollama",
+            pi_model="hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m",
+            pi_bin="pi",
+            pi_tools_mode="default",
+            pi_tools_allowlist="",
+            pi_extra_args="",
+        )
+
+        args = pi_command.build_pi_rpc_args(
+            config,
+            include_no_context_files=False,
+            session_key=None,
+            build_session_args_fn=lambda _config, _session_key: ["--no-session"],
+        )
+
+        self.assertIn("--no-tools", args)
+
+    def test_pi_command_keeps_default_tools_for_other_ollama_models(self):
+        config = SimpleNamespace(
+            pi_provider="ollama",
+            pi_model="qwen3-coder:30b",
+            pi_bin="pi",
+            pi_tools_mode="default",
+            pi_tools_allowlist="",
+            pi_extra_args="",
+        )
+
+        args = pi_command.build_pi_rpc_args(
+            config,
+            include_no_context_files=False,
+            session_key=None,
+            build_session_args_fn=lambda _config, _session_key: ["--no-session"],
+        )
+
+        self.assertNotIn("--no-tools", args)
+
     def test_pi_engine_local_keeps_stdin_open_until_agent_end(self):
         engine = bridge_engine_adapter.PiEngineAdapter()
         config = SimpleNamespace(

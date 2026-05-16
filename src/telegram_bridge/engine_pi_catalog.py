@@ -1,4 +1,5 @@
 import os
+import json
 import shlex
 import subprocess
 from typing import Dict, List, Optional, Tuple
@@ -96,6 +97,46 @@ def parse_pi_model_rows(payload: str) -> List[Tuple[str, str]]:
     return rows
 
 
+def parse_ollama_tags(payload: str) -> List[str]:
+    data = json.loads(payload or "{}")
+    models = data.get("models", [])
+    if not isinstance(models, list):
+        return []
+    names: List[str] = []
+    for item in models:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "") or "").strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def raw_ollama_model_names(config) -> List[str]:
+    host = str(getattr(config, "pi_ssh_host", "server4-beast") or "").strip() or "server4-beast"
+    completed = subprocess.run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            f"ConnectTimeout={GEMMA_HEALTH_TIMEOUT_SECONDS}",
+            host,
+            "curl -sS --max-time 6 http://127.0.0.1:11434/api/tags",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=GEMMA_HEALTH_TIMEOUT_SECONDS + 4,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            completed.stderr.strip()
+            or completed.stdout.strip()
+            or f"ssh exited {completed.returncode}"
+        )
+    return parse_ollama_tags(completed.stdout)
+
+
 def pi_model_rows(config) -> List[Tuple[str, str]]:
     completed = run_pi_command(config, "pi --list-models")
     if completed.returncode != 0:
@@ -105,7 +146,14 @@ def pi_model_rows(config) -> List[Tuple[str, str]]:
             or f"ssh exited {completed.returncode}"
         )
     payload = completed.stdout.strip() or completed.stderr.strip()
-    return parse_pi_model_rows(payload)
+    rows = parse_pi_model_rows(payload)
+    if configured_pi_provider(config) == "ollama":
+        try:
+            for model_name in raw_ollama_model_names(config):
+                rows.append(("ollama", model_name))
+        except (OSError, RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError):
+            pass
+    return list(dict.fromkeys(rows))
 
 
 def pi_available_provider_names(config) -> List[str]:
@@ -132,6 +180,14 @@ def pi_provider_model_names(config) -> List[str]:
 def resolve_pi_model_candidate(available_models: List[str], requested_model: str) -> Optional[str]:
     requested = requested_model.strip()
     if not requested:
+        return None
+    if requested.startswith("idx:"):
+        try:
+            index = int(requested[4:])
+        except ValueError:
+            return None
+        if 0 <= index < len(available_models):
+            return available_models[index]
         return None
     for available in available_models:
         if available == requested:

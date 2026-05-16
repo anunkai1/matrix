@@ -45,6 +45,13 @@ Each runtime user needs a Pi model config. Tank and AgentSmith now also carry a 
           "id": "gemma4:26b",
           "input": ["text", "image"],
           "reasoning": true
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
+          "id": "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m",
+          "input": ["text"],
+          "reasoning": true
         }
       ]
     }
@@ -54,15 +61,22 @@ Each runtime user needs a Pi model config. Tank and AgentSmith now also carry a 
 
 ## Server4
 
-- Host/IP: `192.168.0.124`
+- Host/IP: `192.168.0.126`
 - SSH alias from Server3 service users: `server4-beast`
 - Ollama local endpoint on Server4: `http://127.0.0.1:11434`
 - Default model: `qwen3-coder:30b`
+- Additional installed Ollama tags can be declared explicitly in each runtime user's `~/.pi/agent/models.json`, for example `hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m` for Architect's local Pi runtime.
 
 Verify from Server3 as the runtime user:
 
 ```bash
 sudo -u tank ssh -o BatchMode=yes server4-beast 'ollama list'
+```
+
+For the raw Ollama tag view used by the bridge's Pi model picker fallback:
+
+```bash
+sudo -u tank ssh -o BatchMode=yes server4-beast 'curl -sS --max-time 6 http://127.0.0.1:11434/api/tags'
 ```
 
 ## Bridge Config
@@ -197,6 +211,7 @@ Per chat/topic:
 
 - Pi supports text requests through local non-interactive Pi on Server3.
 - Server4 supplies only the model backend.
+- When `PI_PROVIDER=ollama`, the bridge merges Pi's reported model rows with raw Server4 Ollama tags so `/model list` can expose fresh Ollama pulls before Pi's own provider catalog catches up.
 - Bridge-side continuity is now owned by canonical session state.
 - Pi runs with `--no-session` only when native Pi sessions are not enabled; when `PI_SESSION_MODE=telegram_scope` is active, Pi maintains its own per-scope JSONL session files.
 - Optional native Pi sessions are available with `PI_SESSION_MODE=telegram_scope`; this maps each Telegram scope key to a stable JSONL file under `PI_SESSION_DIR` or `~/.pi/agent/telegram-sessions`.

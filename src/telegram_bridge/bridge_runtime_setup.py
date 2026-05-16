@@ -177,6 +177,7 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
     loaded_state = load_bridge_state_mappings(state_paths)
     loaded_threads = loaded_state["threads"]
     loaded_engines = loaded_state["engines"]
+    loaded_gemma_models = loaded_state["gemma_models"]
     loaded_codex_models = loaded_state["codex_models"]
     loaded_codex_efforts = loaded_state["codex_efforts"]
     loaded_pi_models = loaded_state["pi_models"]
@@ -249,6 +250,8 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
         chat_thread_path=state_paths["chat_threads"],
         chat_engines=loaded_engines,
         chat_engine_path=state_paths["chat_engines"],
+        chat_gemma_models=loaded_gemma_models,
+        chat_gemma_model_path=state_paths["chat_gemma_models"],
         chat_codex_models=loaded_codex_models,
         chat_codex_model_path=state_paths["chat_codex_models"],
         chat_codex_efforts=loaded_codex_efforts,

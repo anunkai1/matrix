@@ -231,12 +231,13 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 
 ## Server4 Gemma Engine
 
-The bridge can use Server4 Beast's Ollama-hosted `gemma4:26b` model as a selectable engine while keeping Server3 as the bot host.
+The bridge can use Server4 Beast's Ollama-hosted models as a selectable engine while keeping Server3 as the bot host.
 
 - Default engine remains `codex`.
-- Selectable engines default to `codex,gemma,pi`.
+- Selectable engines default to `codex,gemma,pi`, but the user-facing `/engine` alias for `gemma` is now `ollama(s4)`.
 - Gemma defaults to the SSH-backed Ollama transport (`GEMMA_PROVIDER=ollama_ssh`) via SSH alias `server4-beast`, so Ollama does not need to listen on the LAN.
-- Per chat/topic, use `/engine gemma`, `/engine codex`, `/engine reset`, or `/engine status`.
+- Per chat/topic, use `/engine ollama(s4)`, `/engine codex`, `/engine reset`, or `/engine status`. The old internal engine key remains `gemma`.
+- When `ollama(s4)` is the active engine, `/model list`, `/model <name>`, and `/model reset` now work against the live Server4 Ollama tag catalog so each chat can select any installed Server4 model without changing the bridge-wide `GEMMA_MODEL`.
 - When Gemma is the effective engine, `/engine status` performs a bounded live Ollama health check and reports health, response time, model availability, and current check error.
 - Gemma is currently text-only and does not yet have the Codex tool/action harness.
 
@@ -250,6 +251,7 @@ The bridge can also select the `pi` coding agent as an engine through the same `
 - The generic shared-bridge defaults are still Ollama-oriented: `PI_PROVIDER=ollama`, `PI_MODEL=qwen3-coder:30b`, `PI_RUNNER=ssh`, `PI_SSH_HOST=server4-beast`, `PI_TOOLS_MODE=default`.
 - For true runtime-root preservation, set `PI_RUNNER=local` and `PI_LOCAL_CWD` to the bot runtime root, for example `/home/tank/tankbot`.
 - Pi can use Venice-backed models by setting `PI_PROVIDER=venice`; Pi can use DeepSeek-backed models by setting `PI_PROVIDER=deepseek`. The available provider/model mappings are defined in the Pi config, for example `~/.pi/agent/models.json`.
+- When `PI_PROVIDER=ollama`, `/model list` now merges Pi's own `pi --list-models` output with raw Ollama tags fetched from Server4 over SSH, so newly pulled Ollama models can still be selected even if Pi's provider catalog has not been refreshed yet.
 - Use `/pi` to inspect Pi status for the current chat/topic.
 - Live Server3 Pi bridges now run with `PI_SESSION_MODE=telegram_scope`; that maps native Pi sessions to Telegram scope keys instead of the shared working directory.
 - Pi session retention: rotate a scope file when it crosses the configured size or age threshold; conversation continuity is handled entirely by engine-native session files (Pi JSONL per chat/topic, Codex JSONL per exec session).

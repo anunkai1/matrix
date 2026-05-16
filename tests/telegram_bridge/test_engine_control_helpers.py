@@ -27,6 +27,7 @@ class TestEngineControlMutations(unittest.TestCase):
             config,
             "tg:1",
             "venice",
+            display_engine_name=lambda value: value,
             normalize_engine_name=lambda value: value,
             selectable_engine_plugins=lambda _config: ["codex", "venice"],
             set_chat_engine=lambda *_args: self.fail("set_chat_engine should not be called"),
@@ -43,6 +44,7 @@ class TestEngineControlMutations(unittest.TestCase):
             config,
             "tg:1",
             "pi",
+            display_engine_name=lambda value: value,
             normalize_engine_name=lambda value: value,
             selectable_engine_plugins=lambda _config: ["codex"],
             set_chat_engine=lambda *_args: self.fail("set_chat_engine should not be called"),
@@ -158,6 +160,33 @@ class TestEngineControlCommands(unittest.TestCase):
         self.assertEqual(observed, {"action": "set", "engine_name": "pi"})
         self.assertEqual(client.messages[0][1], "ok")
 
+    def test_handle_engine_command_normalizes_ollama_s4_alias(self):
+        client = FakeTelegramClient()
+        observed = {}
+
+        def fake_build_action_result(_state, _config, _scope_key, action, engine_name=""):
+            observed["action"] = action
+            observed["engine_name"] = engine_name
+            return CallbackActionResult(text="ok")
+
+        handled = engine_control_commands.handle_engine_command(
+            State(),
+            make_config(),
+            client,
+            "tg:1",
+            1,
+            None,
+            11,
+            "/engine ollama(s4)",
+            normalize_engine_name=lambda value: "gemma" if value == "ollama(s4)" else value,
+            build_engine_action_result=fake_build_action_result,
+            send_control_result_fn=engine_control_commands.send_control_result,
+        )
+
+        self.assertTrue(handled)
+        self.assertEqual(observed, {"action": "set", "engine_name": "gemma"})
+        self.assertEqual(client.messages[0][1], "ok")
+
     def test_handle_model_command_reports_pi_validation_error(self):
         client = FakeTelegramClient()
 
@@ -185,6 +214,35 @@ class TestEngineControlCommands(unittest.TestCase):
 
         self.assertTrue(handled)
         self.assertIn("Failed to validate Pi models", client.messages[0][1])
+        self.assertIn("catalog down", client.messages[0][1])
+
+    def test_handle_model_command_reports_gemma_validation_error(self):
+        client = FakeTelegramClient()
+
+        def fake_build_model_action_result(_state, _config, _scope_key, action, *, engine_name="", value="", page_index=None):
+            del page_index
+            if action == "set" and engine_name == "gemma" and value == "bad-model":
+                raise RuntimeError("catalog down")
+            return CallbackActionResult(text="ok")
+
+        handled = engine_control_commands.handle_model_command(
+            State(),
+            make_config(),
+            client,
+            "tg:1",
+            1,
+            None,
+            21,
+            "/model bad-model",
+            model_active_engine_name=lambda *_args: "gemma",
+            build_model_action_result=fake_build_model_action_result,
+            build_model_list_text=lambda *_args: "list",
+            brief_health_error=lambda exc: str(exc),
+            send_control_result_fn=engine_control_commands.send_control_result,
+        )
+
+        self.assertTrue(handled)
+        self.assertIn("Failed to validate Ollama (S4) models", client.messages[0][1])
         self.assertIn("catalog down", client.messages[0][1])
 
     def test_handle_effort_command_falls_back_to_status_for_non_codex_engine(self):
@@ -287,9 +345,10 @@ class TestEngineControlActions(unittest.TestCase):
             "set",
             value="anything",
             page_index=2,
-            model_active_engine_name=lambda *_args: "gemma",
+            model_active_engine_name=lambda *_args: "venice",
             reset_model_for_scope=lambda *_args: self.fail("reset branch should not run"),
             set_codex_model_for_scope=lambda *_args: self.fail("codex branch should not run"),
+            set_gemma_model_for_scope=lambda *_args: self.fail("gemma branch should not run"),
             set_pi_model_for_scope=lambda *_args: self.fail("pi branch should not run"),
             build_model_status_text=lambda *_args: "status-text",
             build_model_picker_markup=lambda *_args, **kwargs: {"page": kwargs["page_index"]},

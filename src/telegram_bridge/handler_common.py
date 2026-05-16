@@ -2,6 +2,7 @@ import logging
 from typing import Dict, List, Optional
 
 from telegram_bridge.conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
+from telegram_bridge.engine_catalog import display_engine_name
 from telegram_bridge.handler_progress import ProgressReporter
 from telegram_bridge.runtime_profile import assistant_label
 from telegram_bridge.state_store import State, get_chat_engine
@@ -105,7 +106,7 @@ def extract_callback_query_context(
 
 def build_help_text(config) -> str:
     selectable = selectable_engine_plugins(config)
-    engine_help_choices = ["status", *selectable, "reset"]
+    engine_help_choices = ["status", *(display_engine_name(name) for name in selectable), "reset"]
     minimal = (
         "Available commands:\n"
         "/start - verify bridge connectivity\n"
@@ -200,8 +201,11 @@ def build_status_text(
         "Bridge status: online",
         f"Allowed chats: {len(config.allowed_chat_ids)}",
         f"Required prefixes: {', '.join(config.required_prefixes) if config.required_prefixes else '(none)'}",
-        f"Default engine: {getattr(config, 'engine_plugin', 'codex')}",
-        f"Selectable engines: {', '.join(getattr(config, 'selectable_engine_plugins', [])) or '(none)'}",
+        f"Default engine: {display_engine_name(getattr(config, 'engine_plugin', 'codex'))}",
+        (
+            "Selectable engines: "
+            f"{', '.join(display_engine_name(name) for name in getattr(config, 'selectable_engine_plugins', [])) or '(none)'}"
+        ),
         f"Busy chats: {busy_count}",
         f"Saved Codex threads: {thread_count}",
         (
@@ -218,6 +222,8 @@ def build_status_text(
         selected_engine = get_chat_engine(state, scope_key)
         lines.append(f"This chat has Codex thread: {has_thread}")
         lines.append(f"This chat has worker session: {has_worker}")
-        lines.append(f"This chat engine: {selected_engine or getattr(config, 'engine_plugin', 'codex')}")
+        lines.append(
+            f"This chat engine: {display_engine_name(selected_engine or getattr(config, 'engine_plugin', 'codex'))}"
+        )
 
     return "\n".join(lines)

@@ -273,7 +273,7 @@ def handle_model_command(
                 engine_name=active_engine,
                 value=raw_tail,
             )
-        elif active_engine == "pi":
+        elif active_engine in {"gemma", "pi"}:
             try:
                 result = build_model_action_result(
                     state,
@@ -284,8 +284,12 @@ def handle_model_command(
                     value=raw_tail,
                 )
             except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+                engine_label = "Pi" if active_engine == "pi" else "Ollama (S4)"
                 result = CallbackActionResult(
-                    text="Failed to validate Pi models.\n" f"Error: {brief_health_error(exc)}"
+                    text=(
+                        f"Failed to validate {engine_label} models.\n"
+                        f"Error: {brief_health_error(exc)}"
+                    )
                 )
         else:
             result = build_model_action_result(state, config, scope_key, "status")

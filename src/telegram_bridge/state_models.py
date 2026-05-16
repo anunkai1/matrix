@@ -65,6 +65,8 @@ class State:
     chat_thread_path: str = ""
     chat_engines: Dict[ScopeKey, str] = field(default_factory=dict)
     chat_engine_path: str = ""
+    chat_gemma_models: Dict[ScopeKey, str] = field(default_factory=dict)
+    chat_gemma_model_path: str = ""
     chat_codex_models: Dict[ScopeKey, str] = field(default_factory=dict)
     chat_codex_model_path: str = ""
     chat_codex_efforts: Dict[ScopeKey, str] = field(default_factory=dict)

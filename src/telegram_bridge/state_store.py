@@ -27,16 +27,19 @@ from telegram_bridge.scope_state_store import (
     clear_chat_codex_effort,
     clear_chat_codex_model,
     clear_chat_engine,
+    clear_chat_gemma_model,
     clear_chat_pi_model,
     clear_chat_pi_provider,
     get_chat_codex_effort,
     get_chat_codex_model,
     get_chat_engine,
+    get_chat_gemma_model,
     get_chat_pi_model,
     get_chat_pi_provider,
     load_chat_codex_efforts,
     load_chat_codex_models,
     load_chat_engines,
+    load_chat_gemma_models,
     load_chat_pi_models,
     load_chat_pi_providers,
     load_chat_threads,
@@ -45,11 +48,13 @@ from telegram_bridge.scope_state_store import (
     persist_chat_codex_efforts,
     persist_chat_codex_models,
     persist_chat_engines,
+    persist_chat_gemma_models,
     persist_chat_pi_models,
     persist_chat_pi_providers,
     set_chat_codex_effort,
     set_chat_codex_model,
     set_chat_engine,
+    set_chat_gemma_model,
     set_chat_pi_model,
     set_chat_pi_provider,
 )
@@ -80,6 +85,7 @@ __all__ = [
     "clear_chat_codex_effort",
     "clear_chat_codex_model",
     "clear_chat_engine",
+    "clear_chat_gemma_model",
     "clear_chat_pi_model",
     "clear_chat_pi_provider",
     "clear_in_flight_request",
@@ -90,6 +96,7 @@ __all__ = [
     "get_chat_codex_effort",
     "get_chat_codex_model",
     "get_chat_engine",
+    "get_chat_gemma_model",
     "get_chat_pi_model",
     "get_chat_pi_provider",
     "get_thread_id",
@@ -98,6 +105,7 @@ __all__ = [
     "load_chat_codex_efforts",
     "load_chat_codex_models",
     "load_chat_engines",
+    "load_chat_gemma_models",
     "load_chat_pi_models",
     "load_chat_pi_providers",
     "load_chat_threads",
@@ -115,6 +123,7 @@ __all__ = [
     "persist_chat_codex_efforts",
     "persist_chat_codex_models",
     "persist_chat_engines",
+    "persist_chat_gemma_models",
     "persist_chat_pi_models",
     "persist_chat_pi_providers",
     "persist_chat_threads",
@@ -125,6 +134,7 @@ __all__ = [
     "set_chat_codex_effort",
     "set_chat_codex_model",
     "set_chat_engine",
+    "set_chat_gemma_model",
     "set_chat_pi_model",
     "set_chat_pi_provider",
     "set_thread_id",
@@ -268,6 +278,15 @@ class StateRepository:
 
     def clear_chat_codex_model(self, scope_key: ScopeKey) -> bool:
         return clear_chat_codex_model(self.state, scope_key)
+
+    def get_chat_gemma_model(self, scope_key: ScopeKey) -> Optional[str]:
+        return get_chat_gemma_model(self.state, scope_key)
+
+    def set_chat_gemma_model(self, scope_key: ScopeKey, model_name: str) -> None:
+        set_chat_gemma_model(self.state, scope_key, model_name)
+
+    def clear_chat_gemma_model(self, scope_key: ScopeKey) -> bool:
+        return clear_chat_gemma_model(self.state, scope_key)
 
     def get_chat_codex_effort(self, scope_key: ScopeKey) -> Optional[str]:
         return get_chat_codex_effort(self.state, scope_key)

@@ -8,6 +8,7 @@ def set_engine_for_scope(
     scope_key: str,
     engine_name: str,
     *,
+    display_engine_name: Callable,
     normalize_engine_name: Callable,
     selectable_engine_plugins: Callable,
     set_chat_engine: Callable,
@@ -17,9 +18,12 @@ def set_engine_for_scope(
         return "Venice engine is configured in the bridge, but VENICE_API_KEY is missing."
     allowed = selectable_engine_plugins(config)
     if normalized_engine not in allowed:
-        return f"Unknown or unavailable engine: {normalized_engine}\nSelectable engines: {', '.join(allowed)}"
+        return (
+            f"Unknown or unavailable engine: {display_engine_name(normalized_engine)}\n"
+            f"Selectable engines: {', '.join(display_engine_name(name) for name in allowed)}"
+        )
     set_chat_engine(state, scope_key, normalized_engine)
-    return f"This chat now uses engine: {normalized_engine}"
+    return f"This chat now uses engine: {display_engine_name(normalized_engine)}"
 
 
 def reset_engine_for_scope(
@@ -29,10 +33,14 @@ def reset_engine_for_scope(
     *,
     clear_chat_engine: Callable,
     configured_default_engine: Callable,
+    display_engine_name: Callable,
 ) -> str:
     removed = clear_chat_engine(state, scope_key)
     suffix = "removed" if removed else "already using default"
-    return f"Engine override {suffix}. This chat now uses {configured_default_engine(config)}."
+    return (
+        f"Engine override {suffix}. "
+        f"This chat now uses {display_engine_name(configured_default_engine(config))}."
+    )
 
 
 def set_codex_model_for_scope(
@@ -66,6 +74,35 @@ def set_codex_model_for_scope(
     )
 
 
+def set_gemma_model_for_scope(
+    state,
+    config,
+    scope_key: str,
+    model_name: str,
+    *,
+    build_engine_runtime_config: Callable,
+    gemma_model_names: Callable,
+    resolve_gemma_model_candidate: Callable,
+    set_chat_gemma_model: Callable,
+    configured_gemma_model: Callable,
+    build_gemma_model_source_text: Callable,
+) -> str:
+    display_config = build_engine_runtime_config(state, config, scope_key, "gemma")
+    available_models = gemma_model_names(display_config)
+    resolved_model = resolve_gemma_model_candidate(available_models, model_name)
+    if resolved_model is None:
+        return (
+            f"Model not available for Ollama (S4): `{model_name}`\n"
+            "Use /model list to see the allowed model names."
+        )
+    set_chat_gemma_model(state, scope_key, resolved_model)
+    updated_config = build_engine_runtime_config(state, config, scope_key, "gemma")
+    return (
+        f"Ollama (S4) model for this chat is now {configured_gemma_model(updated_config)} "
+        f"({build_gemma_model_source_text(state, scope_key)})."
+    )
+
+
 def reset_model_for_scope(
     state,
     config,
@@ -73,14 +110,25 @@ def reset_model_for_scope(
     active_engine: str,
     *,
     clear_chat_codex_model: Callable,
+    clear_chat_gemma_model: Callable,
     clear_chat_pi_model: Callable,
     build_engine_runtime_config: Callable,
     configured_codex_model: Callable,
+    configured_gemma_model: Callable,
     configured_pi_model: Callable,
     build_codex_model_source_text: Callable,
+    build_gemma_model_source_text: Callable,
     build_pi_model_source_text: Callable,
     build_model_status_text: Callable,
 ) -> str:
+    if active_engine == "gemma":
+        removed = clear_chat_gemma_model(state, scope_key)
+        updated_config = build_engine_runtime_config(state, config, scope_key, "gemma")
+        source = "chat override cleared" if removed else "no chat override was set"
+        return (
+            f"{source}. Ollama (S4) model is now {configured_gemma_model(updated_config)} "
+            f"({build_gemma_model_source_text(state, scope_key)})."
+        )
     if active_engine == "codex":
         removed = clear_chat_codex_model(state, scope_key)
         updated_config = build_engine_runtime_config(state, config, scope_key, "codex")

@@ -170,7 +170,7 @@ def build_engine_progress_context_label(config, engine_name: Optional[str] = Non
     if selected == "gemma":
         provider = str(getattr(config, "gemma_provider", "ollama_ssh") or "ollama_ssh").strip().lower()
         model = str(getattr(config, "gemma_model", "gemma4:26b") or "gemma4:26b").strip()
-        parts = ["gemma"]
+        parts = ["ollama(s4)"]
         if provider and provider not in {"ollama", "ollama_ssh"}:
             parts.append(provider)
         if model:

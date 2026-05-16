@@ -31,6 +31,7 @@ import telegram_bridge.command_routing as bridge_command_routing
 import telegram_bridge.control_commands as bridge_control_commands
 import telegram_bridge.engine_adapter as bridge_engine_adapter
 import telegram_bridge.engines.codex as bridge_codex_engine
+import telegram_bridge.engine_pi_catalog as bridge_engine_pi_catalog
 import telegram_bridge.executor as bridge_executor
 import telegram_bridge.handlers as bridge_handlers
 import telegram_bridge.http_channel as bridge_http_channel
@@ -63,7 +64,7 @@ class TestPlugins(unittest.TestCase):
         cfg = make_config()
         text = bridge_handlers.build_help_text(cfg)
         self.assertIn(
-            "/engine status|codex|gemma|pi|reset - show or select this chat's engine",
+            "/engine status|codex|ollama(s4)|pi|reset - show or select this chat's engine",
             text,
         )
         self.assertNotIn("|venice|", text)
@@ -406,11 +407,11 @@ class TestPlugins(unittest.TestCase):
         ):
             text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
 
-        self.assertIn("This chat engine: gemma", text)
-        self.assertIn("Gemma health: ok", text)
-        self.assertIn("Gemma response time: 123ms", text)
-        self.assertIn("Gemma model available: yes", text)
-        self.assertIn("Gemma last check error: (none)", text)
+        self.assertIn("This chat engine: ollama(s4)", text)
+        self.assertIn("Ollama (S4) health: ok", text)
+        self.assertIn("Ollama (S4) response time: 123ms", text)
+        self.assertIn("Ollama (S4) model available: yes", text)
+        self.assertIn("Ollama (S4) last check error: (none)", text)
         run_mock.assert_called_once()
         self.assertIn("server4-test", run_mock.call_args.args[0])
 
@@ -434,10 +435,97 @@ class TestPlugins(unittest.TestCase):
         ):
             text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
 
-        self.assertIn("Gemma health: error", text)
-        self.assertIn("Gemma response time: 50ms", text)
-        self.assertIn("Gemma model available: no", text)
-        self.assertIn("Gemma last check error: ssh failed more detail", text)
+        self.assertIn("Ollama (S4) health: error", text)
+        self.assertIn("Ollama (S4) response time: 50ms", text)
+        self.assertIn("Ollama (S4) model available: no", text)
+        self.assertIn("Ollama (S4) last check error: ssh failed more detail", text)
+
+    def test_pi_model_rows_merges_raw_ollama_tags_for_ollama_provider(self):
+        config = make_config(pi_provider="ollama")
+        list_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="provider  model\nollama  qwen3-coder:30b\n",
+            stderr="",
+        )
+        tags_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "models": [
+                        {"name": "qwen3-coder:30b"},
+                        {"name": "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m"},
+                    ]
+                }
+            ),
+            stderr="",
+        )
+
+        with mock.patch.object(
+            bridge_handlers.subprocess,
+            "run",
+            side_effect=[list_completed, tags_completed],
+        ):
+            rows = bridge_engine_pi_catalog.pi_model_rows(config)
+
+        self.assertEqual(
+            rows,
+            [
+                ("ollama", "qwen3-coder:30b"),
+                ("ollama", "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m"),
+            ],
+        )
+
+    def test_check_pi_health_uses_merged_ollama_catalog(self):
+        config = make_config(
+            pi_provider="ollama",
+            pi_model="hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m",
+        )
+        version_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="pi 0.70.2\n",
+            stderr="",
+        )
+        list_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="provider  model\nollama  qwen3-coder:30b\n",
+            stderr="",
+        )
+        tags_completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "models": [
+                        {"name": "qwen3-coder:30b"},
+                        {"name": "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m"},
+                    ]
+                }
+            ),
+            stderr="",
+        )
+
+        with (
+            mock.patch.object(
+                bridge_handlers.subprocess,
+                "run",
+                side_effect=[version_completed, list_completed, list_completed, tags_completed],
+            ),
+            mock.patch.object(
+                bridge_handlers.time,
+                "monotonic",
+                side_effect=[400.0, 400.05],
+            ),
+        ):
+            health = bridge_handlers.check_pi_health(config)
+
+        self.assertTrue(health["ok"])
+        self.assertEqual(health["version"], "pi 0.70.2")
+        self.assertTrue(health["model_available"])
+        self.assertEqual(health["error"], "")
 
     def test_engine_status_includes_live_venice_health(self):
         state = bridge.State(chat_engines={"tg:1": "venice"})
@@ -784,11 +872,43 @@ class TestPlugins(unittest.TestCase):
             callback_values,
         )
 
+    def test_engine_command_status_includes_gemma_model_menu(self):
+        state = bridge.State(chat_engines={"tg:1": "gemma"})
+        config = make_config(
+            engine_plugin="codex",
+            selectable_engine_plugins=["codex", "gemma", "pi"],
+        )
+        client = FakeTelegramClient()
+
+        with mock.patch.object(
+            bridge_handlers.engine_controls,
+            "_gemma_model_names",
+            return_value=["gemma4:26b", "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m"],
+        ):
+            handled = bridge_handlers.handle_engine_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/engine",
+            )
+
+        self.assertTrue(handled)
+        callback_values = [
+            button["callback_data"]
+            for row in client.messages[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("cfg|model|gemma|menu", callback_values)
+
     def test_help_text_includes_configured_chatgptweb_engine(self):
         cfg = make_config(selectable_engine_plugins=["codex", "gemma", "pi", "chatgptweb"])
         text = bridge_handlers.build_help_text(cfg)
         self.assertIn(
-            "/engine status|codex|gemma|pi|chatgptweb|reset - show or select this chat's engine",
+            "/engine status|codex|ollama(s4)|pi|chatgptweb|reset - show or select this chat's engine",
             text,
         )
 
@@ -873,6 +993,51 @@ class TestPlugins(unittest.TestCase):
             "cfg|engine|codex|menu",
             callback_values,
         )
+
+    def test_callback_query_from_engine_menu_opens_gemma_model_menu(self):
+        state = bridge.State(chat_engines={"tg:1": "gemma"})
+        config = make_config(engine_plugin="codex", gemma_model="gemma4:26b")
+        client = FakeTelegramClient()
+        update = {
+            "update_id": 91,
+            "callback_query": {
+                "id": "cb-engine-model-gemma-1",
+                "data": "cfg|model|gemma|menu",
+                "message": {
+                    "message_id": 157,
+                    "chat": {"id": 1, "type": "private"},
+                    "text": "/engine",
+                },
+            },
+        }
+
+        with mock.patch.object(
+            bridge_handlers.engine_controls,
+            "_gemma_model_names",
+            return_value=[
+                "gemma4:26b",
+                "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m",
+            ],
+        ):
+            bridge_handlers.handle_update(state, config, client, update, engine=None)
+
+        self.assertEqual(client.callback_answers[0], ("cb-engine-model-gemma-1", "Updated."))
+        self.assertIn("Active engine: ollama(s4)", client.edits[0][2])
+        callback_values = [
+            button["callback_data"]
+            for row in client.edits[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        button_texts = [
+            button["text"]
+            for row in client.edits[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("cfg|model|gemma|set|idx:0", callback_values)
+        self.assertIn("cfg|model|gemma|set|idx:1", callback_values)
+        self.assertIn("cfg|engine|gemma|menu", callback_values)
+        self.assertIn("gemma4:26b *", button_texts)
+        self.assertIn("supergemma4-26b uncensore...", button_texts)
 
     def test_callback_query_from_engine_menu_opens_provider_menu(self):
         state = bridge.State(chat_engines={"tg:1": "pi"})
@@ -1026,6 +1191,88 @@ class TestPlugins(unittest.TestCase):
         self.assertEqual(bridge_handlers.StateRepository(state).get_chat_codex_model("tg:1"), "gpt-5.5")
         self.assertIn("Codex model for this chat is now gpt-5.5", client.messages[0][1])
         self.assertIsInstance(client.messages[0][3], dict)
+
+    def test_model_command_sets_gemma_model_override(self):
+        state = bridge.State(chat_engines={"tg:1": "gemma"})
+        config = make_config(engine_plugin="codex", gemma_model="gemma4:26b")
+        client = FakeTelegramClient()
+
+        with mock.patch.object(
+            bridge_handlers.engine_controls,
+            "_gemma_model_names",
+            return_value=[
+                "gemma4:26b",
+                "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m",
+            ],
+        ):
+            handled = bridge_handlers.handle_model_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/model hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m",
+            )
+
+        self.assertTrue(handled)
+        self.assertEqual(
+            bridge_handlers.StateRepository(state).get_chat_gemma_model("tg:1"),
+            "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m",
+        )
+        self.assertIn("Ollama (S4) model for this chat is now hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m", client.messages[0][1])
+
+    def test_model_command_for_gemma_uses_single_column_picker_with_index_tokens(self):
+        state = bridge.State(chat_engines={"tg:1": "gemma"})
+        config = make_config(engine_plugin="codex", gemma_model="model-01")
+        client = FakeTelegramClient()
+        model_names = [f"model-{index:02d}" for index in range(1, 31)]
+
+        with mock.patch.object(bridge_handlers.engine_controls, "_gemma_model_names", return_value=model_names):
+            handled = bridge_handlers.handle_model_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/model",
+            )
+
+        self.assertTrue(handled)
+        self.assertIsInstance(client.messages[0][3], dict)
+        callback_values = [
+            button["callback_data"]
+            for row in client.messages[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("cfg|model|gemma|set|idx:0", callback_values)
+        self.assertIn("cfg|model|gemma|set|idx:15", callback_values)
+        self.assertIn("cfg|model|gemma|page|1", callback_values)
+
+    def test_model_reset_clears_gemma_model_override(self):
+        state = bridge.State(chat_engines={"tg:1": "gemma"})
+        repo = bridge_handlers.StateRepository(state)
+        repo.set_chat_gemma_model("tg:1", "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m")
+        config = make_config(engine_plugin="codex", gemma_model="gemma4:26b")
+        client = FakeTelegramClient()
+
+        handled = bridge_handlers.handle_model_command(
+            state=state,
+            config=config,
+            client=client,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=42,
+            raw_text="/model reset",
+        )
+
+        self.assertTrue(handled)
+        self.assertIsNone(repo.get_chat_gemma_model("tg:1"))
+        self.assertIn("Ollama (S4) model is now gemma4:26b", client.messages[0][1])
 
     def test_model_reset_clears_codex_model_override(self):
         state = bridge.State(chat_engines={"tg:1": "codex"})
@@ -1205,6 +1452,79 @@ class TestPlugins(unittest.TestCase):
         self.assertNotIn("model-17", button_texts)
         self.assertIn("1/2", button_texts)
         self.assertIn("Next", button_texts)
+        callback_values = [
+            button["callback_data"]
+            for row in client.messages[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("cfg|model|pi|set|idx:0", callback_values)
+        self.assertIn("cfg|model|pi|set|idx:15", callback_values)
+
+    def test_model_command_for_pi_shows_long_hf_model_with_short_button_label(self):
+        state = bridge.State(chat_engines={"tg:1": "pi"})
+        config = make_config(engine_plugin="codex", pi_provider="ollama", pi_model="qwen3-coder:30b")
+        client = FakeTelegramClient()
+        model_names = [
+            "gemma4:26b",
+            "hf.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2:q4_k_m",
+            "qwen3-coder:30b",
+        ]
+
+        with mock.patch.object(bridge_handlers.engine_controls, "_pi_provider_model_names", return_value=model_names):
+            handled = bridge_handlers.handle_model_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/model",
+            )
+
+        self.assertTrue(handled)
+        button_texts = [
+            button["text"]
+            for row in client.messages[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        callback_values = [
+            button["callback_data"]
+            for row in client.messages[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("supergemma4-26b uncensore...", button_texts)
+        self.assertIn("cfg|model|pi|set|idx:1", callback_values)
+
+    def test_callback_query_for_gemma_model_page_opens_requested_page(self):
+        state = bridge.State(chat_engines={"tg:1": "gemma"})
+        config = make_config(engine_plugin="codex", gemma_model="model-01")
+        client = FakeTelegramClient()
+        model_names = [f"model-{index:02d}" for index in range(1, 31)]
+        update = {
+            "update_id": 111,
+            "callback_query": {
+                "id": "cb-gemma-model-page-1",
+                "data": "cfg|model|gemma|page|1",
+                "message": {
+                    "message_id": 159,
+                    "chat": {"id": 1, "type": "private"},
+                    "text": "/model",
+                },
+            },
+        }
+
+        with mock.patch.object(bridge_handlers.engine_controls, "_gemma_model_names", return_value=model_names):
+            bridge_handlers.handle_update(state, config, client, update, engine=None)
+
+        self.assertEqual(client.callback_answers[0], ("cb-gemma-model-page-1", "Updated."))
+        button_texts = [
+            button["text"]
+            for row in client.edits[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("model-17", button_texts)
+        self.assertIn("model-30", button_texts)
 
     def test_callback_query_for_pi_model_page_opens_requested_page(self):
         state = bridge.State(chat_engines={"tg:1": "pi"})
