@@ -27,6 +27,7 @@ Campaign spec shape:
 - `commit_prefix`
 - `notify_prefix`
 - `allowed_dirty_paths`
+- `completion_review` optional end-of-campaign review gate
 - `tasks`
 - each task defines:
   - `task_id`
@@ -37,6 +38,16 @@ Campaign spec shape:
   - `verification_commands`
   - `on_success_commands`
   - `on_failure_commands`
+
+Optional `completion_review` shape:
+- `guidance`
+- `max_followup_campaigns`
+
+Behavior:
+- when all listed tasks complete, the runner can do one more Codex review pass against the campaign's real end goal
+- that review must return either `ready` or a bounded follow-up campaign
+- if a follow-up campaign is returned, the runner writes it next to the current campaign JSON and continues automatically
+- use this only when the campaign needs a real end-goal gate, not for routine one-shot task bundles
 
 Commands:
 - default detached launch: `bash /home/architect/mavali-loop/scripts/tmux_control.sh /abs/path/to/campaign.json`

@@ -487,3 +487,193 @@ class MavaliLoopTests(unittest.TestCase):
             self.assertEqual(payload["tasks"][0]["task_id"], "task-one")
             self.assertEqual(payload["tasks"][1]["task_id"], "task-one-2")
             self.assertEqual(payload["tasks"][0]["verification_commands"], [["true"]])
+
+    def test_load_campaign_spec_parses_completion_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            spec_path = Path(tmpdir) / "campaign.json"
+            spec_path.write_text(
+                json.dumps(
+                    {
+                        "campaign_id": "review-campaign",
+                        "title": "Review Campaign",
+                        "summary": "summary",
+                        "completion_review": {
+                            "guidance": "Decide whether to stop or create a follow-up.",
+                            "max_followup_campaigns": 2,
+                        },
+                        "tasks": [
+                            {
+                                "task_id": "task-one",
+                                "title": "Task One",
+                                "summary": "one",
+                                "verification_commands": [["true"]],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            spec = mavali_loop.load_campaign_spec(str(spec_path))
+
+            assert spec.completion_review is not None
+            self.assertEqual(spec.completion_review.guidance, "Decide whether to stop or create a follow-up.")
+            self.assertEqual(spec.completion_review.max_followup_campaigns, 2)
+            self.assertEqual(spec.source_path, str(spec_path.resolve()))
+
+    def test_extract_final_output_text_prefers_last_agent_message(self) -> None:
+        stream = "\n".join(
+            [
+                json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "first"}}),
+                json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "second"}}),
+            ]
+        )
+
+        result = mavali_loop.extract_final_output_text(stream)
+
+        self.assertEqual(result, "second")
+
+    def test_build_followup_campaign_spec_inherits_parent_contract(self) -> None:
+        parent = mavali_loop.CampaignSpec(
+            campaign_id="parent_campaign",
+            title="Parent Campaign",
+            summary="parent summary",
+            repo_root="/tmp/repo",
+            tasks=[
+                mavali_loop.CampaignTask(
+                    task_id="task-one",
+                    title="Task One",
+                    summary="one",
+                    guidance="fix one",
+                    target_paths=["a.py"],
+                    verification_commands=[["true"]],
+                    on_success_commands=[],
+                    on_failure_commands=[],
+                )
+            ],
+            allowed_dirty_paths=[".state"],
+            completion_review=mavali_loop.CompletionReviewSpec(
+                guidance="Review and continue if needed.",
+                max_followup_campaigns=2,
+            ),
+            source_path="/tmp/parent_campaign.json",
+        )
+        review_payload = {
+            "status": "followup_required",
+            "campaign": {
+                "campaign_id_suffix": "cleanup",
+                "title": "Cleanup",
+                "summary": "cleanup summary",
+                "tasks": [
+                    {
+                        "task_id": "cleanup-task",
+                        "title": "Cleanup Task",
+                        "summary": "cleanup",
+                        "guidance": "fix cleanup",
+                        "target_paths": ["docs/spec.md"],
+                        "verification_commands": [["python3", "-c", "print('ok')"]],
+                    }
+                ],
+            },
+        }
+
+        followup = mavali_loop.build_followup_campaign_spec(
+            parent,
+            review_payload,
+            followup_index=1,
+            remaining_followups=1,
+        )
+
+        self.assertEqual(followup.campaign_id, "parent_campaign_cleanup")
+        self.assertEqual(followup.repo_root, parent.repo_root)
+        self.assertEqual(followup.allowed_dirty_paths, [".state"])
+        self.assertEqual(followup.legacy_state_dirs, [])
+        assert followup.completion_review is not None
+        self.assertEqual(followup.completion_review.max_followup_campaigns, 1)
+        self.assertTrue(followup.source_path.endswith("__followup_1.json"))
+
+    def test_run_loop_clears_stale_followup_pointer_when_review_is_ready(self) -> None:
+        spec = self.build_spec()
+        spec = mavali_loop.CampaignSpec(
+            campaign_id=spec.campaign_id,
+            title=spec.title,
+            summary=spec.summary,
+            tasks=spec.tasks,
+            completion_review=mavali_loop.CompletionReviewSpec(
+                guidance="Review until ready.",
+                max_followup_campaigns=1,
+            ),
+        )
+        t0 = datetime(2026, 5, 9, 0, 0, tzinfo=timezone.utc)
+        done_one = mavali_loop.AttemptResult(
+            observed_at_utc=t0.isoformat(),
+            task_id="task-one",
+            attempt=1,
+            status="no_change",
+            summary="done one",
+            codex_returncode=0,
+            codex_stdout="",
+            codex_stderr="",
+            verification_results=[],
+            changed_files=[],
+            reverted_files=[],
+            git_head_before="a",
+            git_head_after="a",
+        )
+        done_two = mavali_loop.AttemptResult(
+            observed_at_utc=t0.isoformat(),
+            task_id="task-two",
+            attempt=1,
+            status="no_change",
+            summary="done two",
+            codex_returncode=0,
+            codex_stdout="",
+            codex_stderr="",
+            verification_results=[],
+            changed_files=[],
+            reverted_files=[],
+            git_head_before="a",
+            git_head_after="a",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            paths = mavali_loop.LoopPaths(
+                state_root=tmpdir_path,
+                campaign_dir=tmpdir_path / "example_campaign",
+                state_path=tmpdir_path / "example_campaign" / "state.json",
+                results_path=tmpdir_path / "example_campaign" / "results.jsonl",
+                report_path=tmpdir_path / "example_campaign" / "report.txt",
+                log_path=tmpdir_path / "example_campaign" / "tmux.log",
+            )
+            paths.campaign_dir.mkdir(parents=True)
+            initial_state = {
+                "campaign_id": spec.campaign_id,
+                "followup_campaign_id": "stale_followup",
+                "followup_campaign_path": "/tmp/stale_followup.json",
+                "tasks": {},
+            }
+            paths.state_path.write_text(json.dumps(initial_state), encoding="utf-8")
+            with mock.patch.object(mavali_loop, "state_paths_for_campaign", return_value=paths), mock.patch.object(
+                mavali_loop,
+                "run_task_attempt",
+                side_effect=[done_one, done_two],
+            ), mock.patch.object(
+                mavali_loop,
+                "run_completion_review",
+                return_value=None,
+            ), mock.patch.object(
+                mavali_loop,
+                "now_utc",
+                return_value=t0,
+            ), mock.patch.object(
+                mavali_loop,
+                "send_telegram_message",
+                return_value=False,
+            ), mock.patch("builtins.print"):
+                rc = mavali_loop.run_loop(spec, max_attempts_per_task=2)
+
+            state = json.loads(paths.state_path.read_text(encoding="utf-8"))
+            self.assertEqual(rc, 0)
+            self.assertNotIn("followup_campaign_id", state)
+            self.assertNotIn("followup_campaign_path", state)
