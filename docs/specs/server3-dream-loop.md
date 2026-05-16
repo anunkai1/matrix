@@ -19,11 +19,11 @@ It explains:
 
 ## Purpose
 
-The goal is to make actual system truth and maintained machine truth state converge, with human-readable explanation only as a secondary rendered effect.
+The goal is to make actual system truth and maintained structured truth state converge, with actual system truth as the target and human-readable explanation only as a secondary rendered effect.
 
-The desired end state is explicit: actual code/runtime truth should align with structured truth state, and explainer files should derive from that state instead of competing with it.
+The desired end state is explicit: actual system truth should align with maintained structured truth state, and explainer files should derive from that state instead of competing with it.
 
-The core maintenance target is `actual system state <-> structured truth state`.
+The core maintenance target is `actual system truth <-> structured truth state`.
 
 The design is:
 
@@ -82,22 +82,21 @@ The dream-loop design should separate:
 
 ### Primary Structured Truth State
 
-This is the machine-readable self-model of Server3.
+This is the machine-readable primary maintained self-model of Server3.
 
 It should contain exact facts such as:
 
 - what runtimes exist
 - what services are active
 - what capabilities are configured
-- what recent health signals exist
-- which truth files changed
+- which structured-truth inputs changed
 - which scopes may now have stale carried context
 
-This is the main alignment target.
+This is the main alignment target, and it exists to keep actual system truth converging with maintained structured truth state over time.
 
-The dream loop should primarily keep:
+The dream loop should primarily keep actual system truth converging with maintained structured truth state:
 
-`actual system state <-> structured truth state`
+`actual system truth <-> structured truth state`
 
 aligned.
 
@@ -239,11 +238,18 @@ The dream loop should consume those systems, not duplicate them.
 
 The dream loop should produce structured truth outputs first.
 
-Suggested primary outputs:
+For the overall design, the output set may include:
 
 - `/var/lib/server3-dream-loop/latest_truth_state.json`
 - `/var/lib/server3-dream-loop/latest_health_state.json`
+- `/var/lib/server3-dream-loop/latest_run_state.json`
 - `/var/lib/server3-dream-loop/history.jsonl`
+
+For the v1-required outputs, the contract is only:
+
+- `/var/lib/server3-dream-loop/latest_truth_state.json`
+- `/var/lib/server3-dream-loop/latest_health_state.json`
+- `/var/lib/server3-dream-loop/latest_run_state.json`
 
 Suggested secondary outputs:
 
@@ -251,9 +257,51 @@ Suggested secondary outputs:
 - `SERVER3_SUMMARY.md`
 - Telegram alignment summaries
 
+### V1 Contract
+
+V1 keeps three machine-output artifacts separate:
+
+- `latest_truth_state.json`: machine truth and stale-context eligibility
+- `latest_health_state.json`: operational health and degradation state
+- `latest_run_state.json`: execution bookkeeping
+
+The V1 source-and-command classification is explicit and single-purpose:
+
+| Source or command | Role |
+| --- | --- |
+| `ARCHITECT_INSTRUCTION.md` | machine-truth fingerprint input |
+| `LESSONS.md` | machine-truth fingerprint input |
+| `infra/server3-runtime-manifest.json` | machine-truth fingerprint input |
+| `python3 ops/server3_runtime_status.py --json` | machine-truth fingerprint input |
+| `python3 ops/runtime_observer/runtime_observer.py status --json` | health input |
+| `python3 ops/runtime_observer/runtime_observer.py summary --hours 24 --json` | health input |
+| `src/telegram_bridge/runtime_config.py` | policy-derived stale-context eligibility input |
+| `src/telegram_bridge/session_manager.py` | policy-derived stale-context eligibility input |
+| `src/telegram_bridge/bridge_runtime_setup.py` | policy-derived stale-context eligibility input |
+| `latest_truth_state.json` | primary truth output |
+| `latest_health_state.json` | primary health output |
+| `latest_run_state.json` | execution bookkeeping |
+| `latest_report.md` | report-only output |
+| `SERVER3_SUMMARY.md` | report-only output |
+| Telegram alignment summaries | report-only output |
+
+V1 contract rules:
+
+1. The machine-truth fingerprint must be derived from structured truth inputs only.
+2. Machine-truth fingerprint inputs come from watched structured-truth inputs and verified runtime truth inputs. They exclude secondary explainer files, reports, notification history, and all report-only outputs.
+3. Policy-derived stale-context eligibility is tracked as a separate structured-truth field in truth state. Its inputs are the policy-only sources in the table, and it may change even if the machine-truth fingerprint does not.
+4. V1 emits stale-context warning eligibility only. It does not perform actual chat notification delivery in the v1 runner.
+5. `latest_truth_state.json` must include, at minimum, `generated_at`, `machine_truth_fingerprint`, `watched_inputs`, and `stale_context_eligibility`.
+6. `latest_health_state.json` must include, at minimum, `generated_at`, `health_status`, and `health_findings`.
+7. `latest_run_state.json` must include, at minimum, `generated_at`, `run_status`, and `artifacts_written`.
+
+This means v1 can determine that a chat or scope is stale-context eligible, but any actual delivery to users is a later-phase bridge feature and is out of scope for `latest_run_state.json`.
+
 Meaning:
 
-- JSON truth and health state are primary maintained truth artifacts
+- `latest_truth_state.json` and `latest_health_state.json` are the primary maintained machine outputs for v1
+- `latest_run_state.json` is execution bookkeeping for the bounded runner
+- history is optional for the first slice
 - markdown and summary files are secondary explanation artifacts
 
 ## Machine State Split
@@ -270,8 +318,9 @@ Examples:
 
 - declared runtime inventory
 - capability facts
-- watched truth-file fingerprints
+- watched structured-truth-input fingerprints
 - stale-context risk markers that reflect current truth conditions
+- policy-derived stale-context eligibility in truth state
 
 Truth state should not store transient pain, incident detail, or per-run bookkeeping.
 It is the answer to `what is the system?`.
@@ -288,7 +337,9 @@ Examples:
 - retry spikes
 - degraded observer signals
 - temporary operational warnings
+- runtime status command output used for health validation
 
+Health state should not carry delivery records, notification history, or other run bookkeeping.
 Health state should not become the canonical record of what the system is or replace truth state.
 It is the answer to `how is the system doing?`.
 
@@ -308,6 +359,8 @@ Examples:
 
 Run state should not be treated as machine truth or health truth. It is bookkeeping about the alignment pass.
 It is the answer to `what did the loop do?`.
+
+Run state should stay limited to execution metadata, checks, artifacts written, and unresolved items. It should not describe which chats or scopes were affected by later-phase notification handling, whether any user-facing notice was sent, or any other notification outcome.
 
 The key boundary is:
 
@@ -370,6 +423,18 @@ Purpose:
 - know the current declared rules
 - know the current summary claims and rule claims that may need rendering alignment
 - know the current collaboration guidance
+- contribute structured truth facts about current operating rules, validated lessons, and declared collaboration constraints
+
+For this v1 design, `ARCHITECT_INSTRUCTION.md` and `LESSONS.md` are watched only for the structured truth facts they encode, not for their explanatory prose. `ARCHITECT_INSTRUCTION.md` contributes current operating rules and declared truth boundaries. `LESSONS.md` contributes validated lessons that have become structured truth facts about what has already been verified. `SERVER3_SUMMARY.md` remains secondary rendered explanation output and does not contribute machine-truth fingerprint inputs by itself.
+
+`SERVER3_SUMMARY.md` is a secondary rendered explainer. It may be scanned for rendering alignment, but it is not part of the machine-truth fingerprint input set.
+
+Policy-derived stale-context eligibility inputs are separate from the machine-truth fingerprint inputs.
+Those policy inputs are:
+
+- `src/telegram_bridge/runtime_config.py`
+- `src/telegram_bridge/session_manager.py`
+- `src/telegram_bridge/bridge_runtime_setup.py`
 
 ### B. Runtime Shape
 
@@ -406,13 +471,13 @@ Purpose:
 
 ### E. Session Risk
 
-- current watched truth files
-- current truth fingerprint
+- current watched structured-truth inputs
+- current machine-truth fingerprint
 - whether long-lived sessions may still carry pre-alignment beliefs
 
 Purpose:
 
-- know whether stale-context warning delivery is needed after truth files change
+- know whether stale-context warning delivery is needed after structured truth inputs change
 
 ### F. Structured Truth State
 
@@ -488,7 +553,7 @@ These run every night.
 
 Examples:
 
-- watched truth files
+- watched structured-truth inputs
 - runtime manifest
 - runtime status
 - runtime observer summary
@@ -503,7 +568,7 @@ Examples:
 - if a runtime is active in the manifest
 - if yesterday's report flagged an area
 - if the operator explicitly enabled a check
-- if a watched truth file changed for that truth area
+  - if a watched structured-truth input changed for that truth area
 
 The loop should not improvise new scan targets outside the registry.
 
@@ -516,8 +581,8 @@ V1 should start with a small registry of high-signal checks that move the struct
 Required initial checks:
 
 - `truth_files_fingerprint`
-  - purpose: detect whether watched truth files changed and whether carried context may now be stale
-  - inputs: `ARCHITECT_INSTRUCTION.md`, `SERVER3_SUMMARY.md`, `LESSONS.md`
+  - purpose: detect whether watched structured-truth inputs changed and whether carried context may now be stale
+  - inputs: `ARCHITECT_INSTRUCTION.md`, `LESSONS.md`, `infra/server3-runtime-manifest.json`
   - correction target: truth fingerprint and stale-context eligibility in structured truth state
 - `runtime_manifest_vs_status`
   - purpose: compare declared runtime inventory with live runtime status
@@ -526,11 +591,11 @@ Required initial checks:
 - `runtime_observer_truth`
   - purpose: validate the observer snapshot and summary layer against current operational reality
   - inputs: `python3 ops/runtime_observer/runtime_observer.py status --json`, `python3 ops/runtime_observer/runtime_observer.py summary --hours 24 --json`
-  - correction target: health state and observer-derived truth in structured truth state
+  - correction target: health state, plus only explicitly normalized structural observer facts in structured truth state
 - `policy_watch_truth`
-  - purpose: confirm watched truth-file behavior remains aligned with the current policy
+  - purpose: confirm watched structured-truth-input behavior remains aligned with the current policy
   - inputs: `src/telegram_bridge/runtime_config.py`, `src/telegram_bridge/session_manager.py`, `src/telegram_bridge/bridge_runtime_setup.py`
-  - correction target: watched-file truth and stale-context trigger rules
+  - correction target: watched-file truth and the separate policy-derived stale-context eligibility field
 - `telegram_context_routing_truth`
   - purpose: validate that Telegram context routing still matches the declared bridge behavior
   - inputs: `src/telegram_bridge/message_inputs.py`, `src/telegram_bridge/session_manager.py`
@@ -574,13 +639,13 @@ Additional systemd unit files may be checked when:
 
 ### Targeted Capability Checks
 
-Targeted capability checks should also come from the registry.
+Targeted capability checks should also come from the registry, but only when they map to a specific truth boundary that the nightly loop is responsible for maintaining.
 
 Examples:
 
 - `truth_files_fingerprint`
-  - validates whether the watched truth set changed in a way that should trigger stale-context handling
-  - input source: `ARCHITECT_INSTRUCTION.md`, `SERVER3_SUMMARY.md`, `LESSONS.md`
+  - validates whether the watched structured-truth input set changed in a way that should trigger stale-context handling
+  - input source: `ARCHITECT_INSTRUCTION.md`, `LESSONS.md`, `infra/server3-runtime-manifest.json`
 - `runtime_manifest_vs_status`
   - validates that the declared runtime manifest matches the live runtime status shape
   - input source: `infra/server3-runtime-manifest.json`, `python3 ops/server3_runtime_status.py --json`
@@ -591,7 +656,7 @@ Examples:
   - validates current Telegram target-context behavior
   - input source: `src/telegram_bridge/message_inputs.py`
 - `policy_watch_truth`
-  - validates watched truth-file behavior
+  - validates watched structured-truth-input behavior
   - input source: `src/telegram_bridge/runtime_config.py`
 - `observer_summary_truth`
   - validates observer summary and alert behavior
@@ -603,28 +668,34 @@ They are predeclared named checks.
 
 ### Initial v1 Check Registry
 
-For the first affordable slice, the registry should stay small and high-value.
+For the first affordable slice, the registry should stay small, high-signal, and explicitly bounded to structured truth inputs, runtime shape, observer truth, watched-input policy, and Telegram context routing.
 
 Initial fixed checks:
 
 - `truth_files_fingerprint`
+  - truth boundary: watched structured-truth inputs
   - watches the small truth-defining set and records when carried context may have gone stale
   - this is the cheapest high-signal way to detect truth drift without scanning the whole repo
 - `runtime_manifest_vs_status`
+  - truth boundary: declared runtime shape versus live runtime shape
   - compares the declared runtime manifest to the live runtime status output
   - this is the main structural truth check for declared runtime shape versus actual runtime shape
 - `runtime_observer_truth`
+  - truth boundary: observer truth versus current operational reality
   - compares observer status and summary snapshots against the live runtime and health picture
   - this is the main operational truth check for the nightly health baseline
 
 Initial conditional checks:
 
 - `telegram_context_routing_truth`
+  - truth boundary: Telegram context routing behavior
   - run when the Telegram bridge routing or target-context behavior is explicitly in scope
   - keep this as a named check rather than a broad scan of all bridge code
 - `policy_watch_truth`
-  - run when watched truth-file behavior or stale-context notification behavior is in scope
-  - this is the bridge-facing check that ties watched files to warning eligibility
+  - truth boundary: watched-input policy and stale-context eligibility
+  - run when watched structured-truth-input behavior or stale-context notification behavior is in scope
+  - this is the bridge-facing check that ties watched structured-truth inputs to warning eligibility
+  - updates the separate policy-derived stale-context eligibility field, not the machine-truth fingerprint
 
 The first slice should not add a larger registry than this unless a later section clearly depends on it.
 
@@ -690,11 +761,11 @@ Action:
 
 ## Stale Session Handling
 
-The system should not silently discard session context when truth files change.
+The system should not silently discard session context when structured-truth inputs change.
 
 Instead, it should:
 
-1. detect that watched truth files changed
+1. detect that watched structured-truth inputs changed
 2. detect that active chats may still be carrying older session context
 3. send a clear warning message to those chats
 4. let the user decide whether to drop the old context
@@ -715,7 +786,7 @@ This is narrower than a broad global reset.
 
 ## How Alignment Is Achieved
 
-The loop achieves alignment in five steps.
+The loop achieves alignment in five steps, always with the primary end state being actual system truth aligned to maintained structured truth state.
 
 ### 1. Observe
 
@@ -723,7 +794,7 @@ Collect the current observed truth from code, manifest, status commands, and hea
 
 ### 2. Compare
 
-Compare observed truth against structured truth state first, then compare rendered summaries against that structured truth state.
+Compare observed truth against structured truth state first, then compare rendered summaries against that structured truth state. The purpose of the comparison is to move actual system truth back into alignment with maintained structured truth state, not to preserve prose consistency for its own sake.
 
 ### 3. Classify
 
@@ -737,7 +808,7 @@ Decide whether each mismatch is:
 
 ### 4. Correct
 
-Update the right layer:
+Update the right layer so actual system truth converges with maintained structured truth state:
 
 - structural drift -> structured truth state first, then rendered summary docs
 - temporary operational issue -> structured health state and nightly report
@@ -767,7 +838,6 @@ Suggested contents:
 - observed timestamp
 - timezone
 - truth sources scanned
-- runtime status summary
 - normalized runtime truth facts
 - normalized capability truth facts
 - normalized watched-file truth facts
@@ -788,9 +858,10 @@ Suggested contents:
 - observed timestamp
 - timezone
 - observer summary
+- runtime status summary
 - operational issues found
-- whether stale-context warnings are required
-- which chats or scopes were notified
+- degraded services and signals
+- unresolved operator-visible health concerns
 
 ### 3. Latest Run State
 
@@ -811,9 +882,12 @@ Suggested contents:
 - exit status
 - checks executed
 - files updated
-- commit and push results
+- artifacts written
+- unresolved items
 - warnings emitted
 - skipped checks and reasons
+
+If commit/push automation is added later, those results belong in run state rather than truth state or health state.
 
 ### 4. Read-Only Truth Status
 
@@ -837,7 +911,7 @@ Suggested fields:
 - last dream-loop run time
 - whether the last run succeeded or failed
 - whether truth changed on the last run
-- which watched truth files changed
+- which watched structured-truth inputs changed
 - whether this current chat or topic has a stale-context warning outstanding
 - whether `/refresh` has already been used in this chat or topic since the last truth change
 - short summary of what was aligned
@@ -884,7 +958,7 @@ V1 note:
 
 The dream loop should be conservative about human-readable files.
 
-Its primary write target should be structured truth and health state.
+Its primary write target should be structured truth, health, and run state.
 
 Files that can reasonably be updated by the loop:
 
@@ -901,27 +975,43 @@ Files that should usually not be updated automatically:
 
 `LESSONS.md` should only be updated when a real new validated lesson exists, not as part of normal nightly drift cleanup.
 
-## Watched Truth Files
+## Watched Structured-Truth Inputs
 
-These files define the currently watched truth set for stale-context warning purposes.
+These inputs define the currently watched structured-truth set for stale-context warning purposes.
 
-Initial watched truth files:
+The machine-truth fingerprint must be derived from structured truth inputs only.
+Policy files are not part of that fingerprint input set.
+
+It must not be derived from:
+
+- `SERVER3_SUMMARY.md`
+- `latest_report.md`
+- Telegram summaries
+- any other secondary human-readable explainer output
+
+Policy-derived stale-context eligibility is tracked as a separate structured-truth field in the truth state.
+That field may change when policy files change even if the machine-truth fingerprint does not.
+When that happens, the later notification path must describe it as a policy-derived stale-context change, not as a machine-truth input change.
+
+Initial watched structured-truth inputs:
 
 - `ARCHITECT_INSTRUCTION.md`
-- `SERVER3_SUMMARY.md`
 - `LESSONS.md`
+- `infra/server3-runtime-manifest.json`
 
-When one or more watched truth files change in a way that changes the machine-truth fingerprint:
+When one or more watched structured-truth inputs change in a way that changes the machine-truth fingerprint:
 
 - the system should consider long-lived carried context potentially stale
-- the system should notify affected chats
+- the system should record stale-context warning eligibility for affected chats
 - the user can choose to run `/refresh`
 
-The watched truth set can be expanded later when more memory layers exist.
+If the structured truth state or its fingerprint does not change, the loop should not send stale-context warnings just because prose was edited.
+
+The watched structured-truth set can be expanded later when more truth-defining inputs are intentionally added to the machine self-model.
 
 ## Session Notification
 
-Updating truth files is not enough if persistent sessions still carry old beliefs.
+Updating structured-truth inputs is not enough if persistent sessions still carry old beliefs.
 
 But the design should not silently wipe those sessions.
 
@@ -929,14 +1019,16 @@ So the dream loop must be tied into a notification path.
 
 That means:
 
-- truth-defining files are watched
+- truth-defining structured inputs are watched
+- secondary rendered explainer files are excluded from the machine-truth fingerprint
 - a nightly truth update changes the structured truth state or machine-truth fingerprint
-- affected chats are notified that their carried context may now be stale
-- the notification tells them to use `/refresh` if they want a fresh session aligned to the new truth
+- affected chats are marked stale-context eligible
+- v1 does not deliver the notification to chats; later bridge work handles actual delivery
+- later delivery can tell them to use `/refresh` if they want a fresh session aligned to the new truth
 
 This is how corrected truth reaches the live assistant behavior without hidden session loss.
 
-The stale-context trigger must key off machine-truth changes, not merely wording changes in human explainer files. If the structured truth state or its fingerprint does not change, the loop should not send stale-context warnings just because prose was edited.
+The stale-context trigger must key off machine-truth changes, not merely wording changes in human explainer files.
 
 ### Warning Scope
 
@@ -975,16 +1067,27 @@ Warning delivery rule:
 
 The warning should be short and explicit.
 
-It should include:
+If the warning was triggered by a machine-truth fingerprint change, it should include:
 
-- that truth files changed
+- that structured-truth inputs changed
 - that carried session context may now be stale
-- the changed watched truth files
+- the changed watched structured-truth inputs
 - that the user can send `/refresh`
 
 Suggested message shape:
 
-`Truth files changed and this session may now carry stale context. Changed files: SERVER3_SUMMARY.md, LESSONS.md. Send /refresh if you want a fresh session aligned to the new truth.`
+`Truth inputs changed and this session may now carry stale context. Changed inputs: ARCHITECT_INSTRUCTION.md, infra/server3-runtime-manifest.json. Send /refresh if you want a fresh session aligned to the new truth.`
+
+If the warning was triggered by a policy-only stale-context eligibility change, it should instead include:
+
+- that stale-context policy changed
+- that carried session context may now be stale under the new policy
+- the changed policy source or rule area
+- that the user can send `/refresh`
+
+Suggested message shape:
+
+`Stale-context policy changed and this session may now be stale under the new policy. Changed policy sources: src/telegram_bridge/runtime_config.py, src/telegram_bridge/session_manager.py. Send /refresh if you want a fresh session aligned to current truth.`
 
 ## Refresh Command
 
@@ -1039,26 +1142,33 @@ Likely supporting changes:
 
 Later-phase supporting changes may include:
 
-- update watched truth files in `src/telegram_bridge/runtime_config.py`
+- update watched structured-truth inputs in `src/telegram_bridge/runtime_config.py`
 - add a user-facing `/refresh` command in the bridge command layer
 - add a user-facing `/truth_status` command in the bridge command layer
-- add stale-context notification delivery tied to watched truth-file changes
+- add stale-context notification delivery tied to watched structured-truth input changes
+- add daily Telegram summary delivery if operators still want it after the bounded runner is stable
 - document the truth hierarchy in `ARCHITECT_INSTRUCTION.md`
 
 ### V1 Implementation Boundary
 
 The first slice should only implement what is necessary to keep the primary machine-readable truth and health outputs correct and to render the conservative report layer from them.
+It must stay bounded to the first safe slice and must not absorb later-phase delivery features.
 
 That means v1 should prioritize:
 
 1. collecting the minimum truth inputs needed for the primary outputs
-2. normalizing those inputs into structured truth and health state
+2. normalizing those inputs into structured truth, health, and run state
 3. writing `latest_truth_state.json`
 4. writing `latest_health_state.json`
-5. rendering `latest_report.md` from those machine-readable states
-6. verifying those three outputs
+5. writing `latest_run_state.json`
+6. rendering `latest_report.md` from those machine-readable states
+7. verifying those four outputs
+8. staying within runner-side state production and conservative reporting only
 
-Later work can extend the registry, notifications, status commands, and broader automation once the bounded core slice is stable.
+Later work can extend the registry, notifications, status commands, Telegram summaries, and broader automation once the bounded core slice is stable.
+In v1, the runner must not silently grow into user-facing status commands, Telegram summary delivery, or stale-context notice delivery.
+In v1, the runner must not perform stale-context notice delivery.
+v1 does not perform actual chat notification delivery.
 
 ### Execution Order
 
@@ -1069,13 +1179,14 @@ Recommended order:
 1. scan truth sources
 2. normalize observed truth into structured truth and health state
 3. classify mismatches
-4. prepare rendered-output or state edits
-5. verify edits
-6. write local state and report outputs
-7. send daily Telegram summary
-8. send stale-context notices to affected chats
+4. write local state outputs
+5. render the conservative report from the written machine state
+6. verify the outputs
+7. stop
 
-Stale-context notices must happen after the state write succeeds, not before.
+Do not insert user-facing status commands, Telegram summaries, or stale-context notices into the v1 execution path.
+
+If later-phase notification delivery is added, stale-context notices must happen after the state write succeeds, not before.
 
 ### Nightly Schedule
 
@@ -1147,7 +1258,7 @@ If the dream loop cannot classify a mismatch confidently, it should:
 
 - skip the automatic correction
 - record the unresolved item
-- include it in the report and `/truth_status` output
+- include it in the report and, if later implemented, `/truth_status` output
 
 ## Safety Rules
 
@@ -1157,25 +1268,29 @@ The dream loop must:
 - never treat conversation text as truth by itself
 - not rewrite permanent docs for temporary health issues
 - not silently change broad policy docs
-- not silently drop user session context when truth files change
+- not silently drop user session context when structured-truth inputs change
 - leave a durable record of every correction it makes
 
 ## Success Criteria
 
-The dream loop is working if:
+V1 is working if:
 
 - actual system truth and structured truth state stay aligned as the primary maintained self-model
 - the primary maintained self-model is structured truth state, not the human-readable explainer layer
 - human-readable explainers are derived from structured truth state as a secondary rendered explanation
 - rendered summary docs stop drifting behind structured truth and real code/runtime changes
 - structured truth state stays aligned to real code and runtime changes
-- users are warned when persistent sessions may now carry stale truth
-- `/refresh` gives users a clean way to realign a chat to the new truth baseline
-- `/truth_status` lets a user inspect the current alignment state of the chat or topic
+- stale carried context is detected from machine-truth changes, not prose-only edits
 - dry-run and manual-run paths make rollout and debugging practical
 - daytime replies need fewer broad re-checks
 - temporary operational incidents are recorded without corrupting permanent docs
 - operators can inspect one daily report and see what was aligned
+
+Later-phase success criteria may include:
+
+- users are warned when persistent sessions may now carry stale truth
+- `/refresh` gives users a clean way to realign a chat to the new truth baseline
+- `/truth_status` lets a user inspect the current alignment state of the chat or topic
 
 ## Source Of Truth
 
