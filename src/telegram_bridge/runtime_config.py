@@ -96,16 +96,6 @@ class EngineConfig:
     venice_model: str
     venice_temperature: float
     venice_request_timeout_seconds: int
-    chatgpt_web_bridge_script: str
-    chatgpt_web_python_bin: str
-    chatgpt_web_browser_brain_url: str
-    chatgpt_web_browser_brain_service: str
-    chatgpt_web_url: str
-    chatgpt_web_start_service: bool
-    chatgpt_web_request_timeout_seconds: int
-    chatgpt_web_ready_timeout_seconds: int
-    chatgpt_web_response_timeout_seconds: int
-    chatgpt_web_poll_seconds: float
     pi_provider: str
     pi_model: str
     pi_runner: str
@@ -127,6 +117,7 @@ class EngineConfig:
     pi_ollama_tunnel_remote_host: str
     pi_ollama_tunnel_remote_port: int
     pi_request_timeout_seconds: int
+    codex_app_server_enabled: bool = False
 
 
 @dataclass
@@ -560,12 +551,20 @@ def load_identity_config_values(
         "channel_plugin": channel_plugin,
     }
 
-def load_engine_config_values() -> Dict[str, object]:
+def load_engine_config_values(*, assistant_name: str) -> Dict[str, object]:
+    # Keep the app-server path opt-in. The legacy codex exec/resume flow is the
+    # stable default for Telegram runtimes and avoids Linux sandbox-helper
+    # regressions seen in some interactive app-server launches.
+    default_codex_app_server_enabled = False
     return {
         "engine_plugin": parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
         "selectable_engine_plugins": parse_plugin_list_env(
             "TELEGRAM_SELECTABLE_ENGINE_PLUGINS",
             ["codex", "gemma", "pi"],
+        ),
+        "codex_app_server_enabled": parse_bool_env(
+            "TELEGRAM_CODEX_APP_SERVER_ENABLED",
+            default_codex_app_server_enabled,
         ),
         "codex_model": load_codex_model(),
         "codex_reasoning_effort": load_codex_reasoning_effort(),
@@ -593,47 +592,6 @@ def load_engine_config_values() -> Dict[str, object]:
             "VENICE_REQUEST_TIMEOUT_SECONDS",
             180,
             minimum=1,
-        ),
-        "chatgpt_web_bridge_script": os.getenv(
-            "CHATGPT_WEB_BRIDGE_SCRIPT",
-            shared_core_path("ops", "chatgpt_web_bridge.py"),
-        ).strip()
-        or shared_core_path("ops", "chatgpt_web_bridge.py"),
-        "chatgpt_web_python_bin": os.getenv("CHATGPT_WEB_PYTHON_BIN", "python3").strip()
-        or "python3",
-        "chatgpt_web_browser_brain_url": os.getenv(
-            "CHATGPT_WEB_BROWSER_BRAIN_URL",
-            "http://127.0.0.1:47831",
-        ).strip()
-        or "http://127.0.0.1:47831",
-        "chatgpt_web_browser_brain_service": os.getenv(
-            "CHATGPT_WEB_BROWSER_BRAIN_SERVICE",
-            "server3-browser-brain.service",
-        ).strip()
-        or "server3-browser-brain.service",
-        "chatgpt_web_url": os.getenv("CHATGPT_WEB_URL", "https://chatgpt.com/").strip()
-        or "https://chatgpt.com/",
-        "chatgpt_web_start_service": parse_bool_env("CHATGPT_WEB_START_SERVICE", False),
-        "chatgpt_web_request_timeout_seconds": parse_int_env(
-            "CHATGPT_WEB_REQUEST_TIMEOUT_SECONDS",
-            30,
-            minimum=1,
-        ),
-        "chatgpt_web_ready_timeout_seconds": parse_int_env(
-            "CHATGPT_WEB_READY_TIMEOUT_SECONDS",
-            45,
-            minimum=1,
-        ),
-        "chatgpt_web_response_timeout_seconds": parse_int_env(
-            "CHATGPT_WEB_RESPONSE_TIMEOUT_SECONDS",
-            180,
-            minimum=1,
-        ),
-        "chatgpt_web_poll_seconds": parse_float_env(
-            "CHATGPT_WEB_POLL_SECONDS",
-            3.0,
-            minimum=0.1,
-            maximum=30.0,
         ),
         "pi_provider": parse_plugin_name_env("PI_PROVIDER", "ollama"),
         "pi_model": os.getenv("PI_MODEL", "qwen3-coder:30b").strip() or "qwen3-coder:30b",
@@ -840,7 +798,9 @@ def load_config() -> Config:
             progress_elapsed_suffix=progress_elapsed_suffix,
             channel_plugin=channel_plugin,
         ),
-        engines=load_engine_config_values(),
+        engines=load_engine_config_values(
+            assistant_name=assistant_name,
+        ),
         transport=load_channel_and_feature_config_values(),
         diary=load_diary_config_values(
             state_dir=state_dir,

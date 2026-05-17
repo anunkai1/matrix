@@ -63,6 +63,7 @@ def build_model_action_result(
     set_codex_model_for_scope: Callable,
     set_gemma_model_for_scope: Callable,
     set_pi_model_for_scope: Callable,
+    set_venice_model_for_scope: Callable,
     build_model_status_text: Callable,
     build_model_picker_markup: Callable,
 ) -> CallbackActionResult:
@@ -76,6 +77,8 @@ def build_model_action_result(
             text = set_codex_model_for_scope(state, config, scope_key, value)
         elif active_engine == "pi":
             text = set_pi_model_for_scope(state, config, scope_key, value)
+        elif active_engine == "venice":
+            text = set_venice_model_for_scope(state, config, scope_key, value)
         else:
             text = build_model_status_text(state, config, scope_key)
     else:

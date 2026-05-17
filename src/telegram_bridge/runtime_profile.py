@@ -23,9 +23,6 @@ SERVER3_KEYWORD_HELP_MESSAGE = (
 NEXTCLOUD_KEYWORD_HELP_MESSAGE = (
     "Nextcloud mode needs an action. Example: `Nextcloud create event tomorrow 3pm dentist in Personal calendar`."
 )
-BROWSER_BRAIN_KEYWORD_HELP_MESSAGE = (
-    "Server3 Browser mode needs an action. Example: `Server3 Browser open https://example.com and snapshot the page`."
-)
 SRO_KEYWORD_HELP_MESSAGE = (
     "SRO mode needs an action. Example: `SRO summary 24h`."
 )
@@ -62,7 +59,7 @@ def build_server3_routing_script_allowlist() -> List[str]:
         "/usr/local/bin/server3-tv-start",
         "/usr/local/bin/server3-tv-stop",
         shared_core_path("ops", "tv-desktop", "server3-tv-open-browser-url.sh"),
-        shared_core_path("ops", "tv-desktop", "server3-tv-brave-browser-brain-session.sh"),
+        shared_core_path("ops", "tv-desktop", "server3-tv-brave-remote-debug-session.sh"),
         shared_core_path("ops", "tv-desktop", "server3-youtube-open-top-result.sh"),
         shared_core_path("ops", "tv-desktop", "server3-tv-browser-youtube-pause.sh"),
         shared_core_path("ops", "tv-desktop", "server3-tv-browser-youtube-play.sh"),
@@ -75,12 +72,6 @@ def build_nextcloud_routing_script_allowlist() -> List[str]:
         shared_core_path("ops", "nextcloud", "nextcloud-file-delete.sh"),
         shared_core_path("ops", "nextcloud", "nextcloud-calendars-list.sh"),
         shared_core_path("ops", "nextcloud", "nextcloud-calendar-create-event.sh"),
-    ]
-
-def build_browser_brain_routing_script_allowlist() -> List[str]:
-    return [
-        shared_core_path("ops", "browser_brain", "browser_brain_ctl.sh"),
-        shared_core_path("ops", "browser_brain", "status_service.sh"),
     ]
 
 def build_sro_routing_script_allowlist() -> List[str]:
@@ -215,9 +206,6 @@ def extract_server3_keyword_request(text: str) -> tuple[bool, str]:
 def extract_nextcloud_keyword_request(text: str) -> tuple[bool, str]:
     return extract_keyword_request(text, ["nextcloud"])
 
-def extract_browser_brain_keyword_request(text: str) -> tuple[bool, str]:
-    return extract_keyword_request(text, ["server3 browser", "browser brain"])
-
 def extract_sro_keyword_request(text: str) -> tuple[bool, str]:
     return extract_keyword_request(text, ["sro", "server3 runtime observer", "runtime observer"])
 
@@ -261,7 +249,7 @@ def build_server3_keyword_prompt(user_request: str) -> str:
         f"{scripts}\n"
         "- Prefer deterministic script execution over ad-hoc shell steps.\n"
         "- For browser navigation, use server3-tv-open-browser-url.sh with firefox or brave and explicit URL.\n"
-        "- When a visible Browser Brain-attachable Brave session is needed, use server3-tv-brave-browser-brain-session.sh.\n"
+        "- When a visible Brave session with remote debugging is needed, use server3-tv-brave-remote-debug-session.sh.\n"
         "- For YouTube top-result playback, use server3-youtube-open-top-result.sh with quoted query.\n"
         "- Respect optional min-duration constraints when explicitly requested.\n"
         "- If intent is unclear, ask one concise clarification question instead of guessing.\n"
@@ -282,22 +270,6 @@ def build_nextcloud_keyword_prompt(user_request: str) -> str:
         "- Do not print or expose credentials.\n"
         "- If path/calendar/time is unclear, ask one concise clarification question.\n"
         "- After execution, report exact scripts used and final outcome."
-    )
-
-def build_browser_brain_keyword_prompt(user_request: str) -> str:
-    scripts = "\n".join(f"- {path}" for path in build_browser_brain_routing_script_allowlist())
-    return (
-        "Server3 Browser Brain priority mode is active.\n"
-        "Treat this as a Server3 browser-control action request.\n"
-        f"User request: {user_request.strip()}\n\n"
-        "Mandatory execution policy:\n"
-        f"{scripts}\n"
-        "- Prefer browser_brain_ctl.sh over raw curl or ad-hoc shell commands.\n"
-        "- Start with `browser_brain_ctl.sh start` when browser state may be idle.\n"
-        "- For page interaction, use `open` or `navigate`, then `snapshot`, then act using refs from that snapshot.\n"
-        "- Use exact snapshot refs for click/type/press/hover/select/upload actions; do not guess element targets.\n"
-        "- Use console/network/dialogs for browser diagnostics instead of arbitrary JavaScript when possible.\n"
-        "- After execution, report exact commands used plus resulting tab_id, snapshot_id, refs, and final URL/title."
     )
 
 def build_sro_keyword_prompt(user_request: str) -> str:

@@ -117,16 +117,6 @@ class TestConfig(unittest.TestCase):
                 venice_model="mistral-31-24b",
                 venice_temperature=0.2,
                 venice_request_timeout_seconds=180,
-                chatgpt_web_bridge_script="/tmp/chatgpt_web_bridge.py",
-                chatgpt_web_python_bin="python3",
-                chatgpt_web_browser_brain_url="http://127.0.0.1:47831",
-                chatgpt_web_browser_brain_service="server3-browser-brain.service",
-                chatgpt_web_url="https://chatgpt.com/",
-                chatgpt_web_start_service=False,
-                chatgpt_web_request_timeout_seconds=30,
-                chatgpt_web_ready_timeout_seconds=45,
-                chatgpt_web_response_timeout_seconds=180,
-                chatgpt_web_poll_seconds=3.0,
                 pi_provider="ollama",
                 pi_model="qwen3-coder:30b",
                 pi_runner="ssh",
@@ -229,16 +219,6 @@ class TestConfig(unittest.TestCase):
             venice_model="mistral-31-24b",
             venice_temperature=0.2,
             venice_request_timeout_seconds=180,
-            chatgpt_web_bridge_script="/tmp/chatgpt_web_bridge.py",
-            chatgpt_web_python_bin="python3",
-            chatgpt_web_browser_brain_url="http://127.0.0.1:47831",
-            chatgpt_web_browser_brain_service="server3-browser-brain.service",
-            chatgpt_web_url="https://chatgpt.com/",
-            chatgpt_web_start_service=False,
-            chatgpt_web_request_timeout_seconds=30,
-            chatgpt_web_ready_timeout_seconds=45,
-            chatgpt_web_response_timeout_seconds=180,
-            chatgpt_web_poll_seconds=3.0,
             pi_provider="ollama",
             pi_model="qwen3-coder:30b",
             pi_runner="ssh",
@@ -303,6 +283,31 @@ class TestConfig(unittest.TestCase):
             config.busy_message,
             "Даю справку: уже занят предыдущим запросом.",
         )
+
+    def test_load_config_disables_codex_app_server_by_default(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertFalse(config.codex_app_server_enabled)
+
+    def test_load_config_reads_codex_app_server_override(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_CODEX_APP_SERVER_ENABLED": "true",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertTrue(config.codex_app_server_enabled)
 
     def test_parse_outbound_media_directive_extracts_media_and_voice_flag(self):
         text, directive = bridge_handlers.parse_outbound_media_directive(

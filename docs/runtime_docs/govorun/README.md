@@ -15,6 +15,7 @@ Repo-backed companion README for the live Govorun runtime root at `/home/govorun
 - Persona source: `infra/runtime_personas/govorun.AGENTS.md`
 - Default language: reply in Russian by default; only switch when the user explicitly asks for translation or quoted text in another language
 - Current live posture: WhatsApp Govorun is pinned back to Russian-only default replies
+- Selectable engines: `codex`, `pi`, `venice`
 
 ## Runtime Behavior
 
@@ -22,7 +23,7 @@ Repo-backed companion README for the live Govorun runtime root at `/home/govorun
 - Private chats can reply without prefix when `TELEGRAM_REQUIRE_PREFIX_IN_PRIVATE=false`
 - Unlisted DMs can be admitted with `TELEGRAM_ALLOW_PRIVATE_CHATS_UNLISTED=true`
 - Bare YouTube links are auto-routed into transcript-first YouTube analysis
-- `Browser Brain ...` and `Server3 Browser ...` requests are available through the shared bridge route
+- `venice` is exposed as an optional first-class `/engine`; its `/model` choices are driven from Govorun's local Pi Venice provider catalog under `/home/govorun/.pi/agent/models.json`
 - Voice notes require `TELEGRAM_VOICE_TRANSCRIBE_CMD`; Russian transcription quality is best when `TELEGRAM_VOICE_WHISPER_LANGUAGE=ru`
 - The bridge watches `/home/govorun/govorunbot/AGENTS.md` through `TELEGRAM_POLICY_WATCH_FILES` so policy changes can clear stale session state
 

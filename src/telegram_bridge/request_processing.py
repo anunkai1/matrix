@@ -26,6 +26,14 @@ _process_prompt_request = request_prompt_processing._process_prompt_request
 _process_message_worker_request = request_prompt_processing._process_message_worker_request
 
 
+def _process_special_request(request, *, build_runtime_fn, process_request_fn) -> None:
+    handlers = _handlers()
+    process_request_fn(
+        request,
+        runtime=build_runtime_fn(handlers),
+    )
+
+
 def _build_youtube_processing_runtime(handlers):
     return special_request_processing.build_youtube_processing_runtime(
         build_progress_reporter_fn=build_progress_reporter,
@@ -58,10 +66,10 @@ def _build_dishframed_processing_runtime(handlers):
 
 
 def _process_youtube_request(request: YoutubeRequest) -> None:
-    handlers = _handlers()
-    special_request_processing.process_youtube_request(
+    _process_special_request(
         request,
-        runtime=_build_youtube_processing_runtime(handlers),
+        build_runtime_fn=_build_youtube_processing_runtime,
+        process_request_fn=special_request_processing.process_youtube_request,
     )
 
 
@@ -76,10 +84,10 @@ def _process_youtube_worker_request(request: YoutubeRequest) -> None:
 
 
 def _process_dishframed_request(request: DishframedRequest) -> None:
-    handlers = _handlers()
-    special_request_processing.process_dishframed_request(
+    _process_special_request(
         request,
-        runtime=_build_dishframed_processing_runtime(handlers),
+        build_runtime_fn=_build_dishframed_processing_runtime,
+        process_request_fn=special_request_processing.process_dishframed_request,
     )
 
 

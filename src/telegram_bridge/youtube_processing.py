@@ -76,7 +76,7 @@ def build_youtube_summary_prompt(request_text: str, analysis: Dict[str, object])
     return (
         "You are answering a chat message about a YouTube video.\n"
         "Use the transcript below as the primary source of truth for what the video actually says.\n"
-        "Do not mention backend tools, yt-dlp, Browser Brain, JSON, or implementation details.\n"
+        "Do not mention backend tools, yt-dlp, JSON, or implementation details.\n"
         "If the user only pasted the link, default to a concise content summary.\n"
         "If the transcript comes from automatic captions or transcription, mention that briefly only if it materially affects confidence.\n"
         "Do not invent details that are not supported by the transcript.\n\n"

@@ -125,6 +125,10 @@ def build_help_text(config) -> str:
         "/pi providers - list available Pi providers\n"
         "/pi provider <name> - set this chat's Pi provider\n"
         "/pi reset - clear this chat's Pi provider and model overrides\n"
+        "/goal <text> - set a standing goal for this chat and start it immediately\n"
+        "/goal status|pause|resume|clear - inspect or control the active goal\n"
+        "/subgoal <text> - add extra criteria to the active goal\n"
+        "/subgoal remove <n> | clear - manage active goal criteria\n"
         "/dishframed - turn a menu photo into a DishFramed preview\n"
         "/reset - clear saved context for this chat\n"
         "/cancel or /c - cancel current in-flight request for this chat\n"
@@ -140,7 +144,6 @@ def build_help_text(config) -> str:
         + "\n"
         "/voice-alias list - show pending learned voice corrections\n"
         "/voice-alias approve <id> - approve one learned correction\n"
-        "browser_brain_ctl.sh status - show browser brain API/runtime state (local shell command)\n"
         "server3-tv-start - start TV desktop mode (local shell command)\n"
         "server3-tv-stop - stop TV desktop mode and return to CLI (local shell command)\n\n"
         f"Send text, images, voice notes, or files and {name} will process them.\n"
@@ -149,7 +152,6 @@ def build_help_text(config) -> str:
             if not getattr(config, "keyword_routing_enabled", True)
             else (
                 "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
-                "Use `Server3 Browser ...` or `Browser Brain ...` for Server3 browser-brain automation.\n"
                 "Use `Server3 TV ...` for Server3 desktop/browser/UI operations.\n"
                 "Mention `server2` or `staker2` in your request to target the Server2 LAN host over SSH.\n"
                 "Use `Nextcloud ...` for Nextcloud files/calendar operations.\n"

@@ -64,19 +64,16 @@ bash -n \
 "${ruff_bin}" check src/telegram_bridge tests/telegram_bridge
 "${ruff_bin}" check \
   ops/mavali_loop/mavali_loop.py \
-  ops/ralph_loop/ralph_loop.py \
   ops/review_fix_loop/review_fix_loop.py \
   ops/server3_runtime_status.py \
   ops/runtime_overlays/sync_server3_runtime_overlays.py \
   tests/mavali_loop/test_mavali_loop.py \
   tests/review_fix_loop/test_review_fix_loop.py \
-  tests/runtime_observer/test_ralph_loop.py \
   tests/test_server3_runtime_status.py \
   tests/test_sync_server3_runtime_overlays.py \
   --select E4,E7,E9,F,I
 "${python_bin}" -m py_compile \
   ops/mavali_loop/mavali_loop.py \
-  ops/ralph_loop/ralph_loop.py \
   ops/review_fix_loop/review_fix_loop.py \
   src/telegram_bridge/main.py \
   src/telegram_bridge/executor.py \
@@ -95,7 +92,6 @@ bash -n \
 "${python_bin}" -m unittest \
   tests.mavali_loop.test_mavali_loop \
   tests.review_fix_loop.test_review_fix_loop \
-  tests.runtime_observer.test_ralph_loop \
   tests.test_server3_runtime_status \
   tests.test_sync_server3_runtime_overlays
 "${python_bin}" src/telegram_bridge/main.py --self-test

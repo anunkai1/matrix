@@ -7,6 +7,37 @@ from telegram_bridge.handler_models import CallbackActionContext, CallbackAction
 CallbackActionFn = Callable[[CallbackActionContext], CallbackActionResult]
 
 
+def _answer_callback_query(client, callback_query_id: str, text: str) -> bool:
+    client.answer_callback_query(callback_query_id, text=text)
+    return True
+
+
+def _deliver_callback_result(
+    client,
+    *,
+    chat_id: int,
+    message_thread_id,
+    message_id,
+    callback_query_id: str,
+    result: CallbackActionResult,
+) -> bool:
+    client.answer_callback_query(callback_query_id, text=result.toast_text)
+    if isinstance(message_id, int):
+        try:
+            client.edit_message(chat_id, message_id, result.text, reply_markup=result.reply_markup)
+            return True
+        except Exception:
+            logging.exception("Failed to edit callback menu message for chat_id=%s", chat_id)
+    client.send_message(
+        chat_id,
+        result.text,
+        reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
+        reply_markup=result.reply_markup,
+    )
+    return True
+
+
 def resolve_callback_action_handler(
     kind: str,
     engine_name: str,
@@ -42,13 +73,11 @@ def handle_callback_query(
     if chat_id not in config.allowed_chat_ids and not (
         (allow_private_unlisted and is_private_chat) or (allow_group_unlisted and not is_private_chat)
     ):
-        client.answer_callback_query(callback_query_id, text="Access denied.")
-        return True
+        return _answer_callback_query(client, callback_query_id, "Access denied.")
 
     parts = callback_data.split("|", 4)
     if len(parts) < 4 or parts[0] != "cfg":
-        client.answer_callback_query(callback_query_id, text="Unknown action.")
-        return True
+        return _answer_callback_query(client, callback_query_id, "Unknown action.")
     kind = parts[1]
     engine_name = parts[2]
     action = parts[3]
@@ -83,18 +112,11 @@ def handle_callback_query(
             toast_text="Action failed.",
         )
 
-    client.answer_callback_query(callback_query_id, text=result.toast_text)
-    if isinstance(message_id, int):
-        try:
-            client.edit_message(chat_id, message_id, result.text, reply_markup=result.reply_markup)
-            return True
-        except Exception:
-            logging.exception("Failed to edit callback menu message for chat_id=%s", chat_id)
-    client.send_message(
-        chat_id,
-        result.text,
-        reply_to_message_id=message_id,
+    return _deliver_callback_result(
+        client,
+        chat_id=chat_id,
         message_thread_id=message_thread_id,
-        reply_markup=result.reply_markup,
+        message_id=message_id,
+        callback_query_id=callback_query_id,
+        result=result,
     )
-    return True

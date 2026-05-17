@@ -39,7 +39,6 @@ from telegram_bridge.engine_control_status import (
     build_pi_provider_source_text as _build_pi_provider_source_text,
     build_pi_providers_text,
     build_pi_status_text,
-    check_chatgpt_web_health,
     check_gemma_health,
     check_pi_health,
     check_venice_health,
@@ -208,6 +207,7 @@ def _build_model_action_result(
         set_codex_model_for_scope=_set_codex_model_for_scope,
         set_gemma_model_for_scope=_set_gemma_model_for_scope,
         set_pi_model_for_scope=_set_pi_model_for_scope,
+        set_venice_model_for_scope=_set_venice_model_for_scope,
         build_model_status_text=build_model_status_text,
         build_model_picker_markup=_build_model_picker_markup,
     )
@@ -429,6 +429,7 @@ def _reset_model_for_scope(state: State, config, scope_key: str, active_engine: 
         configured_codex_model=configured_codex_model,
         configured_gemma_model=configured_gemma_model,
         configured_pi_model=configured_pi_model,
+        build_pi_provider_source_text=_build_pi_provider_source_text,
         build_codex_model_source_text=_build_codex_model_source_text,
         build_gemma_model_source_text=_build_gemma_model_source_text,
         build_pi_model_source_text=_build_pi_model_source_text,
@@ -478,6 +479,20 @@ def _set_pi_model_for_scope(state: State, config, scope_key: str, model_name: st
         build_pi_model_source_text=_build_pi_model_source_text,
     )
 
+
+def _set_venice_model_for_scope(state: State, config, scope_key: str, model_name: str) -> str:
+    return engine_control_mutations.set_venice_model_for_scope(
+        state,
+        config,
+        scope_key,
+        model_name,
+        build_engine_runtime_config=build_engine_runtime_config,
+        pi_provider_model_names=_pi_provider_model_names,
+        resolve_pi_model_candidate=_resolve_pi_model_candidate,
+        set_chat_pi_provider=set_chat_pi_provider,
+        set_chat_pi_model=set_chat_pi_model,
+    )
+
 def _set_codex_effort_for_scope(state: State, config, scope_key: str, effort_name: str) -> str:
     return engine_control_mutations.set_codex_effort_for_scope(
         state,
@@ -517,6 +532,7 @@ def build_model_list_text(state: State, config, scope_key: str) -> str:
         configured_codex_model=configured_codex_model,
         load_codex_model_choices=_load_codex_model_choices,
         gemma_model_names=_gemma_model_names,
+        pi_provider_model_names=_pi_provider_model_names,
         build_pi_models_text=build_pi_models_text,
     )
 

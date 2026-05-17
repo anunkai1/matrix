@@ -24,6 +24,14 @@ class PromptPreparationState:
             self.prompt_text = context
 
 
+def _reply(request: PromptRequest, text: str) -> None:
+    request.client.send_message(
+        request.chat_id,
+        text,
+        reply_to_message_id=request.message_id,
+    )
+
+
 def _normalize_photo_file_ids(request: PromptRequest) -> List[str]:
     normalized_photo_file_ids = list(request.photo_file_ids or [])
     if request.photo_file_id and request.photo_file_id not in normalized_photo_file_ids:
@@ -64,16 +72,12 @@ def _handle_photo_attachments(
         except ValueError as exc:
             logging.warning("Photo rejected for chat_id=%s: %s", request.chat_id, exc)
             progress.mark_failure("Image request rejected.")
-            request.client.send_message(request.chat_id, str(exc), reply_to_message_id=request.message_id)
+            _reply(request, str(exc))
             return None
         except Exception:
             logging.exception("Photo download failed for chat_id=%s", request.chat_id)
             progress.mark_failure("Image download failed.")
-            request.client.send_message(
-                request.chat_id,
-                request.config.image_download_error_message,
-                reply_to_message_id=request.message_id,
-            )
+            _reply(request, request.config.image_download_error_message)
             return None
 
         if resolution.status == attachment_processing.AttachmentResolutionStatus.SUMMARY:
@@ -143,11 +147,7 @@ def _handle_voice_attachment(
             )
             progress.mark_failure("Voice transcript missing required prefix.")
             if not is_whatsapp_channel_fn(request.client):
-                request.client.send_message(
-                    request.chat_id,
-                    prefix_help_message,
-                    reply_to_message_id=request.message_id,
-                )
+                _reply(request, prefix_help_message)
             return None
         transcript = stripped_transcript
         if not transcript.strip():
@@ -162,11 +162,7 @@ def _handle_voice_attachment(
             )
             progress.mark_failure("Voice transcript prefix missing action.")
             if not is_whatsapp_channel_fn(request.client):
-                request.client.send_message(
-                    request.chat_id,
-                    prefix_help_message,
-                    reply_to_message_id=request.message_id,
-                )
+                _reply(request, prefix_help_message)
             return None
 
     if preparation.prompt_text:
@@ -209,16 +205,12 @@ def _handle_document_attachment(
     except ValueError as exc:
         logging.warning("Document rejected for chat_id=%s: %s", request.chat_id, exc)
         progress.mark_failure("File request rejected.")
-        request.client.send_message(request.chat_id, str(exc), reply_to_message_id=request.message_id)
+        _reply(request, str(exc))
         return None
     except Exception:
         logging.exception("Document download failed for chat_id=%s", request.chat_id)
         progress.mark_failure("File download failed.")
-        request.client.send_message(
-            request.chat_id,
-            request.config.document_download_error_message,
-            reply_to_message_id=request.message_id,
-        )
+        _reply(request, request.config.document_download_error_message)
         return None
 
     if resolution.status == attachment_processing.AttachmentResolutionStatus.SUMMARY:

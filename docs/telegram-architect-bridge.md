@@ -206,7 +206,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/help` command list
 - `/h` short help alias
 - `/status` bridge health and uptime
-- `/engine status|codex|gemma|pi|chatgptweb|reset` show or select this chat/topic's engine
+- `/engine status|codex|gemma|pi|reset` show or select this chat/topic's engine
 - `/model` show this chat/topic's current model for the active engine
 - `/model list` list model choices/help for the active engine
 - `/model <name>` set this chat/topic's model for the active engine
@@ -276,24 +276,17 @@ See [mavali-eth-engine.md](/home/architect/gitea-server2/mavali_eth/docs/mavali-
 
 ## Venice via Pi
 
-Venice remains supported as a Pi provider, but it is intentionally not exposed as a first-class `/engine venice` option anymore.
+Venice remains supported as a Pi provider, and runtimes can optionally expose it as a first-class `/engine venice` option by adding `venice` to `TELEGRAM_SELECTABLE_ENGINE_PLUGINS`.
 
 - Provider: `VENICE_BASE_URL=https://api.venice.ai/api/v1`
 - API key: `VENICE_API_KEY`
 - Typical Pi model: `deepseek-v4-flash`
 - Optional temperature override: `VENICE_TEMPERATURE=0.2`
 - Optional request timeout: `VENICE_REQUEST_TIMEOUT_SECONDS=180`
-- To use Venice in chat, keep `/engine pi` selected and set `PI_PROVIDER=venice`.
-- Use `/pi` and `/engine status` to inspect the active Pi provider/model for the current chat/topic.
-- This keeps the user-facing engine list simpler while preserving Venice-backed Pi workflows.
-
-### Experimental ChatGPT Web Engine
-
-The bridge can select `chatgptweb` as a brittle text-only experimental engine. This uses `ops/chatgpt_web_bridge.py`, Browser Brain, and a manually logged-in visible `chatgpt.com` session instead of an API provider.
-
-- Per chat/topic, use `/engine chatgptweb`, `/engine codex`, `/engine reset`, or `/engine status`.
-- `chatgptweb` is for lab use only. It can break on UI changes, logout, CAPTCHA, rate limits, or browser state drift.
-- When `chatgptweb` is effective, `/engine status` checks Browser Brain reachability and whether a ChatGPT tab is visible.
+- To use Venice through Pi, keep `/engine pi` selected and set `PI_PROVIDER=venice`.
+- When `/engine venice` is exposed, `/model list`, `/model <name>`, and `/model reset` reuse the Venice-backed Pi model catalog so the same Venice model ids remain selectable through either path.
+- `VENICE_API_KEY` is still required for the standalone Venice engine, and the runtime's Pi catalog must include a `venice` provider if you want `/model list` under `/engine venice` to show provider-backed choices.
+- Use `/pi` and `/engine status` to inspect the active provider/model details for the current chat/topic.
 
 Message handling:
   - set `TELEGRAM_REQUIRED_PREFIXES` (comma-separated) to only process matching messages.
@@ -311,12 +304,6 @@ Message handling:
     - `ops/tv-desktop/server3-youtube-open-top-result.sh`
     - `ops/tv-desktop/server3-tv-browser-youtube-pause.sh`
     - `ops/tv-desktop/server3-tv-browser-youtube-play.sh`
-  - empty keyword-only messages are rejected with a usage hint
-  - requests run stateless (no session carryover)
-  - the bridge wraps the request with strict policy to prefer deterministic scripts:
-    - `ops/browser_brain/browser_brain_ctl.sh`
-    - `ops/browser_brain/status_service.sh`
-  - Browser Brain requests should use `start`, then `open`/`navigate`, then `snapshot`, then actions by exact `ref`
   - empty keyword-only messages are rejected with a usage hint
   - requests run stateless (no session carryover)
   - the bridge defaults a bare link to concise video summary behavior
@@ -364,6 +351,7 @@ Message handling:
 - The source-of-truth unit (`infra/systemd/telegram-architect-bridge.service`) sets `NoNewPrivileges=false`.
 - This is required if Telegram-triggered Architect sessions must run scripts that use `sudo` (for example `ops/telegram-bridge/restart_and_verify.sh`).
 - Both new and resumed Codex sessions are launched with `--dangerously-bypass-approvals-and-sandbox`.
+- `TELEGRAM_CODEX_APP_SERVER_ENABLED` is opt-in. Leave it disabled unless you are intentionally testing the live `codex app-server` path.
 - Keep `TELEGRAM_ALLOWED_CHAT_IDS` strict. Any allowed chat can request operations with `architect` user privileges, including sudo-capable commands.
 
 ## Troubleshooting
@@ -386,6 +374,7 @@ Common checks:
 - Missing bot token or allowlist in `/etc/default/telegram-architect-bridge`
 - Missing/incorrect prefix list (`TELEGRAM_REQUIRED_PREFIXES`) when messages appear ignored
 - Invalid `TELEGRAM_EXECUTOR_CMD`
+- If you see Linux `bwrap` / sandbox-helper failures after enabling live Codex steering, disable `TELEGRAM_CODEX_APP_SERVER_ENABLED` and restart the bridge.
 - Missing `codex login` for the service user (`architect` or `tank`)
 - Voice pipeline issues in `TELEGRAM_VOICE_TRANSCRIBE_CMD`
 - Voice transcribe service status/health: `python3 src/telegram_bridge/voice_transcribe_service.py ping`

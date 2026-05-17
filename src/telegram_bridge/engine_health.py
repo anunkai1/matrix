@@ -1,7 +1,6 @@
 import json
 import subprocess
 import time
-from pathlib import Path
 from typing import Callable, Dict, List, Tuple
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -224,73 +223,5 @@ def check_pi_health(
             "response_ms": elapsed_ms,
             "version": "",
             "model_available": False,
-            "error": _brief_health_error(exc),
-        }
-
-def check_chatgpt_web_health(config) -> Dict[str, object]:
-    script = str(
-        getattr(
-            config,
-            "chatgpt_web_bridge_script",
-            str(Path(__file__).resolve().parents[2] / "ops" / "chatgpt_web_bridge.py"),
-        )
-        or ""
-    ).strip()
-    if not script:
-        return {
-            "ok": False,
-            "response_ms": 0,
-            "running": False,
-            "chatgpt_tab": False,
-            "error": "CHATGPT_WEB_BRIDGE_SCRIPT is empty",
-        }
-    cmd = [
-        str(getattr(config, "chatgpt_web_python_bin", "python3") or "python3"),
-        script,
-        "--base-url",
-        str(getattr(config, "chatgpt_web_browser_brain_url", "http://127.0.0.1:47831") or "http://127.0.0.1:47831"),
-        "--service-name",
-        str(getattr(config, "chatgpt_web_browser_brain_service", "server3-browser-brain.service") or "server3-browser-brain.service"),
-        "--request-timeout",
-        str(int(getattr(config, "chatgpt_web_request_timeout_seconds", 30) or 30)),
-        "status",
-    ]
-    started = time.monotonic()
-    try:
-        completed = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=int(getattr(config, "chatgpt_web_request_timeout_seconds", 30) or 30) + 5,
-        )
-        elapsed_ms = int((time.monotonic() - started) * 1000)
-        if completed.returncode != 0:
-            raise RuntimeError(
-                completed.stderr.strip()
-                or completed.stdout.strip()
-                or f"chatgpt web status exited {completed.returncode}"
-            )
-        payload = json.loads(completed.stdout or "{}")
-        tabs = payload.get("tabs", [])
-        if not isinstance(tabs, list):
-            tabs = []
-        chatgpt_tab = any(
-            isinstance(tab, dict) and "chatgpt.com" in str(tab.get("url") or "")
-            for tab in tabs
-        )
-        return {
-            "ok": True,
-            "response_ms": elapsed_ms,
-            "running": bool(payload.get("running")),
-            "chatgpt_tab": chatgpt_tab,
-            "error": "",
-        }
-    except (OSError, RuntimeError, ValueError, json.JSONDecodeError, subprocess.TimeoutExpired) as exc:
-        elapsed_ms = int((time.monotonic() - started) * 1000)
-        return {
-            "ok": False,
-            "response_ms": elapsed_ms,
-            "running": False,
-            "chatgpt_tab": False,
             "error": _brief_health_error(exc),
         }

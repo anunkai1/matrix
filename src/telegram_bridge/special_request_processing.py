@@ -39,6 +39,16 @@ class DishframedProcessingRuntime:
     finalize_request_progress_fn: object
 
 
+def _cancel_youtube_request(progress, send_canceled_response_fn, request: YoutubeRequest) -> None:
+    progress.mark_failure("Execution canceled.")
+    send_canceled_response_fn(
+        request.client,
+        request.chat_id,
+        request.message_id,
+        request.message_thread_id,
+    )
+
+
 def build_youtube_processing_runtime(
     *,
     build_progress_reporter_fn,
@@ -157,26 +167,14 @@ def process_youtube_request(
     try:
         progress.start()
         if request.cancel_event is not None and request.cancel_event.is_set():
-            progress.mark_failure("Execution canceled.")
-            send_canceled_response_fn(
-                request.client,
-                request.chat_id,
-                request.message_id,
-                request.message_thread_id,
-            )
+            _cancel_youtube_request(progress, send_canceled_response_fn, request)
             return
 
         progress.set_phase("Fetching YouTube metadata and transcript.")
         analysis = run_youtube_analyzer_fn(request.youtube_url, request.request_text)
 
         if request.cancel_event is not None and request.cancel_event.is_set():
-            progress.mark_failure("Execution canceled.")
-            send_canceled_response_fn(
-                request.client,
-                request.chat_id,
-                request.message_id,
-                request.message_thread_id,
-            )
+            _cancel_youtube_request(progress, send_canceled_response_fn, request)
             return
 
         request_mode = str(analysis.get("request_mode") or "summary").strip().lower()

@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List
 
 from telegram_bridge.channel_adapter import ChannelAdapter, TelegramChannelAdapter
-from telegram_bridge.engine_adapter import ChatGPTWebEngineAdapter, CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter, PiEngineAdapter, VeniceEngineAdapter
+from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter, GemmaEngineAdapter, MavaliEthEngineAdapter, PiEngineAdapter, VeniceEngineAdapter
 from telegram_bridge.signal_channel import SignalChannelAdapter
 from telegram_bridge.transport import TelegramClient
 from telegram_bridge.whatsapp_channel import WhatsAppChannelAdapter
@@ -36,8 +36,6 @@ class PluginRegistry:
 
     def build_engine(self, name: str) -> EngineAdapter:
         key = name.strip().lower()
-        if key == "chatgpt_web":
-            key = "chatgptweb"
         factory = self._engine_factories.get(key)
         if factory is None:
             raise KeyError(f"Unknown engine plugin: {name}")
@@ -68,7 +66,6 @@ def build_default_plugin_registry() -> PluginRegistry:
         lambda config: SignalChannelAdapter(config),
     )
     registry.register_engine("codex", lambda: CodexEngineAdapter())
-    registry.register_engine("chatgptweb", lambda: ChatGPTWebEngineAdapter())
     registry.register_engine("gemma", lambda: GemmaEngineAdapter())
     registry.register_engine("mavali_eth", lambda: MavaliEthEngineAdapter())
     registry.register_engine("pi", lambda: PiEngineAdapter())

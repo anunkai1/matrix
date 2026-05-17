@@ -11,12 +11,10 @@ from telegram_bridge.engines._base import (
 from telegram_bridge.engines.codex import CodexEngineAdapter
 from telegram_bridge.engines.gemma import GemmaEngineAdapter
 from telegram_bridge.engines.venice import VeniceEngineAdapter
-from telegram_bridge.engines.chatgpt_web import ChatGPTWebEngineAdapter
 from telegram_bridge.engines.pi import PiEngineAdapter
 from telegram_bridge.engines.mavali_eth import MavaliEthEngineAdapter
 
 __all__ = [
-    "ChatGPTWebEngineAdapter",
     "CodexEngineAdapter",
     "CompletedProcessOutputMixin",
     "EngineAdapter",

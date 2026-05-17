@@ -1,8 +1,10 @@
 import os
+import logging
 import subprocess
 import threading
 from typing import Optional
 
+from telegram_bridge.codex_app_server import run_live_codex_turn
 from telegram_bridge.engines._base import ProgressCallback
 from telegram_bridge.executor import run_executor
 class CodexEngineAdapter:
@@ -52,6 +54,22 @@ class CodexEngineAdapter:
                 progress_callback=progress_callback,
                 cancel_event=cancel_event,
             )
+        if bool(getattr(config, "codex_app_server_enabled", False)):
+            try:
+                return run_live_codex_turn(
+                    config=config,
+                    prompt=prompt,
+                    scope_key=session_key,
+                    previous_thread_id=thread_id,
+                    image_paths=image_paths or ([image_path] if image_path else []),
+                    progress_callback=progress_callback,
+                    cancel_event=cancel_event,
+                )
+            except Exception:
+                logging.exception(
+                    "Codex app-server live turn failed; falling back to legacy exec path for session_key=%s",
+                    session_key,
+                )
         return run_executor(
             config=config,
             prompt=prompt,

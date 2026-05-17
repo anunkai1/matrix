@@ -22,6 +22,10 @@ from telegram_bridge.response_delivery import start_background_worker
 from telegram_bridge.state_store import State
 
 
+def _start_worker(processor, request) -> None:
+    start_background_worker(processor, request)
+
+
 def build_prompt_worker_request(
     state: State,
     config,
@@ -129,7 +133,7 @@ def process_message_worker(request) -> None:
 
 
 def start_message_worker(request) -> None:
-    start_background_worker(_process_message_worker_request, request)
+    _start_worker(_process_message_worker_request, request)
 
 
 def process_youtube_request(request) -> None:
@@ -141,7 +145,7 @@ def process_youtube_worker(request) -> None:
 
 
 def start_youtube_worker(request) -> None:
-    start_background_worker(_process_youtube_worker_request, request)
+    _start_worker(_process_youtube_worker_request, request)
 
 
 def process_dishframed_request(request) -> None:
@@ -153,4 +157,4 @@ def process_dishframed_worker(request) -> None:
 
 
 def start_dishframed_worker(request) -> None:
-    start_background_worker(_process_dishframed_worker_request, request)
+    _start_worker(_process_dishframed_worker_request, request)

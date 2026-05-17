@@ -27,6 +27,7 @@ from tests.telegram_bridge.helpers import (
 
 import telegram_bridge.auth_state as bridge_auth_state
 import telegram_bridge.channel_adapter as bridge_channel_adapter
+import telegram_bridge.codex_app_server as bridge_codex_app_server
 import telegram_bridge.command_routing as bridge_command_routing
 import telegram_bridge.control_commands as bridge_control_commands
 import telegram_bridge.engine_adapter as bridge_engine_adapter
@@ -46,6 +47,41 @@ import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
 
 
 class TestExecutor(unittest.TestCase):
+    def test_codex_app_server_turn_start_requests_danger_full_access(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1:topic:870",
+            config=SimpleNamespace(cwd="/tmp", codex_model="", codex_reasoning_effort=""),
+        )
+        recorded_calls = []
+
+        def fake_call(method, params):
+            recorded_calls.append((method, dict(params)))
+            if method == "turn/start":
+                with session._state_lock:
+                    if session._pending_turn is not None:
+                        session._pending_turn.status = "completed"
+                        session._pending_turn.final_output = "ok"
+                        session._pending_turn.done.set()
+                return {"turn": {"id": "turn-1"}}
+            raise AssertionError(f"unexpected method {method}")
+
+        session._call = fake_call
+        session._ensure_process = lambda: None
+        session._ensure_thread = lambda previous_thread_id: setattr(session, "_thread_id", "thread-1")
+
+        result = session.run_turn(
+            prompt="hello",
+            previous_thread_id=None,
+            image_paths=[],
+            progress_callback=None,
+            cancel_event=None,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(recorded_calls[0][0], "turn/start")
+        self.assertEqual(recorded_calls[0][1]["approvalPolicy"], "never")
+        self.assertEqual(recorded_calls[0][1]["sandbox"], "danger-full-access")
+
     def test_parse_executor_output_json_stream(self):
         sample_stream = (
             '{"type":"thread.started","thread_id":"thread-123"}\n'

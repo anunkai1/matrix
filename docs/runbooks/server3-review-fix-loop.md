@@ -2,7 +2,6 @@
 
 Purpose:
 - temporary autonomous loop for the seven code-review / architecture issues identified in May 2026
-- separate from Ralph
 - intended to be launched manually, run until the seven issues are complete, then be deleted
 
 Primary files:

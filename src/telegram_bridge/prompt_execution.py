@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
+from telegram_bridge import goal_loop
 from telegram_bridge.engines.mavali_eth import MavaliEthEngineAdapter
 from telegram_bridge.handler_models import DocumentPayload, PromptRequest
 from telegram_bridge.state_store import StateRepository
@@ -270,7 +271,6 @@ def process_prompt_request(
     document = request.document
     cancel_event = request.cancel_event
     stateless = request.stateless
-    sender_name = request.sender_name
     photo_file_ids = request.photo_file_ids
     actor_user_id = request.actor_user_id
     total_started_at = time.monotonic()
@@ -293,6 +293,8 @@ def process_prompt_request(
     affective_runtime = getattr(state, "affective_runtime", None)
     affective_turn_started = False
     affective_turn_finished = False
+    delivered_output: Optional[str] = None
+    should_run_goal_post_turn = False
     progress = build_prompt_progress_reporter(
         request,
         active_engine,
@@ -434,6 +436,8 @@ def process_prompt_request(
             result=result,
             progress=progress,
         )
+        delivered_output = output
+        should_run_goal_post_turn = not stateless
         emit_phase_timing(
             chat_id=chat_id,
             message_id=message_id,
@@ -490,3 +494,16 @@ def process_prompt_request(
             started_at_monotonic=total_started_at,
             emit_event_fn=emit_event_fn,
         )
+    if should_run_goal_post_turn and delivered_output is not None:
+        try:
+            goal_loop.maybe_handle_goal_post_turn(
+                state=state,
+                config=config,
+                client=client,
+                scope_key=scope_key,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                delivered_output=delivered_output,
+            )
+        except Exception:
+            logging.exception("Goal continuation hook failed for scope=%s", scope_key)

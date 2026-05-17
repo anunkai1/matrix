@@ -33,16 +33,14 @@ Source-of-truth repository for Server3 automation and operations. The current pr
 - Canonical runtime inventory: `infra/server3-runtime-manifest.json`
 - Shared live inspection command: `python3 ops/server3_runtime_status.py`
   - repeated units referenced by multiple runtimes are queried from `systemctl` once per status pass
-- Major runtime groups tracked there: Architect, AgentSmith, Diary, Tank, Trinity, Govorun transport/bridge, Oracle transport/bridge, Mavali ETH, Macrorayd, network layer, guardrail timers, optional Browser Brain/UI
+- Major runtime groups tracked there: Architect, AgentSmith, Diary, Tank, Trinity, Govorun transport/bridge, Oracle transport/bridge, Mavali ETH, Macrorayd, network layer, and guardrail timers/UI
 
 ## Repository Structure
 
 - `src/` runtime code
   - Shared bridge core: `src/telegram_bridge/` for bootstrap, routing, channel adapters, engine adapters, session/state persistence, attachments/media, structured logging, and voice helpers
   - Codex CLI wrapper: `src/architect_cli/main.py`
-  - Browser Brain service: `src/browser_brain/`
   - Mavali ETH runtime code now lives in `/home/architect/gitea-server2/mavali_eth` and is loaded by the shared bridge at runtime
-  - SignalTube lab modules: `src/signaltube/`
   - Kids World prototype: `src/kids_world/`
   - Web3 substrate helpers: `src/web3_substrate/`
 - `infra/` source-of-truth mirrors for live server state (systemd units, env templates, managed shell profile content)

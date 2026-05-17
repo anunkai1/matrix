@@ -1,0 +1,16 @@
+[Unit]
+Description=Server3 Dream Loop
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=architect
+Group=architect
+WorkingDirectory=/home/architect/matrix
+Environment=PYTHONUNBUFFERED=1
+Environment=DREAM_LOOP_STATE_DIR=/var/lib/server3-dream-loop
+Environment=DREAM_LOOP_ARCHITECT_BRIDGE_STATE_DIR=/home/architect/.local/state/telegram-architect-bridge
+Environment=DREAM_LOOP_TZ=Australia/Brisbane
+EnvironmentFile=-/etc/default/server3-dream-loop
+ExecStart=/usr/bin/python3 /home/architect/matrix/ops/dream_loop/dream_loop.py

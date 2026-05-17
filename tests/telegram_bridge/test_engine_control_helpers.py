@@ -133,6 +133,33 @@ class TestEngineControlMutations(unittest.TestCase):
 
 
 class TestEngineControlCommands(unittest.TestCase):
+    def test_handle_engine_command_defaults_to_status_without_tail(self):
+        client = FakeTelegramClient()
+        observed = {}
+
+        def fake_build_action_result(_state, _config, _scope_key, action, engine_name=""):
+            observed["action"] = action
+            observed["engine_name"] = engine_name
+            return CallbackActionResult(text="status")
+
+        handled = engine_control_commands.handle_engine_command(
+            State(),
+            make_config(),
+            client,
+            "tg:1",
+            1,
+            None,
+            9,
+            "/engine",
+            normalize_engine_name=lambda value: value,
+            build_engine_action_result=fake_build_action_result,
+            send_control_result_fn=engine_control_commands.send_control_result,
+        )
+
+        self.assertTrue(handled)
+        self.assertEqual(observed, {"action": "status", "engine_name": ""})
+        self.assertEqual(client.messages[0][1], "status")
+
     def test_handle_engine_command_routes_to_set_action(self):
         client = FakeTelegramClient()
         observed = {}
@@ -345,11 +372,12 @@ class TestEngineControlActions(unittest.TestCase):
             "set",
             value="anything",
             page_index=2,
-            model_active_engine_name=lambda *_args: "venice",
+            model_active_engine_name=lambda *_args: "unknown",
             reset_model_for_scope=lambda *_args: self.fail("reset branch should not run"),
             set_codex_model_for_scope=lambda *_args: self.fail("codex branch should not run"),
             set_gemma_model_for_scope=lambda *_args: self.fail("gemma branch should not run"),
             set_pi_model_for_scope=lambda *_args: self.fail("pi branch should not run"),
+            set_venice_model_for_scope=lambda *_args: self.fail("venice branch should not run"),
             build_model_status_text=lambda *_args: "status-text",
             build_model_picker_markup=lambda *_args, **kwargs: {"page": kwargs["page_index"]},
         )

@@ -165,6 +165,51 @@ class TestPromptPreparation(unittest.TestCase):
         )
         self.assertEqual(client.messages[-1][:3], (1, "Prefix required", 103))
 
+    def test_prepare_prompt_input_request_rejects_document_and_replies_with_reason(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        progress = mock.Mock()
+        document = bridge.DocumentPayload(
+            file_id="doc-2",
+            file_name="large.pdf",
+            mime_type="application/pdf",
+        )
+        request = bridge_handlers.build_prompt_request(
+            state=state,
+            config=config,
+            client=client,
+            engine=None,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=1031,
+            prompt="Review this",
+            photo_file_id=None,
+            voice_file_id=None,
+            document=document,
+        )
+
+        with mock.patch.object(
+            prompt_preparation.attachment_processing,
+            "resolve_attachment_for_prompt",
+            side_effect=ValueError("file too large"),
+        ):
+            prepared = prompt_preparation.prepare_prompt_input_request(
+                request,
+                progress,
+                transcribe_voice_for_chat_fn=mock.Mock(),
+                strip_required_prefix_fn=mock.Mock(),
+                is_whatsapp_channel_fn=mock.Mock(return_value=False),
+                send_input_too_long_fn=mock.Mock(),
+                emit_event_fn=mock.Mock(),
+                prefix_help_message="prefix help",
+            )
+
+        self.assertIsNone(prepared)
+        progress.mark_failure.assert_called_once_with("File request rejected.")
+        self.assertEqual(client.messages[-1][:3], (1, "file too large", 1031))
+
     def test_prepare_prompt_input_request_rejects_oversized_input(self):
         state = bridge.State()
         client = FakeTelegramClient()

@@ -342,14 +342,22 @@ def describe_message_media(message: Dict[str, object]) -> str:
         return "В исходном сообщении был файл."
     return ""
 
+
+def _extract_media_selection(
+    message: Dict[str, object],
+) -> tuple[List[str], Optional[str], Optional[DocumentPayload]]:
+    photo_file_ids = extract_message_photo_file_ids(message)
+    _, voice_file_id, document = extract_message_media_payload(message)
+    return photo_file_ids, voice_file_id, document
+
+
 def extract_prompt_and_media(
     message: Dict[str, object],
 ) -> tuple[Optional[str], List[str], Optional[str], Optional[DocumentPayload]]:
     text = normalize_optional_text(message.get("text"))
     caption = normalize_optional_text(message.get("caption"))
 
-    photo_file_ids = extract_message_photo_file_ids(message)
-    _, voice_file_id, document = extract_message_media_payload(message)
+    photo_file_ids, voice_file_id, document = _extract_media_selection(message)
     if photo_file_ids:
         default_prompt = "Please analyze these images." if len(photo_file_ids) > 1 else "Please analyze this image."
         prompt = select_media_prompt(text, caption, default_prompt)
@@ -363,8 +371,7 @@ def extract_prompt_and_media(
 
     reply_to = message.get("reply_to_message")
     if isinstance(reply_to, dict):
-        reply_photo_file_ids = extract_message_photo_file_ids(reply_to)
-        _, reply_voice_file_id, reply_document = extract_message_media_payload(reply_to)
+        reply_photo_file_ids, reply_voice_file_id, reply_document = _extract_media_selection(reply_to)
         if reply_photo_file_ids:
             default_prompt = (
                 "Please analyze the referenced images."

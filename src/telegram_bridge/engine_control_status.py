@@ -52,6 +52,13 @@ def build_engine_runtime_config(state, config, scope_key: str, engine_name: str)
         if override_effort:
             runtime_config.codex_reasoning_effort = override_effort
         return runtime_config
+    if normalized_engine == "venice":
+        override_provider = get_chat_pi_provider(state, scope_key)
+        override_model = get_chat_pi_model(state, scope_key)
+        if str(override_provider or "").strip().lower() != "venice" or not override_model:
+            return config
+        runtime_config.venice_model = override_model
+        return runtime_config
     if normalized_engine != "pi":
         return config
     override_provider = get_chat_pi_provider(state, scope_key)
@@ -288,10 +295,6 @@ def check_pi_health(config) -> Dict[str, object]:
     return health
 
 
-def check_chatgpt_web_health(config) -> Dict[str, object]:
-    return engine_health.check_chatgpt_web_health(config)
-
-
 def build_engine_status_text(state: State, config, scope_key: str) -> str:
     return engine_control_views.build_engine_status_text(
         state,
@@ -309,7 +312,6 @@ def build_engine_status_text(state: State, config, scope_key: str) -> str:
         check_gemma_health=check_gemma_health,
         check_venice_health=check_venice_health,
         check_pi_health=check_pi_health,
-        check_chatgpt_web_health=check_chatgpt_web_health,
     )
 
 

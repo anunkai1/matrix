@@ -6,19 +6,16 @@ from dataclasses import dataclass
 from typing import Optional
 
 from telegram_bridge.runtime_profile import (
-    BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
     HA_KEYWORD_HELP_MESSAGE,
     NEXTCLOUD_KEYWORD_HELP_MESSAGE,
     PREFIX_HELP_MESSAGE,
     SRO_KEYWORD_HELP_MESSAGE,
     SERVER3_KEYWORD_HELP_MESSAGE,
-    build_browser_brain_keyword_prompt,
     build_ha_keyword_prompt,
     build_nextcloud_keyword_prompt,
     build_sro_keyword_prompt,
     build_server3_keyword_prompt,
     command_bypasses_required_prefix,
-    extract_browser_brain_keyword_request,
     extract_ha_keyword_request,
     extract_nextcloud_keyword_request,
     extract_sro_keyword_request,
@@ -109,25 +106,6 @@ def apply_priority_keyword_routing(
             command=command,
             stateless=False,
             priority_keyword_mode=False,
-        )
-
-    browser_keyword_mode, browser_request = extract_browser_brain_keyword_request(prompt_input)
-    if browser_keyword_mode:
-        if not browser_request.strip():
-            return KeywordRouteResult(
-                prompt_input=prompt_input,
-                command=command,
-                stateless=False,
-                priority_keyword_mode=False,
-                rejection_reason="browser_brain_keyword_missing_action",
-                rejection_message=BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
-            )
-        return KeywordRouteResult(
-            prompt_input=build_browser_brain_keyword_prompt(browser_request),
-            command=None,
-            stateless=True,
-            priority_keyword_mode=True,
-            routed_event="bridge.browser_brain_keyword_routed",
         )
 
     sro_keyword_mode, sro_request = extract_sro_keyword_request(prompt_input)

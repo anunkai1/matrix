@@ -5,8 +5,6 @@ from typing import Dict, List, Optional, Set, Tuple
 
 
 ENGINE_NAME_ALIASES = {
-    "chatgpt": "chatgptweb",
-    "chatgpt_web": "chatgptweb",
     "ollama": "gemma",
     "ollama(s4)": "gemma",
     "ollama-s4": "gemma",

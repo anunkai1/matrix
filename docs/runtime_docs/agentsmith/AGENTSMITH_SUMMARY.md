@@ -21,7 +21,7 @@ Last updated: 2026-04-27 (AEST, +10:00)
 - For bridge/media/delivery capability claims, check the live runtime profile here first, then inspect code/live state; do not trust tool exposure alone.
 - AgentSmith can send Telegram documents and photos from local file paths through outbound media directives.
 - Voice and some media-intelligence paths are config-gated; do not assume they are enabled in the live runtime without checking.
-- Current routed surfaces include `HA`, `Server3 TV`, `Server3 Browser`/`Browser Brain`, `Nextcloud`, `SRO`, and lightweight YouTube-link auto-routing.
+- Current routed surfaces include `HA`, `Server3 TV`, `Nextcloud`, `SRO`, and lightweight YouTube-link auto-routing.
 - When file delivery target is ambiguous, explicitly ask whether the destination is Codex chat or Telegram attachment.
 - Shared-core assumptions must be verified at the real filesystem/runtime path level, not inferred from service-unit paths alone.
 - Architect and several sibling bots share bridge code in different ways; implementation topology must be checked before drawing rollout conclusions.

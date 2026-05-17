@@ -116,6 +116,7 @@ def reset_model_for_scope(
     configured_codex_model: Callable,
     configured_gemma_model: Callable,
     configured_pi_model: Callable,
+    build_pi_provider_source_text: Callable,
     build_codex_model_source_text: Callable,
     build_gemma_model_source_text: Callable,
     build_pi_model_source_text: Callable,
@@ -144,6 +145,20 @@ def reset_model_for_scope(
         return (
             f"{source}. Pi model is now {configured_pi_model(updated_config)} "
             f"({build_pi_model_source_text(state, scope_key)})."
+        )
+    if active_engine == "venice":
+        removed = clear_chat_pi_model(state, scope_key)
+        updated_config = build_engine_runtime_config(state, config, scope_key, "venice")
+        source = "chat override cleared" if removed else "no chat override was set"
+        model_source = (
+            "chat override"
+            if build_pi_provider_source_text(state, scope_key) == "chat override"
+            and build_pi_model_source_text(state, scope_key) == "chat override"
+            else "global default"
+        )
+        return (
+            f"{source}. Venice model is now {getattr(updated_config, 'venice_model', 'mistral-31-24b')} "
+            f"({model_source})."
         )
     return build_model_status_text(state, config, scope_key)
 
@@ -210,6 +225,36 @@ def set_pi_model_for_scope(
     return (
         f"Pi model for this chat is now {configured_pi_model(updated_config)} "
         f"({build_pi_model_source_text(state, scope_key)})."
+    )
+
+
+def set_venice_model_for_scope(
+    state,
+    config,
+    scope_key: str,
+    model_name: str,
+    *,
+    build_engine_runtime_config: Callable,
+    pi_provider_model_names: Callable,
+    resolve_pi_model_candidate: Callable,
+    set_chat_pi_provider: Callable,
+    set_chat_pi_model: Callable,
+) -> str:
+    temp_config = copy.copy(config)
+    temp_config.pi_provider = "venice"
+    available_models = pi_provider_model_names(temp_config)
+    resolved_model = resolve_pi_model_candidate(available_models, model_name)
+    if resolved_model is None:
+        return (
+            f"Model not available for Venice: `{model_name}`\n"
+            "Use /model list to see the allowed model names."
+        )
+    set_chat_pi_provider(state, scope_key, "venice")
+    set_chat_pi_model(state, scope_key, resolved_model)
+    updated_config = build_engine_runtime_config(state, config, scope_key, "venice")
+    return (
+        f"Venice model for this chat is now "
+        f"{getattr(updated_config, 'venice_model', 'mistral-31-24b')} (chat override)."
     )
 
 

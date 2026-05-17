@@ -17,6 +17,22 @@ CANCEL_NO_ACTIVE_MESSAGE = "No active request to cancel."
 
 request_chat_cancel = response_delivery.request_chat_cancel
 
+
+def _send_command_reply(
+    client: ChannelAdapter,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+    text: str,
+) -> None:
+    client.send_message(
+        chat_id,
+        text,
+        reply_to_message_id=message_id,
+        message_thread_id=message_thread_id,
+    )
+
+
 def handle_reset_command(
     state: State,
     config,
@@ -33,18 +49,20 @@ def handle_reset_command(
     except Exception:
         logging.exception("Failed to archive Pi session files for scope=%s", scope_key)
     if removed_thread or removed_worker:
-        client.send_message(
+        _send_command_reply(
+            client,
             chat_id,
+            message_thread_id,
+            message_id,
             "Context reset. Your next message starts a new conversation.",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
         )
         return
-    client.send_message(
+    _send_command_reply(
+        client,
         chat_id,
+        message_thread_id,
+        message_id,
         "No saved context was found for this chat.",
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
     )
 
 def handle_restart_command(
@@ -65,35 +83,39 @@ def handle_restart_command(
         },
     )
     if status == "in_progress":
-        client.send_message(
+        _send_command_reply(
+            client,
             chat_id,
+            message_thread_id,
+            message_id,
             "Restart is already in progress.",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
         )
         return
     if status == "already_queued":
-        client.send_message(
+        _send_command_reply(
+            client,
             chat_id,
+            message_thread_id,
+            message_id,
             "Restart is already queued and will run after current work completes.",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
         )
         return
     if status == "queued":
-        client.send_message(
+        _send_command_reply(
+            client,
             chat_id,
+            message_thread_id,
+            message_id,
             f"Safe restart queued. Waiting for {busy_count} active request(s) to finish.",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
         )
         return
 
-    client.send_message(
+    _send_command_reply(
+        client,
         chat_id,
+        message_thread_id,
+        message_id,
         "No active request. Restarting bridge now.",
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
     )
     trigger_restart_async(state, client, chat_id, message_thread_id, message_id)
 
@@ -111,32 +133,36 @@ def handle_cancel_command(
         fields={"chat_id": chat_id, "message_id": message_id, "status": status},
     )
     if status == "requested":
-        client.send_message(
+        _send_command_reply(
+            client,
             chat_id,
+            message_thread_id,
+            message_id,
             CANCEL_REQUESTED_MESSAGE,
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
         )
         return
     if status == "already_requested":
-        client.send_message(
+        _send_command_reply(
+            client,
             chat_id,
+            message_thread_id,
+            message_id,
             CANCEL_ALREADY_REQUESTED_MESSAGE,
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
         )
         return
     if status == "unavailable":
-        client.send_message(
+        _send_command_reply(
+            client,
             chat_id,
+            message_thread_id,
+            message_id,
             "Active request cannot be canceled at this stage. Please wait a few seconds and retry.",
-            reply_to_message_id=message_id,
-            message_thread_id=message_thread_id,
         )
         return
-    client.send_message(
+    _send_command_reply(
+        client,
         chat_id,
+        message_thread_id,
+        message_id,
         CANCEL_NO_ACTIVE_MESSAGE,
-        reply_to_message_id=message_id,
-        message_thread_id=message_thread_id,
     )

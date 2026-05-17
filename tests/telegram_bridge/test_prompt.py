@@ -35,6 +35,7 @@ import telegram_bridge.handlers as bridge_handlers
 import telegram_bridge.http_channel as bridge_http_channel
 import telegram_bridge.main as bridge
 import telegram_bridge.plugin_registry as bridge_plugin_registry
+import telegram_bridge.codex_app_server as bridge_codex_app_server
 import telegram_bridge.prompt_execution as bridge_prompt_execution
 import telegram_bridge.prompt_runtime as bridge_prompt_runtime
 import telegram_bridge.session_manager as bridge_session_manager
@@ -47,6 +48,35 @@ import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
 
 
 class TestPrompt(unittest.TestCase):
+    def test_codex_app_server_try_steer_waits_briefly_for_active_turn_id(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(),
+        )
+        pending_turn = bridge_codex_app_server._PendingTurn()
+        session._pending_turn = pending_turn
+        session._thread_id = "thread-1"
+
+        def populate_turn_id(_seconds):
+            pending_turn.active_turn_id = "turn-1"
+
+        with (
+            mock.patch.object(session, "_ensure_process"),
+            mock.patch.object(session, "_call", return_value={}) as call_mock,
+            mock.patch("telegram_bridge.codex_app_server.time.sleep", side_effect=populate_turn_id),
+        ):
+            steered = session.try_steer("follow up")
+
+        self.assertTrue(steered)
+        call_mock.assert_called_once_with(
+            "turn/steer",
+            {
+                "threadId": "thread-1",
+                "expectedTurnId": "turn-1",
+                "input": [{"type": "text", "text": "follow up"}],
+            },
+        )
+
     def test_finalize_prompt_success_trims_plain_output(self):
         config = make_config(max_output_chars=20)
         config.empty_output_message = "(No output from Architect)"

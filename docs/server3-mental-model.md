@@ -39,7 +39,7 @@ The main reusable runtime lives in [`src/telegram_bridge`](../src/telegram_bridg
 - [`channel_adapter.py`](../src/telegram_bridge/channel_adapter.py): shared channel interface plus Telegram adapter methods.
 - [`http_channel.py`](../src/telegram_bridge/http_channel.py), [`signal_channel.py`](../src/telegram_bridge/signal_channel.py), and [`whatsapp_channel.py`](../src/telegram_bridge/whatsapp_channel.py): non-Telegram channel integrations around the same core.
 - [`executor.py`](../src/telegram_bridge/executor.py) and [`executor.sh`](../src/telegram_bridge/executor.sh): invoke local Codex safely and stream output back.
-- [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py): pluggable engine layer for Codex, Gemma, Pi, Venice, ChatGPT Web, and the Mavali ETH deterministic wallet engine.
+- [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py): pluggable engine layer for Codex, Gemma, Pi, Venice, and the Mavali ETH deterministic wallet engine.
 - [`canonical_state_store.py`](../src/telegram_bridge/canonical_state_store.py) and [`canonical_runtime_state_store.py`](../src/telegram_bridge/canonical_runtime_state_store.py): canonical session persistence and sync for thread IDs, worker session metadata, and in-flight request tracking.
 - [`llm_summarizer.py`](../src/telegram_bridge/llm_summarizer.py): local gemma3:4b summarizer via Ollama (primary summary path).
 - [`session_manager.py`](../src/telegram_bridge/session_manager.py): worker/session lifecycle, busy state, and safe restart coordination.
@@ -75,7 +75,6 @@ Current live engine shape:
 | `codex` | Full local Codex execution with tool/action harness | [`executor.py`](../src/telegram_bridge/executor.py), [`executor.sh`](../src/telegram_bridge/executor.sh) |
 | `gemma` | Text-only Ollama-backed model path on Server4 | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/server4-gemma-engine.md`](./runbooks/server4-gemma-engine.md) |
 | `pi` | Pi agent path that preserves runtime identity while using local or Server4-backed models; can use Venice as a provider | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [`docs/runbooks/server4-pi-engine.md`](./runbooks/server4-pi-engine.md) |
-| `chatgptweb` | Experimental Browser Brain-backed ChatGPT web bridge | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), `ops/chatgpt_web_bridge.py` |
 | `mavali_eth` | Deterministic wallet/protocol engine with Codex fallback for unsupported prompts | [`engine_adapter.py`](../src/telegram_bridge/engine_adapter.py), [mavali-eth-engine.md](/home/architect/gitea-server2/mavali_eth/docs/mavali-eth-engine.md) |
 
 Operational rule:
@@ -89,7 +88,6 @@ When a request should not be handled as open-ended assistant chat, the bridge ca
 | --- | --- | --- | --- |
 | Home Assistant | `HA ...` or `Home Assistant ...` | Stateless HA control/scheduling | [`ops/ha`](../ops/ha) |
 | YouTube Link | bare YouTube URL or YouTube URL with a lightweight summary/transcript request | Transcript-first video analysis via `yt-dlp` captions or local transcription | [`ops/youtube`](../ops/youtube), [`ops/telegram-voice`](../ops/telegram-voice) |
-| Browser Brain | `Server3 Browser ...` or `Browser Brain ...` | Structured real-browser automation via snapshot refs | [`ops/browser_brain`](../ops/browser_brain) |
 | TV/Desktop | `Server3 TV ...` | Start desktop, open browser, control YouTube | [`ops/tv-desktop`](../ops/tv-desktop) |
 | Nextcloud | `Nextcloud ...` | File and calendar operations | [`ops/nextcloud`](../ops/nextcloud) |
 
@@ -121,7 +119,7 @@ This is the primary Server3 brain.
 - Service: `telegram-architect-bridge.service`
 - User: `architect`
 - Workspace: `/home/architect/matrix`
-- Purpose: general assistant, file/image/voice handling, canonical-session-backed bridge state, and operator routing into HA/Browser Brain/TV/Nextcloud modes.
+- Purpose: general assistant, file/image/voice handling, canonical-session-backed bridge state, and operator routing into HA/TV/Nextcloud modes.
 - Main docs:
   - [`docs/telegram-architect-bridge.md`](./telegram-architect-bridge.md)
   - [`SERVER3_SUMMARY.md`](../SERVER3_SUMMARY.md)
@@ -244,27 +242,6 @@ Key mental rule:
 - Server3 normally lives in CLI mode.
 - TV mode is an on-demand desktop overlay.
 
-### Server3 Browser Brain Mode
-
-This is the structured browser-automation corridor.
-
-- Trigger: `Server3 Browser ...` or `Browser Brain ...`
-- Runtime dependency: `server3-browser-brain.service`
-- Scripts: [`ops/browser_brain`](../ops/browser_brain)
-- Docs: [`docs/runbooks/server3-browser-brain.md`](./runbooks/server3-browser-brain.md)
-
-Use it when you want:
-- open or navigate real browser tabs
-- inspect the current page and get actionable refs
-- click or type against exact snapshot refs
-- drive a managed browser session end to end
-- attach to an already-open local browser session when a site needs visible manual login
-
-Key mental rule:
-- Browser Brain is the machine-operated browser substrate.
-- It has two connection modes: `managed` and `existing_session`.
-- TV mode is still the human-visible desktop/browser path, but it can also act as the visible login helper for Browser Brain when Browser Brain attaches over local CDP.
-
 ### Nextcloud Mode
 
 Nextcloud is another stateless script-backed mode.
@@ -292,7 +269,7 @@ Use it when you want:
 
 ### Keyword-routed request
 
-1. Message starts with `HA`, `Server3 Browser`, `Browser Brain`, `Server3 TV`, or `Nextcloud`, or it contains an auto-routed YouTube link request.
+1. Message starts with `HA`, `Server3 TV`, or `Nextcloud`, or it contains an auto-routed YouTube link request.
 2. Bridge strips the keyword and switches to the bounded mode.
 3. Request runs stateless with a script allowlist or deterministic backend.
 4. Result is returned without carrying open-ended conversational memory.
@@ -348,8 +325,6 @@ Server3 now uses one shared bridge core in `/home/architect/matrix` plus per-run
 - Govorun Node transport: `/home/govorun/whatsapp-govorun/app`
 - Mavali ETH: `/home/architect/gitea-server2/mavali_eth` (overlay root with wallet-first engine plugin)
 - Macrorayd: `/home/macrorayd/macroraydbot` (overlay root)
-- Browser Brain: `/home/browser_brain/browserbrain` (dedicated local browser-control service root)
-
 For the repo-backed runtimes, the live `AGENTS.md` files and selected companion docs in those runtime roots are symlinked back to the canonical copies in `matrix`. Verify that wiring with `bash /home/architect/matrix/ops/runtime_personas/check_runtime_repo_links.sh`.
 
 ### Secrets
@@ -395,7 +370,7 @@ If you want a separate persona/profile:
 - use Tank, Govorun, Oracle, AgentSmith, Trinity, Mavali ETH, or Macrorayd depending on domain
 
 If you want a bounded operational action:
-- use the keyword modes: `HA`, `Server3 Browser`, `Server3 TV`, or `Nextcloud`
+- use the keyword modes: `HA`, `Server3 TV`, or `Nextcloud`
 
 If you want to know how something is installed or restarted:
 - check [`ops`](../ops) first, then the matching runbook
@@ -412,5 +387,5 @@ Think of Server3 as one reusable assistant engine surrounded by multiple identit
 
 - Architect is the main front door.
 - Tank, Oracle, Govorun, AgentSmith, Trinity, Mavali ETH, and Macrorayd are sibling runtimes built around the same core idea: isolate identity and state when it matters.
-- HA, Browser Brain, TV, and Nextcloud are the deterministic side corridors.
+- HA, TV, and Nextcloud are the deterministic side corridors.
 - systemd timers, observer checks, and config contracts are the guard rails that keep the whole machine stable.

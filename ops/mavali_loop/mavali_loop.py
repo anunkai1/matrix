@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 STANDALONE_RUNNER = Path("/home/architect/mavali-loop/src/mavali_loop/runner.py")
 if not STANDALONE_RUNNER.exists():
     raise RuntimeError(f"standalone mavali-loop runner is missing: {STANDALONE_RUNNER}")

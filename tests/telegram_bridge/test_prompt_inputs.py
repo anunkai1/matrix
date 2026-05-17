@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+import subprocess
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,6 +18,52 @@ import telegram_bridge.prompt_preparation as prompt_preparation
 
 
 class TestPromptInputs(unittest.TestCase):
+    def test_transcribe_voice_for_chat_replies_when_not_configured(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(
+            voice_transcribe_cmd=[],
+            voice_not_configured_message="Voice transcription is not configured.",
+        )
+
+        transcript = prompt_inputs.transcribe_voice_for_chat(
+            state=state,
+            config=config,
+            client=client,
+            chat_id=1,
+            message_id=103,
+            voice_file_id="voice-1",
+        )
+
+        self.assertIsNone(transcript)
+        self.assertEqual(client.messages[-1], (1, "Voice transcription is not configured.", 103, None))
+
+    def test_transcribe_voice_for_chat_replies_on_timeout(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config(
+            voice_transcribe_cmd=["/bin/echo"],
+            timeout_message="Timed out",
+        )
+
+        with mock.patch.object(prompt_inputs, "_handlers") as handlers_factory:
+            handlers = handlers_factory.return_value
+            handlers.download_voice_to_temp.return_value = "/tmp/fake.oga"
+            handlers.transcribe_voice.side_effect = subprocess.TimeoutExpired(cmd=["/bin/echo"], timeout=10)
+
+            with mock.patch.object(prompt_inputs.os, "remove"):
+                transcript = prompt_inputs.transcribe_voice_for_chat(
+                    state=state,
+                    config=config,
+                    client=client,
+                    chat_id=1,
+                    message_id=104,
+                    voice_file_id="voice-2",
+                )
+
+        self.assertIsNone(transcript)
+        self.assertEqual(client.messages[-1], (1, "Timed out", 104, None))
+
     def test_prepare_prompt_input_delegates_through_request_wrapper(self):
         state = bridge.State()
         client = FakeTelegramClient()

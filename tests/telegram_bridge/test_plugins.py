@@ -85,7 +85,7 @@ class TestPlugins(unittest.TestCase):
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
         self.assertEqual(registry.list_channels(), ["signal", "telegram", "whatsapp"])
-        self.assertEqual(registry.list_engines(), ["chatgptweb", "codex", "gemma", "mavali_eth", "pi", "venice"])
+        self.assertEqual(registry.list_engines(), ["codex", "gemma", "mavali_eth", "pi", "venice"])
 
     def test_default_plugin_registry_builds_default_plugins(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
@@ -94,8 +94,6 @@ class TestPlugins(unittest.TestCase):
         engine = registry.build_engine("codex")
         self.assertIsInstance(channel, bridge_channel_adapter.TelegramChannelAdapter)
         self.assertIsInstance(engine, bridge_engine_adapter.CodexEngineAdapter)
-        self.assertIsInstance(registry.build_engine("chatgptweb"), bridge_engine_adapter.ChatGPTWebEngineAdapter)
-        self.assertIsInstance(registry.build_engine("chatgpt_web"), bridge_engine_adapter.ChatGPTWebEngineAdapter)
         self.assertIsInstance(registry.build_engine("gemma"), bridge_engine_adapter.GemmaEngineAdapter)
         self.assertIsInstance(registry.build_engine("pi"), bridge_engine_adapter.PiEngineAdapter)
         self.assertIsInstance(registry.build_engine("venice"), bridge_engine_adapter.VeniceEngineAdapter)
@@ -278,15 +276,6 @@ class TestPlugins(unittest.TestCase):
         self.assertEqual(config.venice_model, "mistral-31-24b")
         self.assertEqual(config.venice_temperature, 0.2)
         self.assertEqual(config.venice_request_timeout_seconds, 180)
-        self.assertEqual(config.chatgpt_web_python_bin, "python3")
-        self.assertEqual(config.chatgpt_web_browser_brain_url, "http://127.0.0.1:47831")
-        self.assertEqual(config.chatgpt_web_browser_brain_service, "server3-browser-brain.service")
-        self.assertEqual(config.chatgpt_web_url, "https://chatgpt.com/")
-        self.assertFalse(config.chatgpt_web_start_service)
-        self.assertEqual(config.chatgpt_web_request_timeout_seconds, 30)
-        self.assertEqual(config.chatgpt_web_ready_timeout_seconds, 45)
-        self.assertEqual(config.chatgpt_web_response_timeout_seconds, 180)
-        self.assertEqual(config.chatgpt_web_poll_seconds, 3.0)
 
     def test_load_config_reads_plugin_selection_overrides(self):
         with mock.patch.dict(
@@ -296,7 +285,7 @@ class TestPlugins(unittest.TestCase):
                 "TELEGRAM_ALLOWED_CHAT_IDS": "1,2",
                 "TELEGRAM_CHANNEL_PLUGIN": "  whatsapp ",
                 "TELEGRAM_ENGINE_PLUGIN": "  codex ",
-                "TELEGRAM_SELECTABLE_ENGINE_PLUGINS": "codex,gemma,pi,venice,chatgptweb",
+                "TELEGRAM_SELECTABLE_ENGINE_PLUGINS": "codex,gemma,pi,venice",
                 "GEMMA_PROVIDER": "ollama_http",
                 "GEMMA_MODEL": "gemma-test",
                 "GEMMA_BASE_URL": "http://beast:11434",
@@ -307,16 +296,6 @@ class TestPlugins(unittest.TestCase):
                 "VENICE_MODEL": "venice-uncensored-1-2",
                 "VENICE_TEMPERATURE": "0.4",
                 "VENICE_REQUEST_TIMEOUT_SECONDS": "77",
-                "CHATGPT_WEB_BRIDGE_SCRIPT": "/srv/chatgpt_web_bridge.py",
-                "CHATGPT_WEB_PYTHON_BIN": "/usr/bin/python3",
-                "CHATGPT_WEB_BROWSER_BRAIN_URL": "http://127.0.0.1:47831",
-                "CHATGPT_WEB_BROWSER_BRAIN_SERVICE": "browser-brain-test.service",
-                "CHATGPT_WEB_URL": "https://chatgpt.com/g/g-test",
-                "CHATGPT_WEB_START_SERVICE": "false",
-                "CHATGPT_WEB_REQUEST_TIMEOUT_SECONDS": "11",
-                "CHATGPT_WEB_READY_TIMEOUT_SECONDS": "22",
-                "CHATGPT_WEB_RESPONSE_TIMEOUT_SECONDS": "33",
-                "CHATGPT_WEB_POLL_SECONDS": "0.5",
                 "PI_PROVIDER": "ollama",
                 "PI_MODEL": "pi-model",
                 "PI_RUNNER": "local",
@@ -340,7 +319,7 @@ class TestPlugins(unittest.TestCase):
             config = bridge.load_config()
         self.assertEqual(config.channel_plugin, "whatsapp")
         self.assertEqual(config.engine_plugin, "codex")
-        self.assertEqual(config.selectable_engine_plugins, ["codex", "gemma", "pi", "venice", "chatgptweb"])
+        self.assertEqual(config.selectable_engine_plugins, ["codex", "gemma", "pi", "venice"])
         self.assertEqual(config.gemma_provider, "ollama_http")
         self.assertEqual(config.gemma_model, "gemma-test")
         self.assertEqual(config.gemma_base_url, "http://beast:11434")
@@ -351,16 +330,6 @@ class TestPlugins(unittest.TestCase):
         self.assertEqual(config.venice_model, "venice-uncensored-1-2")
         self.assertEqual(config.venice_temperature, 0.4)
         self.assertEqual(config.venice_request_timeout_seconds, 77)
-        self.assertEqual(config.chatgpt_web_bridge_script, "/srv/chatgpt_web_bridge.py")
-        self.assertEqual(config.chatgpt_web_python_bin, "/usr/bin/python3")
-        self.assertEqual(config.chatgpt_web_browser_brain_url, "http://127.0.0.1:47831")
-        self.assertEqual(config.chatgpt_web_browser_brain_service, "browser-brain-test.service")
-        self.assertEqual(config.chatgpt_web_url, "https://chatgpt.com/g/g-test")
-        self.assertFalse(config.chatgpt_web_start_service)
-        self.assertEqual(config.chatgpt_web_request_timeout_seconds, 11)
-        self.assertEqual(config.chatgpt_web_ready_timeout_seconds, 22)
-        self.assertEqual(config.chatgpt_web_response_timeout_seconds, 33)
-        self.assertEqual(config.chatgpt_web_poll_seconds, 0.5)
         self.assertEqual(config.pi_provider, "ollama")
         self.assertEqual(config.pi_model, "pi-model")
         self.assertEqual(config.pi_runner, "local")
@@ -566,48 +535,6 @@ class TestPlugins(unittest.TestCase):
         self.assertIn("Venice model available: yes", text)
         self.assertIn("Venice last check error: (none)", text)
         urlopen_mock.assert_called_once()
-
-    def test_engine_status_includes_live_chatgpt_web_health(self):
-        state = bridge.State(chat_engines={"tg:1": "chatgptweb"})
-        config = make_config(
-            engine_plugin="codex",
-            chatgpt_web_bridge_script="/srv/chatgpt_web_bridge.py",
-            chatgpt_web_browser_brain_url="http://127.0.0.1:47831",
-        )
-        completed = subprocess.CompletedProcess(
-            args=[],
-            returncode=0,
-            stdout=json.dumps(
-                {
-                    "running": True,
-                    "tabs": [{"url": "https://chatgpt.com/c/test", "tab_id": "tab-1"}],
-                }
-            ),
-            stderr="",
-        )
-
-        with (
-            mock.patch.object(
-                bridge_handlers.subprocess,
-                "run",
-                return_value=completed,
-            ) as run_mock,
-            mock.patch.object(
-                bridge_handlers.time,
-                "monotonic",
-                side_effect=[300.0, 300.027],
-            ),
-        ):
-            text = bridge_handlers.build_engine_status_text(state, config, "tg:1")
-
-        self.assertIn("This chat engine: chatgptweb", text)
-        self.assertIn("ChatGPT web health: ok", text)
-        self.assertIn("ChatGPT web response time: 26ms", text)
-        self.assertIn("ChatGPT web Browser Brain running: yes", text)
-        self.assertIn("ChatGPT web tab visible: yes", text)
-        self.assertIn("ChatGPT web last check error: (none)", text)
-        run_mock.assert_called_once()
-        self.assertIn("/srv/chatgpt_web_bridge.py", run_mock.call_args.args[0])
 
     def test_engine_status_includes_live_pi_health(self):
         state = bridge.State(chat_engines={"tg:1": "pi"})
@@ -904,14 +831,6 @@ class TestPlugins(unittest.TestCase):
         ]
         self.assertIn("cfg|model|gemma|menu", callback_values)
 
-    def test_help_text_includes_configured_chatgptweb_engine(self):
-        cfg = make_config(selectable_engine_plugins=["codex", "gemma", "pi", "chatgptweb"])
-        text = bridge_handlers.build_help_text(cfg)
-        self.assertIn(
-            "/engine status|codex|ollama(s4)|pi|chatgptweb|reset - show or select this chat's engine",
-            text,
-        )
-
     def test_callback_query_updates_engine_menu(self):
         state = bridge.State(chat_engines={"tg:1": "codex"})
         config = make_config(
@@ -1038,6 +957,39 @@ class TestPlugins(unittest.TestCase):
         self.assertIn("cfg|engine|gemma|menu", callback_values)
         self.assertIn("gemma4:26b *", button_texts)
         self.assertIn("supergemma4-26b uncensore...", button_texts)
+
+    def test_engine_command_status_includes_venice_model_menu(self):
+        state = bridge.State(chat_engines={"tg:1": "venice"})
+        config = make_config(
+            engine_plugin="codex",
+            selectable_engine_plugins=["codex", "pi", "venice"],
+            venice_api_key="venice-key",
+        )
+        client = FakeTelegramClient()
+
+        with mock.patch.object(
+            bridge_handlers.engine_controls,
+            "_pi_provider_model_names",
+            return_value=["venice-uncensored", "deepseek-v4-flash"],
+        ):
+            handled = bridge_handlers.handle_engine_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/engine",
+            )
+
+        self.assertTrue(handled)
+        callback_values = [
+            button["callback_data"]
+            for row in client.messages[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("cfg|model|venice|menu", callback_values)
 
     def test_callback_query_from_engine_menu_opens_provider_menu(self):
         state = bridge.State(chat_engines={"tg:1": "pi"})
@@ -1422,6 +1374,42 @@ class TestPlugins(unittest.TestCase):
         self.assertEqual(bridge_handlers.StateRepository(state).get_chat_pi_model("tg:1"), "deepseek-v4-flash")
         self.assertIn("Pi model for this chat is now deepseek-v4-flash", client.messages[0][1])
 
+    def test_model_command_sets_venice_model_for_active_venice_engine(self):
+        state = bridge.State(chat_engines={"tg:1": "venice"})
+        config = make_config(
+            engine_plugin="codex",
+            venice_api_key="venice-key",
+            venice_model="mistral-31-24b",
+        )
+        client = FakeTelegramClient()
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout=(
+                "provider  model                         context  max-out  thinking  images\n"
+                "venice    deepseek-v4-flash            128K     16.4K    no        no\n"
+            ),
+            stderr="",
+        )
+
+        with mock.patch.object(bridge_handlers.subprocess, "run", return_value=completed):
+            handled = bridge_handlers.handle_model_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/model deepseek-v4-flash",
+            )
+
+        self.assertTrue(handled)
+        repo = bridge_handlers.StateRepository(state)
+        self.assertEqual(repo.get_chat_pi_provider("tg:1"), "venice")
+        self.assertEqual(repo.get_chat_pi_model("tg:1"), "deepseek-v4-flash")
+        self.assertIn("Venice model for this chat is now deepseek-v4-flash", client.messages[0][1])
+
     def test_model_command_for_pi_uses_paged_inline_picker(self):
         state = bridge.State(chat_engines={"tg:1": "pi"})
         config = make_config(engine_plugin="codex", pi_provider="venice", pi_model="model-01")
@@ -1459,6 +1447,40 @@ class TestPlugins(unittest.TestCase):
         ]
         self.assertIn("cfg|model|pi|set|idx:0", callback_values)
         self.assertIn("cfg|model|pi|set|idx:15", callback_values)
+
+    def test_model_command_for_venice_uses_paged_inline_picker(self):
+        state = bridge.State(chat_engines={"tg:1": "venice"})
+        config = make_config(
+            engine_plugin="codex",
+            selectable_engine_plugins=["codex", "pi", "venice"],
+            venice_api_key="venice-key",
+            venice_model="model-01",
+        )
+        client = FakeTelegramClient()
+        model_names = [f"model-{index:02d}" for index in range(1, 31)]
+
+        with mock.patch.object(bridge_handlers.engine_controls, "_pi_provider_model_names", return_value=model_names):
+            handled = bridge_handlers.handle_model_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=None,
+                message_id=42,
+                raw_text="/model",
+            )
+
+        self.assertTrue(handled)
+        self.assertIsInstance(client.messages[0][3], dict)
+        callback_values = [
+            button["callback_data"]
+            for row in client.messages[0][3]["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("cfg|model|venice|set|idx:0", callback_values)
+        self.assertIn("cfg|model|venice|set|idx:15", callback_values)
+        self.assertIn("cfg|model|venice|page|1", callback_values)
 
     def test_model_command_for_pi_shows_long_hf_model_with_short_button_label(self):
         state = bridge.State(chat_engines={"tg:1": "pi"})

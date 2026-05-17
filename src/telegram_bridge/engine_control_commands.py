@@ -21,6 +21,12 @@ def send_control_result(
     return True
 
 
+def _parse_command_tail(raw_text: str, default: str = "status") -> tuple[str, str]:
+    pieces = raw_text.strip().split(maxsplit=1)
+    raw_tail = pieces[1].strip() if len(pieces) > 1 else default
+    return raw_tail, raw_tail.lower()
+
+
 def handle_engine_command(
     state,
     config,
@@ -35,8 +41,7 @@ def handle_engine_command(
     build_engine_action_result: Callable,
     send_control_result_fn: Callable,
 ) -> bool:
-    pieces = raw_text.strip().split(maxsplit=1)
-    tail = pieces[1].strip().lower() if len(pieces) > 1 else "status"
+    _, tail = _parse_command_tail(raw_text)
     tail = normalize_engine_name(tail)
     if tail in {"", "status"}:
         result = build_engine_action_result(state, config, scope_key, "status")
@@ -73,9 +78,7 @@ def handle_pi_command(
     set_chat_pi_model: Callable,
     send_control_result_fn: Callable,
 ) -> bool:
-    pieces = raw_text.strip().split(maxsplit=1)
-    raw_tail = pieces[1].strip() if len(pieces) > 1 else "status"
-    tail = raw_tail.lower()
+    raw_tail, tail = _parse_command_tail(raw_text)
     display_config = build_engine_runtime_config(state, config, scope_key, "pi")
 
     if tail in {"", "status"}:
@@ -242,9 +245,7 @@ def handle_model_command(
     brief_health_error: Callable,
     send_control_result_fn: Callable,
 ) -> bool:
-    pieces = raw_text.strip().split(maxsplit=1)
-    raw_tail = pieces[1].strip() if len(pieces) > 1 else "status"
-    tail = raw_tail.lower()
+    raw_tail, tail = _parse_command_tail(raw_text)
     active_engine = model_active_engine_name(state, config, scope_key)
 
     if tail in {"", "status"}:
@@ -273,7 +274,7 @@ def handle_model_command(
                 engine_name=active_engine,
                 value=raw_tail,
             )
-        elif active_engine in {"gemma", "pi"}:
+        elif active_engine in {"gemma", "pi", "venice"}:
             try:
                 result = build_model_action_result(
                     state,
@@ -284,7 +285,12 @@ def handle_model_command(
                     value=raw_tail,
                 )
             except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-                engine_label = "Pi" if active_engine == "pi" else "Ollama (S4)"
+                if active_engine == "pi":
+                    engine_label = "Pi"
+                elif active_engine == "venice":
+                    engine_label = "Venice"
+                else:
+                    engine_label = "Ollama (S4)"
                 result = CallbackActionResult(
                     text=(
                         f"Failed to validate {engine_label} models.\n"
@@ -311,9 +317,7 @@ def handle_effort_command(
     build_effort_list_text: Callable,
     send_control_result_fn: Callable,
 ) -> bool:
-    pieces = raw_text.strip().split(maxsplit=1)
-    raw_tail = pieces[1].strip() if len(pieces) > 1 else "status"
-    tail = raw_tail.lower()
+    raw_tail, tail = _parse_command_tail(raw_text)
     active_engine = model_active_engine_name(state, config, scope_key)
 
     if tail in {"", "status"}:

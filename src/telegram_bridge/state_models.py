@@ -56,6 +56,7 @@ class RecentPhotoSelection:
     message_id: Optional[int] = None
     captured_at: float = field(default_factory=time.time)
 
+
 @dataclass
 class State:
     started_at: float = field(default_factory=time.time)
@@ -97,6 +98,8 @@ class State:
     cancel_events: Dict[ScopeKey, threading.Event] = field(default_factory=dict)
     pending_media_groups: Dict[str, PendingMediaGroup] = field(default_factory=dict)
     recent_scope_photos: Dict[ScopeKey, RecentPhotoSelection] = field(default_factory=dict)
+    chat_goals: Dict[ScopeKey, object] = field(default_factory=dict)
+    chat_goal_path: str = ""
     pending_diary_batches: Dict[ScopeKey, PendingDiaryBatch] = field(default_factory=dict)
     queued_diary_batches: Dict[ScopeKey, List[PendingDiaryBatch]] = field(default_factory=dict)
     diary_queue_processing_scopes: Set[ScopeKey] = field(default_factory=set)

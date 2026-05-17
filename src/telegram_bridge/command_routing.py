@@ -9,6 +9,7 @@ from telegram_bridge import control_commands
 from telegram_bridge.diary_processing import build_diary_queue_status, build_diary_today_status
 from telegram_bridge.diary_store import diary_mode_enabled
 from telegram_bridge import engine_controls
+from telegram_bridge import goal_loop
 from telegram_bridge.handler_common import build_help_text, build_status_text, extract_callback_query_context
 from telegram_bridge.handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
 from telegram_bridge.runtime_profile import CANCEL_COMMAND_ALIASES, HELP_COMMAND_ALIASES, start_command_message
@@ -18,30 +19,40 @@ from telegram_bridge import voice_alias_commands
 KnownCommandFn = Callable[[KnownCommandContext], bool]
 CallbackActionFn = Callable[[CallbackActionContext], CallbackActionResult]
 
-def _handle_start_known_command(ctx: KnownCommandContext) -> bool:
+
+def _reply_to_known_command(
+    ctx: KnownCommandContext,
+    text: str,
+    *,
+    include_thread: bool = False,
+) -> bool:
     ctx.client.send_message(
         ctx.chat_id,
-        start_command_message(ctx.config),
+        text,
         reply_to_message_id=ctx.message_id,
+        message_thread_id=ctx.message_thread_id if include_thread else None,
     )
     return True
+
+
+def _handle_start_known_command(ctx: KnownCommandContext) -> bool:
+    return _reply_to_known_command(
+        ctx,
+        start_command_message(ctx.config),
+    )
 
 def _handle_help_known_command(ctx: KnownCommandContext) -> bool:
-    ctx.client.send_message(
-        ctx.chat_id,
+    return _reply_to_known_command(
+        ctx,
         build_help_text(ctx.config),
-        reply_to_message_id=ctx.message_id,
     )
-    return True
 
 def _handle_status_known_command(ctx: KnownCommandContext) -> bool:
-    ctx.client.send_message(
-        ctx.chat_id,
+    return _reply_to_known_command(
+        ctx,
         build_status_text(ctx.state, ctx.config, chat_id=ctx.chat_id, scope_key=ctx.scope_key),
-        reply_to_message_id=ctx.message_id,
-        message_thread_id=ctx.message_thread_id,
+        include_thread=True,
     )
-    return True
 
 def _handle_restart_known_command(ctx: KnownCommandContext) -> bool:
     control_commands.handle_restart_command(
@@ -134,21 +145,40 @@ def _handle_voice_alias_known_command(ctx: KnownCommandContext) -> bool:
         raw_text=ctx.raw_text,
     )
 
-def _handle_diary_today_known_command(ctx: KnownCommandContext) -> bool:
-    ctx.client.send_message(
-        ctx.chat_id,
-        build_diary_today_status(ctx.state, ctx.config, ctx.scope_key),
-        reply_to_message_id=ctx.message_id,
+def _handle_goal_known_command(ctx: KnownCommandContext) -> bool:
+    return goal_loop.handle_goal_command(
+        state=ctx.state,
+        config=ctx.config,
+        client=ctx.client,
+        scope_key=ctx.scope_key,
+        chat_id=ctx.chat_id,
+        message_thread_id=ctx.message_thread_id,
+        message_id=ctx.message_id,
+        raw_text=ctx.raw_text,
     )
-    return True
+
+def _handle_subgoal_known_command(ctx: KnownCommandContext) -> bool:
+    return goal_loop.handle_subgoal_command(
+        state=ctx.state,
+        client=ctx.client,
+        scope_key=ctx.scope_key,
+        chat_id=ctx.chat_id,
+        message_thread_id=ctx.message_thread_id,
+        message_id=ctx.message_id,
+        raw_text=ctx.raw_text,
+    )
+
+def _handle_diary_today_known_command(ctx: KnownCommandContext) -> bool:
+    return _reply_to_known_command(
+        ctx,
+        build_diary_today_status(ctx.state, ctx.config, ctx.scope_key),
+    )
 
 def _handle_diary_queue_known_command(ctx: KnownCommandContext) -> bool:
-    ctx.client.send_message(
-        ctx.chat_id,
+    return _reply_to_known_command(
+        ctx,
         build_diary_queue_status(ctx.state, ctx.scope_key),
-        reply_to_message_id=ctx.message_id,
     )
-    return True
 
 KNOWN_COMMAND_HANDLERS: Dict[str, KnownCommandFn] = {
     "/start": _handle_start_known_command,
@@ -159,6 +189,8 @@ KNOWN_COMMAND_HANDLERS: Dict[str, KnownCommandFn] = {
     "/effort": _handle_effort_known_command,
     "/pi": _handle_pi_known_command,
     "/reset": _handle_reset_known_command,
+    "/goal": _handle_goal_known_command,
+    "/subgoal": _handle_subgoal_known_command,
     "/voice-alias": _handle_voice_alias_known_command,
 }
 

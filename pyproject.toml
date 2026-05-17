@@ -17,8 +17,6 @@ package-dir = {"" = "src"}
 packages = [
     "telegram_bridge",
     "mavali_eth",
-    "signaltube",
-    "browser_brain",
     "architect_cli",
     "kids_world",
     "web3_substrate",

@@ -29,10 +29,6 @@ class RuntimeProfileTests(unittest.TestCase):
             runtime_profile.extract_server3_keyword_request("Server3 TV: open Firefox"),
             (True, "open Firefox"),
         )
-        self.assertEqual(
-            runtime_profile.extract_browser_brain_keyword_request("Server3 Browser - snapshot current page"),
-            (True, "snapshot current page"),
-        )
 
     def test_apply_outbound_reply_prefix_normalizes_whatsapp_prefix(self) -> None:
         client = SimpleNamespace(channel_name="whatsapp")
@@ -96,11 +92,6 @@ class RuntimeProfileTests(unittest.TestCase):
                 runtime_profile.build_engine_progress_context_label(config, "mavali_eth"),
                 "(mavali_eth | codex | gpt-5.5)",
             )
-
-    def test_browser_brain_prompt_references_wrapper(self) -> None:
-        prompt = runtime_profile.build_browser_brain_keyword_prompt("open example.com")
-        self.assertIn("browser_brain_ctl.sh", prompt)
-        self.assertIn("snapshot", prompt)
 
     def test_extract_sro_keyword_request_supports_expected_separators(self) -> None:
         self.assertEqual(

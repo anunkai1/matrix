@@ -15,6 +15,14 @@ def _handlers():
     return handlers
 
 
+def _reply(client: ChannelAdapter, chat_id: int, message_id: Optional[int], text: str) -> None:
+    client.send_message(
+        chat_id,
+        text,
+        reply_to_message_id=message_id,
+    )
+
+
 def transcribe_voice_for_chat(
     state: State,
     config,
@@ -26,11 +34,7 @@ def transcribe_voice_for_chat(
 ) -> Optional[str]:
     handlers = _handlers()
     if not config.voice_transcribe_cmd:
-        client.send_message(
-            chat_id,
-            config.voice_not_configured_message,
-            reply_to_message_id=message_id,
-        )
+        _reply(client, chat_id, message_id, config.voice_not_configured_message)
         return None
 
     voice_path: Optional[str] = None
@@ -39,49 +43,29 @@ def transcribe_voice_for_chat(
             voice_path = handlers.download_voice_to_temp(client, config, voice_file_id)
         except ValueError as exc:
             logging.warning("Voice rejected for chat_id=%s: %s", chat_id, exc)
-            client.send_message(chat_id, str(exc), reply_to_message_id=message_id)
+            _reply(client, chat_id, message_id, str(exc))
             return None
         except Exception:
             logging.exception("Voice download failed for chat_id=%s", chat_id)
-            client.send_message(
-                chat_id,
-                config.voice_download_error_message,
-                reply_to_message_id=message_id,
-            )
+            _reply(client, chat_id, message_id, config.voice_download_error_message)
             return None
 
         try:
             transcript, confidence = handlers.transcribe_voice(config, voice_path)
         except subprocess.TimeoutExpired:
             logging.warning("Voice transcription timeout for chat_id=%s", chat_id)
-            client.send_message(
-                chat_id,
-                config.timeout_message,
-                reply_to_message_id=message_id,
-            )
+            _reply(client, chat_id, message_id, config.timeout_message)
             return None
         except ValueError:
             logging.warning("Voice transcription was empty for chat_id=%s", chat_id)
-            client.send_message(
-                chat_id,
-                config.voice_transcribe_empty_message,
-                reply_to_message_id=message_id,
-            )
+            _reply(client, chat_id, message_id, config.voice_transcribe_empty_message)
             return None
         except RuntimeError:
-            client.send_message(
-                chat_id,
-                config.voice_transcribe_error_message,
-                reply_to_message_id=message_id,
-            )
+            _reply(client, chat_id, message_id, config.voice_transcribe_error_message)
             return None
         except Exception:
             logging.exception("Unexpected voice transcription error for chat_id=%s", chat_id)
-            client.send_message(
-                chat_id,
-                config.voice_transcribe_error_message,
-                reply_to_message_id=message_id,
-            )
+            _reply(client, chat_id, message_id, config.voice_transcribe_error_message)
             return None
 
         transcript, aliases_applied = handlers.apply_voice_alias_replacements(
@@ -106,10 +90,11 @@ def transcribe_voice_for_chat(
                     )
                 except Exception:
                     logging.exception("Failed to register low-confidence transcript for learning")
-            client.send_message(
+            _reply(
+                client,
                 chat_id,
+                message_id,
                 handlers.build_low_confidence_voice_message(config, transcript, confidence),
-                reply_to_message_id=message_id,
             )
             return None
 
@@ -118,11 +103,7 @@ def transcribe_voice_for_chat(
                 heading = "Voice transcript:"
                 if confidence is not None:
                     heading = f"Voice transcript (confidence {confidence:.2f}):"
-                client.send_message(
-                    chat_id,
-                    f"{heading}\n{transcript}",
-                    reply_to_message_id=message_id,
-                )
+                _reply(client, chat_id, message_id, f"{heading}\n{transcript}")
             except Exception:
                 logging.exception("Failed to send voice transcript echo for chat_id=%s", chat_id)
         return transcript

@@ -76,6 +76,7 @@ from telegram_bridge.diary_store import (
     upload_to_nextcloud,
 )
 from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
+from telegram_bridge.codex_app_server import live_codex_turn_is_active, try_steer_live_codex_turn
 from telegram_bridge.handler_models import (
     CallbackActionContext,
     CallbackActionResult,
@@ -102,7 +103,6 @@ from telegram_bridge import prompt_inputs
 from telegram_bridge import prompt_runtime
 from telegram_bridge import prompt_preparation
 from telegram_bridge.runtime_profile import (
-    BROWSER_BRAIN_KEYWORD_HELP_MESSAGE,
     HA_KEYWORD_HELP_MESSAGE,
     HELP_COMMAND_ALIASES,
     CANCEL_COMMAND_ALIASES,
@@ -115,8 +115,6 @@ from telegram_bridge.runtime_profile import (
     apply_outbound_reply_prefix,
     assistant_label,
     build_engine_progress_context_label,
-    build_browser_brain_keyword_prompt,
-    build_browser_brain_routing_script_allowlist,
     build_ha_keyword_prompt,
     build_ha_routing_script_allowlist,
     build_nextcloud_keyword_prompt,
@@ -124,7 +122,6 @@ from telegram_bridge.runtime_profile import (
     build_server3_keyword_prompt,
     build_server3_routing_script_allowlist,
     command_bypasses_required_prefix,
-    extract_browser_brain_keyword_request,
     extract_ha_keyword_request,
     extract_nextcloud_keyword_request,
     extract_server3_keyword_request,
@@ -292,7 +289,6 @@ build_pi_status_text = engine_controls.build_pi_status_text
 check_gemma_health = engine_controls.check_gemma_health
 check_venice_health = engine_controls.check_venice_health
 check_pi_health = engine_controls.check_pi_health
-check_chatgpt_web_health = engine_controls.check_chatgpt_web_health
 build_engine_status_text = engine_controls.build_engine_status_text
 _build_engine_picker_markup = engine_controls._build_engine_picker_markup
 _set_engine_for_scope = engine_controls._set_engine_for_scope
@@ -329,6 +325,8 @@ def build_update_flow_dependencies() -> UpdateFlowDependencies:
         mark_busy=mark_busy,
         emit_event=emit_event,
         register_cancel_event=register_cancel_event,
+        try_steer_live_codex_turn=try_steer_live_codex_turn,
+        live_codex_turn_is_active=live_codex_turn_is_active,
         start_dishframed_worker=start_dishframed_worker,
         resolve_engine_for_scope=resolve_engine_for_scope,
         ensure_chat_worker_session=ensure_chat_worker_session,
@@ -373,10 +371,6 @@ def handle_update(
     prepared = prepare_update_request(state, config, client, ctx)
     if prepared is None:
         return
-    chat_id = ctx.chat_id
-    message_id = ctx.message_id
-    message_thread_id = ctx.message_thread_id
-    scope_key = ctx.scope_key
     flow = build_update_flow_state(
         state,
         config,

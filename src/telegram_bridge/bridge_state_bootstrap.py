@@ -3,6 +3,7 @@ import os
 from typing import Dict
 
 from telegram_bridge.runtime_config import Config
+from telegram_bridge.goal_loop import load_chat_goals
 from telegram_bridge.state_store import (
     build_canonical_sessions_from_legacy,
     CanonicalSession,
@@ -135,6 +136,7 @@ def build_bridge_state_paths(state_dir: str) -> Dict[str, str]:
         "chat_codex_efforts": os.path.join(state_dir, "chat_codex_efforts.json"),
         "chat_pi_providers": os.path.join(state_dir, "chat_pi_providers.json"),
         "chat_pi_models": os.path.join(state_dir, "chat_pi_models.json"),
+        "chat_goals": os.path.join(state_dir, "chat_goals.json"),
         "worker_sessions": os.path.join(state_dir, "worker_sessions.json"),
         "in_flight_requests": os.path.join(state_dir, "in_flight_requests.json"),
         "chat_sessions": os.path.join(state_dir, "chat_sessions.json"),
@@ -150,13 +152,17 @@ def load_bridge_state_mappings(state_paths: Dict[str, str]) -> Dict[str, Dict[ob
         ("codex_efforts", "chat_codex_efforts", load_chat_codex_efforts, "chat Codex effort mappings"),
         ("pi_models", "chat_pi_models", load_chat_pi_models, "chat Pi model mappings"),
         ("pi_providers", "chat_pi_providers", load_chat_pi_providers, "chat Pi provider mappings"),
+        ("goals", "chat_goals", load_chat_goals, "chat goal state"),
         ("worker_sessions", "worker_sessions", load_worker_sessions, "worker session state"),
         ("in_flight", "in_flight_requests", load_in_flight_requests, "in-flight request state"),
     )
     loaded: Dict[str, Dict[object, object]] = {}
     for key, path_key, loader, description in state_specs:
+        state_path = state_paths.get(path_key)
+        if not state_path:
+            continue
         loaded[key] = load_state_mapping_or_empty(
-            state_paths[path_key],
+            state_path,
             loader,
             description=description,
         )

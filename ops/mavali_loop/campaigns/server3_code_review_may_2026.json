@@ -83,20 +83,6 @@
       ]
     },
     {
-      "task_id": "dedupe_browser_brain_js",
-      "title": "Deduplicate Browser Brain DOM helper JS",
-      "summary": "Move duplicated Browser Brain DOM helper logic into a shared source so collect and find flows cannot drift independently.",
-      "guidance": "Keep the external API stable. The win is reducing duplicated locator logic, not changing Browser Brain behavior for users.",
-      "target_paths": [
-        "src/browser_brain/service.py",
-        "tests/browser_brain/test_service.py"
-      ],
-      "verification_commands": [
-        ["${QA_PYTHON}", "-m", "pytest", "tests/browser_brain/test_service.py", "-q"],
-        ["${QA_PYTHON}", "-m", "pytest", "tests/browser_brain/test_server.py", "-q"]
-      ]
-    },
-    {
       "task_id": "tighten_python_qa",
       "title": "Tighten Python QA guardrails",
       "summary": "Raise the repo baseline with stricter lint/static checks or stronger QA wiring that fits the current bridge size and complexity.",

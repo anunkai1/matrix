@@ -219,7 +219,6 @@ def build_engine_status_text(
     check_gemma_health: Callable,
     check_venice_health: Callable,
     check_pi_health: Callable,
-    check_chatgpt_web_health: Callable,
 ) -> str:
     selected = get_chat_engine(state, scope_key)
     effective = normalize_engine_name(selected or configured_default_engine(config))
@@ -283,17 +282,6 @@ def build_engine_status_text(
         lines.append(f"Pi model available: {'yes' if health['model_available'] else 'no'}")
         lines.append(f"Pi last check error: {health['error'] or '(none)'}")
         lines.append("Pi selectability: /pi providers, /pi provider <name>, /model list, /model <name>")
-    if effective == "chatgptweb":
-        lines.append(f"ChatGPT web URL: {getattr(display_config, 'chatgpt_web_url', 'https://chatgpt.com/')}")
-        lines.append(f"ChatGPT web bridge: {getattr(display_config, 'chatgpt_web_bridge_script', '')}")
-        lines.append(f"ChatGPT web Browser Brain: {getattr(display_config, 'chatgpt_web_browser_brain_url', 'http://127.0.0.1:47831')}")
-        lines.append("ChatGPT web mode: experimental brittle browser bridge")
-        health = check_chatgpt_web_health(display_config)
-        lines.append(f"ChatGPT web health: {'ok' if health['ok'] else 'error'}")
-        lines.append(f"ChatGPT web response time: {health['response_ms']}ms")
-        lines.append(f"ChatGPT web Browser Brain running: {'yes' if health['running'] else 'no'}")
-        lines.append(f"ChatGPT web tab visible: {'yes' if health['chatgpt_tab'] else 'no'}")
-        lines.append(f"ChatGPT web last check error: {health['error'] or '(none)'}")
     return "\n".join(lines)
 
 
@@ -314,6 +302,8 @@ def build_engine_picker_markup(
     if current_engine == "codex":
         buttons.append(("Model", model_callback_data(current_engine, "menu")))
     elif current_engine == "gemma":
+        buttons.append(("Model", model_callback_data(current_engine, "menu")))
+    elif current_engine == "venice":
         buttons.append(("Model", model_callback_data(current_engine, "menu")))
     elif current_engine == "pi":
         buttons.append(("Provider", provider_callback_data("menu")))
@@ -487,6 +477,47 @@ def build_model_picker_markup(
             ]
         )
         return {"inline_keyboard": rows} if rows else None
+    elif active_engine == "venice":
+        display_config.pi_provider = "venice"
+        model_names = pi_provider_model_names(display_config)
+        current_model = str(getattr(display_config, "venice_model", "mistral-31-24b") or "mistral-31-24b")
+        current_page = clamp_page_index(
+            page_index
+            if page_index is not None
+            else pi_model_page_for_selection(model_names, current_model, PI_MODEL_PICKER_PAGE_SIZE),
+            len(model_names),
+            PI_MODEL_PICKER_PAGE_SIZE,
+        )
+        start = current_page * PI_MODEL_PICKER_PAGE_SIZE
+        end = start + PI_MODEL_PICKER_PAGE_SIZE
+        for index, model_name in enumerate(model_names[start:end], start=start):
+            label = _shorten_model_button_label(
+                model_name,
+                current=model_name == current_model,
+            )
+            buttons.append((label, model_callback_data("venice", "set", f"idx:{index}")))
+        rows = compact_inline_keyboard(buttons, columns=2).get("inline_keyboard", [])
+        total_pages = max(((len(model_names) - 1) // PI_MODEL_PICKER_PAGE_SIZE) + 1, 1) if model_names else 1
+        if total_pages > 1:
+            nav_row: List[Dict[str, str]] = []
+            if current_page > 0:
+                nav_row.append({"text": "Prev", "callback_data": model_callback_data("venice", "page", str(current_page - 1))})
+            nav_row.append(
+                {
+                    "text": f"{current_page + 1}/{total_pages}",
+                    "callback_data": model_callback_data("venice", "page", str(current_page)),
+                }
+            )
+            if current_page < total_pages - 1:
+                nav_row.append({"text": "Next", "callback_data": model_callback_data("venice", "page", str(current_page + 1))})
+            rows.append(nav_row)
+        rows.append(
+            [
+                {"text": "Reset", "callback_data": model_callback_data("venice", "reset")},
+                {"text": "Back to Engine", "callback_data": engine_callback_data("venice", "menu")},
+            ]
+        )
+        return {"inline_keyboard": rows} if rows else None
     else:
         return None
     markup = compact_inline_keyboard(buttons, columns=2)
@@ -542,10 +573,25 @@ def build_model_status_text(
             "Use /model <name> to set this chat's Ollama (S4) model or tap the buttons below.",
         ]
         return "\n".join(lines)
+    if active_engine == "venice":
+        model_source = (
+            "chat override"
+            if str(getattr(display_config, "venice_model", "") or "").strip()
+            != str(getattr(config, "venice_model", "") or "").strip()
+            else "global default"
+        )
+        lines = [
+            "Active engine: venice",
+            f"Venice model: {getattr(display_config, 'venice_model', 'mistral-31-24b')}",
+            f"Venice model source: {model_source}",
+            "Use /model list to see available Venice models.",
+            "Use /model <name> to set this chat's Venice model or tap the buttons below.",
+        ]
+        return "\n".join(lines)
     return (
         f"Active engine: {active_engine}\n"
-        "Model switching is currently supported for `codex`, `ollama(s4)`, and `pi`.\n"
-        "Use `/engine codex`, `/engine ollama(s4)`, or `/engine pi` first."
+        "Model switching is currently supported for `codex`, `ollama(s4)`, `pi`, and `venice`.\n"
+        "Use `/engine codex`, `/engine ollama(s4)`, `/engine pi`, or `/engine venice` first."
     )
 
 
@@ -626,6 +672,7 @@ def build_model_list_text(
     configured_codex_model: Callable,
     load_codex_model_choices: Callable,
     gemma_model_names: Callable,
+    pi_provider_model_names: Callable,
     build_pi_models_text: Callable,
 ) -> str:
     active_engine = model_active_engine_name(state, config, scope_key)
@@ -672,8 +719,27 @@ def build_model_list_text(
         return "\n".join(lines)
     if active_engine == "pi":
         return build_pi_models_text(state, config, scope_key)
+    if active_engine == "venice":
+        display_config.pi_provider = "venice"
+        current_model = str(getattr(display_config, "venice_model", "mistral-31-24b") or "mistral-31-24b")
+        default_model = str(getattr(config, "venice_model", "mistral-31-24b") or "mistral-31-24b")
+        model_names = pi_provider_model_names(display_config)
+        lines = [
+            "Active engine: venice",
+            f"Current Venice model: {current_model}",
+            f"Bridge default Venice model: {default_model}",
+        ]
+        if model_names:
+            lines.append("Available Venice models:")
+            for model_name in model_names:
+                marker = " (current)" if model_name == current_model else ""
+                lines.append(f"- {model_name}{marker}")
+            lines.append("Use /model <name> with the exact Venice model id shown above.")
+        else:
+            lines.append("No Venice models were reported.")
+        return "\n".join(lines)
     return (
         f"Active engine: {active_engine}\n"
-        "Model listing is currently supported for `codex`, `ollama(s4)`, and `pi`.\n"
-        "Use `/engine codex`, `/engine ollama(s4)`, or `/engine pi` first."
+        "Model listing is currently supported for `codex`, `ollama(s4)`, `pi`, and `venice`.\n"
+        "Use `/engine codex`, `/engine ollama(s4)`, `/engine pi`, or `/engine venice` first."
     )

@@ -210,6 +210,19 @@ class HandleUpdateHelperTests(unittest.TestCase):
             )
         )
 
+    def test_prepare_update_dispatch_request_includes_current_sender_name(self):
+        flow = self._make_flow(
+            prompt_input="hello",
+            sender_name="Tank",
+            telegram_context_prompt="Current Telegram Context:\n- Chat ID: 1",
+        )
+
+        dispatch = bridge_handlers.prepare_update_dispatch_request(flow, 12.5)
+
+        self.assertIsNotNone(dispatch)
+        self.assertIn("Current Message Author: Tank", dispatch.prompt)
+        self.assertIn("Current User Message:\nhello", dispatch.prompt)
+
     def test_prepare_update_dispatch_request_rejects_rate_limited_request(self):
         flow = self._make_flow()
 
@@ -376,6 +389,48 @@ class HandleUpdateHelperTests(unittest.TestCase):
                 started = bridge_handlers.start_standard_dispatch(dispatch)
 
         self.assertFalse(started)
+        self.assertEqual(flow.client.messages, [])
+
+    def test_start_standard_dispatch_waits_out_stale_busy_after_live_codex_turn(self):
+        flow = self._make_flow(prompt_input="hello")
+        flow.state.busy_chats.add(flow.ctx.scope_key)
+        dispatch = bridge_handlers.UpdateDispatchRequest(
+            state=flow.state,
+            config=flow.config,
+            client=flow.client,
+            engine=None,
+            scope_key=flow.ctx.scope_key,
+            chat_id=flow.ctx.chat_id,
+            message_thread_id=flow.ctx.message_thread_id,
+            message_id=flow.ctx.message_id,
+            prompt="hello",
+            raw_prompt="hello",
+            photo_file_ids=[],
+            voice_file_id=None,
+            document=None,
+            actor_user_id=flow.ctx.actor_user_id,
+            sender_name=flow.sender_name,
+            stateless=False,
+            enforce_voice_prefix_from_transcript=False,
+            youtube_route_url=None,
+            handle_update_started_at=18.5,
+        )
+
+        active_engine = mock.Mock()
+        active_engine.engine_name = "codex"
+
+        def clear_busy_after_short_wait(_seconds):
+            flow.state.busy_chats.discard(flow.ctx.scope_key)
+
+        with mock.patch.object(bridge_handlers, "resolve_engine_for_scope", return_value=active_engine):
+            with mock.patch.object(bridge_handlers, "ensure_chat_worker_session", return_value=True):
+                with mock.patch.object(bridge_handlers, "live_codex_turn_is_active", return_value=False):
+                    with mock.patch.object(bridge_handlers, "start_message_worker") as start_message_worker:
+                        with mock.patch("telegram_bridge.update_flow.time.sleep", side_effect=clear_busy_after_short_wait):
+                            started = bridge_handlers.start_standard_dispatch(dispatch)
+
+        self.assertTrue(started)
+        start_message_worker.assert_called_once()
         self.assertEqual(flow.client.messages, [])
 
     def test_start_standard_dispatch_routes_to_youtube_worker_when_route_present(self):

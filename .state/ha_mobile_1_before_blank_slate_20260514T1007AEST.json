@@ -1,0 +1,525 @@
+{
+  "title": "Mobile 1",
+  "theme": "Mushroom Shadow",
+  "views": [
+    {
+      "title": "Home",
+      "max_columns": 2,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_battery_soc",
+              "severity": {
+                "green": 80,
+                "yellow": 45,
+                "red": 0
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "needle": false,
+              "double_tap_action": {
+                "action": "navigate",
+                "navigation_path": "/config/automation/dashboard"
+              },
+              "hold_action": {
+                "action": "none"
+              },
+              "name": "Battery",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(49,196,141,.22), rgba(8,32,24,.94));\n  border: 1px solid rgba(74,222,128,.28);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_dc_power_raw",
+              "max": 13000,
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "needle": false,
+              "severity": {
+                "green": 3000,
+                "yellow": 1000,
+                "red": 0
+              },
+              "double_tap_action": {
+                "action": "navigate",
+                "navigation_path": "/aircon-timer"
+              },
+              "unit": "W",
+              "name": "Solar",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(255,184,77,.22), rgba(35,24,10,.94));\n  border: 1px solid rgba(251,191,36,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_house_load_power",
+              "max": 13000,
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "needle": false,
+              "severity": {
+                "green": 0,
+                "yellow": 1000,
+                "red": 5000
+              },
+              "name": "Load",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(77,163,255,.20), rgba(8,23,44,.94));\n  border: 1px solid rgba(96,165,250,.28);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_grid_power",
+              "severity": {
+                "green": -9000,
+                "yellow": 30,
+                "red": 100
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "max": 9000,
+              "min": -9000,
+              "needle": false,
+              "name": "Grid",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(77,163,255,.20), rgba(8,23,44,.94));\n  border: 1px solid rgba(96,165,250,.28);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:apexcharts-card",
+              "graph_span": "12h",
+              "header": {
+                "show": true,
+                "title": "Energy Flow",
+                "show_states": true,
+                "colorize_states": true
+              },
+              "apex_config": {
+                "chart": {
+                  "height": 320,
+                  "toolbar": {
+                    "show": false
+                  }
+                },
+                "stroke": {
+                  "curve": "smooth",
+                  "width": 3
+                },
+                "legend": {
+                  "show": false
+                },
+                "grid": {
+                  "borderColor": "rgba(255,255,255,.08)"
+                }
+              },
+              "series": [
+                {
+                  "entity": "sensor.sungrow_house_load_power",
+                  "name": "Load",
+                  "color": "#fab387",
+                  "type": "area",
+                  "opacity": 0.25
+                },
+                {
+                  "entity": "sensor.sungrow_grid_power",
+                  "name": "Grid",
+                  "color": "#89b4fa",
+                  "type": "line"
+                },
+                {
+                  "entity": "sensor.sungrow_dc_power_raw",
+                  "name": "Solar",
+                  "color": "#f9e2af",
+                  "type": "area",
+                  "opacity": 0.18
+                },
+                {
+                  "entity": "sensor.sungrow_battery_power_2",
+                  "name": "Battery",
+                  "color": "#a6e3a1",
+                  "type": "line"
+                }
+              ],
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(139,92,246,.20), rgba(24,16,48,.94));\n  border: 1px solid rgba(167,139,250,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            },
+            {
+              "type": "entities",
+              "title": "Energy Detail",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.shelly_heater_ct1_power",
+                  "name": "Water Heater W"
+                },
+                {
+                  "entity": "sensor.tapo_p110xgg_current_power",
+                  "name": "Kitchen Heater W"
+                },
+                {
+                  "entity": "sensor.sungrow_battery_power_2",
+                  "name": "Battery Flow W"
+                },
+                {
+                  "entity": "sensor.sungrow_battery_soh",
+                  "name": "Battery SOH"
+                }
+              ],
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(255,116,64,.22), rgba(42,17,12,.94));\n  border: 1px solid rgba(251,146,60,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "entities",
+              "title": "Quick Control",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "input_button.acs_on",
+                  "name": "ACs On"
+                },
+                {
+                  "entity": "input_button.acs_off",
+                  "name": "ACs Off"
+                },
+                {
+                  "entity": "switch.shelly01_water_heater",
+                  "name": "Water Heater"
+                },
+                {
+                  "entity": "switch.tapo_p110xgg",
+                  "name": "Kitchen Heater Plug"
+                },
+                {
+                  "entity": "sensor.tapo_p110x02_current_consumption",
+                  "name": "Tapo x02 W"
+                },
+                {
+                  "entity": "sensor.tapo_p110xgg_current_power",
+                  "name": "Tapo GG W"
+                }
+              ],
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(139,92,246,.20), rgba(24,16,48,.94));\n  border: 1px solid rgba(167,139,250,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "climate.master_brm_aircon",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(139,92,246,.20), rgba(24,16,48,.94));\n  border: 1px solid rgba(167,139,250,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              },
+              "name": "AC Masters",
+              "vertical": false,
+              "features_position": "bottom",
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "climate.living_rm_aircon",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(139,92,246,.20), rgba(24,16,48,.94));\n  border: 1px solid rgba(167,139,250,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              },
+              "name": "AC Living",
+              "vertical": false,
+              "features_position": "bottom",
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "climate.mid_kids_rm_aircon",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(139,92,246,.20), rgba(24,16,48,.94));\n  border: 1px solid rgba(167,139,250,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              },
+              "name": "AC Mid/Kids",
+              "vertical": false,
+              "features_position": "bottom",
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "climate.far_room_aircon_2_5",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(139,92,246,.20), rgba(24,16,48,.94));\n  border: 1px solid rgba(167,139,250,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              },
+              "name": "AC Far Room",
+              "vertical": false,
+              "features_position": "bottom",
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              }
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "glance",
+              "title": "Server",
+              "show_state": true,
+              "columns": 3,
+              "entities": [
+                {
+                  "entity": "sensor.staker1_cpu_temp",
+                  "name": "S1 Temp"
+                },
+                {
+                  "entity": "sensor.staker2_cpu_temp",
+                  "name": "S2 Temp"
+                },
+                {
+                  "entity": "sensor.lodestar_validators_connected",
+                  "name": "Vals"
+                },
+                {
+                  "entity": "sensor.staker1_nethermind_db_free_space",
+                  "name": "DB Free"
+                },
+                {
+                  "entity": "sensor.staker1_cpu_busy",
+                  "name": "S1 Busy"
+                },
+                {
+                  "entity": "sensor.staker2_cpu_busy",
+                  "name": "S2 Busy"
+                }
+              ],
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(30,41,59,.88), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.22);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            },
+            {
+              "show_name": true,
+              "show_icon": true,
+              "type": "button",
+              "entity": "switch.shelly1minig3_garage",
+              "icon": "mdi:garage",
+              "show_state": false,
+              "name": "Garage",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(30,41,59,.88), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.22);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "glance",
+              "title": "Rooms",
+              "show_state": true,
+              "columns": 2,
+              "entities": [
+                {
+                  "entity": "sensor.living_room_temperature",
+                  "name": "Living T"
+                },
+                {
+                  "entity": "sensor.living_room_humidity",
+                  "name": "Living RH"
+                },
+                {
+                  "entity": "sensor.master_bedroom_temperature",
+                  "name": "Masters T"
+                },
+                {
+                  "entity": "sensor.master_bedroom_humidity",
+                  "name": "Masters RH"
+                },
+                {
+                  "entity": "sensor.patio_temperature",
+                  "name": "Patio T"
+                },
+                {
+                  "entity": "sensor.patio_humidity",
+                  "name": "Patio RH"
+                },
+                {
+                  "entity": "sensor.front_porch_temperature",
+                  "name": "Porch T"
+                },
+                {
+                  "entity": "sensor.front_porch_humidity",
+                  "name": "Porch RH"
+                },
+                {
+                  "entity": "sensor.mid_kids_rm_aircon_measured_value_of_room_temperature",
+                  "name": "Mid Room T"
+                },
+                {
+                  "entity": "sensor.far_room_aircon_2_5_measured_value_of_room_temperature",
+                  "name": "Far Room T"
+                }
+              ],
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(139,92,246,.20), rgba(24,16,48,.94));\n  border: 1px solid rgba(167,139,250,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            },
+            {
+              "type": "history-graph",
+              "entities": [
+                {
+                  "entity": "sun.sun"
+                }
+              ],
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(139,92,246,.20), rgba(24,16,48,.94));\n  border: 1px solid rgba(167,139,250,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              },
+              "title": "Temperature Trend"
+            },
+            {
+              "type": "conditional",
+              "conditions": [
+                {
+                  "condition": "or",
+                  "conditions": [
+                    {
+                      "condition": "state",
+                      "entity": "sensor.far_room_aircon_2_5_measured_outdoor_air_temperature",
+                      "state_not": "unknown"
+                    },
+                    {
+                      "condition": "state",
+                      "entity": "sensor.living_rm_aircon_measured_outdoor_air_temperature",
+                      "state_not": "unknown"
+                    },
+                    {
+                      "condition": "state",
+                      "entity": "sensor.master_brm_aircon_measured_outdoor_air_temperature",
+                      "state_not": "unknown"
+                    },
+                    {
+                      "condition": "state",
+                      "entity": "sensor.mid_kids_rm_aircon_measured_outdoor_air_temperature",
+                      "state_not": "unknown"
+                    }
+                  ]
+                }
+              ],
+              "card": {
+                "type": "entities",
+                "entities": [
+                  {
+                    "entity": "sensor.living_rm_aircon_measured_outdoor_air_temperature",
+                    "secondary_info": "last-changed",
+                    "name": "Living RM Outdoor Temp"
+                  },
+                  {
+                    "entity": "sensor.master_brm_aircon_measured_outdoor_air_temperature",
+                    "secondary_info": "last-changed",
+                    "name": "Masters Outdoor Temp"
+                  },
+                  {
+                    "entity": "sensor.mid_kids_rm_aircon_measured_outdoor_air_temperature",
+                    "secondary_info": "last-changed",
+                    "name": "Mid RM Outdoor Temp"
+                  },
+                  {
+                    "entity": "sensor.far_room_aircon_2_5_measured_outdoor_air_temperature",
+                    "secondary_info": "last-changed",
+                    "name": "Far RM Outdoor Temp"
+                  }
+                ],
+                "state_color": true,
+                "card_mod": {
+                  "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                }
+              },
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(139,92,246,.20), rgba(24,16,48,.94));\n  border: 1px solid rgba(167,139,250,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "entities",
+              "title": "Sungrow Raw",
+              "show_header_toggle": false,
+              "entities": [
+                {
+                  "entity": "sensor.sungrow_battery_soc",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.sungrow_dc_power_raw",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.sungrow_house_load_power",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.shelly_heater_ct1_power",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.sungrow_battery_power_2",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.sungrow_grid_power",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.sungrow_battery_soh"
+                }
+              ],
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(49,196,141,.22), rgba(8,32,24,.94));\n  border: 1px solid rgba(74,222,128,.28);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            },
+            {
+              "show_current": true,
+              "show_forecast": true,
+              "type": "weather-forecast",
+              "entity": "weather.forecast_home",
+              "forecast_type": "daily",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(255,184,77,.22), rgba(35,24,10,.94));\n  border: 1px solid rgba(251,191,36,.30);\n  box-shadow: 0 14px 34px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            }
+          ]
+        }
+      ],
+      "header": {}
+    }
+  ]
+}

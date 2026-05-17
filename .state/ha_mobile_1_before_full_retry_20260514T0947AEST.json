@@ -1,0 +1,203 @@
+{
+  "title": "Mobile 1",
+  "theme": "Mushroom Shadow",
+  "views": [
+    {
+      "title": "Home",
+      "path": "home",
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_battery_soc",
+              "severity": {
+                "green": 80,
+                "yellow": 45,
+                "red": 0
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "needle": false,
+              "double_tap_action": {
+                "action": "navigate",
+                "navigation_path": "/config/automation/dashboard"
+              },
+              "hold_action": {
+                "action": "none"
+              },
+              "name": "Battery",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(49,196,141,.26), rgba(8,32,24,.92));\n  border: 1px solid rgba(74,222,128,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_dc_power_raw",
+              "max": 13000,
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "needle": false,
+              "severity": {
+                "green": 3000,
+                "yellow": 1000,
+                "red": 0
+              },
+              "double_tap_action": {
+                "action": "navigate",
+                "navigation_path": "/aircon-timer"
+              },
+              "unit": "W",
+              "name": "Solar",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(255,184,77,.28), rgba(35,24,10,.92));\n  border: 1px solid rgba(251,191,36,.36);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_house_load_power",
+              "max": 13000,
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "needle": false,
+              "severity": {
+                "green": 0,
+                "yellow": 1000,
+                "red": 5000
+              },
+              "name": "Load",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.shelly_heater_ct1_power",
+              "severity": {
+                "green": 0,
+                "yellow": 10,
+                "red": 25
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "name": "Water Heater",
+              "needle": false,
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(255,116,64,.24), rgba(46,20,11,.94));\n  border: 1px solid rgba(251,146,60,.30);\n  box-shadow: 0 14px 32px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_grid_power",
+              "severity": {
+                "green": -9000,
+                "yellow": 30,
+                "red": 100
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "max": 9000,
+              "min": -9000,
+              "needle": false,
+              "name": "Grid",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.tapo_p110xgg_current_power",
+              "severity": {
+                "green": 0,
+                "yellow": 10,
+                "red": 25
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "name": "Kitchen Heater",
+              "needle": false,
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 18px;\n  background: linear-gradient(145deg, rgba(255,116,64,.24), rgba(46,20,11,.94));\n  border: 1px solid rgba(251,146,60,.30);\n  box-shadow: 0 14px 32px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.06);\n  overflow: hidden;\n}\n"
+              }
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "tile",
+              "entity": "climate.master_brm_aircon",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              },
+              "name": "AC Masters",
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "vertical": false,
+              "features_position": "bottom"
+            },
+            {
+              "type": "tile",
+              "entity": "climate.living_rm_aircon",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              },
+              "name": "AC Living",
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "vertical": false,
+              "features_position": "bottom"
+            },
+            {
+              "type": "tile",
+              "entity": "climate.mid_kids_rm_aircon",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              },
+              "name": "AC Mid/Kids",
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "vertical": false,
+              "features_position": "bottom"
+            },
+            {
+              "type": "tile",
+              "entity": "climate.far_room_aircon_2_5",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              },
+              "name": "AC Far Room",
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "vertical": false,
+              "features_position": "bottom"
+            }
+          ]
+        }
+      ],
+      "max_columns": 2
+    }
+  ]
+}

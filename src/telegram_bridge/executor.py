@@ -198,8 +198,8 @@ def run_executor(
             stdout_buffer.append(raw_line)
             stripped_line = raw_line.strip()
             if raw_line.startswith("THREAD_ID="):
-                parsed_thread_id = raw_line[len("THREAD_ID="):].strip() or parsed_thread_id
                 saw_legacy_thread_id = True
+                parsed_thread_id = raw_line[len("THREAD_ID="):].strip() or parsed_thread_id
                 continue
             if stripped_line == OUTPUT_BEGIN_MARKER:
                 saw_output_begin_marker = True
@@ -344,6 +344,19 @@ def cached_executor_result_output(
     if not isinstance(cached_thread_id, str) or not cached_thread_id.strip():
         cached_thread_id = None
     return cached_thread_id, cached_output
+
+
+def attach_cached_executor_result(
+    result: subprocess.CompletedProcess[str],
+    thread_id: Optional[str],
+    output: str,
+) -> subprocess.CompletedProcess[str]:
+    normalized_thread_id = thread_id.strip() if isinstance(thread_id, str) else None
+    if not normalized_thread_id:
+        normalized_thread_id = None
+    setattr(result, _EXECUTOR_RESULT_THREAD_ID_ATTR, normalized_thread_id)
+    setattr(result, _EXECUTOR_RESULT_OUTPUT_ATTR, (output or "").strip())
+    return result
 
 
 def parse_executor_output(stdout: str) -> tuple[Optional[str], str]:

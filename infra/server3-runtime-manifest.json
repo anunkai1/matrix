@@ -366,55 +366,28 @@
       ]
     },
     {
-      "name": "Browser brain",
-      "category": "optional",
-      "runtime_layout": "shared-core-service",
-      "workspace_root": "/home/browser_brain/browserbrain",
-      "shared_core_root": "/home/architect/matrix",
-      "purpose": "Dedicated local browser-control service for structured automation against a managed Brave profile.",
-      "expected_default_state": "active",
-      "dependencies": [
-        "browser_brain runtime user",
-        "brave-browser",
-        "playwright Python runtime"
-      ],
-      "owner_user": "browser_brain",
-      "notes": [
-        "Separate from the TV desktop/browser flow and intended for loopback-only local callers.",
-        "Uses a dedicated persistent browser profile under /var/lib/server3-browser-brain."
-      ],
-      "units": [
-        {
-          "name": "server3-browser-brain.service",
-          "kind": "service",
-          "expected_state": "active"
-        }
-      ]
-    },
-    {
-      "name": "SignalTube Lab",
-      "category": "optional",
-      "runtime_layout": "manual-service-set",
+      "name": "Truth alignment loop",
+      "category": "infra",
+      "runtime_layout": "shared-core-root",
       "workspace_root": "/home/architect/matrix",
       "shared_core_root": "/home/architect/matrix",
-      "purpose": "Logged-out YouTube discovery experiment with manual/Ask collection and static feed rendering.",
-      "expected_default_state": "inactive",
+      "purpose": "Nightly truth and health baseline refresh for Server3.",
+      "expected_default_state": "active (waiting)",
       "dependencies": [
-        "managed Browser Brain helper",
-        "signaltube SQLite/feed paths",
-        "manual systemd rescan services"
+        "local repo workspace",
+        "runtime and observer status commands",
+        "writable dream loop state directory"
       ],
       "owner_user": "architect",
       "notes": [
-        "The overnight timer is intentionally disabled; use manual Rescan all topics or Ask SignalTube for collection.",
-        "If daily collection is deliberately restored, run ops/signaltube/install_overnight_collector.sh enable-timer.",
-        "Configured topics can live in the SQLite topic table or /etc/default/signaltube-lab."
+        "Runs the bounded dream-loop runner on a nightly timer and writes machine truth, health, run, and report outputs under /var/lib/server3-dream-loop."
       ],
       "units": [
         {
-          "name": "signaltube-lab-overnight.timer",
+          "name": "server3-dream-loop.timer",
           "kind": "timer",
-          "expected_state": "inactive"
+          "expected_state": "active",
+          "expected_substate": "waiting"
         }
       ]
     },

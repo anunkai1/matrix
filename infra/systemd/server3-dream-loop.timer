@@ -1,0 +1,11 @@
+[Unit]
+Description=Server3 Dream Loop Timer
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+RandomizedDelaySec=2m
+Persistent=true
+Unit=server3-dream-loop.service
+
+[Install]
+WantedBy=timers.target

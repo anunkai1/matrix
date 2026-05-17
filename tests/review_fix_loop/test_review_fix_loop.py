@@ -1,7 +1,7 @@
 import unittest
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from unittest import mock
-from importlib.util import module_from_spec, spec_from_file_location
 
 MODULE_PATH = Path(__file__).resolve().parents[2] / "ops" / "review_fix_loop" / "review_fix_loop.py"
 SPEC = spec_from_file_location("review_fix_loop", MODULE_PATH)

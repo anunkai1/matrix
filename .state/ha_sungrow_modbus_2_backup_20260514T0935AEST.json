@@ -1,0 +1,801 @@
+{
+  "views": [
+    {
+      "title": "Home",
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_battery_soc",
+              "severity": {
+                "green": 80,
+                "yellow": 45,
+                "red": 0
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "needle": false,
+              "double_tap_action": {
+                "action": "navigate",
+                "navigation_path": "/config/automation/dashboard"
+              },
+              "hold_action": {
+                "action": "none"
+              },
+              "name": "BATTERY/ DBL tap for automation",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(49,196,141,.26), rgba(8,32,24,.92));\n  border: 1px solid rgba(74,222,128,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_dc_power_raw",
+              "max": 13000,
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "needle": false,
+              "severity": {
+                "green": 3000,
+                "yellow": 1000,
+                "red": 0
+              },
+              "double_tap_action": {
+                "action": "navigate",
+                "navigation_path": "/aircon-timer"
+              },
+              "unit": "W",
+              "name": "SOLAR GEN / DBL Tap aircon timer",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(255,184,77,.28), rgba(35,24,10,.92));\n  border: 1px solid rgba(251,191,36,.36);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_house_load_power",
+              "max": 13000,
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "needle": false,
+              "severity": {
+                "green": 0,
+                "yellow": 1000,
+                "red": 5000
+              },
+              "name": "HOUSE LOAD POWER",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.shelly_heater_ct1_power",
+              "severity": {
+                "green": 0,
+                "yellow": 10,
+                "red": 10
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "name": [
+                {
+                  "type": "text",
+                  "text": "Water Heater ",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(255,116,64,.27), rgba(42,17,12,.92));\n  border: 1px solid rgba(251,146,60,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                },
+                {
+                  "type": "entity",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                }
+              ],
+              "needle": false,
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_battery_power_2",
+              "max": 9000,
+              "needle": false,
+              "severity": {
+                "green": -17000,
+                "yellow": 100,
+                "red": 3000
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "min": -9000,
+              "unit": "W",
+              "name": "Battery (---CHARGing or +++DISCHARGing)",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(49,196,141,.26), rgba(8,32,24,.92));\n  border: 1px solid rgba(74,222,128,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.sungrow_grid_power",
+              "severity": {
+                "green": -9000,
+                "yellow": 30,
+                "red": 100
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "max": 9000,
+              "min": -9000,
+              "needle": false,
+              "name": "GRID PWR (--- SELL / +++ BUY)",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "climate.master_brm_aircon",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "climate.living_rm_aircon",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "climate.mid_kids_rm_aircon",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "climate.far_room_aircon_2_5",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            }
+          ],
+          "card_mod": {
+            "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(49,196,141,.26), rgba(8,32,24,.92));\n  border: 1px solid rgba(74,222,128,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+          }
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "gauge",
+              "severity": {
+                "green": 0,
+                "yellow": 60,
+                "red": 85
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "max": 120,
+              "needle": true,
+              "entity": "sensor.staker1_cpu_temp",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "entity": "sensor.lodestar_validators_connected",
+              "max": 13,
+              "min": 0,
+              "needle": false,
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "severity": {
+                "green": 12,
+                "yellow": 0,
+                "red": 0
+              },
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "severity": {
+                "green": 0,
+                "yellow": 60,
+                "red": 85
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "max": 100,
+              "needle": true,
+              "entity": "sensor.staker2_cpu_temp",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "needle": false,
+              "entity": "sensor.staker1_nethermind_db_free_space",
+              "min": 345,
+              "name": "Nethermind DB Free Space / 367GB Prune",
+              "max": 600,
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "max": 100,
+              "needle": false,
+              "entity": "sensor.staker1_cpu_busy",
+              "severity": {
+                "green": 0,
+                "yellow": 60,
+                "red": 80
+              },
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "gauge",
+              "severity": {
+                "green": 0,
+                "yellow": 60,
+                "red": 80
+              },
+              "grid_options": {
+                "columns": 6,
+                "rows": "auto"
+              },
+              "max": 100,
+              "needle": false,
+              "entity": "sensor.staker2_cpu_busy",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            }
+          ],
+          "card_mod": {
+            "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+          }
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "entities",
+              "entities": [
+                {
+                  "entity": "input_button.acs_off",
+                  "secondary_info": "none"
+                },
+                {
+                  "entity": "input_button.acs_on",
+                  "secondary_info": "none"
+                },
+                {
+                  "entity": "switch.shelly01_water_heater",
+                  "name": "Water Heater",
+                  "secondary_info": "last-changed"
+                },
+                {
+                  "entity": "sensor.tapo_p110x02_current_consumption"
+                },
+                {
+                  "entity": "switch.tapo_p110xgg"
+                },
+                {
+                  "entity": "sensor.tapo_p110xgg_current_power"
+                }
+              ],
+              "state_color": true,
+              "show_header_toggle": false,
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(255,116,64,.27), rgba(42,17,12,.92));\n  border: 1px solid rgba(251,146,60,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "history-graph",
+              "entities": [
+                {
+                  "entity": "sun.sun"
+                }
+              ],
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(255,184,77,.28), rgba(35,24,10,.92));\n  border: 1px solid rgba(251,191,36,.36);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            }
+          ],
+          "card_mod": {
+            "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(255,184,77,.28), rgba(35,24,10,.92));\n  border: 1px solid rgba(251,191,36,.36);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+          }
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "tile",
+              "entity": "sensor.living_room_temperature",
+              "name": [
+                {
+                  "type": "area",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                },
+                {
+                  "type": "entity",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                }
+              ],
+              "vertical": false,
+              "features_position": "bottom",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.living_room_humidity",
+              "name": [
+                {
+                  "type": "area",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                },
+                {
+                  "type": "entity",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                }
+              ],
+              "vertical": false,
+              "features_position": "bottom",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.master_bedroom_temperature",
+              "name": [
+                {
+                  "type": "area",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                },
+                {
+                  "type": "entity",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                }
+              ],
+              "vertical": false,
+              "features_position": "bottom",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.master_bedroom_humidity",
+              "name": [
+                {
+                  "type": "area",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                },
+                {
+                  "type": "entity",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                }
+              ],
+              "vertical": false,
+              "features_position": "bottom",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.patio_temperature",
+              "name": [
+                {
+                  "type": "area",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                },
+                {
+                  "type": "entity",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                }
+              ],
+              "vertical": false,
+              "features_position": "bottom",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.patio_humidity",
+              "name": [
+                {
+                  "type": "area",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                },
+                {
+                  "type": "entity",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                }
+              ],
+              "vertical": false,
+              "features_position": "bottom",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.front_porch_temperature",
+              "name": [
+                {
+                  "type": "area",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                },
+                {
+                  "type": "entity",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                }
+              ],
+              "vertical": false,
+              "features_position": "bottom",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "sensor.front_porch_humidity",
+              "name": [
+                {
+                  "type": "area",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                },
+                {
+                  "type": "entity",
+                  "card_mod": {
+                    "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                  }
+                }
+              ],
+              "show_entity_picture": false,
+              "hide_state": false,
+              "vertical": false,
+              "features_position": "bottom",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            },
+            {
+              "type": "history-graph",
+              "title": "Temperature Trend",
+              "hours_to_show": 24,
+              "entities": [
+                {
+                  "entity": "sensor.living_room_temperature",
+                  "name": "Living"
+                },
+                {
+                  "entity": "sensor.master_bedroom_temperature",
+                  "name": "Masters"
+                },
+                {
+                  "entity": "sensor.patio_temperature",
+                  "name": "Patio"
+                },
+                {
+                  "entity": "sensor.front_porch_temperature",
+                  "name": "Front Porch"
+                },
+                {
+                  "entity": "sensor.mid_kids_rm_aircon_measured_value_of_room_temperature",
+                  "name": "Mid Room"
+                },
+                {
+                  "entity": "sensor.far_room_aircon_2_5_measured_value_of_room_temperature",
+                  "name": "Far Room"
+                }
+              ],
+              "layout_options": {
+                "grid_columns": 4,
+                "grid_rows": 6
+              },
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(17,24,39,.96), rgba(32,18,58,.92));\n  border: 1px solid rgba(167,139,250,.36);\n  box-shadow: 0 16px 36px rgba(0,0,0,.36), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\n"
+              }
+            },
+            {
+              "type": "conditional",
+              "conditions": [
+                {
+                  "condition": "or",
+                  "conditions": [
+                    {
+                      "condition": "state",
+                      "entity": "sensor.far_room_aircon_2_5_measured_outdoor_air_temperature",
+                      "state_not": "unknown"
+                    },
+                    {
+                      "condition": "state",
+                      "entity": "sensor.living_rm_aircon_measured_outdoor_air_temperature",
+                      "state_not": "unknown"
+                    },
+                    {
+                      "condition": "state",
+                      "entity": "sensor.master_brm_aircon_measured_outdoor_air_temperature",
+                      "state_not": "unknown"
+                    },
+                    {
+                      "condition": "state",
+                      "entity": "sensor.mid_kids_rm_aircon_measured_outdoor_air_temperature",
+                      "state_not": "unknown"
+                    }
+                  ]
+                }
+              ],
+              "card": {
+                "type": "entities",
+                "entities": [
+                  {
+                    "entity": "sensor.living_rm_aircon_measured_outdoor_air_temperature",
+                    "secondary_info": "last-changed",
+                    "name": "Living RM Outdoor Temp"
+                  },
+                  {
+                    "entity": "sensor.master_brm_aircon_measured_outdoor_air_temperature",
+                    "secondary_info": "last-changed",
+                    "name": "Masters Outdoor Temp"
+                  },
+                  {
+                    "entity": "sensor.mid_kids_rm_aircon_measured_outdoor_air_temperature",
+                    "secondary_info": "last-changed",
+                    "name": "Mid RM Outdoor Temp"
+                  },
+                  {
+                    "entity": "sensor.far_room_aircon_2_5_measured_outdoor_air_temperature",
+                    "secondary_info": "last-changed",
+                    "name": "Far RM Outdoor Temp"
+                  }
+                ],
+                "state_color": true,
+                "card_mod": {
+                  "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                }
+              },
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(24,16,48,.92));\n  border: 1px solid rgba(167,139,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            }
+          ],
+          "card_mod": {
+            "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+          }
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "entities",
+              "entities": [
+                {
+                  "entity": "sensor.sungrow_battery_soc",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.sungrow_dc_power_raw",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.sungrow_house_load_power",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.shelly_heater_ct1_power",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.sungrow_battery_power_2",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.sungrow_grid_power",
+                  "secondary_info": "last-updated"
+                },
+                {
+                  "entity": "sensor.sungrow_battery_soh"
+                }
+              ],
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(49,196,141,.26), rgba(8,32,24,.92));\n  border: 1px solid rgba(74,222,128,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            }
+          ],
+          "card_mod": {
+            "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(49,196,141,.26), rgba(8,32,24,.92));\n  border: 1px solid rgba(74,222,128,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+          }
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "show_current": true,
+              "show_forecast": true,
+              "type": "weather-forecast",
+              "entity": "weather.forecast_home",
+              "forecast_type": "daily",
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(56,189,248,.23), rgba(9,30,46,.92));\n  border: 1px solid rgba(56,189,248,.32);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            }
+          ],
+          "card_mod": {
+            "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+          }
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:apexcharts-card",
+              "graph_span": "12h",
+              "header": {
+                "show": true,
+                "title": "Energy flow",
+                "show_states": true,
+                "colorize_states": true
+              },
+              "apex_config": {
+                "chart": {
+                  "height": 320,
+                  "toolbar": {
+                    "show": false
+                  }
+                },
+                "stroke": {
+                  "curve": "smooth",
+                  "width": 3
+                },
+                "legend": {
+                  "show": false
+                },
+                "grid": {
+                  "borderColor": "rgba(255,255,255,.08)"
+                }
+              },
+              "series": [
+                {
+                  "entity": "sensor.sungrow_house_load_power",
+                  "name": "Load",
+                  "color": "#fab387",
+                  "type": "area",
+                  "opacity": 0.25
+                },
+                {
+                  "entity": "sensor.sungrow_grid_power",
+                  "name": "Grid",
+                  "color": "#89b4fa",
+                  "type": "line"
+                },
+                {
+                  "entity": "sensor.sungrow_dc_power_raw",
+                  "name": "Solar",
+                  "color": "#f9e2af",
+                  "type": "area",
+                  "opacity": 0.18
+                },
+                {
+                  "entity": "sensor.sungrow_battery_power_2",
+                  "name": "Battery",
+                  "color": "#a6e3a1",
+                  "type": "line"
+                }
+              ],
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 24px;\n  background: linear-gradient(135deg, rgba(17,24,39,.9), rgba(30,30,46,.95));\n  border: 1px solid rgba(255,255,255,.12);\n  box-shadow: 0 16px 42px rgba(0,0,0,.28);\n  overflow: hidden;\n}\n"
+              }
+            }
+          ],
+          "card_mod": {
+            "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+          }
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "show_name": true,
+              "show_icon": true,
+              "type": "button",
+              "entity": "switch.shelly1minig3_garage",
+              "icon": "mdi:garage",
+              "show_state": false,
+              "name": {
+                "type": "area",
+                "card_mod": {
+                  "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(30,41,59,.92), rgba(15,23,42,.96));\n  border: 1px solid rgba(148,163,184,.24);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+                }
+              },
+              "card_mod": {
+                "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(255,116,64,.27), rgba(42,17,12,.92));\n  border: 1px solid rgba(251,146,60,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+              }
+            }
+          ],
+          "card_mod": {
+            "style": "ha-card {\n  border-radius: 20px;\n  background: linear-gradient(145deg, rgba(77,163,255,.26), rgba(8,23,44,.92));\n  border: 1px solid rgba(96,165,250,.34);\n  box-shadow: 0 16px 40px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.08);\n  overflow: hidden;\n}\nha-card:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 20px 48px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.10);\n}\n"
+          }
+        }
+      ],
+      "header": {},
+      "theme": "Mushroom Shadow"
+    }
+  ],
+  "title": "SunGrow Modbus-2"
+}

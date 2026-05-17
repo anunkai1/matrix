@@ -18,6 +18,33 @@ def _handlers():
     return handlers
 
 
+def _build_current_sender_prompt(sender_name: str) -> str:
+    normalized = (sender_name or "").strip()
+    if not normalized or normalized == "Telegram User":
+        return ""
+    return f"Current Message Author: {normalized}"
+
+
+def _reject_input_too_long(flow: UpdateFlowState, actual_length: int) -> None:
+    handlers = _handlers()
+    handlers.emit_event(
+        "bridge.request_rejected",
+        level=logging.WARNING,
+        fields={
+            "chat_id": flow.ctx.chat_id,
+            "message_id": flow.ctx.message_id,
+            "reason": "input_too_long",
+        },
+    )
+    handlers.send_input_too_long(
+        client=flow.client,
+        chat_id=flow.ctx.chat_id,
+        message_id=flow.ctx.message_id,
+        actual_length=actual_length,
+        max_input_chars=flow.config.max_input_chars,
+    )
+
+
 def extract_incoming_update_context(update: Dict[str, object]) -> Optional[IncomingUpdateContext]:
     handlers = _handlers()
     message, conversation_scope, message_id = handlers.extract_chat_context(update)
@@ -290,6 +317,9 @@ def prepare_update_dispatch_request(
         prompt_context_parts.append(flow.telegram_context_prompt)
     if flow.reply_context_prompt:
         prompt_context_parts.append(flow.reply_context_prompt)
+    current_sender_prompt = _build_current_sender_prompt(flow.sender_name)
+    if current_sender_prompt:
+        prompt_context_parts.append(current_sender_prompt)
     if prompt_context_parts:
         if prompt:
             prompt_context_parts.append("Current User Message:\n" f"{prompt}")
@@ -315,41 +345,11 @@ def prepare_update_dispatch_request(
                 if raw_prompt and len(raw_prompt) > flow.config.max_input_chars
                 else len(prompt)
             )
-            handlers.emit_event(
-                "bridge.request_rejected",
-                level=logging.WARNING,
-                fields={
-                    "chat_id": flow.ctx.chat_id,
-                    "message_id": flow.ctx.message_id,
-                    "reason": "input_too_long",
-                },
-            )
-            handlers.send_input_too_long(
-                client=flow.client,
-                chat_id=flow.ctx.chat_id,
-                message_id=flow.ctx.message_id,
-                actual_length=actual_length,
-                max_input_chars=flow.config.max_input_chars,
-            )
+            _reject_input_too_long(flow, actual_length)
             return None
 
     if prompt and len(prompt) > flow.config.max_input_chars:
-        handlers.emit_event(
-            "bridge.request_rejected",
-            level=logging.WARNING,
-            fields={
-                "chat_id": flow.ctx.chat_id,
-                "message_id": flow.ctx.message_id,
-                "reason": "input_too_long",
-            },
-        )
-        handlers.send_input_too_long(
-            client=flow.client,
-            chat_id=flow.ctx.chat_id,
-            message_id=flow.ctx.message_id,
-            actual_length=len(prompt),
-            max_input_chars=flow.config.max_input_chars,
-        )
+        _reject_input_too_long(flow, len(prompt))
         return None
 
     if handlers.is_rate_limited(flow.state, flow.config, flow.ctx.scope_key):
