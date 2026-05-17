@@ -137,7 +137,7 @@ Its job is alignment, not open-ended automation.
 
 ## Goals
 
-- Align actual system state <-> structured truth state.
+- Align actual system truth <-> structured truth state.
 - Keep Architect aligned to the current system across days and sessions.
 - Make structured truth state the main durable self-model for Server3.
 - Reduce stale beliefs in persistent bridge sessions.
