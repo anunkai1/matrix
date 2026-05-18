@@ -13,11 +13,15 @@ from telegram_bridge.handler_models import (
 )
 from telegram_bridge.message_inputs import (
     build_reply_context_prompt,
+    build_referenced_message_prompt,
     build_telegram_context_prompt,
+    extract_explicit_telegram_message_id,
     extract_message_photo_file_ids,
     extract_prompt_and_media,
     extract_sender_name,
+    find_recent_scope_message,
     normalize_telegram_context_injection_policy,
+    record_recent_scope_messages,
     remember_recent_scope_photos,
     should_include_delivery_guardrails,
     should_include_telegram_context_prompt,
@@ -286,6 +290,7 @@ def prepare_update_request(
     client: ChannelAdapter,
     ctx: IncomingUpdateContext,
 ) -> Optional[PreparedUpdateRequest]:
+    record_recent_scope_messages(state, ctx.scope_key, ctx.message)
     prompt_input, photo_file_ids, voice_file_id, document = extract_prompt_and_media(ctx.message)
     if prompt_input is None and not photo_file_ids and voice_file_id is None and document is None:
         return None
@@ -308,6 +313,14 @@ def prepare_update_request(
     )
 
     reply_context_prompt = build_reply_context_prompt(ctx.message)
+    explicit_message_id = extract_explicit_telegram_message_id(prompt_input)
+    referenced_message = find_recent_scope_message(state, ctx.scope_key, explicit_message_id)
+    if referenced_message is not None:
+        referenced_prompt = build_referenced_message_prompt(referenced_message)
+        if reply_context_prompt.strip():
+            reply_context_prompt = f"{reply_context_prompt}\n\n{referenced_prompt}"
+        else:
+            reply_context_prompt = referenced_prompt
     telegram_context_prompt = ""
     context_injection_policy = _context_injection_policy_for_scope(
         state,

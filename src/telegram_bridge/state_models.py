@@ -48,6 +48,18 @@ class PendingTextBatch:
     started_at: float = field(default_factory=time.time)
     last_seen_at: float = field(default_factory=time.time)
 
+@dataclass(frozen=True)
+class RecentTelegramMessage:
+    message_id: int
+    chat_id: int
+    scope_key: str
+    message_thread_id: Optional[int]
+    sender_name: str
+    text: str
+    media_summary: str
+    reply_to_message_id: Optional[int]
+    captured_at: float = field(default_factory=time.time)
+
 @dataclass
 class PendingDiaryBatch:
     scope_key: str
@@ -109,6 +121,7 @@ class State:
     cancel_events: Dict[ScopeKey, threading.Event] = field(default_factory=dict)
     pending_media_groups: Dict[str, PendingMediaGroup] = field(default_factory=dict)
     pending_text_batches: Dict[ScopeKey, PendingTextBatch] = field(default_factory=dict)
+    recent_scope_messages: Dict[ScopeKey, Dict[int, RecentTelegramMessage]] = field(default_factory=dict)
     recent_scope_photos: Dict[ScopeKey, RecentPhotoSelection] = field(default_factory=dict)
     chat_goals: Dict[ScopeKey, object] = field(default_factory=dict)
     chat_goal_path: str = ""

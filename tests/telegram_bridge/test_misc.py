@@ -229,6 +229,38 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(len(flushed), 1)
         self.assertEqual(flushed[0]["message"]["text"], "bob one")
 
+    def test_record_recent_scope_messages_indexes_coalesced_messages_by_original_ids(self):
+        state = bridge.State()
+        message = {
+            "message_id": 62,
+            "chat": {"id": 1, "type": "private"},
+            "from": {"id": 7, "first_name": "User"},
+            "text": "first part\n\nsecond part",
+            "coalesced_text_messages": [
+                {
+                    "message_id": 61,
+                    "chat": {"id": 1, "type": "private"},
+                    "from": {"id": 7, "first_name": "User"},
+                    "text": "first part",
+                },
+                {
+                    "message_id": 62,
+                    "chat": {"id": 1, "type": "private"},
+                    "from": {"id": 7, "first_name": "User"},
+                    "text": "second part",
+                },
+            ],
+        }
+
+        bridge_handlers.message_inputs.record_recent_scope_messages(state, "tg:1", message)
+
+        recorded_first = bridge_handlers.message_inputs.find_recent_scope_message(state, "tg:1", 61)
+        recorded_second = bridge_handlers.message_inputs.find_recent_scope_message(state, "tg:1", 62)
+        self.assertIsNotNone(recorded_first)
+        self.assertIsNotNone(recorded_second)
+        self.assertEqual(recorded_first.text, "first part")
+        self.assertEqual(recorded_second.text, "first part\n\nsecond part")
+
     @mock.patch.object(bridge_handlers, "transcribe_voice")
     @mock.patch.object(bridge_handlers, "download_voice_to_temp")
     def test_transcribe_voice_for_chat_blocks_low_confidence(self, download_voice_to_temp, transcribe_voice):

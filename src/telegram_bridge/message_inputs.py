@@ -4,7 +4,12 @@ from typing import Dict, List, Optional
 
 from telegram_bridge.conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
 from telegram_bridge.handler_models import DocumentPayload
-from telegram_bridge.state_store import RecentPhotoSelection, State
+from telegram_bridge.state_store import RecentPhotoSelection, RecentTelegramMessage, State
+
+RECENT_SCOPE_MESSAGE_LIMIT = 64
+TELEGRAM_REFERENCE_MESSAGE_ID_RE = re.compile(
+    r"(?i)\b(?:message[_ ]id|reply[_ ]to[_ ]message[_ ]id|use this message id)\s*[:#]?\s*(\d{1,16})\b"
+)
 
 def pick_largest_photo_file_id(photo_items: List[object]) -> Optional[str]:
     best_file_id: Optional[str] = None
@@ -147,6 +152,19 @@ def build_reply_context_prompt(message: Dict[str, object]) -> str:
 
     return "Reply Context:\n" + sender_line + "\n\n".join(body_parts)
 
+
+def build_referenced_message_prompt(referenced: RecentTelegramMessage) -> str:
+    body_parts = [f"Referenced Telegram Message ID: {referenced.message_id}"]
+    if referenced.sender_name and referenced.sender_name != "Telegram User":
+        body_parts.append(f"Referenced Message Author: {referenced.sender_name}")
+    if referenced.text:
+        body_parts.append("Referenced Message Content:\n" f"{referenced.text}")
+    if referenced.media_summary:
+        body_parts.append(referenced.media_summary)
+    if referenced.reply_to_message_id is not None:
+        body_parts.append(f"Referenced Message Reply-To ID: {referenced.reply_to_message_id}")
+    return "Referenced Telegram Message:\n" + "\n\n".join(body_parts)
+
 TELEGRAM_CONTEXT_TARGET_HINT_RE = re.compile(
     r"(?i)\b("
     r"message[_ ]id|reply[_ ]to[_ ]message[_ ]id|"
@@ -227,6 +245,21 @@ def should_include_delivery_guardrails(
         return TELEGRAM_DELIVERY_GUARDRAIL_HINT_RE.search(prompt_text) is not None
     return TELEGRAM_DELIVERY_GUARDRAIL_HINT_RE.search(prompt_text) is not None
 
+
+def extract_explicit_telegram_message_id(prompt_input: Optional[str]) -> Optional[int]:
+    prompt_text = (prompt_input or "").strip()
+    if not prompt_text:
+        return None
+    if TELEGRAM_MESSAGE_ID_ONLY_RE.fullmatch(prompt_text):
+        return int(prompt_text)
+    match = TELEGRAM_REFERENCE_MESSAGE_ID_RE.search(prompt_text)
+    if match is None:
+        return None
+    try:
+        return int(match.group(1))
+    except Exception:
+        return None
+
 def build_telegram_context_prompt(
     chat_id: int,
     message_thread_id: Optional[int],
@@ -262,6 +295,74 @@ def build_telegram_context_prompt(
             "- If the target is missing or unclear, ask the user. Never guess another chat ID."
         )
     return "\n".join(lines)
+
+
+def _record_single_recent_scope_message(
+    state: State,
+    scope_key: str,
+    message: Dict[str, object],
+) -> None:
+    message_id = message.get("message_id")
+    if not isinstance(message_id, int):
+        return
+    chat = message.get("chat")
+    chat_id = chat.get("id") if isinstance(chat, dict) else None
+    if not isinstance(chat_id, int):
+        return
+    text = normalize_optional_text(message.get("text")) or normalize_optional_text(message.get("caption")) or ""
+    media_summary = describe_message_media(message)
+    reply_to = message.get("reply_to_message")
+    reply_to_message_id = (
+        reply_to.get("message_id")
+        if isinstance(reply_to, dict) and isinstance(reply_to.get("message_id"), int)
+        else None
+    )
+    raw_thread_id = message.get("message_thread_id")
+    message_thread_id = raw_thread_id if isinstance(raw_thread_id, int) and raw_thread_id > 0 else None
+    recorded = RecentTelegramMessage(
+        message_id=message_id,
+        chat_id=chat_id,
+        scope_key=scope_key,
+        message_thread_id=message_thread_id,
+        sender_name=extract_sender_name(message),
+        text=text,
+        media_summary=media_summary,
+        reply_to_message_id=reply_to_message_id,
+    )
+    with state.lock:
+        bucket = state.recent_scope_messages.setdefault(scope_key, {})
+        bucket.pop(message_id, None)
+        bucket[message_id] = recorded
+        while len(bucket) > RECENT_SCOPE_MESSAGE_LIMIT:
+            oldest_message_id = next(iter(bucket))
+            bucket.pop(oldest_message_id, None)
+
+
+def record_recent_scope_messages(
+    state: State,
+    scope_key: str,
+    message: Dict[str, object],
+) -> None:
+    coalesced_messages = message.get("coalesced_text_messages")
+    if isinstance(coalesced_messages, list):
+        for item in coalesced_messages:
+            if isinstance(item, dict):
+                _record_single_recent_scope_message(state, scope_key, item)
+    _record_single_recent_scope_message(state, scope_key, message)
+
+
+def find_recent_scope_message(
+    state: State,
+    scope_key: str,
+    message_id: Optional[int],
+) -> Optional[RecentTelegramMessage]:
+    if not isinstance(message_id, int):
+        return None
+    with state.lock:
+        bucket = state.recent_scope_messages.get(scope_key)
+        if bucket is None:
+            return None
+        return bucket.get(message_id)
 
 def select_media_prompt(text: Optional[str], caption: Optional[str], default_prompt: str) -> str:
     text_value = text or ""

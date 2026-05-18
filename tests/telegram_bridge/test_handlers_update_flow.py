@@ -271,6 +271,101 @@ class HandleUpdateHelperTests(unittest.TestCase):
         self.assertIn("Current Telegram Context:", prepared.telegram_context_prompt)
         self.assertIn("use this chat/topic only", prepared.telegram_context_prompt)
 
+    def test_prepare_update_request_includes_referenced_message_context_for_explicit_message_id(self):
+        state = bridge.State()
+        config = make_config()
+        client = FakeTelegramClient()
+        prior_ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={
+                "message_id": 777,
+                "chat": {"id": 1, "type": "private"},
+                "from": {"id": 9, "first_name": "Alice"},
+                "text": "Please send the report tomorrow.",
+            },
+            chat_id=1,
+            message_thread_id=None,
+            scope_key="tg:1",
+            message_id=777,
+            actor_user_id=9,
+            is_private_chat=True,
+            update_id=300,
+        )
+        bridge_handlers.prepare_update_request(state, config, client, prior_ctx)
+
+        ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={
+                "message_id": 123,
+                "chat": {"id": 1, "type": "private"},
+                "from": {"id": 1, "first_name": "User"},
+                "text": "use message id 777",
+            },
+            chat_id=1,
+            message_thread_id=None,
+            scope_key="tg:1",
+            message_id=123,
+            actor_user_id=1,
+            is_private_chat=True,
+            update_id=301,
+        )
+
+        prepared = bridge_handlers.prepare_update_request(state, config, client, ctx)
+
+        self.assertIsNotNone(prepared)
+        self.assertIn("Referenced Telegram Message:", prepared.reply_context_prompt)
+        self.assertIn("Referenced Telegram Message ID: 777", prepared.reply_context_prompt)
+        self.assertIn("Referenced Message Author: Alice", prepared.reply_context_prompt)
+        self.assertIn("Please send the report tomorrow.", prepared.reply_context_prompt)
+
+    def test_prepare_update_request_keeps_referenced_message_lookup_scope_local_to_topic(self):
+        state = bridge.State()
+        config = make_config()
+        client = FakeTelegramClient()
+        prior_ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={
+                "message_id": 777,
+                "chat": {"id": 1, "type": "supergroup"},
+                "message_thread_id": 498,
+                "is_topic_message": True,
+                "from": {"id": 9, "first_name": "Alice"},
+                "text": "Topic-local message.",
+            },
+            chat_id=1,
+            message_thread_id=498,
+            scope_key="tg:1:topic:498",
+            message_id=777,
+            actor_user_id=9,
+            is_private_chat=False,
+            update_id=310,
+        )
+        bridge_handlers.prepare_update_request(state, config, client, prior_ctx)
+
+        ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={
+                "message_id": 124,
+                "chat": {"id": 1, "type": "supergroup"},
+                "message_thread_id": 499,
+                "is_topic_message": True,
+                "from": {"id": 1, "first_name": "User"},
+                "text": "use message id 777",
+            },
+            chat_id=1,
+            message_thread_id=499,
+            scope_key="tg:1:topic:499",
+            message_id=124,
+            actor_user_id=1,
+            is_private_chat=False,
+            update_id=311,
+        )
+
+        prepared = bridge_handlers.prepare_update_request(state, config, client, ctx)
+
+        self.assertIsNotNone(prepared)
+        self.assertNotIn("Referenced Telegram Message:", prepared.reply_context_prompt)
+
     def test_prepare_update_request_keeps_always_policy_for_non_codex_scope(self):
         state = bridge.State()
         state.chat_threads["tg:1"] = "thread-1"

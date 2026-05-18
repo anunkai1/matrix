@@ -13,6 +13,7 @@ Prompt-shaping note:
 - Codex now defaults to a `continuation_skip` Telegram injection policy. Fresh scopes and first turns after `/reset` get the full Telegram transport bootstrap, but normal same-thread continuation turns do not re-inject it.
 - Delivery-sensitive turns still re-inject the Telegram context and routing guardrails when needed, such as reply-targeted prompts or prompts that ask to send/reply/attach something.
 - Non-Codex engines keep the previous `always` behavior unless `TELEGRAM_CONTEXT_INJECTION_POLICY` overrides it.
+- The bridge also keeps a bounded recent-message index per chat/topic for messages it has already seen, so explicit references like `message id 777` can resolve to a compact referenced-message context block without relying on the model to guess from history.
 
 ## Files
 
