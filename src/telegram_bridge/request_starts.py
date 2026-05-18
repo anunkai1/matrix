@@ -40,6 +40,7 @@ def _prompt_worker_args(
     actor_user_id: Optional[int],
     enforce_voice_prefix_from_transcript: bool,
     prompt_diagnostics,
+    delivery_metadata,
 ):
     return (
         state,
@@ -62,6 +63,7 @@ def _prompt_worker_args(
         actor_user_id,
         enforce_voice_prefix_from_transcript,
         prompt_diagnostics,
+        delivery_metadata,
     )
 
 
@@ -86,6 +88,7 @@ def process_prompt(
     enforce_voice_prefix_from_transcript: bool = False,
     prompt_diagnostics=None,
     raw_prompt: str = "",
+    delivery_metadata=None,
 ) -> None:
     _build_and_dispatch(
         request_worker_requests.build_prompt_worker_request,
@@ -111,6 +114,7 @@ def process_prompt(
             actor_user_id,
             enforce_voice_prefix_from_transcript,
             prompt_diagnostics,
+            delivery_metadata,
         ),
     )
 
@@ -136,6 +140,7 @@ def process_message_worker(
     enforce_voice_prefix_from_transcript: bool = False,
     prompt_diagnostics=None,
     raw_prompt: str = "",
+    delivery_metadata=None,
 ) -> None:
     _build_and_dispatch(
         request_worker_requests.build_prompt_worker_request,
@@ -161,6 +166,7 @@ def process_message_worker(
             actor_user_id,
             enforce_voice_prefix_from_transcript,
             prompt_diagnostics,
+            delivery_metadata,
         ),
     )
 
@@ -186,6 +192,7 @@ def start_message_worker(
     enforce_voice_prefix_from_transcript: bool = False,
     prompt_diagnostics=None,
     raw_prompt: str = "",
+    delivery_metadata=None,
 ) -> None:
     _build_and_start(
         request_worker_requests.build_prompt_worker_request,
@@ -211,6 +218,7 @@ def start_message_worker(
             actor_user_id,
             enforce_voice_prefix_from_transcript,
             prompt_diagnostics,
+            delivery_metadata,
         ),
     )
 

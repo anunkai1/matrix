@@ -17,10 +17,12 @@ from telegram_bridge.bridge_state_bootstrap import (
 )
 from telegram_bridge.bridge_polling import (
     buffer_pending_media_group_updates,
+    buffer_pending_text_updates,
     compute_initial_update_offset,
     compute_poll_timeout_seconds,
     drop_pending_updates,
     flush_ready_media_group_updates,
+    flush_ready_text_batch_updates,
     maybe_reset_stale_runtime_offset,
     should_discard_startup_backlog,
     should_reset_saved_update_offset,
@@ -402,6 +404,18 @@ def run_bridge(config: Config) -> int:
                         update_flow_dependencies=bootstrap.update_flow_dependencies,
                     )
                 continue
+            ready_text_updates = flush_ready_text_batch_updates(state)
+            if ready_text_updates:
+                for update in ready_text_updates:
+                    handle_update(
+                        state,
+                        config,
+                        client,
+                        update,
+                        engine=engine,
+                        update_flow_dependencies=bootstrap.update_flow_dependencies,
+                    )
+                continue
 
             poll_timeout_seconds = compute_poll_timeout_seconds(state, config)
             updates = client.get_updates(offset, timeout_seconds=poll_timeout_seconds)
@@ -426,6 +440,7 @@ def run_bridge(config: Config) -> int:
                 if isinstance(update_id, int):
                     offset = max(offset, update_id + 1)
             immediate_updates = buffer_pending_media_group_updates(state, updates)
+            immediate_updates = buffer_pending_text_updates(state, immediate_updates)
             for update in immediate_updates:
                 handle_update(
                     state,

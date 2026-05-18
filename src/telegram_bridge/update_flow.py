@@ -453,6 +453,7 @@ def _run_standard_dispatch_worker(
             enforce_voice_prefix_from_transcript=request.enforce_voice_prefix_from_transcript,
             actor_user_id=request.actor_user_id,
             prompt_diagnostics=request.prompt_diagnostics,
+            delivery_metadata=request.delivery_metadata,
         )
     dependencies.emit_event(
         "bridge.worker_started",

@@ -47,6 +47,7 @@ import telegram_bridge.structured_logging as bridge_structured_logging
 import telegram_bridge.transport as bridge_transport
 import telegram_bridge.voice_alias_commands as bridge_voice_alias_commands
 import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
+from telegram_bridge.handler_models import TelegramDeliveryMetadata
 
 
 class TestPrompt(unittest.TestCase):
@@ -282,6 +283,60 @@ class TestPrompt(unittest.TestCase):
         sent_output = send_mock.call_args.kwargs["output"]
         self.assertLessEqual(len(sent_output), config.max_output_chars)
         self.assertIn("[output truncated]", sent_output)
+
+    def test_process_prompt_request_uses_current_message_as_reply_anchor(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        request = bridge_handlers.build_prompt_request(
+            state=state,
+            config=config,
+            client=client,
+            engine=None,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=77,
+            message_id=55,
+            prompt="hello",
+            raw_prompt="hello",
+            photo_file_id=None,
+            voice_file_id=None,
+            document=None,
+            delivery_metadata=TelegramDeliveryMetadata(
+                chat_id=1,
+                scope_key="tg:1",
+                message_thread_id=77,
+                current_message_id=55,
+                reply_to_message_id=44,
+            ),
+        )
+        finalize_calls = []
+
+        runtime = bridge_prompt_execution.build_prompt_execution_runtime(
+            progress_reporter_cls=bridge_handlers.ProgressReporter,
+            state_repository_cls=bridge_handlers.StateRepository,
+            codex_engine_adapter_factory=bridge_handlers.CodexEngineAdapter,
+            assistant_label_fn=bridge_handlers.assistant_label,
+            build_engine_runtime_config_fn=bridge_handlers.build_engine_runtime_config,
+            build_engine_progress_context_label_fn=bridge_handlers.build_engine_progress_context_label,
+            refresh_runtime_auth_fingerprint_fn=lambda _state: {"applied": False, "counts": {}},
+            prepare_prompt_input_request_fn=lambda _request, _progress: bridge_handlers.PreparedPromptInput(
+                prompt_text="hello"
+            ),
+            execute_prompt_with_retry_fn=lambda **_kwargs: bridge_handlers.subprocess.CompletedProcess(
+                args=["/bin/echo"],
+                returncode=0,
+                stdout="hello",
+                stderr="",
+            ),
+            finalize_prompt_success_fn=lambda **kwargs: finalize_calls.append(kwargs) or (None, "hello"),
+            finalize_request_progress_fn=lambda **_kwargs: None,
+            emit_event_fn=lambda *args, **kwargs: None,
+        )
+
+        bridge_prompt_execution.process_prompt_request(request, runtime=runtime)
+
+        self.assertEqual(finalize_calls[0]["reply_to_message_id"], 55)
 
     def test_build_telegram_context_prompt_includes_current_message_id(self):
         prompt = bridge_handlers.build_telegram_context_prompt(

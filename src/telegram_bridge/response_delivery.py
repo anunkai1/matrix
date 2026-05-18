@@ -44,6 +44,7 @@ class OutboundDeliveryContext:
     client: ChannelAdapter
     chat_id: int
     message_id: Optional[int]
+    reply_to_message_id: Optional[int]
     message_thread_id: Optional[int]
     output: str
 
@@ -171,11 +172,13 @@ def send_executor_output(
     message_id: Optional[int],
     output: str,
     message_thread_id: Optional[int] = None,
+    reply_to_message_id: Optional[int] = None,
 ) -> str:
     context = OutboundDeliveryContext(
         client=client,
         chat_id=chat_id,
         message_id=message_id,
+        reply_to_message_id=message_id if reply_to_message_id is None else reply_to_message_id,
         message_thread_id=message_thread_id,
         output=output,
     )
@@ -233,7 +236,7 @@ def _send_raw_text_fallback(context: OutboundDeliveryContext, text: str) -> str:
     context.client.send_message(
         context.chat_id,
         fallback_text,
-        reply_to_message_id=context.message_id,
+        reply_to_message_id=context.reply_to_message_id,
         message_thread_id=context.message_thread_id,
     )
     return fallback_text
@@ -271,7 +274,7 @@ def _send_photo(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> N
         chat_id=context.chat_id,
         photo=plan.directive.media_ref,
         caption=plan.caption,
-        reply_to_message_id=context.message_id,
+        reply_to_message_id=context.reply_to_message_id,
         message_thread_id=context.message_thread_id,
     )
     emit_event(
@@ -292,7 +295,7 @@ def _send_audio(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -> N
         chat_id=context.chat_id,
         audio=plan.directive.media_ref,
         caption=plan.caption,
-        reply_to_message_id=context.message_id,
+        reply_to_message_id=context.reply_to_message_id,
         message_thread_id=context.message_thread_id,
     )
     emit_event(
@@ -315,7 +318,7 @@ def _send_voice_with_audio_fallback(context: OutboundDeliveryContext, plan: Outb
             chat_id=context.chat_id,
             voice=plan.directive.media_ref,
             caption=plan.caption,
-            reply_to_message_id=context.message_id,
+            reply_to_message_id=context.reply_to_message_id,
             message_thread_id=context.message_thread_id,
         )
         emit_event(
@@ -352,7 +355,7 @@ def _send_voice_with_audio_fallback(context: OutboundDeliveryContext, plan: Outb
             chat_id=context.chat_id,
             audio=plan.directive.media_ref,
             caption=plan.caption,
-            reply_to_message_id=context.message_id,
+            reply_to_message_id=context.reply_to_message_id,
             message_thread_id=context.message_thread_id,
         )
         emit_event(
@@ -373,7 +376,7 @@ def _send_document(context: OutboundDeliveryContext, plan: OutboundRenderPlan) -
         chat_id=context.chat_id,
         document=plan.directive.media_ref,
         caption=plan.caption,
-        reply_to_message_id=context.message_id,
+        reply_to_message_id=context.reply_to_message_id,
         message_thread_id=context.message_thread_id,
     )
     emit_event(
@@ -416,7 +419,7 @@ def _finalize_media_delivery(context: OutboundDeliveryContext, plan: OutboundRen
         context.client.send_message(
             context.chat_id,
             plan.follow_up_text,
-            reply_to_message_id=context.message_id,
+            reply_to_message_id=context.reply_to_message_id,
             message_thread_id=context.message_thread_id,
         )
         return plan.follow_up_text
@@ -478,6 +481,7 @@ def send_input_too_long(
         f"Input too long ({actual_length} chars). Max is {max_input_chars}.",
         reply_to_message_id=message_id,
     )
+
 
 def send_canceled_response(
     client: ChannelAdapter,

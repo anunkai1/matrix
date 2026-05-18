@@ -290,6 +290,7 @@ def process_prompt_request(
     message_id = request.message_id
     prompt = request.prompt
     raw_prompt = getattr(request, "raw_prompt", "")
+    delivery_metadata = getattr(request, "delivery_metadata", None)
     photo_file_id = request.photo_file_id
     voice_file_id = request.voice_file_id
     document = request.document
@@ -459,6 +460,12 @@ def process_prompt_request(
             scope_key=scope_key,
             chat_id=chat_id,
             message_id=message_id,
+            message_thread_id=message_thread_id,
+            reply_to_message_id=(
+                getattr(delivery_metadata, "current_message_id", None)
+                if delivery_metadata is not None
+                else message_id
+            ),
             result=result,
             progress=progress,
         )

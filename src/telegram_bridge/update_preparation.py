@@ -7,6 +7,7 @@ from telegram_bridge.handler_common import RATE_LIMIT_MESSAGE, extract_chat_cont
 from telegram_bridge.handler_models import (
     IncomingUpdateContext,
     PreparedUpdateRequest,
+    TelegramDeliveryMetadata,
     UpdateDispatchRequest,
     UpdateFlowState,
 )
@@ -50,6 +51,22 @@ def _build_current_sender_prompt(sender_name: str) -> str:
     if not normalized or normalized == "Telegram User":
         return ""
     return f"Author: {normalized}"
+
+
+def _telegram_delivery_metadata(ctx: IncomingUpdateContext) -> TelegramDeliveryMetadata:
+    reply_to_message = ctx.message.get("reply_to_message")
+    reply_to_message_id = (
+        reply_to_message.get("message_id")
+        if isinstance(reply_to_message, dict) and isinstance(reply_to_message.get("message_id"), int)
+        else None
+    )
+    return TelegramDeliveryMetadata(
+        chat_id=ctx.chat_id,
+        scope_key=ctx.scope_key,
+        message_thread_id=ctx.message_thread_id,
+        current_message_id=ctx.message_id,
+        reply_to_message_id=reply_to_message_id,
+    )
 
 
 def _context_injection_policy_for_scope(state: State, config, scope_key: str) -> str:
@@ -376,6 +393,7 @@ def prepare_update_request(
         enforce_voice_prefix_from_transcript=prefix_result.enforce_voice_prefix_from_transcript,
         sender_name=extract_sender_name(ctx.message),
         command=normalize_command(prompt_input or ""),
+        delivery_metadata=_telegram_delivery_metadata(ctx),
     )
 
 
@@ -403,6 +421,7 @@ def build_update_flow_state(
         enforce_voice_prefix_from_transcript=prepared.enforce_voice_prefix_from_transcript,
         sender_name=prepared.sender_name,
         command=prepared.command,
+        delivery_metadata=prepared.delivery_metadata,
     )
 
 
@@ -560,4 +579,5 @@ def prepare_update_dispatch_request(
         youtube_route_url=flow.youtube_route_url,
         handle_update_started_at=handle_update_started_at,
         prompt_diagnostics=prompt_details,
+        delivery_metadata=flow.delivery_metadata,
     )

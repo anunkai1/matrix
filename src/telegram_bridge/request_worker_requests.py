@@ -47,6 +47,7 @@ def build_prompt_worker_request(
     actor_user_id: Optional[int],
     enforce_voice_prefix_from_transcript: bool,
     prompt_diagnostics=None,
+    delivery_metadata=None,
 ):
     return build_prompt_request(
         state=state,
@@ -69,6 +70,7 @@ def build_prompt_worker_request(
         actor_user_id=actor_user_id,
         enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
         prompt_diagnostics=prompt_diagnostics,
+        delivery_metadata=delivery_metadata,
     )
 
 

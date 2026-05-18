@@ -66,6 +66,7 @@ def deliver_output_and_emit_success(
     output: str,
     message_thread_id: Optional[int] = None,
     new_thread_id: bool = False,
+    reply_to_message_id: Optional[int] = None,
 ) -> str:
     delivered_output = response_delivery.send_executor_output(
         client=client,
@@ -73,6 +74,7 @@ def deliver_output_and_emit_success(
         message_id=message_id,
         output=output,
         message_thread_id=message_thread_id,
+        reply_to_message_id=reply_to_message_id,
     )
     _emit_event(
         "bridge.request_succeeded",
@@ -455,6 +457,7 @@ def finalize_prompt_success(
     progress,
     scope_key: Optional[str] = None,
     message_thread_id: Optional[int] = None,
+    reply_to_message_id: Optional[int] = None,
     runtime_hooks: Optional[PromptRuntimeHooks] = None,
 ) -> tuple[Optional[str], str]:
     runtime_hooks = runtime_hooks or build_prompt_runtime_hooks()
@@ -479,5 +482,6 @@ def finalize_prompt_success(
         output=output,
         message_thread_id=message_thread_id,
         new_thread_id=bool(new_thread_id),
+        reply_to_message_id=reply_to_message_id,
     )
     return new_thread_id, delivered_output

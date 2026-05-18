@@ -26,6 +26,15 @@ class OutboundMediaDirective:
     media_ref: str
     as_voice: bool
 
+
+@dataclass(frozen=True)
+class TelegramDeliveryMetadata:
+    chat_id: int
+    scope_key: str
+    message_thread_id: Optional[int]
+    current_message_id: Optional[int]
+    reply_to_message_id: Optional[int]
+
 @dataclass(frozen=True)
 class KnownCommandContext:
     state: State
@@ -80,6 +89,7 @@ class PromptRequest:
     actor_user_id: Optional[int] = None
     enforce_voice_prefix_from_transcript: bool = False
     prompt_diagnostics: Optional[Dict[str, object]] = None
+    delivery_metadata: Optional[TelegramDeliveryMetadata] = None
 
 @dataclass(frozen=True)
 class YoutubeRequest:
@@ -131,6 +141,7 @@ class UpdateDispatchRequest:
     youtube_route_url: Optional[str] = None
     handle_update_started_at: Optional[float] = None
     prompt_diagnostics: Optional[Dict[str, object]] = None
+    delivery_metadata: Optional[TelegramDeliveryMetadata] = None
 
 @dataclass(frozen=True)
 class IncomingUpdateContext:
@@ -156,6 +167,7 @@ class PreparedUpdateRequest:
     enforce_voice_prefix_from_transcript: bool
     sender_name: str
     command: Optional[str]
+    delivery_metadata: Optional[TelegramDeliveryMetadata] = None
 
 @dataclass
 class UpdateFlowState:
@@ -173,6 +185,7 @@ class UpdateFlowState:
     enforce_voice_prefix_from_transcript: bool
     sender_name: str
     command: Optional[str]
+    delivery_metadata: Optional[TelegramDeliveryMetadata] = None
     dependencies: Any = None
     stateless: bool = False
     priority_keyword_mode: bool = False
@@ -199,6 +212,7 @@ def build_prompt_request(
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
     prompt_diagnostics: Optional[Dict[str, object]] = None,
+    delivery_metadata: Optional[TelegramDeliveryMetadata] = None,
 ) -> PromptRequest:
     return PromptRequest(
         state=state,
@@ -221,6 +235,7 @@ def build_prompt_request(
         actor_user_id=actor_user_id,
         enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
         prompt_diagnostics=prompt_diagnostics,
+        delivery_metadata=delivery_metadata,
     )
 
 def build_youtube_request(

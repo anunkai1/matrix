@@ -583,6 +583,7 @@ class TestExecutor(unittest.TestCase):
             client=mock.Mock(),
             chat_id=1,
             message_id=9,
+            reply_to_message_id=9,
             message_thread_id=None,
             output="ignored",
         )
@@ -607,6 +608,7 @@ class TestExecutor(unittest.TestCase):
             client=mock.Mock(),
             chat_id=1,
             message_id=10,
+            reply_to_message_id=10,
             message_thread_id=None,
             output="ignored",
         )
@@ -635,6 +637,7 @@ class TestExecutor(unittest.TestCase):
             client=mock.Mock(),
             chat_id=1,
             message_id=11,
+            reply_to_message_id=11,
             message_thread_id=None,
             output="ignored",
         )

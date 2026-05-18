@@ -44,6 +44,7 @@ import telegram_bridge.structured_logging as bridge_structured_logging
 import telegram_bridge.transport as bridge_transport
 import telegram_bridge.voice_alias_commands as bridge_voice_alias_commands
 import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
+from telegram_bridge.state_store import PendingTextBatch
 
 
 class TestMisc(unittest.TestCase):
@@ -106,6 +107,127 @@ class TestMisc(unittest.TestCase):
         config = make_config(poll_timeout_seconds=30)
         self.assertEqual(bridge.compute_poll_timeout_seconds(state, config, now=100.1), 2)
         self.assertEqual(bridge.compute_poll_timeout_seconds(state, config, now=101.2), 1)
+
+    def test_compute_poll_timeout_seconds_shortens_while_waiting_for_text_batch_tail(self):
+        state = bridge.State()
+        state.pending_text_batches["tg:1"] = PendingTextBatch(
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            actor_user_id=7,
+            updates=[
+                {
+                    "update_id": 201,
+                    "message": {
+                        "message_id": 21,
+                        "chat": {"id": 1, "type": "private"},
+                        "from": {"id": 7},
+                        "text": "part one",
+                    },
+                }
+            ],
+            started_at=100.0,
+            last_seen_at=100.0,
+        )
+
+        config = make_config(poll_timeout_seconds=30)
+        self.assertEqual(bridge.compute_poll_timeout_seconds(state, config, now=100.1), 1)
+        self.assertEqual(bridge.compute_poll_timeout_seconds(state, config, now=101.3), 1)
+
+    def test_buffer_pending_text_updates_batches_same_scope_plain_text_turns(self):
+        state = bridge.State()
+        updates = [
+            {
+                "update_id": 301,
+                "message": {
+                    "message_id": 31,
+                    "chat": {"id": 1, "type": "private"},
+                    "from": {"id": 9, "first_name": "User"},
+                    "text": "first part",
+                },
+            },
+            {
+                "update_id": 302,
+                "message": {
+                    "message_id": 32,
+                    "chat": {"id": 1, "type": "private"},
+                    "from": {"id": 9, "first_name": "User"},
+                    "text": "second part",
+                },
+            },
+        ]
+
+        immediate = bridge.buffer_pending_text_updates(state, updates, now=100.0)
+        flushed = bridge.flush_ready_text_batch_updates(state, now=100.4)
+
+        self.assertEqual(immediate, [])
+        self.assertEqual(len(flushed), 1)
+        merged_message = flushed[0]["message"]
+        self.assertEqual(merged_message["text"], "first part\n\nsecond part")
+        self.assertEqual(merged_message["message_id"], 32)
+        self.assertEqual(len(merged_message["coalesced_text_messages"]), 2)
+
+    def test_buffer_pending_text_updates_flushes_before_non_batchable_same_scope_update(self):
+        state = bridge.State()
+        first = {
+            "update_id": 401,
+            "message": {
+                "message_id": 41,
+                "chat": {"id": -100, "type": "supergroup"},
+                "message_thread_id": 88,
+                "from": {"id": 3, "first_name": "User"},
+                "text": "first part",
+            },
+        }
+        second = {
+            "update_id": 402,
+            "message": {
+                "message_id": 42,
+                "chat": {"id": -100, "type": "supergroup"},
+                "message_thread_id": 88,
+                "from": {"id": 3, "first_name": "User"},
+                "reply_to_message": {"message_id": 40},
+                "text": "reply target",
+            },
+        }
+
+        self.assertEqual(bridge.buffer_pending_text_updates(state, [first], now=200.0), [])
+        immediate = bridge.buffer_pending_text_updates(state, [second], now=200.1)
+
+        self.assertEqual(len(immediate), 2)
+        self.assertEqual(immediate[0]["message"]["text"], "first part")
+        self.assertEqual(immediate[1]["message"]["text"], "reply target")
+        self.assertEqual(state.pending_text_batches, {})
+
+    def test_buffer_pending_text_updates_splits_batches_when_sender_changes(self):
+        state = bridge.State()
+        first = {
+            "update_id": 501,
+            "message": {
+                "message_id": 51,
+                "chat": {"id": -100, "type": "supergroup"},
+                "from": {"id": 11, "first_name": "Alice"},
+                "text": "alice one",
+            },
+        }
+        second = {
+            "update_id": 502,
+            "message": {
+                "message_id": 52,
+                "chat": {"id": -100, "type": "supergroup"},
+                "from": {"id": 22, "first_name": "Bob"},
+                "text": "bob one",
+            },
+        }
+
+        self.assertEqual(bridge.buffer_pending_text_updates(state, [first], now=300.0), [])
+        immediate = bridge.buffer_pending_text_updates(state, [second], now=300.1)
+        flushed = bridge.flush_ready_text_batch_updates(state, now=300.5)
+
+        self.assertEqual(len(immediate), 1)
+        self.assertEqual(immediate[0]["message"]["text"], "alice one")
+        self.assertEqual(len(flushed), 1)
+        self.assertEqual(flushed[0]["message"]["text"], "bob one")
 
     @mock.patch.object(bridge_handlers, "transcribe_voice")
     @mock.patch.object(bridge_handlers, "download_voice_to_temp")

@@ -12,6 +12,7 @@ import telegram_bridge.bridge_runtime_setup as bridge_runtime_setup
 import telegram_bridge.main as bridge
 import telegram_bridge.update_preparation as update_preparation
 import telegram_bridge.update_flow as update_flow
+from telegram_bridge.handler_models import TelegramDeliveryMetadata
 
 
 class HandleUpdateHelperTests(unittest.TestCase):
@@ -153,6 +154,10 @@ class HandleUpdateHelperTests(unittest.TestCase):
         self.assertIsNotNone(prepared)
         self.assertIn("Current Telegram Context:", prepared.telegram_context_prompt)
         self.assertIn("use this chat/topic only", prepared.telegram_context_prompt)
+        self.assertEqual(prepared.delivery_metadata.chat_id, 1)
+        self.assertEqual(prepared.delivery_metadata.scope_key, "tg:1")
+        self.assertEqual(prepared.delivery_metadata.current_message_id, 120)
+        self.assertIsNone(prepared.delivery_metadata.reply_to_message_id)
 
     def test_prepare_update_request_skips_bootstrap_reinjection_for_continuation_codex_turn(self):
         state = bridge.State()
@@ -209,6 +214,34 @@ class HandleUpdateHelperTests(unittest.TestCase):
         self.assertIsNotNone(prepared)
         self.assertIn("Current Telegram Context:", prepared.telegram_context_prompt)
         self.assertIn("use this chat/topic only", prepared.telegram_context_prompt)
+
+    def test_prepare_update_request_captures_reply_anchor_metadata(self):
+        state = bridge.State()
+        config = make_config()
+        client = FakeTelegramClient()
+        ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={
+                "message_id": 124,
+                "chat": {"id": 1, "type": "private"},
+                "from": {"id": 1, "first_name": "User"},
+                "reply_to_message": {"message_id": 777},
+                "text": "continue there",
+            },
+            chat_id=1,
+            message_thread_id=None,
+            scope_key="tg:1",
+            message_id=124,
+            actor_user_id=1,
+            is_private_chat=True,
+            update_id=224,
+        )
+
+        prepared = bridge_handlers.prepare_update_request(state, config, client, ctx)
+
+        self.assertIsNotNone(prepared)
+        self.assertEqual(prepared.delivery_metadata.current_message_id, 124)
+        self.assertEqual(prepared.delivery_metadata.reply_to_message_id, 777)
 
     def test_prepare_update_request_reinjects_delivery_sensitive_continuation(self):
         state = bridge.State()
@@ -371,6 +404,21 @@ class HandleUpdateHelperTests(unittest.TestCase):
         self.assertIsNotNone(dispatch)
         self.assertIn("Author: Tank", dispatch.prompt)
         self.assertIn("Current User Message:\nhello", dispatch.prompt)
+
+    def test_prepare_update_dispatch_request_preserves_delivery_metadata(self):
+        delivery_metadata = TelegramDeliveryMetadata(
+            chat_id=1,
+            scope_key="tg:1",
+            message_thread_id=None,
+            current_message_id=95,
+            reply_to_message_id=90,
+        )
+        flow = self._make_flow(delivery_metadata=delivery_metadata)
+
+        dispatch = bridge_handlers.prepare_update_dispatch_request(flow, 12.5)
+
+        self.assertIsNotNone(dispatch)
+        self.assertIs(dispatch.delivery_metadata, delivery_metadata)
 
     def test_build_prompt_with_diagnostics_reports_section_lengths(self):
         details = update_preparation._build_prompt_with_diagnostics(
