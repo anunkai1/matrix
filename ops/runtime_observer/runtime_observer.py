@@ -22,6 +22,38 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
+DEFAULT_ENV_FILES = (
+    "/etc/default/server3-runtime-observer",
+    "/etc/default/telegram-architect-bridge",
+)
+
+
+def load_default_env_files() -> None:
+    """Mirror the systemd EnvironmentFile defaults for direct CLI use."""
+    for raw_path in DEFAULT_ENV_FILES:
+        path = Path(raw_path)
+        if not path.exists():
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                for raw_line in handle:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    if line.startswith("export "):
+                        line = line[len("export ") :].strip()
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    if not key:
+                        continue
+                    value = value.strip().strip("'").strip('"')
+                    os.environ.setdefault(key, value)
+        except OSError:
+            continue
+
+
+load_default_env_files()
+
 
 SYSTEMD_STARTED_MESSAGE_ID = "39f53479d3a045ac8e11786248231fbf"
 CORE_SERVICES = (

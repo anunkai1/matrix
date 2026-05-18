@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-05-18 (AEST, +10:00)
+Last updated: 2026-05-19 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
@@ -11,7 +11,7 @@ Last updated: 2026-05-18 (AEST, +10:00)
 - Priority stateless routes: `HA ...`, `Server3 TV ...`, `Nextcloud ...`, `SRO ...`, and bare YouTube links.
 
 ## Operational Memory (Pinned)
-- Runtime observer runs from `server3-runtime-observer.timer` every 5 minutes; live mode is currently `collect_only`.
+- Runtime observer runs from `server3-runtime-observer.timer` every 5 minutes; live mode is currently `telegram_alerts_daily`.
 - Govorun cross-channel routing contract guard is enforced by `ops/chat-routing/validate_chat_routing_contract.py` with canonical policy in `infra/contracts/server3-chat-routing.contract.env`; daily drift timer is `server3-chat-routing-contract-check.timer`.
 - Tank identity depends on `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot`; preserve it so the shared `src` tree does not collapse Tank back onto the shared repo root.
 - Runtime policy/doc drift should now be checked with `bash /home/architect/matrix/ops/runtime_personas/check_runtime_repo_links.sh` before assuming a live root has diverged from Git.
@@ -28,7 +28,6 @@ Last updated: 2026-05-18 (AEST, +10:00)
 - 2026-05-15: runtime observer now classifies Telegram poll incidents by outage bursts/duration instead of raw retry-attempt totals, and WhatsApp reconnect alerts now include close status-code context (for example `428`, `503`) to make transport instability easier to diagnose.
 - 2026-05-10: added English TTS voice replies via `ops/telegram-voice/tts_english.sh`; the bridge can now return Telegram voice notes through the existing `sendVoice` pipeline.
 - 2026-05-05: finished the shared-bridge packaging/refactor cleanup (`pyproject.toml`, package `__init__.py` files, reusable `env_parser.py`, split `engines/` modules) and removed the old SQLite memory-engine codepath/systemd leftovers.
-- 2026-04-30: removed `venice` from the user-facing `/engine` list while keeping it available as `PI_PROVIDER=venice`.
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
 - The monitoring stack currently binds Grafana to `192.168.0.148:3000`, but that host-specific LAN IP can change; if it does, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.
