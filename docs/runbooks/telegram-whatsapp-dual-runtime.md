@@ -59,8 +59,8 @@
 - Optional env override file:
   - `/etc/default/server3-runtime-observer` (template: `infra/env/server3-runtime-observer.env.example`)
 - Current live Server3 delivery mode:
-  - `RUNTIME_OBSERVER_MODE=telegram_alerts_daily`
-  - current Server3 timer cadence is every 5 minutes, with the daily summary gate at `08:05 AEST`
+  - `RUNTIME_OBSERVER_MODE=telegram_alerts`
+  - current Server3 timer cadence is every 5 minutes
   - current routing is explicitly pinned to chat `211761499` via the observer Telegram config
 - Supported Telegram delivery modes:
   - `telegram_daily_summary`: daily summary only

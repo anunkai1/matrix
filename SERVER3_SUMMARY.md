@@ -11,7 +11,7 @@ Last updated: 2026-05-19 (AEST, +10:00)
 - Priority stateless routes: `HA ...`, `Server3 TV ...`, `Nextcloud ...`, `SRO ...`, and bare YouTube links.
 
 ## Operational Memory (Pinned)
-- Runtime observer runs from `server3-runtime-observer.timer` every 5 minutes; live mode is currently `telegram_alerts_daily`.
+- Runtime observer runs from `server3-runtime-observer.timer` every 5 minutes; live mode is currently `telegram_alerts`.
 - Govorun cross-channel routing contract guard is enforced by `ops/chat-routing/validate_chat_routing_contract.py` with canonical policy in `infra/contracts/server3-chat-routing.contract.env`; daily drift timer is `server3-chat-routing-contract-check.timer`.
 - Tank identity depends on `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot`; preserve it so the shared `src` tree does not collapse Tank back onto the shared repo root.
 - Runtime policy/doc drift should now be checked with `bash /home/architect/matrix/ops/runtime_personas/check_runtime_repo_links.sh` before assuming a live root has diverged from Git.
@@ -20,6 +20,7 @@ Last updated: 2026-05-19 (AEST, +10:00)
 - Dream loop now runs from `server3-dream-loop.timer` around `02:15 AEST` and writes the production truth/health baseline under `/var/lib/server3-dream-loop`.
 
 ## Recent Changes (Rolling Max 8)
+- 2026-05-19: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
 - 2026-05-18: Server3 audit fixes landed: Grafana admin credentials now load from `/etc/server3-monitoring/grafana-admin.env`, the control-plane auto-refreshes stale snapshots before serving them, restore verification matches the live timer inventory again, and the Oracle transport now tolerates client disconnects with a longer daemon startup timeout.
 - 2026-05-18: Architect Telegram Codex turns now default to live `codex app-server` on Server3, and same-scope plain-text follow-up messages can steer into an active turn across direct chats, group chats, and forum topics.
 - 2026-05-17: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
@@ -27,7 +28,7 @@ Last updated: 2026-05-19 (AEST, +10:00)
 - 2026-05-15: Architect's user-facing `/engine` label for the Server4 Gemma path is now `ollama(s4)`; that engine now supports chat-scoped `/model list` and `/model <name>` selection from the live Server4 Ollama tag catalog, and Pi `ollama` model selection now also merges raw Server4 Ollama tags into `/model list` so freshly pulled tags remain selectable before Pi's own catalog refreshes.
 - 2026-05-15: runtime observer now classifies Telegram poll incidents by outage bursts/duration instead of raw retry-attempt totals, and WhatsApp reconnect alerts now include close status-code context (for example `428`, `503`) to make transport instability easier to diagnose.
 - 2026-05-10: added English TTS voice replies via `ops/telegram-voice/tts_english.sh`; the bridge can now return Telegram voice notes through the existing `sendVoice` pipeline.
-- 2026-05-05: finished the shared-bridge packaging/refactor cleanup (`pyproject.toml`, package `__init__.py` files, reusable `env_parser.py`, split `engines/` modules) and removed the old SQLite memory-engine codepath/systemd leftovers.
+
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
 - The monitoring stack currently binds Grafana to `192.168.0.148:3000`, but that host-specific LAN IP can change; if it does, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.
