@@ -776,7 +776,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            logging.debug("client disconnected during JSON response for %s", self.path)
 
     def _send_bytes(self, status: int, body: bytes, content_type: str, file_name: str) -> None:
         self.send_response(status)
@@ -784,7 +787,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Content-Disposition", f'attachment; filename="{Path(file_name).name}"')
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            logging.debug("client disconnected during byte response for %s", self.path)
 
     def do_GET(self) -> None:  # noqa: N802
         try:
@@ -824,6 +830,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         except KeyError:
             self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "description": "not_found"})
         except Exception as exc:
+            if isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+                logging.debug("client disconnected during GET %s", self.path)
+                return
             logging.exception("GET %s failed", self.path)
             self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "description": str(exc)})
 
@@ -863,6 +872,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         except ApiError as exc:
             self._send_json(exc.status, {"ok": False, "description": str(exc)})
         except Exception as exc:
+            if isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+                logging.debug("client disconnected during POST %s", self.path)
+                return
             logging.exception("POST %s failed", self.path)
             self._send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"ok": False, "description": str(exc)})
 

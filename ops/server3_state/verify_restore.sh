@@ -59,10 +59,7 @@ declare -a required_timers=(
   server3-runtime-observer.timer
   server3-chat-routing-contract-check.timer
   server3-monthly-apt-upgrade.timer
-  telegram-architect-memory-health.timer
-  telegram-architect-memory-maintenance.timer
-  telegram-architect-memory-restore-drill.timer
-  govorun-whatsapp-daily-uplift.timer
+  server3-dream-loop.timer
 )
 declare -a required_containers=(
   "${media_prefix}-q""bittorrent"

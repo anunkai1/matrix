@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import urllib.parse
+from contextlib import suppress
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,10 +27,12 @@ EXPORTER = ROOT / "ops" / "server3_control_plane" / "export_snapshot.py"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8420
 DEFAULT_SNAPSHOT_JSON = DOCS_DIR / "server3-control-plane-data.json"
+DEFAULT_SNAPSHOT_JS = DOCS_DIR / "server3-control-plane-data.js"
 DEFAULT_OPERATOR_TOKEN_FILE = Path("/home/architect/.config/server3-control-plane/operator_token")
 DEFAULT_STATE_DIR = Path("/home/architect/.local/state/server3-control-plane")
 DEFAULT_AUDIT_LOG = DEFAULT_STATE_DIR / "audit.jsonl"
 DEFAULT_BUNDLES_DIR = DEFAULT_STATE_DIR / "bundles"
+DEFAULT_SNAPSHOT_MAX_AGE_SECONDS = 900
 OPERATOR_TOKEN_HEADER = "X-Server3-Operator-Token"
 LOCAL_CLIENTS = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 DEFAULT_TZ = ZoneInfo("Australia/Brisbane")
@@ -82,6 +85,24 @@ def load_snapshot() -> Dict[str, object]:
     if not DEFAULT_SNAPSHOT_JSON.exists():
         return refresh_snapshot()
     return json.loads(DEFAULT_SNAPSHOT_JSON.read_text(encoding="utf-8"))
+
+
+def snapshot_is_stale(snapshot: Dict[str, object], *, now: Optional[datetime] = None) -> bool:
+    generated_at_raw = str(snapshot.get("generatedAt") or "").strip()
+    if not generated_at_raw:
+        return True
+    with suppress(ValueError):
+        generated_at = datetime.fromisoformat(generated_at_raw)
+        current = now or datetime.now(DEFAULT_TZ)
+        return (current - generated_at).total_seconds() > DEFAULT_SNAPSHOT_MAX_AGE_SECONDS
+    return True
+
+
+def load_snapshot_with_refresh(*, allow_refresh: bool = True) -> Dict[str, object]:
+    snapshot = load_snapshot()
+    if allow_refresh and snapshot_is_stale(snapshot):
+        return refresh_snapshot()
+    return snapshot
 
 
 def operator_token_file() -> Path:
@@ -336,7 +357,10 @@ def json_response(handler: BaseHTTPRequestHandler, payload: Dict[str, object], *
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
-    handler.wfile.write(body)
+    try:
+        handler.wfile.write(body)
+    except (BrokenPipeError, ConnectionResetError):
+        return
 
 
 def text_response(handler: BaseHTTPRequestHandler, body: bytes, *, content_type: str, status: int = 200) -> None:
@@ -344,7 +368,10 @@ def text_response(handler: BaseHTTPRequestHandler, body: bytes, *, content_type:
     handler.send_header("Content-Type", content_type)
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
-    handler.wfile.write(body)
+    try:
+        handler.wfile.write(body)
+    except (BrokenPipeError, ConnectionResetError):
+        return
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -367,7 +394,7 @@ class Handler(BaseHTTPRequestHandler):
                 if wants_refresh and not is_operator_authorized(self):
                     local_only_error(self)
                     return
-                payload = refresh_snapshot() if wants_refresh else load_snapshot()
+                payload = refresh_snapshot() if wants_refresh else load_snapshot_with_refresh()
                 if wants_refresh:
                     actor = actor_context(self)
                     append_audit_entry(
@@ -445,6 +472,8 @@ class Handler(BaseHTTPRequestHandler):
             if not str(target).startswith(str(DOCS_DIR.resolve())) or not target.is_file():
                 json_response(self, {"ok": False, "error": "not found"}, status=404)
                 return
+            if target in {DEFAULT_SNAPSHOT_JSON, DEFAULT_SNAPSHOT_JS}:
+                load_snapshot_with_refresh()
             content_type = "text/plain; charset=utf-8"
             if target.suffix == ".html":
                 content_type = "text/html; charset=utf-8"

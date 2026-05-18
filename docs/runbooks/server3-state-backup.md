@@ -36,7 +36,7 @@ plus checksums plus git bundle, then starts the services again.
 
 The live profile in `/etc/default/server3-state-backup` should cover:
 
-- host config: `/etc/default`, `/etc/systemd/system`, `/etc/fstab`, `/etc/cron.d`, `/etc/sudoers.d`, relevant apt source files
+- host config: `/etc/default`, `/etc/server3-monitoring`, `/etc/systemd/system`, `/etc/fstab`, `/etc/cron.d`, `/etc/sudoers.d`, relevant apt source files
 - runtime identity/state: `/home/*/.codex`, `/home/*/.local/state`, runtime overlay roots, transport state directories
 - media stack: `/srv/media-stack/config`, `/srv/media-stack/docker-compose.yml`
 - monitoring stack: `/srv/server3-monitoring` excluding Prometheus TSDB churn
@@ -52,10 +52,7 @@ as sockets, pid files, and shell snapshots.
 - time: `05:00` AEST on day `1`
 - retention: `3` snapshots by default
 
-`05:00` is used intentionally to avoid colliding with:
-
-- `telegram-architect-memory-restore-drill.timer`
-- `server3-monthly-apt-upgrade.timer`
+`05:00` is used intentionally to keep the backup in a quiet monthly window and away from the later monthly apt-maintenance slot.
 
 ## Backup Configuration
 
@@ -168,6 +165,12 @@ It:
 - media disk mount is present or warned about
 - key Server3 services are active
 - key timers are enabled and waiting
+- live timer expectations currently include:
+  - `server3-state-backup.timer`
+  - `server3-runtime-observer.timer`
+  - `server3-chat-routing-contract-check.timer`
+  - `server3-monthly-apt-upgrade.timer`
+  - `server3-dream-loop.timer`
 - media-stack and monitoring containers are running
 - Jellyfin, Sonarr, Radarr, qBittorrent, Jellyseerr, Prowlarr, Prometheus, and Grafana are reachable
 - `codex --version` is available on the restored host
