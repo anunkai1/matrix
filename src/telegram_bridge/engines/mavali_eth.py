@@ -105,9 +105,11 @@ class MavaliEthEngineAdapter:
         actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
+        original_prompt: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
+        del original_prompt
         codex_fallback = CodexEngineAdapter()
         self._ensure_runtime_import_path()
         try:

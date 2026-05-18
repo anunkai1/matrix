@@ -36,6 +36,7 @@ def build_prompt_worker_request(
     message_thread_id: Optional[int],
     message_id: Optional[int],
     prompt: str,
+    raw_prompt: str,
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
@@ -45,6 +46,7 @@ def build_prompt_worker_request(
     photo_file_ids: Optional[List[str]],
     actor_user_id: Optional[int],
     enforce_voice_prefix_from_transcript: bool,
+    prompt_diagnostics=None,
 ):
     return build_prompt_request(
         state=state,
@@ -56,6 +58,7 @@ def build_prompt_worker_request(
         message_thread_id=message_thread_id,
         message_id=message_id,
         prompt=prompt,
+        raw_prompt=raw_prompt,
         photo_file_id=photo_file_id,
         voice_file_id=voice_file_id,
         document=document,
@@ -65,6 +68,7 @@ def build_prompt_worker_request(
         photo_file_ids=photo_file_ids,
         actor_user_id=actor_user_id,
         enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
+        prompt_diagnostics=prompt_diagnostics,
     )
 
 

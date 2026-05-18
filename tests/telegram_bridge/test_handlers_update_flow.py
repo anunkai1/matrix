@@ -127,6 +127,146 @@ class HandleUpdateHelperTests(unittest.TestCase):
         self.assertIsNone(prepared)
         self.assertEqual(client.messages, [])
 
+    def test_prepare_update_request_bootstraps_telegram_context_for_fresh_codex_scope(self):
+        state = bridge.State()
+        config = make_config()
+        client = FakeTelegramClient()
+        ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={
+                "message_id": 120,
+                "chat": {"id": 1, "type": "private"},
+                "from": {"id": 1, "first_name": "User"},
+                "text": "hello there",
+            },
+            chat_id=1,
+            message_thread_id=None,
+            scope_key="tg:1",
+            message_id=120,
+            actor_user_id=1,
+            is_private_chat=True,
+            update_id=220,
+        )
+
+        prepared = bridge_handlers.prepare_update_request(state, config, client, ctx)
+
+        self.assertIsNotNone(prepared)
+        self.assertIn("Current Telegram Context:", prepared.telegram_context_prompt)
+        self.assertIn("use this chat/topic only", prepared.telegram_context_prompt)
+
+    def test_prepare_update_request_skips_bootstrap_reinjection_for_continuation_codex_turn(self):
+        state = bridge.State()
+        state.chat_threads["tg:1"] = "thread-1"
+        config = make_config()
+        client = FakeTelegramClient()
+        ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={
+                "message_id": 121,
+                "chat": {"id": 1, "type": "private"},
+                "from": {"id": 1, "first_name": "User"},
+                "text": "hello again",
+            },
+            chat_id=1,
+            message_thread_id=None,
+            scope_key="tg:1",
+            message_id=121,
+            actor_user_id=1,
+            is_private_chat=True,
+            update_id=221,
+        )
+
+        prepared = bridge_handlers.prepare_update_request(state, config, client, ctx)
+
+        self.assertIsNotNone(prepared)
+        self.assertEqual(prepared.telegram_context_prompt, "")
+
+    def test_prepare_update_request_reinjects_after_thread_reset(self):
+        state = bridge.State()
+        state.chat_threads["tg:1"] = "thread-1"
+        del state.chat_threads["tg:1"]
+        config = make_config()
+        client = FakeTelegramClient()
+        ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={
+                "message_id": 122,
+                "chat": {"id": 1, "type": "private"},
+                "from": {"id": 1, "first_name": "User"},
+                "text": "new thread now",
+            },
+            chat_id=1,
+            message_thread_id=None,
+            scope_key="tg:1",
+            message_id=122,
+            actor_user_id=1,
+            is_private_chat=True,
+            update_id=222,
+        )
+
+        prepared = bridge_handlers.prepare_update_request(state, config, client, ctx)
+
+        self.assertIsNotNone(prepared)
+        self.assertIn("Current Telegram Context:", prepared.telegram_context_prompt)
+        self.assertIn("use this chat/topic only", prepared.telegram_context_prompt)
+
+    def test_prepare_update_request_reinjects_delivery_sensitive_continuation(self):
+        state = bridge.State()
+        state.chat_threads["tg:1"] = "thread-1"
+        config = make_config()
+        client = FakeTelegramClient()
+        ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={
+                "message_id": 123,
+                "chat": {"id": 1, "type": "private"},
+                "from": {"id": 1, "first_name": "User"},
+                "text": "send it here",
+            },
+            chat_id=1,
+            message_thread_id=None,
+            scope_key="tg:1",
+            message_id=123,
+            actor_user_id=1,
+            is_private_chat=True,
+            update_id=223,
+        )
+
+        prepared = bridge_handlers.prepare_update_request(state, config, client, ctx)
+
+        self.assertIsNotNone(prepared)
+        self.assertIn("Current Telegram Context:", prepared.telegram_context_prompt)
+        self.assertIn("use this chat/topic only", prepared.telegram_context_prompt)
+
+    def test_prepare_update_request_keeps_always_policy_for_non_codex_scope(self):
+        state = bridge.State()
+        state.chat_threads["tg:1"] = "thread-1"
+        state.chat_engines["tg:1"] = "pi"
+        config = make_config()
+        client = FakeTelegramClient()
+        ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={
+                "message_id": 124,
+                "chat": {"id": 1, "type": "private"},
+                "from": {"id": 1, "first_name": "User"},
+                "text": "hello pi",
+            },
+            chat_id=1,
+            message_thread_id=None,
+            scope_key="tg:1",
+            message_id=124,
+            actor_user_id=1,
+            is_private_chat=True,
+            update_id=224,
+        )
+
+        prepared = bridge_handlers.prepare_update_request(state, config, client, ctx)
+
+        self.assertIsNotNone(prepared)
+        self.assertIn("Current Telegram Context:", prepared.telegram_context_prompt)
+        self.assertNotIn("use this chat/topic only", prepared.telegram_context_prompt)
+
     def test_maybe_handle_diary_update_flow_queues_capture_when_no_command_handled(self):
         flow = bridge_handlers.UpdateFlowState(
             state=bridge.State(),
@@ -634,6 +774,41 @@ class HandleUpdateHelperTests(unittest.TestCase):
             (1, update_flow.LIVE_CODEX_STEER_FAILED_MESSAGE, 95, None),
         )
         self.assertNotEqual(flow.client.messages[-1][1], flow.config.busy_message)
+
+    def test_start_standard_dispatch_steers_with_raw_follow_up_not_wrapped_prompt(self):
+        flow = self._make_flow(prompt_input="follow up")
+        flow.state.busy_chats.add(flow.ctx.scope_key)
+        dispatch = bridge_handlers.UpdateDispatchRequest(
+            state=flow.state,
+            config=flow.config,
+            client=flow.client,
+            engine=None,
+            scope_key=flow.ctx.scope_key,
+            chat_id=flow.ctx.chat_id,
+            message_thread_id=flow.ctx.message_thread_id,
+            message_id=flow.ctx.message_id,
+            prompt="Current Telegram Context:\n- Chat ID: 1\n\nCurrent User Message:\nfollow up",
+            raw_prompt="follow up",
+            photo_file_ids=[],
+            voice_file_id=None,
+            document=None,
+            actor_user_id=flow.ctx.actor_user_id,
+            sender_name=flow.sender_name,
+            stateless=False,
+            enforce_voice_prefix_from_transcript=False,
+            youtube_route_url=None,
+            handle_update_started_at=19.25,
+        )
+
+        active_engine = mock.Mock()
+        active_engine.engine_name = "codex"
+
+        with mock.patch.object(bridge_runtime_setup, "resolve_engine_for_scope", return_value=active_engine):
+            with mock.patch.object(bridge_runtime_setup, "try_steer_live_codex_turn", return_value=True) as try_steer:
+                started = bridge_handlers.start_standard_dispatch(dispatch)
+
+        self.assertTrue(started)
+        try_steer.assert_called_once_with(flow.config, flow.ctx.scope_key, "follow up")
 
     def test_start_standard_dispatch_allows_multiple_follow_ups_during_same_busy_live_turn(self):
         flow = self._make_flow(prompt_input="first follow up")

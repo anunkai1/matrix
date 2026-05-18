@@ -251,10 +251,11 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
+        original_prompt: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
-        del thread_id, channel_name, actor_chat_id, actor_user_id, progress_callback
+        del thread_id, channel_name, actor_chat_id, actor_user_id, original_prompt, progress_callback
         if not self._model_supports_images(config):
             if image_path or image_paths:
                 model = str(getattr(config, "pi_model", "") or "").strip()

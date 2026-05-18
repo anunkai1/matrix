@@ -71,6 +71,7 @@ class TestExecutor(unittest.TestCase):
 
         result = session.run_turn(
             prompt="hello",
+            original_prompt="hello",
             previous_thread_id=None,
             image_paths=[],
             progress_callback=None,

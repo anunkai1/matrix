@@ -72,12 +72,14 @@ class PromptRequest:
     photo_file_id: Optional[str]
     voice_file_id: Optional[str]
     document: Optional[DocumentPayload]
+    raw_prompt: str = ""
     cancel_event: Optional[threading.Event] = None
     stateless: bool = False
     sender_name: str = "Telegram User"
     photo_file_ids: Optional[List[str]] = None
     actor_user_id: Optional[int] = None
     enforce_voice_prefix_from_transcript: bool = False
+    prompt_diagnostics: Optional[Dict[str, object]] = None
 
 @dataclass(frozen=True)
 class YoutubeRequest:
@@ -128,6 +130,7 @@ class UpdateDispatchRequest:
     dependencies: Any = None
     youtube_route_url: Optional[str] = None
     handle_update_started_at: Optional[float] = None
+    prompt_diagnostics: Optional[Dict[str, object]] = None
 
 @dataclass(frozen=True)
 class IncomingUpdateContext:
@@ -188,12 +191,14 @@ def build_prompt_request(
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
+    raw_prompt: str = "",
     cancel_event: Optional[threading.Event] = None,
     stateless: bool = False,
     sender_name: str = "Telegram User",
     photo_file_ids: Optional[List[str]] = None,
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
+    prompt_diagnostics: Optional[Dict[str, object]] = None,
 ) -> PromptRequest:
     return PromptRequest(
         state=state,
@@ -205,6 +210,7 @@ def build_prompt_request(
         message_thread_id=message_thread_id,
         message_id=message_id,
         prompt=prompt,
+        raw_prompt=raw_prompt,
         photo_file_id=photo_file_id,
         voice_file_id=voice_file_id,
         document=document,
@@ -214,6 +220,7 @@ def build_prompt_request(
         photo_file_ids=photo_file_ids,
         actor_user_id=actor_user_id,
         enforce_voice_prefix_from_transcript=enforce_voice_prefix_from_transcript,
+        prompt_diagnostics=prompt_diagnostics,
     )
 
 def build_youtube_request(

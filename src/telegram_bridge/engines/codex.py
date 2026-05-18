@@ -31,6 +31,7 @@ class CodexEngineAdapter:
         actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
+        original_prompt: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
@@ -59,6 +60,7 @@ class CodexEngineAdapter:
                 return run_live_codex_turn(
                     config=config,
                     prompt=prompt,
+                    original_prompt=original_prompt,
                     scope_key=session_key,
                     previous_thread_id=thread_id,
                     image_paths=image_paths or ([image_path] if image_path else []),
@@ -67,9 +69,10 @@ class CodexEngineAdapter:
                 )
             except Exception:
                 logging.exception(
-                    "Codex app-server live turn failed; falling back to legacy exec path for session_key=%s",
+                    "Codex app-server live turn failed for session_key=%s",
                     session_key,
                 )
+                raise
         return run_executor(
             config=config,
             prompt=prompt,

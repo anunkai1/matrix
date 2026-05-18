@@ -322,6 +322,8 @@ class TestPrompt(unittest.TestCase):
                 "2",
                 "",
                 "telegram",
+                injection_policy="continuation_skip",
+                has_existing_thread=False,
             )
         )
         self.assertFalse(
@@ -329,6 +331,8 @@ class TestPrompt(unittest.TestCase):
                 "2",
                 "",
                 "whatsapp",
+                injection_policy="continuation_skip",
+                has_existing_thread=False,
             )
         )
 
@@ -345,6 +349,33 @@ class TestPrompt(unittest.TestCase):
                 "reply here with the file",
                 "",
                 "telegram",
+            )
+        )
+        self.assertTrue(
+            bridge_handlers.should_include_delivery_guardrails(
+                "570",
+                "",
+                "telegram",
+            )
+        )
+
+    def test_should_include_telegram_context_prompt_skips_continuations_under_continuation_skip(self):
+        self.assertFalse(
+            bridge_handlers.should_include_telegram_context_prompt(
+                "hello",
+                "",
+                "telegram",
+                injection_policy="continuation_skip",
+                has_existing_thread=True,
+            )
+        )
+        self.assertTrue(
+            bridge_handlers.should_include_telegram_context_prompt(
+                "hello",
+                "",
+                "telegram",
+                injection_policy="continuation_skip",
+                has_existing_thread=False,
             )
         )
 
@@ -685,6 +716,74 @@ class TestPrompt(unittest.TestCase):
         self.assertEqual(progress.last_failure, "Execution failed.")
         self.assertTrue(client.messages)
         self.assertEqual(client.messages[-1][1], config.generic_error_message)
+
+    def test_execute_prompt_with_retry_passes_raw_prompt_to_extended_engine_signature(self):
+        class ExtendedEngine:
+            engine_name = "codex"
+
+            def __init__(self):
+                self.original_prompts = []
+
+            def run(
+                self,
+                config,
+                prompt,
+                thread_id,
+                session_key=None,
+                channel_name=None,
+                actor_chat_id=None,
+                actor_user_id=None,
+                image_path=None,
+                image_paths=None,
+                original_prompt=None,
+                progress_callback=None,
+                cancel_event=None,
+            ):
+                del config, prompt, thread_id, session_key, channel_name, actor_chat_id
+                del actor_user_id, image_path, image_paths, progress_callback, cancel_event
+                self.original_prompts.append(original_prompt)
+                return subprocess.CompletedProcess(
+                    args=["codex", "exec"],
+                    returncode=0,
+                    stdout="OUTPUT_BEGIN\nok",
+                    stderr="",
+                )
+
+        class FakeProgress:
+            def handle_executor_event(self, _event):
+                return None
+
+            def set_phase(self, _phase):
+                return None
+
+            def mark_failure(self, _detail):
+                return None
+
+        state = bridge.State()
+        state_repo = bridge.StateRepository(state)
+        client = FakeTelegramClient()
+        config = make_config()
+        progress = FakeProgress()
+        engine = ExtendedEngine()
+
+        result = bridge_handlers.execute_prompt_with_retry(
+            state_repo=state_repo,
+            config=config,
+            client=client,
+            engine=engine,
+            chat_id=1,
+            message_id=55,
+            prompt_text="wrapped prompt",
+            raw_prompt_text="raw follow up",
+            previous_thread_id=None,
+            image_path=None,
+            progress=progress,
+            cancel_event=threading.Event(),
+            session_continuity_enabled=True,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(engine.original_prompts, ["raw follow up"])
 
     def test_execute_prompt_with_retry_does_not_rerun_resume_nonzero_exit_without_invalid_thread_marker(self):
         class NonzeroResumeEngine:

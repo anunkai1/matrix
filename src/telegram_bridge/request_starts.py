@@ -29,6 +29,7 @@ def _prompt_worker_args(
     message_thread_id: Optional[int],
     message_id: Optional[int],
     prompt: str,
+    raw_prompt: str,
     photo_file_id: Optional[str],
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
@@ -38,6 +39,7 @@ def _prompt_worker_args(
     photo_file_ids: Optional[List[str]],
     actor_user_id: Optional[int],
     enforce_voice_prefix_from_transcript: bool,
+    prompt_diagnostics,
 ):
     return (
         state,
@@ -49,6 +51,7 @@ def _prompt_worker_args(
         message_thread_id,
         message_id,
         prompt,
+        raw_prompt,
         photo_file_id,
         voice_file_id,
         document,
@@ -58,6 +61,7 @@ def _prompt_worker_args(
         photo_file_ids,
         actor_user_id,
         enforce_voice_prefix_from_transcript,
+        prompt_diagnostics,
     )
 
 
@@ -80,6 +84,8 @@ def process_prompt(
     photo_file_ids: Optional[List[str]] = None,
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
+    prompt_diagnostics=None,
+    raw_prompt: str = "",
 ) -> None:
     _build_and_dispatch(
         request_worker_requests.build_prompt_worker_request,
@@ -94,6 +100,7 @@ def process_prompt(
             message_thread_id,
             message_id,
             prompt,
+            raw_prompt,
             photo_file_id,
             voice_file_id,
             document,
@@ -103,6 +110,7 @@ def process_prompt(
             photo_file_ids,
             actor_user_id,
             enforce_voice_prefix_from_transcript,
+            prompt_diagnostics,
         ),
     )
 
@@ -126,6 +134,8 @@ def process_message_worker(
     photo_file_ids: Optional[List[str]] = None,
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
+    prompt_diagnostics=None,
+    raw_prompt: str = "",
 ) -> None:
     _build_and_dispatch(
         request_worker_requests.build_prompt_worker_request,
@@ -140,6 +150,7 @@ def process_message_worker(
             message_thread_id,
             message_id,
             prompt,
+            raw_prompt,
             photo_file_id,
             voice_file_id,
             document,
@@ -149,6 +160,7 @@ def process_message_worker(
             photo_file_ids,
             actor_user_id,
             enforce_voice_prefix_from_transcript,
+            prompt_diagnostics,
         ),
     )
 
@@ -172,6 +184,8 @@ def start_message_worker(
     photo_file_ids: Optional[List[str]] = None,
     actor_user_id: Optional[int] = None,
     enforce_voice_prefix_from_transcript: bool = False,
+    prompt_diagnostics=None,
+    raw_prompt: str = "",
 ) -> None:
     _build_and_start(
         request_worker_requests.build_prompt_worker_request,
@@ -186,6 +200,7 @@ def start_message_worker(
             message_thread_id,
             message_id,
             prompt,
+            raw_prompt,
             photo_file_id,
             voice_file_id,
             document,
@@ -195,6 +210,7 @@ def start_message_worker(
             photo_file_ids,
             actor_user_id,
             enforce_voice_prefix_from_transcript,
+            prompt_diagnostics,
         ),
     )
 

@@ -86,19 +86,42 @@ def emit_request_processing_started(
     voice_file_id: Optional[str],
     document: Optional[DocumentPayload],
     previous_thread_id: Optional[str],
+    prompt_diagnostics: Optional[Dict[str, object]] = None,
     emit_event_fn,
 ) -> None:
+    fields = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "prompt_chars": len(prompt or ""),
+        "has_photo": bool(photo_file_ids or photo_file_id),
+        "has_voice": bool(voice_file_id),
+        "has_document": document is not None,
+        "has_previous_thread": bool(previous_thread_id),
+    }
+    if isinstance(prompt_diagnostics, dict):
+        for key in (
+            "telegram_context_length",
+            "reply_context_length",
+            "sender_prompt_length",
+            "raw_prompt_length",
+            "user_message_label_length",
+            "wrapper_overhead",
+            "original_length",
+            "final_length",
+            "trimmed_user_chars",
+        ):
+            value = prompt_diagnostics.get(key)
+            if isinstance(value, int):
+                fields[key] = value
+        dropped_sections = prompt_diagnostics.get("dropped_sections")
+        if isinstance(dropped_sections, list):
+            fields["dropped_sections"] = list(dropped_sections)
+        trimmed = prompt_diagnostics.get("trimmed")
+        if isinstance(trimmed, bool):
+            fields["prompt_trimmed"] = trimmed
     emit_event_fn(
         "bridge.request_processing_started",
-        fields={
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "prompt_chars": len(prompt or ""),
-            "has_photo": bool(photo_file_ids or photo_file_id),
-            "has_voice": bool(voice_file_id),
-            "has_document": document is not None,
-            "has_previous_thread": bool(previous_thread_id),
-        },
+        fields=fields,
     )
 
 def build_progress_reporter(
@@ -266,6 +289,7 @@ def process_prompt_request(
     message_thread_id = request.message_thread_id
     message_id = request.message_id
     prompt = request.prompt
+    raw_prompt = getattr(request, "raw_prompt", "")
     photo_file_id = request.photo_file_id
     voice_file_id = request.voice_file_id
     document = request.document
@@ -382,6 +406,7 @@ def process_prompt_request(
             voice_file_id=voice_file_id,
             document=document,
             previous_thread_id=previous_thread_id,
+            prompt_diagnostics=getattr(request, "prompt_diagnostics", None),
             emit_event_fn=emit_event_fn,
         )
         progress.set_phase(f"Sending request to {assistant_name_label}.")
@@ -407,6 +432,7 @@ def process_prompt_request(
             message_thread_id=message_thread_id,
             message_id=message_id,
             prompt_text=prompt_text,
+            raw_prompt_text=raw_prompt,
             previous_thread_id=previous_thread_id,
             image_path=image_path,
             image_paths=image_paths or ([image_path] if image_path else []),

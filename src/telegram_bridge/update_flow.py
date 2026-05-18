@@ -20,6 +20,7 @@ class UpdateFlowDependencies:
     get_recent_scope_photos: Callable[[Any, str], list[str]]
     mark_busy: Callable[[Any, str], bool]
     emit_event: Callable[..., None]
+    request_chat_cancel: Callable[[Any, str], str]
     register_cancel_event: Callable[[Any, str], Any]
     try_steer_live_codex_turn: Callable[..., bool]
     live_codex_turn_is_active: Callable[..., Optional[bool]]
@@ -44,6 +45,19 @@ class StandardDispatchPlan:
     active_engine: Any
 
 
+STALE_BUSY_CANCEL_AFTER_SECONDS = 300.0
+STALE_BUSY_CLEAR_WAIT_SECONDS = 3.0
+LIVE_CODEX_STEER_FAILED_MESSAGE = (
+    "A live Codex turn is already running for this chat/topic, but this follow-up "
+    "could not be merged into it. Use /cancel or wait for the current turn to finish."
+)
+LIVE_CODEX_STEER_UNSUPPORTED_MESSAGE = (
+    "A live Codex turn is already running for this chat/topic. During an active turn, "
+    "follow-up steering only accepts plain-text messages. Use /cancel or wait for the "
+    "current turn to finish."
+)
+
+
 def _scope_is_busy(state: Any, scope_key: str) -> bool:
     try:
         parsed_scope = parse_telegram_scope_key(scope_key)
@@ -60,6 +74,28 @@ def _scope_is_busy(state: Any, scope_key: str) -> bool:
         )
 
 
+def _scope_in_flight_started_at(state: Any, scope_key: str) -> Optional[float]:
+    with state.lock:
+        session = state.chat_sessions.get(scope_key)
+        if session is not None and session.in_flight_started_at is not None:
+            return float(session.in_flight_started_at)
+        payload = state.in_flight_requests.get(scope_key)
+        if isinstance(payload, dict):
+            started_at = payload.get("started_at")
+            if isinstance(started_at, (int, float)):
+                return float(started_at)
+    return None
+
+
+def _wait_for_scope_busy_clear(state: Any, scope_key: str, *, timeout_seconds: float) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if not _scope_is_busy(state, scope_key):
+            return True
+        time.sleep(0.05)
+    return not _scope_is_busy(state, scope_key)
+
+
 def _resolve_dependencies(dependencies: Optional[UpdateFlowDependencies]) -> UpdateFlowDependencies:
     if dependencies is not None:
         return dependencies
@@ -68,32 +104,87 @@ def _resolve_dependencies(dependencies: Optional[UpdateFlowDependencies]) -> Upd
     return build_update_flow_dependencies()
 
 
-def _maybe_steer_busy_live_codex_turn(
+def _busy_live_codex_turn_follow_up_reason(
+    request: UpdateDispatchRequest,
+) -> Optional[str]:
+    if request.stateless or request.youtube_route_url:
+        return "stateless_route"
+    if request.voice_file_id is not None:
+        return "voice_message"
+    if request.document is not None:
+        return "document_message"
+    if request.photo_file_ids:
+        return "photo_message"
+    if not (request.prompt or "").strip():
+        return "empty_prompt"
+    return None
+
+
+def _maybe_handle_busy_live_codex_turn(
     request: UpdateDispatchRequest,
     plan: StandardDispatchPlan,
 ) -> bool:
     dependencies = _resolve_dependencies(request.dependencies)
     if getattr(plan.active_engine, "engine_name", "") != "codex":
         return False
-    if request.stateless or request.youtube_route_url:
-        return False
-    if request.voice_file_id is not None or request.document is not None or request.photo_file_ids:
-        return False
-    if not (request.prompt or "").strip():
-        return False
-    if not dependencies.try_steer_live_codex_turn(
+    follow_up_reason = _busy_live_codex_turn_follow_up_reason(request)
+    if follow_up_reason is None:
+        if dependencies.try_steer_live_codex_turn(
+            request.config,
+            request.scope_key,
+            request.raw_prompt,
+        ):
+            dependencies.emit_event(
+                "bridge.request_steered",
+                fields={
+                    "chat_id": request.chat_id,
+                    "message_id": request.message_id,
+                    "scope_key": request.scope_key,
+                },
+            )
+            return True
+        if dependencies.live_codex_turn_is_active(
+            request.config,
+            request.scope_key,
+        ) is not True:
+            return False
+        dependencies.emit_event(
+            "bridge.request_steer_failed",
+            level=logging.WARNING,
+            fields={
+                "chat_id": request.chat_id,
+                "message_id": request.message_id,
+                "scope_key": request.scope_key,
+                "reason": "steer_call_failed",
+            },
+        )
+        request.client.send_message(
+            request.chat_id,
+            LIVE_CODEX_STEER_FAILED_MESSAGE,
+            reply_to_message_id=request.message_id,
+            message_thread_id=request.message_thread_id,
+        )
+        return True
+    if dependencies.live_codex_turn_is_active(
         request.config,
         request.scope_key,
-        request.prompt,
-    ):
+    ) is not True:
         return False
     dependencies.emit_event(
-        "bridge.request_steered",
+        "bridge.request_steer_rejected",
+        level=logging.WARNING,
         fields={
             "chat_id": request.chat_id,
             "message_id": request.message_id,
             "scope_key": request.scope_key,
+            "reason": follow_up_reason,
         },
+    )
+    request.client.send_message(
+        request.chat_id,
+        LIVE_CODEX_STEER_UNSUPPORTED_MESSAGE,
+        reply_to_message_id=request.message_id,
+        message_thread_id=request.message_thread_id,
     )
     return True
 
@@ -115,12 +206,50 @@ def _wait_for_post_turn_busy_clear(
     )
     if live_turn_active is not False:
         return False
-    deadline = time.monotonic() + 3.0
-    while time.monotonic() < deadline:
-        if not _scope_is_busy(request.state, request.scope_key):
-            return True
-        time.sleep(0.05)
-    return not _scope_is_busy(request.state, request.scope_key)
+    return _wait_for_scope_busy_clear(
+        request.state,
+        request.scope_key,
+        timeout_seconds=STALE_BUSY_CLEAR_WAIT_SECONDS,
+    )
+
+
+def _maybe_recover_stale_busy_scope(
+    request: UpdateDispatchRequest,
+    plan: StandardDispatchPlan,
+) -> bool:
+    dependencies = _resolve_dependencies(request.dependencies)
+    in_flight_started_at = _scope_in_flight_started_at(request.state, request.scope_key)
+    if in_flight_started_at is None:
+        return False
+    request_age_seconds = max(0.0, time.time() - in_flight_started_at)
+    if request_age_seconds < STALE_BUSY_CANCEL_AFTER_SECONDS:
+        return False
+    live_turn_active = dependencies.live_codex_turn_is_active(
+        request.config,
+        request.scope_key,
+    )
+    if live_turn_active is True:
+        return False
+    cancel_status = dependencies.request_chat_cancel(request.state, request.scope_key)
+    dependencies.emit_event(
+        "bridge.stale_busy_recovery_attempted",
+        level=logging.WARNING,
+        fields={
+            "chat_id": request.chat_id,
+            "message_id": request.message_id,
+            "scope_key": request.scope_key,
+            "request_age_seconds": int(request_age_seconds),
+            "cancel_status": cancel_status,
+            "live_turn_active": live_turn_active,
+        },
+    )
+    if cancel_status not in {"requested", "already_requested", "idle"}:
+        return False
+    return _wait_for_scope_busy_clear(
+        request.state,
+        request.scope_key,
+        timeout_seconds=STALE_BUSY_CLEAR_WAIT_SECONDS,
+    )
 
 
 def _resolve_dishframed_photo_file_ids(request: UpdateDispatchRequest) -> list[str]:
@@ -138,6 +267,43 @@ def _accept_dispatch_request(
 ) -> Optional[DispatchAcceptance]:
     dependencies = _resolve_dependencies(request.dependencies)
     if not dependencies.mark_busy(request.state, request.scope_key):
+        plan = _resolve_standard_dispatch_plan(request)
+        if plan is not None and _maybe_handle_busy_live_codex_turn(request, plan):
+            return None
+        if plan is not None and _wait_for_post_turn_busy_clear(request, plan):
+            if dependencies.mark_busy(request.state, request.scope_key):
+                cancel_event = dependencies.register_cancel_event(request.state, request.scope_key)
+                mark_in_flight_request(request.state, request.scope_key, request.message_id)
+                accepted_fields = {
+                    "chat_id": request.chat_id,
+                    "message_id": request.message_id,
+                    "scope_key": request.scope_key,
+                    "has_photo": bool(request.photo_file_ids),
+                    "has_voice": bool(request.voice_file_id),
+                    "has_document": request.document is not None,
+                    "stateless": request.stateless,
+                }
+                if route is not None:
+                    accepted_fields["route"] = route
+                dependencies.emit_event("bridge.request_accepted", fields=accepted_fields)
+                return DispatchAcceptance(cancel_event=cancel_event)
+        if plan is not None and _maybe_recover_stale_busy_scope(request, plan):
+            if dependencies.mark_busy(request.state, request.scope_key):
+                cancel_event = dependencies.register_cancel_event(request.state, request.scope_key)
+                mark_in_flight_request(request.state, request.scope_key, request.message_id)
+                accepted_fields = {
+                    "chat_id": request.chat_id,
+                    "message_id": request.message_id,
+                    "scope_key": request.scope_key,
+                    "has_photo": bool(request.photo_file_ids),
+                    "has_voice": bool(request.voice_file_id),
+                    "has_document": request.document is not None,
+                    "stateless": request.stateless,
+                }
+                if route is not None:
+                    accepted_fields["route"] = route
+                dependencies.emit_event("bridge.request_accepted", fields=accepted_fields)
+                return DispatchAcceptance(cancel_event=cancel_event)
         dependencies.emit_event(
             "bridge.request_rejected",
             level=logging.WARNING,
@@ -276,6 +442,7 @@ def _run_standard_dispatch_worker(
             message_thread_id=request.message_thread_id,
             message_id=request.message_id,
             prompt=request.prompt,
+            raw_prompt=request.raw_prompt,
             photo_file_id=request.photo_file_ids[0] if request.photo_file_ids else None,
             photo_file_ids=request.photo_file_ids,
             voice_file_id=request.voice_file_id,
@@ -285,6 +452,7 @@ def _run_standard_dispatch_worker(
             sender_name=request.sender_name,
             enforce_voice_prefix_from_transcript=request.enforce_voice_prefix_from_transcript,
             actor_user_id=request.actor_user_id,
+            prompt_diagnostics=request.prompt_diagnostics,
         )
     dependencies.emit_event(
         "bridge.worker_started",
@@ -324,7 +492,7 @@ def start_standard_dispatch(request: UpdateDispatchRequest) -> bool:
     if plan is None:
         return False
 
-    if _maybe_steer_busy_live_codex_turn(request, plan):
+    if _maybe_handle_busy_live_codex_turn(request, plan):
         return True
 
     if not _ensure_standard_dispatch_capacity(request):

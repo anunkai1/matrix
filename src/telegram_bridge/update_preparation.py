@@ -16,6 +16,7 @@ from telegram_bridge.message_inputs import (
     extract_message_photo_file_ids,
     extract_prompt_and_media,
     extract_sender_name,
+    normalize_telegram_context_injection_policy,
     remember_recent_scope_photos,
     should_include_delivery_guardrails,
     should_include_telegram_context_prompt,
@@ -25,10 +26,11 @@ from telegram_bridge.response_delivery import send_input_too_long, send_prompt_t
 from telegram_bridge.runtime_profile import PREFIX_HELP_MESSAGE
 from telegram_bridge.runtime_routing import apply_priority_keyword_routing, apply_required_prefix_gate
 from telegram_bridge.session_manager import is_rate_limited
-from telegram_bridge.state_store import State
+from telegram_bridge.state_store import State, get_chat_engine, get_thread_id
 from telegram_bridge.structured_logging import emit_event
 from telegram_bridge.command_routing import handle_known_command
 from telegram_bridge.voice_alias_commands import maybe_process_voice_alias_learning_confirmation
+from telegram_bridge.engine_catalog import configured_default_engine, normalize_engine_name
 
 
 def _core_config(config):
@@ -48,6 +50,19 @@ def _build_current_sender_prompt(sender_name: str) -> str:
     if not normalized or normalized == "Telegram User":
         return ""
     return f"Author: {normalized}"
+
+
+def _context_injection_policy_for_scope(state: State, config, scope_key: str) -> str:
+    configured_policy = normalize_telegram_context_injection_policy(
+        getattr(config, "telegram_context_injection_policy", ""),
+        default="",
+    )
+    if configured_policy:
+        return configured_policy
+    selected_engine = get_chat_engine(state, scope_key) or configured_default_engine(config)
+    if normalize_engine_name(selected_engine) == "codex":
+        return "continuation_skip"
+    return "always"
 
 
 def _reject_input_too_long(flow: UpdateFlowState, actual_length: int) -> None:
@@ -277,16 +292,31 @@ def prepare_update_request(
 
     reply_context_prompt = build_reply_context_prompt(ctx.message)
     telegram_context_prompt = ""
+    context_injection_policy = _context_injection_policy_for_scope(
+        state,
+        config,
+        ctx.scope_key,
+    )
+    has_existing_thread = bool(get_thread_id(state, ctx.scope_key))
+    has_request_payload = bool(
+        (prompt_input or "").strip()
+        or photo_file_ids
+        or voice_file_id is not None
+        or document is not None
+    )
     if should_include_telegram_context_prompt(
         prompt_input,
         reply_context_prompt,
         getattr(client, "channel_name", "telegram"),
+        injection_policy=context_injection_policy,
+        has_existing_thread=has_existing_thread,
+        has_request_payload=has_request_payload,
     ):
         include_delivery_guardrails = should_include_delivery_guardrails(
             prompt_input,
             reply_context_prompt,
             getattr(client, "channel_name", "telegram"),
-        )
+        ) or not has_existing_thread
         telegram_context_prompt = build_telegram_context_prompt(
             chat_id=ctx.chat_id,
             message_thread_id=ctx.message_thread_id,

@@ -12,20 +12,30 @@ from telegram_bridge.executor import ExecutorCancelledError, ExecutorProgressEve
 
 _SESSION_REGISTRY_LOCK = threading.Lock()
 _SESSION_REGISTRY: Dict[str, "CodexAppServerSession"] = {}
+FOLLOW_UP_STEER_DEBOUNCE_SECONDS = 0.6
+FOLLOW_UP_STEER_IDLE_GRACE_SECONDS = 0.35
+FOLLOW_UP_STEER_MAX_WAIT_SECONDS = 2.0
+
+
+def _engines_config(config):
+    return getattr(config, "engines", config)
 
 
 def _reasoning_effort_value(config) -> Optional[str]:
-    raw = str(getattr(config, "codex_reasoning_effort", "") or "").strip().lower()
+    engines = _engines_config(config)
+    raw = str(getattr(engines, "codex_reasoning_effort", "") or "").strip().lower()
     return raw or None
 
 
 def _model_value(config) -> Optional[str]:
-    raw = str(getattr(config, "codex_model", "") or "").strip()
+    engines = _engines_config(config)
+    raw = str(getattr(engines, "codex_model", "") or "").strip()
     return raw or None
 
 
 def _enabled(config) -> bool:
-    return bool(getattr(config, "codex_app_server_enabled", False))
+    engines = _engines_config(config)
+    return bool(getattr(engines, "codex_app_server_enabled", False))
 
 
 def try_steer_live_codex_turn(
@@ -74,6 +84,7 @@ def run_live_codex_turn(
     config,
     prompt: str,
     *,
+    original_prompt: Optional[str],
     scope_key: Optional[str],
     previous_thread_id: Optional[str],
     image_paths: Optional[List[str]],
@@ -93,6 +104,7 @@ def run_live_codex_turn(
             _SESSION_REGISTRY[normalized_scope_key] = session
     return session.run_turn(
         prompt=(prompt or "").strip(),
+        original_prompt=(original_prompt or "").strip(),
         previous_thread_id=(previous_thread_id or "").strip() or None,
         image_paths=list(image_paths or []),
         progress_callback=progress_callback,
@@ -110,6 +122,70 @@ class _PendingTurn:
     last_agent_message: str = ""
     progress_callback: Optional[Callable[[ExecutorProgressEvent], None]] = None
     interrupt_requested: bool = False
+    original_prompt: str = ""
+    follow_up_prompts: List[str] = field(default_factory=list)
+    last_follow_up_at: float = 0.0
+    steered_follow_up_count: int = 0
+    steer_in_flight: bool = False
+
+
+def _build_follow_up_steer_prompt(follow_up_prompts: List[str]) -> str:
+    normalized_prompts = [str(prompt or "").strip() for prompt in follow_up_prompts if str(prompt or "").strip()]
+    if not normalized_prompts:
+        return ""
+    if len(normalized_prompts) == 1:
+        return normalized_prompts[0]
+    lines = [
+        "Additional follow-up messages arrived while you were already working on this request.",
+        "Keep the original request active and incorporate all follow-up messages below in chronological order.",
+        "Do not ignore earlier follow-up messages when a later one arrives.",
+        "",
+        "Follow-up messages (oldest first):",
+    ]
+    for index, prompt in enumerate(normalized_prompts, start=1):
+        lines.append(f"{index}. {prompt}")
+    return "\n".join(lines).strip()
+
+
+def _build_accumulated_steer_prompt(
+    *,
+    original_prompt: str,
+    follow_up_prompts: List[str],
+) -> str:
+    normalized_original_prompt = str(original_prompt or "").strip()
+    normalized_follow_ups = [str(prompt or "").strip() for prompt in follow_up_prompts if str(prompt or "").strip()]
+    if not normalized_follow_ups:
+        return ""
+    if len(normalized_follow_ups) == 1 and not normalized_original_prompt:
+        return normalized_follow_ups[0]
+    if len(normalized_follow_ups) == 1 and normalized_original_prompt:
+        return "\n".join(
+            [
+                "Continue the same in-progress request.",
+                "Do not drop the original request.",
+                "Answer the original request and the follow-up below in one coherent reply.",
+                "",
+                "Original request:",
+                normalized_original_prompt,
+                "",
+                "Follow-up message:",
+                normalized_follow_ups[0],
+            ]
+        ).strip()
+
+    lines = [
+        "Continue the same in-progress request.",
+        "Do not drop the original request or any earlier follow-up messages.",
+        "Answer every unresolved item below in one coherent reply.",
+        "",
+        "Original request:",
+        normalized_original_prompt or "(not available)",
+        "",
+        "Follow-up messages (oldest first):",
+    ]
+    for index, prompt in enumerate(normalized_follow_ups, start=1):
+        lines.append(f"{index}. {prompt}")
+    return "\n".join(lines).strip()
 
 
 class CodexAppServerSession:
@@ -128,11 +204,13 @@ class CodexAppServerSession:
         self._initialized = False
         self._thread_id: Optional[str] = None
         self._pending_turn: Optional[_PendingTurn] = None
+        self._last_activity_at: float = 0.0
 
     def run_turn(
         self,
         *,
         prompt: str,
+        original_prompt: str,
         previous_thread_id: Optional[str],
         image_paths: List[str],
         progress_callback: Optional[Callable[[ExecutorProgressEvent], None]],
@@ -140,7 +218,10 @@ class CodexAppServerSession:
     ) -> subprocess.CompletedProcess[str]:
         self._ensure_process()
         self._ensure_thread(previous_thread_id)
-        pending_turn = _PendingTurn(progress_callback=progress_callback)
+        pending_turn = _PendingTurn(
+            progress_callback=progress_callback,
+            original_prompt=(original_prompt or "").strip(),
+        )
         with self._state_lock:
             if self._pending_turn is not None and not self._pending_turn.done.is_set():
                 raise RuntimeError(f"Live Codex turn is already active for scope={self.scope_key}")
@@ -215,15 +296,68 @@ class CodexAppServerSession:
             time.sleep(0.05)
         if not active_turn_id:
             return False
-        self._call(
-            "turn/steer",
-            {
-                "threadId": thread_id,
-                "expectedTurnId": active_turn_id,
-                "input": self._build_user_inputs(normalized_prompt, []),
-            },
-        )
-        return True
+        with self._state_lock:
+            pending_turn = self._pending_turn
+            if pending_turn is None or pending_turn.done.is_set():
+                return False
+            pending_turn.follow_up_prompts.append(normalized_prompt)
+            pending_turn.last_follow_up_at = time.monotonic()
+            requested_follow_up_count = len(pending_turn.follow_up_prompts)
+        steer_deadline = time.monotonic() + FOLLOW_UP_STEER_MAX_WAIT_SECONDS
+        while True:
+            send_payload: Optional[dict] = None
+            with self._state_lock:
+                pending_turn = self._pending_turn
+                thread_id = self._thread_id
+                if pending_turn is None or pending_turn.done.is_set() or not thread_id:
+                    return False
+                if requested_follow_up_count <= pending_turn.steered_follow_up_count:
+                    return True
+                now = time.monotonic()
+                quiet_for = now - pending_turn.last_follow_up_at
+                idle_for = now - self._last_activity_at
+                should_flush = (
+                    quiet_for >= FOLLOW_UP_STEER_DEBOUNCE_SECONDS
+                    and idle_for >= FOLLOW_UP_STEER_IDLE_GRACE_SECONDS
+                ) or now >= steer_deadline
+                if should_flush and not pending_turn.steer_in_flight:
+                    target_count = len(pending_turn.follow_up_prompts)
+                    steer_prompt = _build_accumulated_steer_prompt(
+                        original_prompt=pending_turn.original_prompt,
+                        follow_up_prompts=pending_turn.follow_up_prompts[:target_count],
+                    )
+                    if not steer_prompt:
+                        return False
+                    pending_turn.steer_in_flight = True
+                    send_payload = {
+                        "threadId": thread_id,
+                        "expectedTurnId": pending_turn.active_turn_id,
+                        "input": self._build_user_inputs(steer_prompt, []),
+                    }
+                    send_target_count = target_count
+                else:
+                    send_target_count = 0
+            if send_payload is None:
+                time.sleep(0.05)
+                continue
+            try:
+                self._call("turn/steer", send_payload)
+            except Exception:
+                with self._state_lock:
+                    pending_turn = self._pending_turn
+                    if pending_turn is not None:
+                        pending_turn.steer_in_flight = False
+                raise
+            with self._state_lock:
+                pending_turn = self._pending_turn
+                if pending_turn is not None:
+                    pending_turn.steered_follow_up_count = max(
+                        pending_turn.steered_follow_up_count,
+                        send_target_count,
+                    )
+                    pending_turn.steer_in_flight = False
+            if requested_follow_up_count <= send_target_count:
+                return True
 
     def has_active_turn(self) -> bool:
         self._ensure_process()
@@ -394,6 +528,7 @@ class CodexAppServerSession:
             event.set()
 
     def _handle_notification(self, payload: dict) -> None:
+        self._mark_activity()
         method = payload.get("method")
         params = payload.get("params")
         if not isinstance(method, str) or not isinstance(params, dict):
@@ -513,6 +648,10 @@ class CodexAppServerSession:
         with self._state_lock:
             pending_turn = self._pending_turn
             return pending_turn.progress_callback if pending_turn is not None else None
+
+    def _mark_activity(self) -> None:
+        with self._state_lock:
+            self._last_activity_at = time.monotonic()
 
     def _call(self, method: str, params: dict) -> dict:
         process = self.process

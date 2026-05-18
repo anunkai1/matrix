@@ -625,7 +625,7 @@ class TestHandlers(unittest.TestCase):
 
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
-        self.assertEqual(kwargs["prompt"], "")
+        self.assertIn("Current Telegram Context:", kwargs["prompt"])
         self.assertEqual(kwargs["voice_file_id"], "voice-1")
         self.assertTrue(kwargs["enforce_voice_prefix_from_transcript"])
         self.assertEqual(client.messages, [])
@@ -651,7 +651,7 @@ class TestHandlers(unittest.TestCase):
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
         self.assertIn("Current Telegram Context:", kwargs["prompt"])
-        self.assertNotIn("use this chat/topic only", kwargs["prompt"])
+        self.assertIn("use this chat/topic only", kwargs["prompt"])
         self.assertIn("Current User Message:\nphoto caption", kwargs["prompt"])
         self.assertEqual(kwargs["photo_file_id"], "photo-1")
         self.assertIsNone(kwargs["voice_file_id"])
@@ -725,7 +725,7 @@ class TestHandlers(unittest.TestCase):
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
         self.assertIn("Current Telegram Context:", kwargs["prompt"])
-        self.assertNotIn("use this chat/topic only", kwargs["prompt"])
+        self.assertIn("use this chat/topic only", kwargs["prompt"])
         self.assertIn("Current User Message:\ntranscribe this", kwargs["prompt"])
         self.assertEqual(kwargs["voice_file_id"], "voice-2")
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
@@ -754,7 +754,7 @@ class TestHandlers(unittest.TestCase):
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
         self.assertIn("Current Telegram Context:", kwargs["prompt"])
-        self.assertNotIn("use this chat/topic only", kwargs["prompt"])
+        self.assertIn("use this chat/topic only", kwargs["prompt"])
         self.assertIn("Current User Message:\nhello there", kwargs["prompt"])
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
 
@@ -1147,7 +1147,8 @@ class TestHandlers(unittest.TestCase):
 
         bridge.handle_update(state, config, client, update)
         self.assertEqual(len(client.messages), 1)
-        self.assertIn("Input too long (81 chars). Max is 10.", client.messages[0][1])
+        self.assertIn("Input too long (", client.messages[0][1])
+        self.assertIn("Max is 10.", client.messages[0][1])
 
     def test_handle_update_denies_non_allowlisted_chat(self):
         state = bridge.State()

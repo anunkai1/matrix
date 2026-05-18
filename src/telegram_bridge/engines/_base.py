@@ -113,6 +113,7 @@ class EngineAdapter(Protocol):
         actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
+        original_prompt: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
         ) -> subprocess.CompletedProcess[str]:
@@ -123,4 +124,3 @@ class CompletedProcessOutputMixin:
 
     def _completed_process_with_output(self, output: str) -> subprocess.CompletedProcess[str]:
         return _completed_process_with_output(self.engine_name, output)
-

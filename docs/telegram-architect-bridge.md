@@ -9,6 +9,11 @@ This bridge lets allowlisted Telegram chats send prompts to local Architect/Code
 - Runtime: `systemd` service
 - Routing: Architect-only for all allowlisted chats
 
+Prompt-shaping note:
+- Codex now defaults to a `continuation_skip` Telegram injection policy. Fresh scopes and first turns after `/reset` get the full Telegram transport bootstrap, but normal same-thread continuation turns do not re-inject it.
+- Delivery-sensitive turns still re-inject the Telegram context and routing guardrails when needed, such as reply-targeted prompts or prompts that ask to send/reply/attach something.
+- Non-Codex engines keep the previous `always` behavior unless `TELEGRAM_CONTEXT_INJECTION_POLICY` overrides it.
+
 ## Files
 
 - Bootstrap and runtime wiring:
@@ -351,7 +356,9 @@ Message handling:
 - The source-of-truth unit (`infra/systemd/telegram-architect-bridge.service`) sets `NoNewPrivileges=false`.
 - This is required if Telegram-triggered Architect sessions must run scripts that use `sudo` (for example `ops/telegram-bridge/restart_and_verify.sh`).
 - Both new and resumed Codex sessions are launched with `--dangerously-bypass-approvals-and-sandbox`.
-- `TELEGRAM_CODEX_APP_SERVER_ENABLED` is opt-in. Leave it disabled unless you are intentionally testing the live `codex app-server` path.
+- Architect on Server3 now defaults `TELEGRAM_CODEX_APP_SERVER_ENABLED` to enabled so same-scope plain-text follow-ups can steer into an active live Codex turn across direct chats, group chats, and forum topics.
+- Active plain-text follow-ups are coalesced briefly before steering so nearby follow-up messages are folded into one chronological addendum instead of interrupting the live turn once per message.
+- Set `TELEGRAM_CODEX_APP_SERVER_ENABLED=false` only as an explicit rollback if the live app-server path itself is the incident.
 - Keep `TELEGRAM_ALLOWED_CHAT_IDS` strict. Any allowed chat can request operations with `architect` user privileges, including sudo-capable commands.
 
 ## Troubleshooting
@@ -374,7 +381,7 @@ Common checks:
 - Missing bot token or allowlist in `/etc/default/telegram-architect-bridge`
 - Missing/incorrect prefix list (`TELEGRAM_REQUIRED_PREFIXES`) when messages appear ignored
 - Invalid `TELEGRAM_EXECUTOR_CMD`
-- If you see Linux `bwrap` / sandbox-helper failures after enabling live Codex steering, disable `TELEGRAM_CODEX_APP_SERVER_ENABLED` and restart the bridge.
+- If you see Linux `bwrap` / sandbox-helper failures in the live Codex path, set `TELEGRAM_CODEX_APP_SERVER_ENABLED=false` as a rollback and restart the bridge.
 - Missing `codex login` for the service user (`architect` or `tank`)
 - Voice pipeline issues in `TELEGRAM_VOICE_TRANSCRIBE_CMD`
 - Voice transcribe service status/health: `python3 src/telegram_bridge/voice_transcribe_service.py ping`

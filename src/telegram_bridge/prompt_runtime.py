@@ -7,10 +7,17 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.conversation_scope import build_telegram_scope_key
 from telegram_bridge.engine_adapter import EngineAdapter
 from telegram_bridge.executor import cached_executor_result_output
 from telegram_bridge.executor import ExecutorCancelledError
+from telegram_bridge.executor import parse_executor_output, should_reset_thread_after_resume_failure
+from telegram_bridge.handler_common import trim_output
+from telegram_bridge import prompt_execution
+from telegram_bridge import response_delivery
+from telegram_bridge.runtime_profile import RETRY_WITH_NEW_SESSION_PHASE, resume_retry_phase
 from telegram_bridge.state_store import StateRepository
+from telegram_bridge.structured_logging import emit_event
 
 
 @dataclass(frozen=True)
@@ -30,28 +37,70 @@ class PromptRuntimeHooks:
     retry_with_new_session_phase: str
 
 
-def _handlers():
-    import telegram_bridge.handlers as handlers
+def _emit_event(*args, **kwargs) -> None:
+    emit_event(*args, **kwargs)
 
-    return handlers
+
+def emit_phase_timing(
+    *,
+    chat_id: int,
+    message_id: Optional[int],
+    phase: str,
+    started_at_monotonic: float,
+    **extra_fields,
+) -> None:
+    prompt_execution.emit_phase_timing(
+        chat_id=chat_id,
+        message_id=message_id,
+        phase=phase,
+        started_at_monotonic=started_at_monotonic,
+        emit_event_fn=_emit_event,
+        **extra_fields,
+    )
+
+
+def deliver_output_and_emit_success(
+    client: ChannelAdapter,
+    chat_id: int,
+    message_id: Optional[int],
+    output: str,
+    message_thread_id: Optional[int] = None,
+    new_thread_id: bool = False,
+) -> str:
+    delivered_output = response_delivery.send_executor_output(
+        client=client,
+        chat_id=chat_id,
+        message_id=message_id,
+        output=output,
+        message_thread_id=message_thread_id,
+    )
+    _emit_event(
+        "bridge.request_succeeded",
+        fields={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "new_thread_id": bool(new_thread_id),
+            "output_chars": len(delivered_output),
+        },
+    )
+    return delivered_output
 
 
 def build_prompt_runtime_hooks() -> PromptRuntimeHooks:
-    handlers = _handlers()
     return PromptRuntimeHooks(
-        build_scope_key_fn=handlers.build_telegram_scope_key,
-        emit_event_fn=handlers.emit_event,
-        emit_phase_timing_fn=handlers.emit_phase_timing,
-        send_canceled_response_fn=handlers.send_canceled_response,
-        send_executor_failure_message_fn=handlers.send_executor_failure_message,
-        extract_executor_failure_message_fn=handlers.extract_executor_failure_message,
-        should_reset_thread_after_resume_failure_fn=handlers.should_reset_thread_after_resume_failure,
-        resume_retry_phase_fn=handlers.resume_retry_phase,
-        parse_executor_output_fn=handlers.parse_executor_output,
-        output_contains_control_directive_fn=handlers.output_contains_control_directive,
-        trim_output_fn=handlers.trim_output,
-        deliver_output_and_emit_success_fn=handlers.deliver_output_and_emit_success,
-        retry_with_new_session_phase=handlers.RETRY_WITH_NEW_SESSION_PHASE,
+        build_scope_key_fn=build_telegram_scope_key,
+        emit_event_fn=_emit_event,
+        emit_phase_timing_fn=emit_phase_timing,
+        send_canceled_response_fn=response_delivery.send_canceled_response,
+        send_executor_failure_message_fn=response_delivery.send_executor_failure_message,
+        extract_executor_failure_message_fn=response_delivery.extract_executor_failure_message,
+        should_reset_thread_after_resume_failure_fn=should_reset_thread_after_resume_failure,
+        resume_retry_phase_fn=resume_retry_phase,
+        parse_executor_output_fn=parse_executor_output,
+        output_contains_control_directive_fn=response_delivery.output_contains_control_directive,
+        trim_output_fn=trim_output,
+        deliver_output_and_emit_success_fn=deliver_output_and_emit_success,
+        retry_with_new_session_phase=RETRY_WITH_NEW_SESSION_PHASE,
     )
 
 
@@ -61,6 +110,7 @@ _EXTENDED_ENGINE_RUN_KWARGS = (
     "actor_chat_id",
     "actor_user_id",
     "image_paths",
+    "original_prompt",
 )
 _ENGINE_RUN_EXTENDED_KWARGS_SUPPORT_CACHE: dict[object, bool] = {}
 
@@ -116,6 +166,7 @@ def execute_prompt_with_retry(
     actor_user_id: Optional[int] = None,
     cancel_event: Optional[threading.Event] = None,
     session_continuity_enabled: bool = True,
+    raw_prompt_text: str = "",
     runtime_hooks: Optional[PromptRuntimeHooks] = None,
 ) -> Optional[subprocess.CompletedProcess[str]]:
     runtime_hooks = runtime_hooks or build_prompt_runtime_hooks()
@@ -168,6 +219,7 @@ def execute_prompt_with_retry(
                     actor_chat_id=chat_id,
                     actor_user_id=actor_user_id,
                     image_paths=normalized_image_paths,
+                    original_prompt=raw_prompt_text,
                     progress_callback=progress.handle_executor_event,
                     cancel_event=cancel_event,
                 )

@@ -168,10 +168,11 @@ class VeniceEngineAdapter(CompletedProcessOutputMixin):
         actor_user_id: Optional[int] = None,
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
+        original_prompt: Optional[str] = None,
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
-        del thread_id, session_key, channel_name, actor_chat_id, actor_user_id, progress_callback
+        del thread_id, session_key, channel_name, actor_chat_id, actor_user_id, original_prompt, progress_callback
         try:
             if cancel_event is not None and cancel_event.is_set():
                 raise ExecutorCancelledError("Venice request canceled by user.")

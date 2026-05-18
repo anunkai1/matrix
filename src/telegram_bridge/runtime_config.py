@@ -118,6 +118,7 @@ class EngineConfig:
     pi_ollama_tunnel_remote_port: int
     pi_request_timeout_seconds: int
     codex_app_server_enabled: bool = False
+    telegram_context_injection_policy: str = ""
 
 
 @dataclass
@@ -552,15 +553,20 @@ def load_identity_config_values(
     }
 
 def load_engine_config_values(*, assistant_name: str) -> Dict[str, object]:
-    # Keep the app-server path opt-in. The legacy codex exec/resume flow is the
-    # stable default for Telegram runtimes and avoids Linux sandbox-helper
-    # regressions seen in some interactive app-server launches.
-    default_codex_app_server_enabled = False
+    normalized_assistant_name = assistant_name.strip().lower()
+    # Architect on Server3 and Govorun's WhatsApp runtime now rely on live
+    # app-server turns so same-scope plain-text follow-ups can be folded into
+    # the active Codex turn. Other runtimes remain opt-in until explicitly
+    # enabled.
+    default_codex_app_server_enabled = normalized_assistant_name in {"architect", "govorun"}
     return {
         "engine_plugin": parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
         "selectable_engine_plugins": parse_plugin_list_env(
             "TELEGRAM_SELECTABLE_ENGINE_PLUGINS",
             ["codex", "gemma", "pi"],
+        ),
+        "telegram_context_injection_policy": (
+            os.getenv("TELEGRAM_CONTEXT_INJECTION_POLICY", "").strip().lower()
         ),
         "codex_app_server_enabled": parse_bool_env(
             "TELEGRAM_CODEX_APP_SERVER_ENABLED",

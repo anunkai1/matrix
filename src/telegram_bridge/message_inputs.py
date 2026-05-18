@@ -165,19 +165,50 @@ TELEGRAM_DELIVERY_GUARDRAIL_HINT_RE = re.compile(
     r")\b"
 )
 
+TELEGRAM_CONTEXT_INJECTION_POLICIES = {
+    "always",
+    "continuation_skip",
+    "never",
+}
+TELEGRAM_MESSAGE_ID_ONLY_RE = re.compile(r"^\d{1,16}$")
+
+
+def normalize_telegram_context_injection_policy(
+    policy: Optional[str],
+    *,
+    default: str = "always",
+) -> str:
+    normalized = str(policy or "").strip().lower()
+    if normalized in TELEGRAM_CONTEXT_INJECTION_POLICIES:
+        return normalized
+    return default
+
 def should_include_telegram_context_prompt(
     prompt_input: Optional[str],
     reply_context_prompt: str,
     channel_name: str = "telegram",
+    *,
+    injection_policy: str = "always",
+    has_existing_thread: bool = False,
+    has_request_payload: bool = True,
 ) -> bool:
+    normalized_policy = normalize_telegram_context_injection_policy(injection_policy)
+    if normalized_policy == "never":
+        return False
     if reply_context_prompt.strip():
         return True
     prompt_text = (prompt_input or "").strip()
-    if not prompt_text:
-        return False
-    if (channel_name or "telegram").strip().lower() == "telegram":
+    normalized_channel = (channel_name or "telegram").strip().lower()
+    if normalized_channel != "telegram":
+        return bool(prompt_text) and TELEGRAM_CONTEXT_TARGET_HINT_RE.search(prompt_text) is not None
+
+    if should_include_delivery_guardrails(prompt_input, reply_context_prompt, channel_name):
         return True
-    return TELEGRAM_CONTEXT_TARGET_HINT_RE.search(prompt_text) is not None
+    if normalized_policy == "always":
+        return has_request_payload
+    if normalized_policy == "continuation_skip":
+        return has_request_payload and not has_existing_thread
+    return False
 
 
 def should_include_delivery_guardrails(
@@ -190,6 +221,8 @@ def should_include_delivery_guardrails(
     prompt_text = (prompt_input or "").strip()
     if not prompt_text:
         return False
+    if TELEGRAM_MESSAGE_ID_ONLY_RE.fullmatch(prompt_text):
+        return True
     if (channel_name or "telegram").strip().lower() != "telegram":
         return TELEGRAM_DELIVERY_GUARDRAIL_HINT_RE.search(prompt_text) is not None
     return TELEGRAM_DELIVERY_GUARDRAIL_HINT_RE.search(prompt_text) is not None
