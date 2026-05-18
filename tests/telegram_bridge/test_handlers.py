@@ -214,7 +214,7 @@ class TestHandlers(unittest.TestCase):
         self.assertIn("Original Telegram Message ID: 91", prompt)
         self.assertIn("В исходном сообщении было изображение.", prompt)
 
-    @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="turn on the light")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "transcribe_voice_for_chat", return_value="turn on the light")
     def test_prepare_prompt_input_rejects_voice_transcript_without_required_prefix(
         self, transcribe_voice_for_chat
     ):
@@ -241,7 +241,7 @@ class TestHandlers(unittest.TestCase):
         self.assertIn("Helper mode needs a prefixed prompt.", client.messages[0][1])
         transcribe_voice_for_chat.assert_called_once()
 
-    @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="turn on the light")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "transcribe_voice_for_chat", return_value="turn on the light")
     def test_prepare_prompt_input_ignores_whatsapp_voice_transcript_without_prefix(
         self, transcribe_voice_for_chat
     ):
@@ -267,7 +267,7 @@ class TestHandlers(unittest.TestCase):
         self.assertEqual(client.messages, [])
         transcribe_voice_for_chat.assert_called_once()
 
-    @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="@helper")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "transcribe_voice_for_chat", return_value="@helper")
     def test_prepare_prompt_input_ignores_whatsapp_voice_prefix_without_action(
         self, transcribe_voice_for_chat
     ):
@@ -293,7 +293,7 @@ class TestHandlers(unittest.TestCase):
         self.assertEqual(client.messages, [])
         transcribe_voice_for_chat.assert_called_once()
 
-    @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="govoron you ok")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "transcribe_voice_for_chat", return_value="govoron you ok")
     def test_prepare_prompt_input_whatsapp_voice_prefix_miss_creates_alias_suggestion(
         self, transcribe_voice_for_chat
     ):
@@ -336,7 +336,7 @@ class TestHandlers(unittest.TestCase):
         self.assertIn("Approve with: `/voice-alias approve <id>`", client.messages[0][1])
         transcribe_voice_for_chat.assert_called_once()
 
-    @mock.patch.object(bridge_handlers, "transcribe_voice_for_chat", return_value="@helper turn on the light")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "transcribe_voice_for_chat", return_value="@helper turn on the light")
     def test_prepare_prompt_input_accepts_voice_transcript_with_required_prefix(
         self, transcribe_voice_for_chat
     ):
@@ -573,8 +573,8 @@ class TestHandlers(unittest.TestCase):
         self.assertEqual(client.messages, [])
 
     @mock.patch.object(bridge_handlers, "start_message_worker")
-    @mock.patch.object(bridge_handlers, "archive_media_path", return_value="/tmp/archive.jpg")
-    @mock.patch.object(bridge_handlers, "download_photo_to_temp", return_value="/tmp/incoming.jpg")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "archive_media_path", return_value="/tmp/archive.jpg")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "download_photo_to_temp", return_value="/tmp/incoming.jpg")
     @mock.patch("telegram_bridge.handlers.os.remove")
     def test_handle_update_prewarms_attachment_archive_for_unprefixed_photo(
         self,
@@ -651,6 +651,7 @@ class TestHandlers(unittest.TestCase):
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
         self.assertIn("Current Telegram Context:", kwargs["prompt"])
+        self.assertNotIn("use this chat/topic only", kwargs["prompt"])
         self.assertIn("Current User Message:\nphoto caption", kwargs["prompt"])
         self.assertEqual(kwargs["photo_file_id"], "photo-1")
         self.assertIsNone(kwargs["voice_file_id"])
@@ -678,7 +679,7 @@ class TestHandlers(unittest.TestCase):
 
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
-        self.assertEqual(kwargs["prompt"], "Please analyze these images.")
+        self.assertEqual(kwargs["prompt"], "Current User Message:\nPlease analyze these images.")
         self.assertEqual(kwargs["photo_file_id"], "wa-photo-1")
         self.assertEqual(kwargs["photo_file_ids"], ["wa-photo-1", "wa-photo-2", "wa-photo-3"])
         self.assertIsNone(kwargs["voice_file_id"])
@@ -724,6 +725,7 @@ class TestHandlers(unittest.TestCase):
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
         self.assertIn("Current Telegram Context:", kwargs["prompt"])
+        self.assertNotIn("use this chat/topic only", kwargs["prompt"])
         self.assertIn("Current User Message:\ntranscribe this", kwargs["prompt"])
         self.assertEqual(kwargs["voice_file_id"], "voice-2")
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
@@ -752,6 +754,7 @@ class TestHandlers(unittest.TestCase):
         self.assertTrue(start_message_worker.called)
         kwargs = start_message_worker.call_args.kwargs
         self.assertIn("Current Telegram Context:", kwargs["prompt"])
+        self.assertNotIn("use this chat/topic only", kwargs["prompt"])
         self.assertIn("Current User Message:\nhello there", kwargs["prompt"])
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
 
@@ -783,6 +786,7 @@ class TestHandlers(unittest.TestCase):
         self.assertIn("Reply Context:", kwargs["prompt"])
         self.assertIn("Original Telegram Message ID: 99", kwargs["prompt"])
         self.assertIn("Original Message Author: Govorun TPG 2026", kwargs["prompt"])
+        self.assertIn("use this chat/topic only", kwargs["prompt"])
         self.assertIn("Current User Message:\nЭто про что", kwargs["prompt"])
         self.assertFalse(kwargs["enforce_voice_prefix_from_transcript"])
 
@@ -813,7 +817,7 @@ class TestHandlers(unittest.TestCase):
         self.assertIn("- Topic ID: 498", kwargs["prompt"])
         self.assertIn("- Chat ID: 1", kwargs["prompt"])
         self.assertIn(
-            'default to Current Message ID unless they specify another numeric target.',
+            'use Current Message ID unless they give another numeric ID.',
             kwargs["prompt"],
         )
         self.assertIn(
@@ -1143,7 +1147,7 @@ class TestHandlers(unittest.TestCase):
 
         bridge.handle_update(state, config, client, update)
         self.assertEqual(len(client.messages), 1)
-        self.assertIn("Input too long (11 chars). Max is 10.", client.messages[0][1])
+        self.assertIn("Input too long (81 chars). Max is 10.", client.messages[0][1])
 
     def test_handle_update_denies_non_allowlisted_chat(self):
         state = bridge.State()
@@ -1201,4 +1205,3 @@ class TestHandlers(unittest.TestCase):
         bridge.handle_update(state, config, client, update)
         self.assertEqual(len(client.messages), 1)
         self.assertEqual(client.messages[0][1], config.busy_message)
-

@@ -155,6 +155,16 @@ TELEGRAM_CONTEXT_TARGET_HINT_RE = re.compile(
     r")\b"
 )
 
+TELEGRAM_DELIVERY_GUARDRAIL_HINT_RE = re.compile(
+    r"(?i)\b("
+    r"message[_ ]id|reply[_ ]to[_ ]message[_ ]id|"
+    r"use this message id|this message|reply here|reply to this|"
+    r"to this chat message|reply to this chat|"
+    r"send (?:it|this|that|file|photo|image|document|attachment)|"
+    r"attach|upload|post here|send here|deliver here"
+    r")\b"
+)
+
 def should_include_telegram_context_prompt(
     prompt_input: Optional[str],
     reply_context_prompt: str,
@@ -169,12 +179,29 @@ def should_include_telegram_context_prompt(
         return True
     return TELEGRAM_CONTEXT_TARGET_HINT_RE.search(prompt_text) is not None
 
+
+def should_include_delivery_guardrails(
+    prompt_input: Optional[str],
+    reply_context_prompt: str,
+    channel_name: str = "telegram",
+) -> bool:
+    if reply_context_prompt.strip():
+        return True
+    prompt_text = (prompt_input or "").strip()
+    if not prompt_text:
+        return False
+    if (channel_name or "telegram").strip().lower() != "telegram":
+        return TELEGRAM_DELIVERY_GUARDRAIL_HINT_RE.search(prompt_text) is not None
+    return TELEGRAM_DELIVERY_GUARDRAIL_HINT_RE.search(prompt_text) is not None
+
 def build_telegram_context_prompt(
     chat_id: int,
     message_thread_id: Optional[int],
     scope_key: str,
     message_id: Optional[int],
     message: Dict[str, object],
+    *,
+    include_delivery_guardrails: bool = True,
 ) -> str:
     lines = ["Current Telegram Context:"]
     lines.append(f"- Chat ID: {chat_id}")
@@ -190,19 +217,17 @@ def build_telegram_context_prompt(
         if isinstance(reply_message_id, int):
             lines.append(f"- Replied-To Message ID: {reply_message_id}")
 
-    lines.append(
-        '- If the user asks to reply "here" or "to this message", '
-        "default to Current Message ID unless they specify another numeric target."
-    )
-    lines.append(
-        "- For Telegram replies, files, photos, documents, or attachments, treat this "
-        "current chat/topic as authoritative. Do not infer a different chat from logs, "
-        "session databases, allowlists, or recent activity."
-    )
-    lines.append(
-        "- If the current Telegram target is missing or ambiguous, ask the user for the "
-        "destination before sending. Never fall back to a different chat ID."
-    )
+    if include_delivery_guardrails:
+        lines.append(
+            '- If the user says "here" or "this message", use Current Message ID unless they give another numeric ID.'
+        )
+        lines.append(
+            "- For Telegram sends/replies/attachments, use this chat/topic only. "
+            "Do not infer another target from history or logs."
+        )
+        lines.append(
+            "- If the target is missing or unclear, ask the user. Never guess another chat ID."
+        )
     return "\n".join(lines)
 
 def select_media_prompt(text: Optional[str], caption: Optional[str], default_prompt: str) -> str:

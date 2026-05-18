@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -38,6 +39,7 @@ import telegram_bridge.plugin_registry as bridge_plugin_registry
 import telegram_bridge.codex_app_server as bridge_codex_app_server
 import telegram_bridge.prompt_execution as bridge_prompt_execution
 import telegram_bridge.prompt_runtime as bridge_prompt_runtime
+import telegram_bridge.request_processing as bridge_request_processing
 import telegram_bridge.session_manager as bridge_session_manager
 import telegram_bridge.signal_channel as bridge_signal_channel
 import telegram_bridge.special_request_processing as bridge_special_request_processing
@@ -48,12 +50,61 @@ import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
 
 
 class TestPrompt(unittest.TestCase):
+    def test_emit_request_processing_started_includes_prompt_diagnostics(self):
+        emit_event = mock.Mock()
+
+        bridge_prompt_execution.emit_request_processing_started(
+            chat_id=1,
+            message_id=99,
+            prompt="hello",
+            photo_file_ids=[],
+            photo_file_id=None,
+            voice_file_id=None,
+            document=None,
+            previous_thread_id=None,
+            prompt_diagnostics={
+                "telegram_context_length": 648,
+                "reply_context_length": 0,
+                "sender_prompt_length": 32,
+                "raw_prompt_length": 5,
+                "user_message_label_length": 22,
+                "wrapper_overhead": 28,
+                "original_length": 711,
+                "final_length": 711,
+                "trimmed_user_chars": 0,
+                "dropped_sections": [],
+                "trimmed": False,
+            },
+            emit_event_fn=emit_event,
+        )
+
+        fields = emit_event.call_args.kwargs["fields"]
+        self.assertEqual(fields["prompt_chars"], 5)
+        self.assertEqual(fields["telegram_context_length"], 648)
+        self.assertEqual(fields["wrapper_overhead"], 28)
+        self.assertEqual(fields["final_length"], 711)
+        self.assertEqual(fields["dropped_sections"], [])
+        self.assertFalse(fields["prompt_trimmed"])
+
+    def test_codex_app_server_enabled_accepts_grouped_engine_config(self):
+        config = SimpleNamespace(
+            engines=SimpleNamespace(
+                codex_app_server_enabled=True,
+                codex_model="gpt-5.5",
+                codex_reasoning_effort="high",
+            )
+        )
+
+        self.assertTrue(bridge_codex_app_server._enabled(config))
+        self.assertEqual(bridge_codex_app_server._model_value(config), "gpt-5.5")
+        self.assertEqual(bridge_codex_app_server._reasoning_effort_value(config), "high")
+
     def test_codex_app_server_try_steer_waits_briefly_for_active_turn_id(self):
         session = bridge_codex_app_server.CodexAppServerSession(
             scope_key="tg:1",
             config=make_config(),
         )
-        pending_turn = bridge_codex_app_server._PendingTurn()
+        pending_turn = bridge_codex_app_server._PendingTurn(original_prompt="original request")
         session._pending_turn = pending_turn
         session._thread_id = "thread-1"
 
@@ -61,6 +112,9 @@ class TestPrompt(unittest.TestCase):
             pending_turn.active_turn_id = "turn-1"
 
         with (
+            mock.patch.object(bridge_codex_app_server, "FOLLOW_UP_STEER_DEBOUNCE_SECONDS", 0.0),
+            mock.patch.object(bridge_codex_app_server, "FOLLOW_UP_STEER_IDLE_GRACE_SECONDS", 0.0),
+            mock.patch.object(bridge_codex_app_server, "FOLLOW_UP_STEER_MAX_WAIT_SECONDS", 0.0),
             mock.patch.object(session, "_ensure_process"),
             mock.patch.object(session, "_call", return_value={}) as call_mock,
             mock.patch("telegram_bridge.codex_app_server.time.sleep", side_effect=populate_turn_id),
@@ -73,9 +127,125 @@ class TestPrompt(unittest.TestCase):
             {
                 "threadId": "thread-1",
                 "expectedTurnId": "turn-1",
-                "input": [{"type": "text", "text": "follow up"}],
+                "input": [
+                    {
+                        "type": "text",
+                        "text": "\n".join(
+                            [
+                                "Continue the same in-progress request.",
+                                "Do not drop the original request.",
+                                "Answer the original request and the follow-up below in one coherent reply.",
+                                "",
+                                "Original request:",
+                                "original request",
+                                "",
+                                "Follow-up message:",
+                                "follow up",
+                            ]
+                        ),
+                    }
+                ],
             },
         )
+
+    def test_codex_app_server_try_steer_accumulates_follow_ups_in_order(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(),
+        )
+        pending_turn = bridge_codex_app_server._PendingTurn(
+            active_turn_id="turn-1",
+            original_prompt="first question",
+        )
+        session._pending_turn = pending_turn
+        session._thread_id = "thread-1"
+
+        with (
+            mock.patch.object(bridge_codex_app_server, "FOLLOW_UP_STEER_DEBOUNCE_SECONDS", 0.0),
+            mock.patch.object(bridge_codex_app_server, "FOLLOW_UP_STEER_IDLE_GRACE_SECONDS", 0.0),
+            mock.patch.object(bridge_codex_app_server, "FOLLOW_UP_STEER_MAX_WAIT_SECONDS", 0.0),
+            mock.patch.object(session, "_ensure_process"),
+            mock.patch.object(session, "_call", return_value={}) as call_mock,
+        ):
+            first_steer = session.try_steer("or not?")
+            second_steer = session.try_steer("say cow")
+
+        self.assertTrue(first_steer)
+        self.assertTrue(second_steer)
+        self.assertEqual(call_mock.call_count, 2)
+        first_prompt = call_mock.call_args_list[0].args[1]["input"][0]["text"]
+        self.assertIn("Original request:", first_prompt)
+        self.assertIn("first question", first_prompt)
+        self.assertIn("Follow-up message:", first_prompt)
+        self.assertIn("or not?", first_prompt)
+        second_prompt = call_mock.call_args_list[1].args[1]["input"][0]["text"]
+        self.assertIn("Continue the same in-progress request.", second_prompt)
+        self.assertIn("Do not drop the original request or any earlier follow-up messages.", second_prompt)
+        self.assertIn("Answer every unresolved item below in one coherent reply.", second_prompt)
+        self.assertIn("Original request:", second_prompt)
+        self.assertIn("first question", second_prompt)
+        self.assertIn("1. or not?", second_prompt)
+        self.assertIn("2. say cow", second_prompt)
+
+    def test_codex_app_server_try_steer_coalesces_nearby_follow_ups_into_one_send(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(),
+        )
+        session._pending_turn = bridge_codex_app_server._PendingTurn(
+            active_turn_id="turn-1",
+            original_prompt="first question",
+        )
+        session._thread_id = "thread-1"
+        recorded_calls = []
+
+        def run_first_follow_up():
+            self.assertTrue(session.try_steer("or not?"))
+
+        with (
+            mock.patch.object(bridge_codex_app_server, "FOLLOW_UP_STEER_DEBOUNCE_SECONDS", 0.05),
+            mock.patch.object(bridge_codex_app_server, "FOLLOW_UP_STEER_IDLE_GRACE_SECONDS", 0.0),
+            mock.patch.object(bridge_codex_app_server, "FOLLOW_UP_STEER_MAX_WAIT_SECONDS", 0.2),
+            mock.patch.object(session, "_ensure_process"),
+            mock.patch.object(
+                session,
+                "_call",
+                side_effect=lambda method, params: recorded_calls.append((method, params)) or {},
+            ),
+        ):
+            worker = threading.Thread(target=run_first_follow_up)
+            worker.start()
+            time.sleep(0.01)
+            self.assertTrue(session.try_steer("say cow"))
+            worker.join(timeout=1.0)
+
+        self.assertEqual(len(recorded_calls), 1)
+        only_prompt = recorded_calls[0][1]["input"][0]["text"]
+        self.assertIn("Original request:", only_prompt)
+        self.assertIn("first question", only_prompt)
+        self.assertIn("1. or not?", only_prompt)
+        self.assertIn("2. say cow", only_prompt)
+
+    def test_codex_engine_adapter_does_not_fall_back_to_legacy_executor_when_live_path_fails(self):
+        engine = bridge_engine_adapter.CodexEngineAdapter()
+        config = make_config(codex_app_server_enabled=True)
+
+        with (
+            mock.patch(
+                "telegram_bridge.engines.codex.run_live_codex_turn",
+                side_effect=RuntimeError("app-server down"),
+            ),
+            mock.patch("telegram_bridge.engines.codex.run_executor") as run_executor,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "app-server down"):
+                engine.run(
+                    config=config,
+                    prompt="hello",
+                    thread_id=None,
+                    session_key="tg:1",
+                )
+
+        run_executor.assert_not_called()
 
     def test_finalize_prompt_success_trims_plain_output(self):
         config = make_config(max_output_chars=20)
@@ -93,7 +263,11 @@ class TestPrompt(unittest.TestCase):
 
         with (
             mock.patch.object(bridge_handlers, "parse_executor_output", return_value=(None, raw_output)),
-            mock.patch.object(bridge_handlers, "send_executor_output", return_value="ok") as send_mock,
+            mock.patch.object(
+                bridge_request_processing.request_prompt_processing.response_delivery,
+                "send_executor_output",
+                return_value="ok",
+            ) as send_mock,
         ):
             bridge_handlers.finalize_prompt_success(
                 state_repo=state_repo,
@@ -123,8 +297,24 @@ class TestPrompt(unittest.TestCase):
         self.assertIn("- Topic ID: 498", prompt)
         self.assertIn("- Current Message ID: 570", prompt)
         self.assertIn("- Scope Key: tg:-1003706836145:topic:498", prompt)
-        self.assertIn("treat this current chat/topic as authoritative", prompt)
-        self.assertIn("Never fall back to a different chat ID", prompt)
+        self.assertIn("use this chat/topic only", prompt)
+        self.assertIn("Never guess another chat ID", prompt)
+
+    def test_build_telegram_context_prompt_can_omit_delivery_guardrails(self):
+        prompt = bridge_handlers.build_telegram_context_prompt(
+            chat_id=1,
+            message_thread_id=None,
+            scope_key="tg:1",
+            message_id=570,
+            message={},
+            include_delivery_guardrails=False,
+        )
+
+        self.assertIn("Current Telegram Context:", prompt)
+        self.assertIn("- Chat ID: 1", prompt)
+        self.assertIn("- Current Message ID: 570", prompt)
+        self.assertNotIn("use this chat/topic only", prompt)
+        self.assertNotIn("Never guess another chat ID", prompt)
 
     def test_telegram_text_prompt_includes_delivery_target_guardrail(self):
         self.assertTrue(
@@ -139,6 +329,22 @@ class TestPrompt(unittest.TestCase):
                 "2",
                 "",
                 "whatsapp",
+            )
+        )
+
+    def test_delivery_guardrails_only_apply_to_delivery_sensitive_prompts(self):
+        self.assertFalse(
+            bridge_handlers.should_include_delivery_guardrails(
+                "hello",
+                "",
+                "telegram",
+            )
+        )
+        self.assertTrue(
+            bridge_handlers.should_include_delivery_guardrails(
+                "reply here with the file",
+                "",
+                "telegram",
             )
         )
 
@@ -179,8 +385,8 @@ class TestPrompt(unittest.TestCase):
         self.assertIs(runtime.finalize_request_progress_fn, bridge_handlers.finalize_request_progress)
 
     @mock.patch.object(bridge_handlers, "finalize_chat_work")
-    @mock.patch.object(bridge_handlers, "run_dishframed_cli", return_value=("/tmp/menu_preview.png", "Rendered PNG preview"))
-    @mock.patch.object(bridge_handlers, "prepare_prompt_input")
+    @mock.patch.object(bridge_request_processing, "run_dishframed_cli", return_value=("/tmp/menu_preview.png", "Rendered PNG preview"))
+    @mock.patch.object(bridge_request_processing, "prepare_prompt_input")
     def test_process_dishframed_request_sends_photo_when_png_output(
         self,
         prepare_prompt_input,
@@ -212,8 +418,8 @@ class TestPrompt(unittest.TestCase):
         self.assertEqual(client.documents, [])
         run_dishframed_cli.assert_called_once()
 
-    @mock.patch.object(bridge_handlers, "send_executor_output", return_value="unavailable")
-    @mock.patch.object(bridge_handlers, "run_youtube_analyzer")
+    @mock.patch.object(bridge_request_processing.request_prompt_processing.response_delivery, "send_executor_output", return_value="unavailable")
+    @mock.patch.object(bridge_request_processing, "run_youtube_analyzer")
     def test_process_youtube_request_returns_unavailable_when_transcript_request_has_no_transcript(
         self,
         run_youtube_analyzer,
@@ -281,8 +487,8 @@ class TestPrompt(unittest.TestCase):
             bridge_special_request_processing.YoutubeProcessingRuntime,
         )
         self.assertIs(runtime.build_progress_reporter_fn, bridge_handlers.build_progress_reporter)
-        self.assertIs(runtime.execute_prompt_with_retry_fn, bridge_handlers.execute_prompt_with_retry)
-        self.assertIs(runtime.finalize_prompt_success_fn, bridge_handlers.finalize_prompt_success)
+        self.assertIs(runtime.execute_prompt_with_retry_fn, bridge_prompt_runtime.execute_prompt_with_retry)
+        self.assertIs(runtime.finalize_prompt_success_fn, bridge_prompt_runtime.finalize_prompt_success)
         self.assertIs(runtime.finalize_request_progress_fn, bridge_handlers.finalize_request_progress)
 
     def test_process_dishframed_request_delegates_to_special_request_processing_module(self):
@@ -315,8 +521,8 @@ class TestPrompt(unittest.TestCase):
             bridge_special_request_processing.DishframedProcessingRuntime,
         )
         self.assertIs(runtime.build_progress_reporter_fn, bridge_handlers.build_progress_reporter)
-        self.assertIs(runtime.prepare_prompt_input_fn, bridge_handlers.prepare_prompt_input)
-        self.assertIs(runtime.run_dishframed_cli_fn, bridge_handlers.run_dishframed_cli)
+        self.assertIs(runtime.prepare_prompt_input_fn, bridge_request_processing.prepare_prompt_input)
+        self.assertIs(runtime.run_dishframed_cli_fn, bridge_request_processing.run_dishframed_cli)
         self.assertIs(runtime.finalize_request_progress_fn, bridge_handlers.finalize_request_progress)
 
     def test_build_youtube_summary_prompt_includes_basic_video_fields(self):
