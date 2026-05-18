@@ -43,6 +43,10 @@ Tracked secret example:
 
 - `infra/env/server3-monitoring-grafana-admin.env.example`
 
+Tracked non-secret example:
+
+- `infra/env/server3-monitoring.env.example`
+
 ## Deployment Notes
 
 - Grafana is the only exposed UI.
@@ -76,6 +80,7 @@ curl -s http://127.0.0.1:9090/api/v1/targets
 ## Files
 
 - compose: `ops/server3_monitoring/monitoring-stack.yml`
+- general env example: `infra/env/server3-monitoring.env.example`
 - secret env example: `infra/env/server3-monitoring-grafana-admin.env.example`
 - Prometheus config: `ops/server3_monitoring/prometheus/prometheus.yml`
 - external ARR metric exporter: `ops/server3_monitoring/scripts/export_external_arr_metrics.sh`

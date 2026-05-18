@@ -1,10 +1,10 @@
 # Server3 Summary
 
-Last updated: 2026-05-17 (AEST, +10:00)
+Last updated: 2026-05-18 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
-- Runtime pattern: Telegram long polling + local `codex exec`
+- Runtime pattern: Telegram long polling + live `codex app-server` for Architect Codex turns, with per-scope coalesced follow-up steering for active plain-text turns
 - Live runtime inventory lives in `infra/server3-runtime-manifest.json`; verify actual state with `python3 ops/server3_runtime_status.py`.
 - Architect currently defaults to `codex`; selectable chat engines are driven by live env/config (`codex`, `gemma`, `pi` in the current Architect runtime), with the user-facing `/engine` alias `ollama(s4)` now mapped to internal engine key `gemma`.
 - Core capabilities: text/photo/voice/document handling, persistent workers, safe queued `/restart`, and canonical SQLite session state. Provider-side continuity still relies on engine-native sessions (Pi JSONL per scope, Codex JSONL per exec session).
@@ -20,6 +20,8 @@ Last updated: 2026-05-17 (AEST, +10:00)
 - Dream loop now runs from `server3-dream-loop.timer` around `02:15 AEST` and writes the production truth/health baseline under `/var/lib/server3-dream-loop`.
 
 ## Recent Changes (Rolling Max 8)
+- 2026-05-18: Server3 audit fixes landed: Grafana admin credentials now load from `/etc/server3-monitoring/grafana-admin.env`, the control-plane auto-refreshes stale snapshots before serving them, restore verification matches the live timer inventory again, and the Oracle transport now tolerates client disconnects with a longer daemon startup timeout.
+- 2026-05-18: Architect Telegram Codex turns now default to live `codex app-server` on Server3, and same-scope plain-text follow-up messages can steer into an active turn across direct chats, group chats, and forum topics.
 - 2026-05-17: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
 - 2026-05-16: removed the retired `Ralph` loop from the repo and host cleanup scope; the old Ralph code, tests, runbook, and systemd unit definitions are no longer part of the supported Server3 runtime.
 - 2026-05-15: Architect's user-facing `/engine` label for the Server4 Gemma path is now `ollama(s4)`; that engine now supports chat-scoped `/model list` and `/model <name>` selection from the live Server4 Ollama tag catalog, and Pi `ollama` model selection now also merges raw Server4 Ollama tags into `/model list` so freshly pulled tags remain selectable before Pi's own catalog refreshes.
@@ -27,7 +29,6 @@ Last updated: 2026-05-17 (AEST, +10:00)
 - 2026-05-10: added English TTS voice replies via `ops/telegram-voice/tts_english.sh`; the bridge can now return Telegram voice notes through the existing `sendVoice` pipeline.
 - 2026-05-05: finished the shared-bridge packaging/refactor cleanup (`pyproject.toml`, package `__init__.py` files, reusable `env_parser.py`, split `engines/` modules) and removed the old SQLite memory-engine codepath/systemd leftovers.
 - 2026-04-30: removed `venice` from the user-facing `/engine` list while keeping it available as `PI_PROVIDER=venice`.
-- 2026-04-28: added automatic Pi scope-session rotation/pruning so JSONL retention stays bounded without losing short-term continuity.
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.
 - The monitoring stack currently binds Grafana to `192.168.0.148:3000`, but that host-specific LAN IP can change; if it does, update `/etc/default/server3-monitoring` and restart `server3-monitoring.service`.

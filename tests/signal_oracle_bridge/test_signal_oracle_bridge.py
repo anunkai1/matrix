@@ -2,6 +2,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -148,6 +149,34 @@ class SignalOracleBridgeTests(unittest.TestCase):
             bridge = signal_bridge.SignalOracleBridge(make_config(tmp))
             self.assertTrue(bridge._is_own_sender({"sourceNumber": "+15550001111"}))
             self.assertFalse(bridge._is_own_sender({"sourceNumber": "+15559990000"}))
+
+    def test_send_json_ignores_client_disconnect(self):
+        handler = signal_bridge.RequestHandler.__new__(signal_bridge.RequestHandler)
+        handler.path = "/health"
+        handler.send_response = mock.Mock()
+        handler.send_header = mock.Mock()
+        handler.end_headers = mock.Mock()
+        handler.wfile = mock.Mock()
+        handler.wfile.write.side_effect = BrokenPipeError()
+
+        handler._send_json(200, {"ok": True})
+
+        handler.send_response.assert_called_once_with(200)
+        handler.end_headers.assert_called_once_with()
+
+    def test_send_bytes_ignores_client_disconnect(self):
+        handler = signal_bridge.RequestHandler.__new__(signal_bridge.RequestHandler)
+        handler.path = "/files/content"
+        handler.send_response = mock.Mock()
+        handler.send_header = mock.Mock()
+        handler.end_headers = mock.Mock()
+        handler.wfile = mock.Mock()
+        handler.wfile.write.side_effect = ConnectionResetError()
+
+        handler._send_bytes(200, b"abc", "text/plain", "example.txt")
+
+        handler.send_response.assert_called_once_with(200)
+        handler.end_headers.assert_called_once_with()
 
 
 if __name__ == "__main__":
