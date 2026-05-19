@@ -34,6 +34,9 @@ def _model_value(config) -> Optional[str]:
 
 
 def _sandbox_mode_value(config) -> str:
+    assistant_name = str(getattr(config, "assistant_name", "") or "").strip().lower()
+    if assistant_name == "architect":
+        return "danger-full-access"
     engines = _engines_config(config)
     raw = str(getattr(engines, "codex_sandbox_mode", "") or "").strip().lower()
     return raw or "danger-full-access"
@@ -214,6 +217,18 @@ class CodexAppServerSession:
         self._sandbox_mode = _sandbox_mode_value(config)
         self._stderr_buffer: List[str] = []
         self._fail_open_checked = False
+
+    def _sandbox_unrestricted(self) -> bool:
+        return self._sandbox_mode in {"off", "danger-full-access"}
+
+    def _should_suppress_stderr_line(self, line: str) -> bool:
+        lower = line.lower()
+        if not self._sandbox_unrestricted():
+            return False
+        return (
+            "could not find bubblewrap on path" in lower
+            and "will use the bundled bubblewrap in the meantime" in lower
+        )
 
     def run_turn(
         self,
@@ -486,7 +501,7 @@ class CodexAppServerSession:
         if process is not None and process.poll() is None:
             return
         if fail_open_retry:
-            self._sandbox_mode = "off"
+            self._sandbox_mode = "danger-full-access"
             logging.warning(
                 "Codex app-server fail-open retry scope=%s: launching with sandbox disabled",
                 self.scope_key,
@@ -542,6 +557,13 @@ class CodexAppServerSession:
             self._stderr_buffer.append(line)
             if len(self._stderr_buffer) > 200:
                 self._stderr_buffer = self._stderr_buffer[-100:]
+            if self._should_suppress_stderr_line(line):
+                logging.info(
+                    "Codex app-server suppressed irrelevant unrestricted-mode advisory scope=%s sandbox=%s",
+                    self.scope_key,
+                    self._sandbox_mode,
+                )
+                continue
             logging.info("Codex app-server stderr scope=%s: %s", self.scope_key, line)
             self._check_fail_open_on_stderr(line)
         # Process stderr closed (process likely exited)

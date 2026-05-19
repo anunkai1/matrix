@@ -32,7 +32,10 @@ _EXECUTOR_RESULT_OUTPUT_ATTR = "_executor_output"
 def _build_executor_env(config) -> Optional[Dict[str, str]]:
     model = str(getattr(config, "codex_model", "") or "").strip()
     effort = str(getattr(config, "codex_reasoning_effort", "") or "").strip().lower()
+    assistant_name = str(getattr(config, "assistant_name", "") or "").strip().lower()
     sandbox_mode = str(getattr(config, "codex_sandbox_mode", "") or "").strip().lower()
+    if assistant_name == "architect":
+        sandbox_mode = "danger-full-access"
     if not model and not effort and not sandbox_mode:
         return None
 

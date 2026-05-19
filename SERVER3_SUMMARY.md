@@ -7,6 +7,7 @@ Last updated: 2026-05-19 (AEST, +10:00)
 - Runtime pattern: Telegram long polling + live `codex app-server` for Architect Codex turns, with per-scope coalesced follow-up steering for active plain-text turns
 - Live runtime inventory lives in `infra/server3-runtime-manifest.json`; verify actual state with `python3 ops/server3_runtime_status.py`.
 - Architect currently defaults to `codex`; selectable chat engines are driven by live env/config (`codex`, `gemma`, `pi` in the current Architect runtime), with the user-facing `/engine` alias `ollama(s4)` now mapped to internal engine key `gemma`.
+- Architect now hardwires Codex unrestricted mode in bridge code and ignores sandbox env overrides.
 - Core capabilities: text/photo/voice/document handling, persistent workers, safe queued `/restart`, and canonical SQLite session state. Provider-side continuity still relies on engine-native sessions (Pi JSONL per scope, Codex JSONL per exec session).
 - Priority stateless routes: `HA ...`, `Server3 TV ...`, `Nextcloud ...`, `SRO ...`, and bare YouTube links.
 
@@ -20,8 +21,8 @@ Last updated: 2026-05-19 (AEST, +10:00)
 - Dream loop now runs from `server3-dream-loop.timer` around `02:15 AEST` and writes the production truth/health baseline under `/var/lib/server3-dream-loop`.
 
 ## Recent Changes (Rolling Max 8)
-- 2026-05-19: Architect Telegram Codex app-server sessions now default to `sandbox=off`; the bridge no longer treats the bundled-bubblewrap advisory as a startup failure.
-- 2026-05-19: Architect Telegram Codex sandbox policy is now explicit in runtime config (`TELEGRAM_CODEX_SANDBOX_MODE=off`) and the executor wrapper strips sandbox-related override args when Architect is configured unsandboxed.
+- 2026-05-19: Architect Codex runtime now hardwires unrestricted `danger-full-access` in bridge code, ignores `TELEGRAM_CODEX_SANDBOX_MODE` overrides, and suppresses the known bundled-`bubblewrap` advisory when Codex is already unrestricted.
+- 2026-05-19: Architect Telegram Codex app-server sessions now default to unrestricted `sandbox=danger-full-access`; the bridge no longer treats the bundled-bubblewrap advisory as a startup failure.
 - 2026-05-19: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
 - 2026-05-18: Server3 audit fixes landed: Grafana admin credentials now load from `/etc/server3-monitoring/grafana-admin.env`, the control-plane auto-refreshes stale snapshots before serving them, restore verification matches the live timer inventory again, and the Oracle transport now tolerates client disconnects with a longer daemon startup timeout.
 - 2026-05-18: Architect Telegram Codex turns now default to live `codex app-server` on Server3, and same-scope plain-text follow-up messages can steer into an active turn across direct chats, group chats, and forum topics.
