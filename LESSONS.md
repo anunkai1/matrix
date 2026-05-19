@@ -1,6 +1,11 @@
 # Lessons Log
 
-Purpose: capture recurring mistake patterns and prevention rules after user corrections.
+Purpose: capture the highest-value recurring mistake patterns and prevention rules after user corrections.
+
+Use this file for active operational lessons only:
+- keep entries short
+- keep only lessons that still prevent realistic repeat failures
+- move older, narrower, or less frequently used lessons into `LESSONS_ARCHIVE.md`
 
 ## Entry Template (Minimal Schema)
 
@@ -11,9 +16,7 @@ Use one section per lesson:
 - Prevention rule: the concrete rule to avoid repeat
 - Where/when applied: exact workflow step, file area, or decision point where rule must be used
 
-## Lessons
-
-<!-- Add new lessons below this line using the template above. -->
+## Active Lessons
 
 ### 2026-05-19T16:30:00+10:00 - Verify And Use Outbound Voice Replies When Explicitly Requested
 - Mistake pattern: The owner explicitly asked for a voice reply, but I answered in plain text because I treated the turn like a normal text response instead of verifying and using the outbound Telegram voice-note path.
@@ -21,96 +24,45 @@ Use one section per lesson:
 - Where/when applied: Any Architect Telegram turn involving requested voice-format replies, especially before sending the final response for bridge-originated turns.
 
 ### 2026-05-19T14:04:30+10:00 - Make Architect Sandbox Policy Explicit In Runtime Config
-- Mistake pattern: Architect's unrestricted Codex execution policy existed as tribal knowledge and partially duplicated launcher flags, but not as one explicit runtime config value. That allowed the live app-server path, executor wrapper path, and docs to drift apart until a sandbox-related startup path started treating `bubblewrap` as relevant to Architect at all.
-- Prevention rule: For Architect runtime capabilities that must never drift (especially Codex sandbox/approval policy), encode them as explicit runtime config with startup logging and targeted tests, then make every execution path consume that single source of truth.
-- Where/when applied: Any future changes to `src/telegram_bridge/runtime_config.py`, `src/telegram_bridge/codex_app_server.py`, `src/telegram_bridge/executor.py`, `src/telegram_bridge/executor.sh`, or Architect bridge operator docs.
+- Mistake pattern: Architect's unrestricted Codex execution policy existed as tribal knowledge and partially duplicated launcher flags, but not as one explicit runtime config value.
+- Prevention rule: For Architect runtime capabilities that must never drift, encode them as explicit runtime config with startup logging and targeted tests, then make every execution path consume that single source of truth.
+- Where/when applied: Any future changes to Architect Codex runtime config, executor paths, or operator docs.
 
 ### 2026-05-12T14:53:59+10:00 - Never Double-Send Telegram Replies For Bridge-Originated Turns
-- Mistake pattern: I manually sent Telegram replies with the Bot API for messages that had already arrived through `telegram-architect-bridge.service`, while the bridge also sent its normal final response. That produced duplicate bot replies for the same user turn and unnecessary extra token usage.
-- Prevention rule: For bridge-originated Telegram turns, use the bridge's normal final response as the only default outbound path. Do not manually call `sendMessage` or helper scripts for the same turn unless the user explicitly wants a separate out-of-band Telegram post or attachment in addition to the normal reply.
-- Where/when applied: Any Architect turn whose prompt includes `Current Telegram Context`, especially when considering `ops/telegram/send_message.py`, raw Bot API calls, or other manual outbound Telegram actions.
+- Mistake pattern: I manually sent Telegram replies for turns that the bridge was already going to answer, producing duplicate bot messages.
+- Prevention rule: For bridge-originated Telegram turns, use the bridge's normal final response as the default outbound path and only send a separate Telegram message when the user explicitly asks for an additional out-of-band delivery.
+- Where/when applied: Any Architect turn whose prompt includes `Current Telegram Context`.
 
 ### 2026-05-05T09:30:00+10:00 - Engine-Native Sessions Make SQLite Memory Redundant
-- Mistake pattern: The bridge maintained a separate SQLite memory layer (~590 lines) that stored ~10k tokens of recent messages and injected them into every prompt, even though both Pi and Codex already maintain their own full session files (JSONL) that replay the entire conversation history to the provider API on every turn. The SQLite layer was a strict subset of what the engine sessions already carried.
-- Prevention rule: Before adding a new state/memory/caching layer, verify whether the underlying engine (Pi, Codex, etc.) already provides equivalent or better persistence. Engine-native sessions are the source of truth for conversation continuity; don't duplicate them in bridge code.
-- Where/when applied: Any new memory, state, or caching mechanism proposed for the Telegram bridge. Check the active engine's session model first.
+- Mistake pattern: A separate SQLite memory layer duplicated conversation continuity that Pi and Codex already preserved in their own session files.
+- Prevention rule: Before adding a new memory, state, or caching layer, verify whether the active engine already provides equivalent or better persistence.
+- Where/when applied: Any proposed memory or continuity change for the Telegram bridge.
 
 ### 2026-05-05T01:00:00+10:00 - Never Overwrite Systemd EnvironmentFile With Single-Line Edits
-- Mistake pattern: The May 4 memory-simplification rollout needed to add `TELEGRAM_MEMORY_ENABLED=false` to the bridge env file. A write (overwrite) was used instead of append, replacing all ~60 lines of config with the single new line. The bot token and all other config were wiped, causing a crash loop with ~150 restart failures before detection.
-- Prevention rule: When editing systemd `EnvironmentFile`-backed config files programmatically, always use append (`>>` / `tee -a`) for additive changes. If the change is non-additive, first copy the file to a timestamped `.bak` in the same directory, then use a line-targeted edit (`sed`, `grep -v` + append). Always verify line count before and after (`wc -l`), and sanity-check that `TELEGRAM_BOT_TOKEN` (or equivalent critical key) is still present.
-- Where/when applied: Any programmatic edit to `/etc/default/telegram-*-bridge`, `/etc/default/*` env files, or any systemd `EnvironmentFile` path. Also applies to `.env` files consumed by service startup.
+- Mistake pattern: A programmatic env-file edit overwrote the whole service config with a single line and caused a crash loop.
+- Prevention rule: For `EnvironmentFile` edits, use append for additive changes; otherwise back up first, make a line-targeted edit, then verify line count and critical keys afterward.
+- Where/when applied: Any programmatic edit to `/etc/default/*` env files or other systemd `EnvironmentFile` paths.
 
-### 2026-05-04T11:30:00+10:00 - Update Operator Docs In The Same Rollout As Memory-Behavior Changes
-- Mistake pattern: We changed live memory behavior several times (summary threshold, prompt injection shape, recent/raw caps, shared-memory usage) without immediately updating the operator-facing markdown, leaving `SERVER3_SUMMARY.md` and bridge docs stale.
-- Prevention rule: When changing memory behavior, update the operator docs in the same rollout: `SERVER3_SUMMARY.md` for high-signal runtime truth, the main bridge doc for detailed behavior, and any other directly affected runbook/mental-model page that names the old limits or flow.
-- Where/when applied: Any change to `memory_engine.py`, `llm_summarizer.py`, `memory_merge.py`, prompt injection thresholds, shared-memory merge rules, or `/reset` memory behavior.
-
-### 2026-05-03T20:00:00+10:00 - Document Design Rationale When Removing Thresholds
-- Mistake pattern: We removed the SUMMARY_TRIGGER_TOKENS=12000 gate from `_maybe_summarize` because the new LLM summarizer (local gemma3:4b) doesn't need a token threshold. Another LLM later re-added both the constants and the gate, undoing the architecture change, because the removal had no explanation in the code.
-- Prevention rule: When removing a historically important mechanism (threshold, gate, fallback), leave a comment block in the code explaining WHY the mechanism was designed that way and WHY the current architecture no longer needs it. Without that context, future contributors will treat the removal as a bug.
-- Where/when applied: Any architectural change that removes a gate, threshold, or fallback that was previously meaningful.
-
-### 2026-05-03T19:00:00+10:00 - Verify Data Access Patterns Against Actual Object Types
-- Mistake pattern: `llm_summarizer.py` used `getattr(row, "text", "")` to read message text from database rows. sqlite3.Row objects support key access (`row["text"]`) but NOT attribute access (`row.text`). `getattr` with a default silently returned empty strings. Every summary generated since the summarizer was written ran on empty input — zero useful summaries for weeks.
-- Prevention rule: When writing functions that receive data from external sources (database rows, API responses, config dicts), verify the access pattern against the actual type at the call site. sqlite3.Row is dict-style, not attribute-style. Add a type-assertion or explicit key/index access pattern when the source type is ambiguous.
-- Where/when applied: Any function in `llm_summarizer.py`, `memory_engine.py`, or similar modules that accept `Sequence[sqlite3.Row]` as input.
-
-### 2026-04-25T09:10:02+10:00 - Verify Lovelace Frontend Rendering After Dashboard Card Changes
-- Mistake pattern: I reported a Home Assistant dashboard chart change as verified after checking only the saved Lovelace config and entity references, but the HA frontend still rendered a card-level `Configuration error`.
-- Prevention rule: After adding or changing custom Lovelace cards, card schema, chart config, resources, or `card_mod` styling, perform a real frontend render check in HA and scan for visible configuration/card errors before reporting success.
-- Where/when applied: Any Home Assistant dashboard/resource/theme work, especially HACS/custom cards such as `apexcharts-card`, `mini-graph-card`, Mushroom cards, layout-card, and card-mod.
+### 2026-05-04T11:30:00+10:00 - Update Operator Docs In The Same Rollout As Runtime-Behavior Changes
+- Mistake pattern: Live behavior changed while operator-facing docs such as `SERVER3_SUMMARY.md` and bridge docs stayed stale.
+- Prevention rule: When changing runtime behavior, update the affected operator docs in the same rollout.
+- Where/when applied: Any change that alters live bridge behavior, runtime behavior, memory behavior, or documented limits.
 
 ### 2026-04-03T14:02:00+10:00 - Verify Telegram Attachment Capability Before Saying It Is Unavailable
-- Mistake pattern: I told the owner I could not directly attach a generated image into Telegram from this session, even though the live Architect bridge already exposes outbound `send_photo`/`send_document` support and the current chat target could be resolved from runtime state.
-- Prevention rule: When a user asks for Telegram image/file delivery, check the bridge transport/runtime state first, resolve the active chat/thread, and attempt the supported Telegram attachment path before claiming the capability is unavailable.
-- Where/when applied: Any Architect request involving Telegram delivery of generated images, files, or other media from the Server3 workspace.
-
-### 2026-04-13T13:20:00+10:00 - Do Not Inject Source-Analysis Notes Into Default YouTube Summaries
-- Mistake pattern: I added a default source-analysis preamble to a plain YouTube summary because of local guidance, even though the owner wanted just the summary and the shared bridge prompt path already omitted that framing.
-- Prevention rule: For pasted YouTube links and similar summary requests, provide the content summary directly unless the owner explicitly asks for source vetting, bias review, or fact-checking.
-- Where/when applied: Any default link-summary workflow in Architect, especially bare-link YouTube requests and Telegram summary replies.
+- Mistake pattern: I claimed Telegram attachment delivery was unavailable without checking the live transport/runtime path that already supported it.
+- Prevention rule: When a user asks for Telegram image or file delivery, check the live bridge transport/runtime state first and attempt the supported outbound path before claiming the capability is unavailable.
+- Where/when applied: Any Architect request involving Telegram delivery of images, files, or other media.
 
 ### 2026-03-03T19:18:12+10:00 - Clarify File Delivery Target Before Sending
-- Mistake pattern: I assumed "send file here" meant Codex chat delivery and did not immediately confirm whether the owner wanted Telegram attachment delivery.
-- Prevention rule: When a request mentions sending/sharing a file and destination is ambiguous, ask one explicit routing question first: "Codex chat link/content or Telegram document attachment?"
-- Where/when applied: Before executing any file-delivery request in chat operations and Telegram bridge actions.
-
-### 2026-03-02T17:46:39+10:00 - Approval-Turn Protocol: Scope, Pause, Then Execute
-- Mistake pattern: I repeated approval-turn failures by either pausing without clear scope/approval phrasing, sending an empty response, or not executing immediately after approval.
-- Prevention rule: At approval gates, always output `Status`, `Approval for` (objective + exact scope/files), `Next action` with exact approval phrase, and `No commands will run`; once approved, execute immediately with visible progress until done or blocked.
-- Where/when applied: Any approval boundary turn for non-exempt repo changes.
-
-### 2026-02-28T11:41:46+10:00 - Regenerate Existing Data After Summary-Format Changes
-- Mistake pattern: Improving summarization logic alone leaves legacy summary rows in old/noisy format, so runtime behavior remains mixed and confusing.
-- Prevention rule: When summary format changes materially, provide and run a controlled regeneration path for existing `chat_summaries` rows in the same rollout.
-- Where/when applied: Memory-engine summarization upgrades and post-deploy validation against live SQLite memory state.
-
-### 2026-02-28T11:04:38+10:00 - Prefer User-Clear Naming Over Internal Terms
-- Mistake pattern: I used the memory mode label `full`, which users can reasonably read as capacity-full instead of context-scope-full.
-- Prevention rule: For user-facing command labels, choose plain-language names first (for example `all_context`), keep old labels only as compatibility aliases, and update help/docs in the same change.
-- Where/when applied: Any command/config naming surfaced in Telegram help, CLI help, and docs before rollout.
-
-### 2026-02-28T09:25:38+10:00 - Respect Owner-Accepted Risk Decisions in Future Plans
-- Mistake pattern: I kept re-proposing fixes for risks the owner had explicitly accepted as-designed (notably H5, later H6/H7/H9).
-- Prevention rule: When owner marks an item as accepted risk/as-designed, record it in repo context and treat it as deferred by default; do not propose or implement unless owner explicitly asks to revisit.
-- Where/when applied: Audit follow-up planning and priority lists before drafting any new AI Prompt for Action.
+- Mistake pattern: I assumed a file-delivery destination instead of confirming whether the owner wanted in-chat content or a Telegram attachment.
+- Prevention rule: When a request mentions sending or sharing a file and the destination is ambiguous, ask one explicit routing question first.
+- Where/when applied: Before executing any file-delivery request in chat operations or Telegram bridge actions.
 
 ### 2026-02-23T07:24:07+10:00 - One-Shot Timer Verification
-- Mistake pattern: I initially reported no scheduled action existed because I checked active timers/repo notes but not unit journal history.
-- Prevention rule: For any schedule verification, check both current units and historical evidence (`systemctl status <unit>` and `journalctl -u <timer> -u <service>` in the target time window).
-- Where/when applied: Incident/ops checks when user asks whether a timed HA action was planned or executed.
+- Mistake pattern: I checked active timers and repo notes but missed unit journal history, so I gave the wrong answer about whether a scheduled action existed.
+- Prevention rule: For schedule verification, check both current unit state and historical evidence in `systemctl` and `journalctl`.
+- Where/when applied: Any incident or ops check where the user asks whether a timed action was planned or executed.
 
-### 2026-02-27T08:08:01+10:00 - HA Ops Reliability Baseline
-- Mistake pattern: HA requests failed or misrouted because of unstable env wiring, ad-hoc transient shell payloads, and ambiguous free-form routing.
-- Prevention rule: Use explicit `HA` / `Home Assistant` routing, keep HA ops on stable env paths, run API preflight before scheduling, use dedicated versioned scripts (not inline `systemd-run` shell payloads), and for urgent safe requests apply direct action first then refine.
-- Where/when applied: Every HA request path, including Telegram routing and scheduled climate/mode execution.
+## Archive
 
-### 2026-02-27T12:03:38+10:00 - Prefix Gating Robustness and Recovery
-- Mistake pattern: Prefix parsing ignored valid mobile Unicode whitespace, and I kept tightening parser logic while users remained blocked.
-- Prevention rule: Accept Unicode whitespace in prefix parsing with regression tests, and if production flow is blocked by `prefix_required`, apply immediate fallback (`TELEGRAM_REQUIRED_PREFIXES=`) to restore service first, then refine parser logic.
-- Where/when applied: Telegram routing/prefix handling in `src/telegram_bridge/handlers.py` and incident response for ignored allowlisted messages.
-
-### 2026-02-27T13:46:59+10:00 - Bot Scope and Identity Must Be Decided Together
-- Mistake pattern: I assumed narrow HA-only scope without confirmation and also reused Architect workspace context for a separate bot identity.
-- Prevention rule: Before rollout, confirm capability scope (general assistant vs single-domain ops), then isolate identity fully when required (runtime user + dedicated workspace root with own `AGENTS.md`/instructions and systemd working directory).
-- Where/when applied: Initial design and deployment setup for new Telegram bot/services on Server3.
+Older or narrower lessons live in [LESSONS_ARCHIVE.md](/home/architect/matrix/LESSONS_ARCHIVE.md).
