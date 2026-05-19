@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-05-19T16:30:00+10:00 - Verify And Use Outbound Voice Replies When Explicitly Requested
+- Mistake pattern: The owner explicitly asked for a voice reply, but I answered in plain text because I treated the turn like a normal text response instead of verifying and using the outbound Telegram voice-note path.
+- Prevention rule: When the owner explicitly asks for "reply in voice", "send as voice", or similar, verify outbound voice-note delivery support in the active runtime first and use that path when it exists instead of defaulting to text.
+- Where/when applied: Any Architect Telegram turn involving requested voice-format replies, especially before sending the final response for bridge-originated turns.
+
 ### 2026-05-19T14:04:30+10:00 - Make Architect Sandbox Policy Explicit In Runtime Config
 - Mistake pattern: Architect's unrestricted Codex execution policy existed as tribal knowledge and partially duplicated launcher flags, but not as one explicit runtime config value. That allowed the live app-server path, executor wrapper path, and docs to drift apart until a sandbox-related startup path started treating `bubblewrap` as relevant to Architect at all.
 - Prevention rule: For Architect runtime capabilities that must never drift (especially Codex sandbox/approval policy), encode them as explicit runtime config with startup logging and targeted tests, then make every execution path consume that single source of truth.

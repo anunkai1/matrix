@@ -8,11 +8,11 @@ Last updated: 2026-05-19 (AEST, +10:00)
 - Live runtime inventory lives in `infra/server3-runtime-manifest.json`; verify actual state with `python3 ops/server3_runtime_status.py`.
 - Architect currently defaults to `codex`; selectable chat engines are driven by live env/config (`codex`, `gemma`, `pi` in the current Architect runtime), with the user-facing `/engine` alias `ollama(s4)` now mapped to internal engine key `gemma`.
 - Architect now hardwires Codex unrestricted mode in bridge code and ignores sandbox env overrides.
-- Core capabilities: text/photo/voice/document handling, persistent workers, safe queued `/restart`, and canonical SQLite session state. Provider-side continuity still relies on engine-native sessions (Pi JSONL per scope, Codex JSONL per exec session).
+- Core capabilities: text/photo/voice/document handling, voice transcription, outbound Telegram voice-note replies, persistent workers, safe queued `/restart`, and canonical SQLite session state. Provider-side continuity still relies on engine-native sessions (Pi JSONL per scope, Codex JSONL per exec session).
 - Priority stateless routes: `HA ...`, `Server3 TV ...`, `Nextcloud ...`, `SRO ...`, and bare YouTube links.
 
 ## Operational Memory (Pinned)
-- Runtime observer runs from `server3-runtime-observer.timer` every 5 minutes; live mode is currently `collect_only`.
+- Runtime observer runs from `server3-runtime-observer.timer` every 5 minutes; live mode is currently `telegram_alerts`.
 - Govorun cross-channel routing contract guard is enforced by `ops/chat-routing/validate_chat_routing_contract.py` with canonical policy in `infra/contracts/server3-chat-routing.contract.env`; daily drift timer is `server3-chat-routing-contract-check.timer`.
 - Tank identity depends on `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot`; preserve it so the shared `src` tree does not collapse Tank back onto the shared repo root.
 - Runtime policy/doc drift should now be checked with `bash /home/architect/matrix/ops/runtime_personas/check_runtime_repo_links.sh` before assuming a live root has diverged from Git.
