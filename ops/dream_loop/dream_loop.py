@@ -655,6 +655,51 @@ def _render_generated_output_status(
     }
 
 
+def _verify_persisted_outputs(
+    *,
+    truth_state_path: Path,
+    expected_truth_state: Dict[str, Any],
+    health_state_path: Path,
+    expected_health_state: Dict[str, Any],
+    run_state_path: Path,
+    expected_run_state: Dict[str, Any],
+    report_path: Path,
+    expected_report_text: str,
+    summary_path: Path,
+    expected_summary_text: Optional[str],
+) -> List[str]:
+    mismatches: List[str] = []
+
+    persisted_truth_state = _read_json_file(truth_state_path)
+    if persisted_truth_state != expected_truth_state:
+        mismatches.append(f"persisted truth state mismatch: {truth_state_path}")
+
+    persisted_health_state = _read_json_file(health_state_path)
+    if persisted_health_state != expected_health_state:
+        mismatches.append(f"persisted health state mismatch: {health_state_path}")
+
+    persisted_run_state = _read_json_file(run_state_path)
+    if persisted_run_state != expected_run_state:
+        mismatches.append(f"persisted run state mismatch: {run_state_path}")
+
+    try:
+        persisted_report_text = report_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        persisted_report_text = None
+    if persisted_report_text != expected_report_text:
+        mismatches.append(f"persisted report mismatch: {report_path}")
+
+    if expected_summary_text is not None:
+        try:
+            persisted_summary_text = summary_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            persisted_summary_text = None
+        if persisted_summary_text != expected_summary_text:
+            mismatches.append(f"persisted summary mismatch: {summary_path}")
+
+    return mismatches
+
+
 def _build_report(
     truth_state: Dict[str, Any],
     health_state: Dict[str, Any],
@@ -961,47 +1006,10 @@ def execute_dream_loop(
     }
 
     summary_text = config.summary_path.read_text(encoding="utf-8")
-    original_summary_text = summary_text
     aligned_summary_text, summary_changed_fields = _align_server3_summary(
         summary_text,
         generated_at=run_started_at,
         summary_facts=summary_live_facts,
-    )
-    report_text = _build_report(
-        truth_state=truth_state,
-        health_state=health_state,
-        run_state={
-            "generated_at": generated_at,
-            "run_status": "dry_run_pending" if config.dry_run else "pending",
-            "dry_run": config.dry_run,
-            "artifacts_written": [],
-            "unresolved_items": unresolved_items,
-        },
-    )
-    truth_state["secondary_doc_alignment"] = _render_secondary_doc_alignment(
-        summary_path=config.summary_path,
-        summary_changed_fields=summary_changed_fields,
-    )
-    truth_state["generated_output_status"] = _render_generated_output_status(
-        report_path=config.state_dir / LATEST_REPORT,
-    )
-    report_text = _build_report(
-        truth_state=truth_state,
-        health_state=health_state,
-        run_state={
-            "generated_at": generated_at,
-            "run_status": "dry_run_pending" if config.dry_run else "pending",
-            "dry_run": config.dry_run,
-            "artifacts_written": [],
-            "unresolved_items": unresolved_items,
-        },
-    )
-    truth_state["secondary_doc_alignment"] = _render_secondary_doc_alignment(
-        summary_path=config.summary_path,
-        summary_changed_fields=summary_changed_fields,
-    )
-    truth_state["generated_output_status"] = _render_generated_output_status(
-        report_path=config.state_dir / LATEST_REPORT,
     )
 
     artifact_paths = [
@@ -1030,10 +1038,10 @@ def execute_dream_loop(
         "warnings_emitted": warnings_emitted,
         "unresolved_items": unresolved_items,
     }
-    report_text = _build_report(truth_state=truth_state, health_state=health_state, run_state=run_state)
+    effective_summary_changed_fields = list(summary_changed_fields) if config.dry_run else []
     truth_state["secondary_doc_alignment"] = _render_secondary_doc_alignment(
         summary_path=config.summary_path,
-        summary_changed_fields=summary_changed_fields,
+        summary_changed_fields=effective_summary_changed_fields,
     )
     truth_state["generated_output_status"] = _render_generated_output_status(
         report_path=config.state_dir / LATEST_REPORT,
@@ -1048,6 +1056,20 @@ def execute_dream_loop(
         _atomic_write_json(config.state_dir / LATEST_HEALTH_STATE, health_state)
         _atomic_write_json(config.state_dir / LATEST_RUN_STATE, run_state)
         _atomic_write_text(config.state_dir / LATEST_REPORT, report_text)
+        verification_mismatches = _verify_persisted_outputs(
+            truth_state_path=config.state_dir / LATEST_TRUTH_STATE,
+            expected_truth_state=truth_state,
+            health_state_path=config.state_dir / LATEST_HEALTH_STATE,
+            expected_health_state=health_state,
+            run_state_path=config.state_dir / LATEST_RUN_STATE,
+            expected_run_state=run_state,
+            report_path=config.state_dir / LATEST_REPORT,
+            expected_report_text=report_text,
+            summary_path=config.summary_path,
+            expected_summary_text=aligned_summary_text if summary_changed_fields else None,
+        )
+        if verification_mismatches:
+            raise RuntimeError("dream loop output verification failed: " + "; ".join(verification_mismatches))
 
     return {
         "truth_state": truth_state,

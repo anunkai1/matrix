@@ -12,7 +12,7 @@ Last updated: 2026-05-19 (AEST, +10:00)
 - Priority stateless routes: `HA ...`, `Server3 TV ...`, `Nextcloud ...`, `SRO ...`, and bare YouTube links.
 
 ## Operational Memory (Pinned)
-- Runtime observer runs from `server3-runtime-observer.timer` every 5 minutes; live mode is currently `telegram_alerts`.
+- Runtime observer runs from `server3-runtime-observer.timer` every 5 minutes; live mode is currently `collect_only`.
 - Govorun cross-channel routing contract guard is enforced by `ops/chat-routing/validate_chat_routing_contract.py` with canonical policy in `infra/contracts/server3-chat-routing.contract.env`; daily drift timer is `server3-chat-routing-contract-check.timer`.
 - Tank identity depends on `TELEGRAM_RUNTIME_ROOT=/home/tank/tankbot`; preserve it so the shared `src` tree does not collapse Tank back onto the shared repo root.
 - Runtime policy/doc drift should now be checked with `bash /home/architect/matrix/ops/runtime_personas/check_runtime_repo_links.sh` before assuming a live root has diverged from Git.

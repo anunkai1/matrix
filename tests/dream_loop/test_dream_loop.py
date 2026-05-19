@@ -198,8 +198,11 @@ Last updated: 2026-05-17 (AEST, +10:00)
             updated_summary = summary_path.read_text(encoding="utf-8")
             self.assertIn("live mode is currently `collect_only`.", updated_summary)
             self.assertIn("server3-dream-loop.timer", updated_summary)
+            self.assertFalse(truth_state["secondary_doc_alignment"]["summary_out_of_alignment"])
+            self.assertEqual(truth_state["secondary_doc_alignment"]["summary_changed_fields"], [])
             self.assertIn("Structured machine-truth inputs only: yes", report_text)
             self.assertIn("[rendered]", report_text)
+            self.assertIn("[aligned]", report_text)
 
     def test_summary_alignment_is_idempotent_when_already_aligned(self):
         now = datetime(2026, 5, 17, 15, 30, tzinfo=timezone(timedelta(hours=10)))
@@ -360,6 +363,39 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertTrue(stale["machine_truth_changed"])
             self.assertEqual(stale["eligible_scope_count"], 1)
             self.assertEqual(stale["eligible_scope_keys"], ["tg:-1003894351534:topic:4677"])
+
+    def test_execute_dream_loop_verifies_persisted_outputs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir) / "dream"
+            bridge_state_dir = Path(tmpdir) / "bridge"
+            summary_path = Path(tmpdir) / "SERVER3_SUMMARY.md"
+            bridge_state_dir.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(self._summary_fixture(), encoding="utf-8")
+            config = dream_loop.DreamLoopConfig(
+                state_dir=state_dir,
+                bridge_state_dir=bridge_state_dir,
+                timezone="Australia/Brisbane",
+                dry_run=False,
+                summary_path=summary_path,
+            )
+
+            original_verify = dream_loop._verify_persisted_outputs
+
+            def fake_verify(**kwargs):
+                mismatches = list(original_verify(**kwargs))
+                mismatches.append("forced mismatch")
+                return mismatches
+
+            try:
+                dream_loop._verify_persisted_outputs = fake_verify
+                with self.assertRaisesRegex(RuntimeError, "dream loop output verification failed"):
+                    dream_loop.execute_dream_loop(
+                        config,
+                        run_json_command=self._fake_run_json_command,
+                        run_text_command=self._fake_run_text_command,
+                    )
+            finally:
+                dream_loop._verify_persisted_outputs = original_verify
 
 
 if __name__ == "__main__":
