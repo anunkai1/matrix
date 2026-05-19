@@ -47,10 +47,15 @@ import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
 
 
 class TestExecutor(unittest.TestCase):
-    def test_codex_app_server_turn_start_requests_danger_full_access(self):
+    def test_codex_app_server_turn_start_requests_sandbox_off(self):
         session = bridge_codex_app_server.CodexAppServerSession(
             scope_key="tg:1:topic:870",
-            config=SimpleNamespace(cwd="/tmp", codex_model="", codex_reasoning_effort=""),
+            config=SimpleNamespace(
+                cwd="/tmp",
+                codex_model="",
+                codex_reasoning_effort="",
+                codex_sandbox_mode="off",
+            ),
         )
         recorded_calls = []
 
@@ -81,7 +86,24 @@ class TestExecutor(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(recorded_calls[0][0], "turn/start")
         self.assertEqual(recorded_calls[0][1]["approvalPolicy"], "never")
-        self.assertEqual(recorded_calls[0][1]["sandbox"], "danger-full-access")
+        self.assertEqual(recorded_calls[0][1]["sandbox"], "off")
+
+    def test_codex_app_server_ignores_bundled_bubblewrap_notice(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1:topic:870",
+            config=SimpleNamespace(
+                cwd="/tmp",
+                codex_model="",
+                codex_reasoning_effort="",
+                codex_sandbox_mode="off",
+            ),
+        )
+        with mock.patch.object(session, "_maybe_fail_open_restart") as restart:
+            session._check_fail_open_on_stderr(
+                "ERROR Codex could not find bubblewrap on PATH. "
+                "Codex will use the bundled bubblewrap in the meantime."
+            )
+        restart.assert_not_called()
 
     def test_parse_executor_output_json_stream(self):
         sample_stream = (

@@ -20,6 +20,8 @@ Last updated: 2026-05-19 (AEST, +10:00)
 - Dream loop now runs from `server3-dream-loop.timer` around `02:15 AEST` and writes the production truth/health baseline under `/var/lib/server3-dream-loop`.
 
 ## Recent Changes (Rolling Max 8)
+- 2026-05-19: Architect Telegram Codex app-server sessions now default to `sandbox=off`; the bridge no longer treats the bundled-bubblewrap advisory as a startup failure.
+- 2026-05-19: Architect Telegram Codex sandbox policy is now explicit in runtime config (`TELEGRAM_CODEX_SANDBOX_MODE=off`) and the executor wrapper strips sandbox-related override args when Architect is configured unsandboxed.
 - 2026-05-19: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
 - 2026-05-18: Server3 audit fixes landed: Grafana admin credentials now load from `/etc/server3-monitoring/grafana-admin.env`, the control-plane auto-refreshes stale snapshots before serving them, restore verification matches the live timer inventory again, and the Oracle transport now tolerates client disconnects with a longer daemon startup timeout.
 - 2026-05-18: Architect Telegram Codex turns now default to live `codex app-server` on Server3, and same-scope plain-text follow-up messages can steer into an active turn across direct chats, group chats, and forum topics.

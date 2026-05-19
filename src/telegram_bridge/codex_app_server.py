@@ -33,6 +33,12 @@ def _model_value(config) -> Optional[str]:
     return raw or None
 
 
+def _sandbox_mode_value(config) -> str:
+    engines = _engines_config(config)
+    raw = str(getattr(engines, "codex_sandbox_mode", "") or "").strip().lower()
+    return raw or "danger-full-access"
+
+
 def _enabled(config) -> bool:
     engines = _engines_config(config)
     return bool(getattr(engines, "codex_app_server_enabled", False))
@@ -205,6 +211,9 @@ class CodexAppServerSession:
         self._thread_id: Optional[str] = None
         self._pending_turn: Optional[_PendingTurn] = None
         self._last_activity_at: float = 0.0
+        self._sandbox_mode = _sandbox_mode_value(config)
+        self._stderr_buffer: List[str] = []
+        self._fail_open_checked = False
 
     def run_turn(
         self,
@@ -237,7 +246,7 @@ class CodexAppServerSession:
                     "model": _model_value(self.config),
                     "effort": _reasoning_effort_value(self.config),
                     "approvalPolicy": "never",
-                    "sandbox": "danger-full-access",
+                    "sandbox": self._sandbox_mode,
                 },
             )
             started_turn = turn_response.get("turn") or {}
@@ -433,7 +442,7 @@ class CodexAppServerSession:
             {
                 "cwd": self._cwd(),
                 "approvalPolicy": "never",
-                "sandbox": "danger-full-access",
+                "sandbox": self._sandbox_mode,
                 "model": _model_value(self.config),
             },
         )
@@ -453,11 +462,41 @@ class CodexAppServerSession:
             self._start_process()
             self._initialize()
 
-    def _start_process(self) -> None:
+    SANDBOX_FAIL_OPEN_KEYWORDS = [
+        "bwrap",
+        "bubblewrap",
+        "sandbox init failed",
+        "sandbox initialization failed",
+        "sandbox error",
+        "sandbox setup failed",
+        "failed to create sandbox",
+        "namespace",
+        "landlock",
+        "seccomp",
+        "failed to create",
+        "operation not permitted",
+        "EPERM",
+        "ENOSYS",
+        "unshare",
+        "clone",
+    ]
+
+    def _start_process(self, *, fail_open_retry: bool = False) -> None:
         process = self.process
         if process is not None and process.poll() is None:
             return
-        cmd = ["codex", "app-server", "--listen", "stdio://"]
+        if fail_open_retry:
+            self._sandbox_mode = "off"
+            logging.warning(
+                "Codex app-server fail-open retry scope=%s: launching with sandbox disabled",
+                self.scope_key,
+            )
+        cmd = [
+            "codex", "app-server",
+            "--listen", "stdio://",
+            "-c", f"sandbox={self._sandbox_mode}",
+            "-c", "approval_policy=never",
+        ]
         self.process = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -467,10 +506,13 @@ class CodexAppServerSession:
             bufsize=1,
         )
         self._initialized = False
+        self._stderr_buffer: List[str] = []
         self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
         self._reader_thread.start()
         self._stderr_thread = threading.Thread(target=self._stderr_loop, daemon=True)
         self._stderr_thread.start()
+        self._fail_open_check_started_at: float = time.monotonic()
+        self._fail_open_checked = False
 
     def _initialize(self) -> None:
         try:
@@ -481,7 +523,9 @@ class CodexAppServerSession:
                     "capabilities": {"experimentalApi": True},
                 },
             )
-        except RuntimeError as exc:
+        except (RuntimeError, TimeoutError) as exc:
+            if self._maybe_fail_open_restart(exc):
+                return self._initialize()
             if "Already initialized" not in str(exc):
                 raise
             result = {}
@@ -494,7 +538,14 @@ class CodexAppServerSession:
         if process is None or process.stderr is None:
             return
         for raw_line in process.stderr:
-            logging.info("Codex app-server stderr scope=%s: %s", self.scope_key, raw_line.rstrip())
+            line = raw_line.rstrip()
+            self._stderr_buffer.append(line)
+            if len(self._stderr_buffer) > 200:
+                self._stderr_buffer = self._stderr_buffer[-100:]
+            logging.info("Codex app-server stderr scope=%s: %s", self.scope_key, line)
+            self._check_fail_open_on_stderr(line)
+        # Process stderr closed (process likely exited)
+        self._check_fail_open_on_exit()
 
     def _reader_loop(self) -> None:
         process = self.process
@@ -648,6 +699,69 @@ class CodexAppServerSession:
         with self._state_lock:
             pending_turn = self._pending_turn
             return pending_turn.progress_callback if pending_turn is not None else None
+
+    def _maybe_fail_open_restart(self, exc: Exception) -> bool:
+        if self._fail_open_checked:
+            return False
+        self._fail_open_checked = True
+        logging.warning(
+            "Codex app-server startup failed scope=%s error=%s; attempting fail-open restart",
+            self.scope_key,
+            exc,
+        )
+        self._stop_process()
+        self._start_process(fail_open_retry=True)
+        return True
+
+    def _check_fail_open_on_stderr(self, line: str) -> None:
+        if self._fail_open_checked:
+            return
+        lower = line.lower()
+        if (
+            "could not find bubblewrap on path" in lower
+            and "will use the bundled bubblewrap in the meantime" in lower
+        ):
+            return
+        if any(keyword.lower() in lower for keyword in self.SANDBOX_FAIL_OPEN_KEYWORDS):
+            self._maybe_fail_open_restart(
+                RuntimeError(f"Sandbox init failure detected on stderr: {line[:200]}")
+            )
+
+    def _check_fail_open_on_exit(self) -> None:
+        if self._fail_open_checked:
+            return
+        process = self.process
+        if process is None:
+            return
+        rc = process.poll()
+        if rc is None:
+            return
+        if rc == 0:
+            return
+        recent_stderr = "\n".join(self._stderr_buffer[-30:])
+        lower_recent = recent_stderr.lower()
+        if any(keyword.lower() in lower_recent for keyword in self.SANDBOX_FAIL_OPEN_KEYWORDS):
+            self._maybe_fail_open_restart(
+                RuntimeError(f"Sandbox exit code={rc} with sandbox stderr")
+            )
+
+    def _stop_process(self) -> None:
+        process = self.process
+        if process is None:
+            return
+        try:
+            process.terminate()
+        except Exception:
+            pass
+        try:
+            process.wait(timeout=5)
+        except Exception:
+            try:
+                process.kill()
+            except Exception:
+                pass
+        self.process = None
+        self._initialized = False
 
     def _mark_activity(self) -> None:
         with self._state_lock:

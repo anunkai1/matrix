@@ -32,10 +32,11 @@ _EXECUTOR_RESULT_OUTPUT_ATTR = "_executor_output"
 def _build_executor_env(config) -> Optional[Dict[str, str]]:
     model = str(getattr(config, "codex_model", "") or "").strip()
     effort = str(getattr(config, "codex_reasoning_effort", "") or "").strip().lower()
-    if not model and not effort:
+    sandbox_mode = str(getattr(config, "codex_sandbox_mode", "") or "").strip().lower()
+    if not model and not effort and not sandbox_mode:
         return None
 
-    cache_key = (model, effort)
+    cache_key = (model, effort, sandbox_mode)
     cached = getattr(config, _EXECUTOR_ENV_CACHE_ATTR, None)
     if isinstance(cached, tuple) and len(cached) == 2 and cached[0] == cache_key:
         cached_env = cached[1]
@@ -47,6 +48,8 @@ def _build_executor_env(config) -> Optional[Dict[str, str]]:
         env["CODEX_MODEL"] = model
     if effort:
         env["CODEX_REASONING_EFFORT"] = effort
+    if sandbox_mode:
+        env["CODEX_SANDBOX_MODE"] = sandbox_mode
     setattr(config, _EXECUTOR_ENV_CACHE_ATTR, (cache_key, env))
     return env
 

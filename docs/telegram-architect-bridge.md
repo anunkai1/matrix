@@ -356,8 +356,9 @@ Message handling:
 
 - The source-of-truth unit (`infra/systemd/telegram-architect-bridge.service`) sets `NoNewPrivileges=false`.
 - This is required if Telegram-triggered Architect sessions must run scripts that use `sudo` (for example `ops/telegram-bridge/restart_and_verify.sh`).
-- Both new and resumed Codex sessions are launched with `--dangerously-bypass-approvals-and-sandbox`.
+- Architect on Server3 is intentionally unsandboxed. Both executor-path Codex sessions and live Codex app-server turns run with unrestricted filesystem/process access under the `architect` runtime user boundary.
 - Architect on Server3 now defaults `TELEGRAM_CODEX_APP_SERVER_ENABLED` to enabled so same-scope plain-text follow-ups can steer into an active live Codex turn across direct chats, group chats, and forum topics.
+- Architect also defaults `TELEGRAM_CODEX_SANDBOX_MODE=off`. Do not set sandbox-related overrides in `ARCHITECT_EXEC_ARGS` or app-server config for this runtime.
 - Active plain-text follow-ups are coalesced briefly before steering so nearby follow-up messages are folded into one chronological addendum instead of interrupting the live turn once per message.
 - Set `TELEGRAM_CODEX_APP_SERVER_ENABLED=false` only as an explicit rollback if the live app-server path itself is the incident.
 - Keep `TELEGRAM_ALLOWED_CHAT_IDS` strict. Any allowed chat can request operations with `architect` user privileges, including sudo-capable commands.
@@ -382,7 +383,7 @@ Common checks:
 - Missing bot token or allowlist in `/etc/default/telegram-architect-bridge`
 - Missing/incorrect prefix list (`TELEGRAM_REQUIRED_PREFIXES`) when messages appear ignored
 - Invalid `TELEGRAM_EXECUTOR_CMD`
-- If you see Linux `bwrap` / sandbox-helper failures in the live Codex path, set `TELEGRAM_CODEX_APP_SERVER_ENABLED=false` as a rollback and restart the bridge.
+- If you see sandbox or `bwrap` messages for Architect after this rollout, treat that as configuration drift or a code regression. Architect should not depend on Linux sandbox helpers.
 - Missing `codex login` for the service user (`architect` or `tank`)
 - Voice pipeline issues in `TELEGRAM_VOICE_TRANSCRIBE_CMD`
 - Voice transcribe service status/health: `python3 src/telegram_bridge/voice_transcribe_service.py ping`

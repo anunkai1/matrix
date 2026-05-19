@@ -121,12 +121,59 @@ fi
 if [[ -n "${CODEX_REASONING_EFFORT:-}" ]]; then
   EXEC_COMMON_ARGS+=(-c "model_reasoning_effort=\"${CODEX_REASONING_EFFORT}\"")
 fi
+codex_sandbox_mode="${CODEX_SANDBOX_MODE:-off}"
+if [[ "${codex_sandbox_mode}" == "off" ]]; then
+  sanitized_exec_common_args=()
+  idx=0
+  while (( idx < ${#EXEC_COMMON_ARGS[@]} )); do
+    arg="${EXEC_COMMON_ARGS[$idx]}"
+    case "${arg}" in
+      -s|--sandbox)
+        ((idx+=2))
+        continue
+        ;;
+      -a|--ask-for-approval)
+        ((idx+=2))
+        continue
+        ;;
+      sandbox=*|approval_policy=*|-c=sandbox=*|-c=approval_policy=*)
+        ((idx+=1))
+        continue
+        ;;
+      -c)
+        if (( idx + 1 < ${#EXEC_COMMON_ARGS[@]} )); then
+          next_arg="${EXEC_COMMON_ARGS[$((idx + 1))]}"
+          case "${next_arg}" in
+            sandbox=*|approval_policy=*)
+              ((idx+=2))
+              continue
+              ;;
+          esac
+          sanitized_exec_common_args+=("${arg}" "${next_arg}")
+          ((idx+=2))
+          continue
+        fi
+        ;;
+    esac
+    sanitized_exec_common_args+=("${arg}")
+    ((idx+=1))
+  done
+  EXEC_COMMON_ARGS=("${sanitized_exec_common_args[@]}")
+fi
 EXEC_NEW_ARGS=(--color never)
 
 if [[ "${mode}" == "resume" ]]; then
-  CMD=("${CODEX_BIN}" exec resume --dangerously-bypass-approvals-and-sandbox "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" "${thread_id}" -)
+  if [[ "${codex_sandbox_mode}" == "off" ]]; then
+    CMD=("${CODEX_BIN}" exec resume --dangerously-bypass-approvals-and-sandbox "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" "${thread_id}" -)
+  else
+    CMD=("${CODEX_BIN}" exec resume "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" "${thread_id}" -)
+  fi
 else
-  CMD=("${CODEX_BIN}" exec --dangerously-bypass-approvals-and-sandbox "${EXEC_NEW_ARGS[@]}" "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" -)
+  if [[ "${codex_sandbox_mode}" == "off" ]]; then
+    CMD=("${CODEX_BIN}" exec --dangerously-bypass-approvals-and-sandbox "${EXEC_NEW_ARGS[@]}" "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" -)
+  else
+    CMD=("${CODEX_BIN}" exec "${EXEC_NEW_ARGS[@]}" "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" -)
+  fi
 fi
 
 bootstrap_finished_ms="$(now_ms)"

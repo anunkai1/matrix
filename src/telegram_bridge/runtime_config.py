@@ -117,6 +117,7 @@ class EngineConfig:
     pi_ollama_tunnel_remote_host: str
     pi_ollama_tunnel_remote_port: int
     pi_request_timeout_seconds: int
+    codex_sandbox_mode: str = "danger-full-access"
     codex_app_server_enabled: bool = False
     telegram_context_injection_policy: str = ""
 
@@ -559,11 +560,16 @@ def load_engine_config_values(*, assistant_name: str) -> Dict[str, object]:
     # the active Codex turn. Other runtimes remain opt-in until explicitly
     # enabled.
     default_codex_app_server_enabled = normalized_assistant_name in {"architect", "govorun"}
+    default_codex_sandbox_mode = "off" if normalized_assistant_name == "architect" else "danger-full-access"
     return {
         "engine_plugin": parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
         "selectable_engine_plugins": parse_plugin_list_env(
             "TELEGRAM_SELECTABLE_ENGINE_PLUGINS",
             ["codex", "gemma", "pi"],
+        ),
+        "codex_sandbox_mode": (
+            os.getenv("TELEGRAM_CODEX_SANDBOX_MODE", default_codex_sandbox_mode).strip().lower()
+            or default_codex_sandbox_mode
         ),
         "telegram_context_injection_policy": (
             os.getenv("TELEGRAM_CONTEXT_INJECTION_POLICY", "").strip().lower()

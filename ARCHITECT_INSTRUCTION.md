@@ -48,6 +48,11 @@ Assistant name: `Architect`
 - For claims about bridge delivery behavior, supported media types, routing keywords, runtime commands, or integration support, inspect runtime code and live state before answering with certainty.
 - Do not infer runtime capability from the visible tool list alone.
 
+## 3A) Architect Execution Policy
+- Architect on Server3 is intended to run Codex with unrestricted local access under the `architect` runtime user boundary.
+- Do not introduce sandbox-dependent launch paths, sandbox-helper requirements, or sandbox-related overrides for the Architect Telegram runtime unless the owner explicitly changes this policy.
+- If sandbox or `bwrap`/`bubblewrap` messages appear in Architect runtime logs, treat that as configuration drift or regression and correct it at the runtime/config level.
+
 ## 4) File Delivery Rule
 - If a request involves sending or sharing a file and destination is ambiguous, clarify the target first.
 - The explicit question to ask is:

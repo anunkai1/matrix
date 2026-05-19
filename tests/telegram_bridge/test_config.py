@@ -284,7 +284,7 @@ class TestConfig(unittest.TestCase):
             "Даю справку: уже занят предыдущим запросом.",
         )
 
-    def test_load_config_disables_codex_app_server_by_default(self):
+    def test_load_config_enables_codex_app_server_by_default_for_architect(self):
         with mock.patch.dict(
             os.environ,
             {
@@ -294,7 +294,36 @@ class TestConfig(unittest.TestCase):
             clear=True,
         ):
             config = bridge.load_config()
+        self.assertTrue(config.codex_app_server_enabled)
+        self.assertEqual(config.codex_sandbox_mode, "off")
+
+    def test_load_config_keeps_codex_app_server_opt_in_for_non_architect(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_ASSISTANT_NAME": "Tank",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
         self.assertFalse(config.codex_app_server_enabled)
+        self.assertEqual(config.codex_sandbox_mode, "danger-full-access")
+
+    def test_load_config_enables_codex_app_server_by_default_for_govorun(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_ASSISTANT_NAME": "Govorun",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertTrue(config.codex_app_server_enabled)
+        self.assertEqual(config.codex_sandbox_mode, "danger-full-access")
 
     def test_load_config_reads_codex_app_server_override(self):
         with mock.patch.dict(
@@ -308,6 +337,20 @@ class TestConfig(unittest.TestCase):
         ):
             config = bridge.load_config()
         self.assertTrue(config.codex_app_server_enabled)
+
+    def test_load_config_reads_codex_sandbox_mode_override(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_CODEX_SANDBOX_MODE": "off",
+                "TELEGRAM_ASSISTANT_NAME": "Tank",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertEqual(config.codex_sandbox_mode, "off")
 
     def test_parse_outbound_media_directive_extracts_media_and_voice_flag(self):
         text, directive = bridge_handlers.parse_outbound_media_directive(

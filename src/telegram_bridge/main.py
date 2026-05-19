@@ -198,6 +198,7 @@ def run_bridge(config: Config) -> int:
             "canonical_sessions_enabled": config.canonical_sessions_enabled,
             "canonical_sqlite_enabled": config.canonical_sqlite_enabled,
             "affective_runtime_enabled": config.affective_runtime_enabled,
+            "codex_sandbox_mode": getattr(config, "codex_sandbox_mode", ""),
         },
     )
     bootstrap: RuntimeBootstrap = build_runtime_bootstrap(config)

@@ -15,6 +15,11 @@ Use one section per lesson:
 
 <!-- Add new lessons below this line using the template above. -->
 
+### 2026-05-19T14:04:30+10:00 - Make Architect Sandbox Policy Explicit In Runtime Config
+- Mistake pattern: Architect's unrestricted Codex execution policy existed as tribal knowledge and partially duplicated launcher flags, but not as one explicit runtime config value. That allowed the live app-server path, executor wrapper path, and docs to drift apart until a sandbox-related startup path started treating `bubblewrap` as relevant to Architect at all.
+- Prevention rule: For Architect runtime capabilities that must never drift (especially Codex sandbox/approval policy), encode them as explicit runtime config with startup logging and targeted tests, then make every execution path consume that single source of truth.
+- Where/when applied: Any future changes to `src/telegram_bridge/runtime_config.py`, `src/telegram_bridge/codex_app_server.py`, `src/telegram_bridge/executor.py`, `src/telegram_bridge/executor.sh`, or Architect bridge operator docs.
+
 ### 2026-05-12T14:53:59+10:00 - Never Double-Send Telegram Replies For Bridge-Originated Turns
 - Mistake pattern: I manually sent Telegram replies with the Bot API for messages that had already arrived through `telegram-architect-bridge.service`, while the bridge also sent its normal final response. That produced duplicate bot replies for the same user turn and unnecessary extra token usage.
 - Prevention rule: For bridge-originated Telegram turns, use the bridge's normal final response as the only default outbound path. Do not manually call `sendMessage` or helper scripts for the same turn unless the user explicitly wants a separate out-of-band Telegram post or attachment in addition to the normal reply.
