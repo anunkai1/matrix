@@ -25,6 +25,15 @@ from telegram_bridge.state_store import (
 )
 from telegram_bridge.structured_logging import emit_event
 
+
+def _core_config(config):
+    return getattr(config, "core", config)
+
+
+def _session_config(config):
+    return getattr(config, "session", config)
+
+
 def build_repo_root() -> str:
     return build_shared_core_root()
 
@@ -87,6 +96,7 @@ def compute_policy_fingerprint(paths: List[str]) -> str:
     return hasher.hexdigest()
 
 def is_rate_limited(state: State, config, scope_key: str) -> bool:
+    core = _core_config(config)
     now = time.time()
     legacy_alias = _legacy_scope_alias(scope_key)
     with state.lock:
@@ -99,7 +109,7 @@ def is_rate_limited(state: State, config, scope_key: str) -> bool:
             entries = state.recent_requests.setdefault(scope_key, [])
         threshold = now - 60
         entries[:] = [t for t in entries if t >= threshold]
-        if len(entries) >= config.rate_limit_per_minute:
+        if len(entries) >= core.rate_limit_per_minute:
             return True
         entries.append(now)
     return False
@@ -216,6 +226,7 @@ def _ensure_chat_worker_session_canonical(
     now: float,
     current_policy_fingerprint: str,
 ) -> WorkerSessionEnsureOutcome:
+    session_config = _session_config(config)
     session_replaced_for_policy = False
     evicted_idle_scope_key: Optional[str] = None
     rejected_for_capacity = False
@@ -246,7 +257,7 @@ def _ensure_chat_worker_session_canonical(
             if _has_active_worker(candidate_session)
         }
 
-        if not _has_active_worker(session) and len(active_workers) >= config.persistent_workers_max:
+        if not _has_active_worker(session) and len(active_workers) >= session_config.persistent_workers_max:
             idle_candidates = [
                 (candidate_scope_key, candidate_session)
                 for candidate_scope_key, candidate_session in active_workers.items()
@@ -305,6 +316,7 @@ def _ensure_chat_worker_session_legacy(
     now: float,
     current_policy_fingerprint: str,
 ) -> WorkerSessionEnsureOutcome:
+    session_config = _session_config(config)
     session_replaced_for_policy = False
     evicted_idle_scope_key: Optional[str] = None
     rejected_for_capacity = False
@@ -328,7 +340,7 @@ def _ensure_chat_worker_session_legacy(
             session_replaced_for_policy = True
             needs_persist_sessions = True
 
-        if session is None and len(state.worker_sessions) >= config.persistent_workers_max:
+        if session is None and len(state.worker_sessions) >= session_config.persistent_workers_max:
             idle_candidates = [
                 (candidate_scope_key, candidate_session)
                 for candidate_scope_key, candidate_session in state.worker_sessions.items()
@@ -387,12 +399,14 @@ def ensure_chat_worker_session(
     message_id: Optional[int] = None,
 ) -> bool:
     scope_key = _resolve_scope_key(scope_key, chat_id, message_thread_id)
-    if not config.persistent_workers_enabled:
+    session_config = _session_config(config)
+    core = _core_config(config)
+    if not session_config.persistent_workers_enabled:
         return True
 
     now = time.time()
     current_policy_fingerprint = get_cached_policy_fingerprint(
-        config.persistent_workers_policy_files,
+        session_config.persistent_workers_policy_files,
         now=now,
     )
 
@@ -418,7 +432,7 @@ def ensure_chat_worker_session(
             evicted_target = parse_telegram_scope_key(outcome.evicted_idle_scope_key)
         except ValueError:
             evicted_target = None
-        if evicted_target is not None and evicted_target.chat_id in config.allowed_chat_ids:
+        if evicted_target is not None and evicted_target.chat_id in core.allowed_chat_ids:
             _send_worker_eviction_notice(client, outcome.evicted_idle_scope_key)
             emit_event(
                 "bridge.worker_evicted_for_capacity",
@@ -459,10 +473,11 @@ def expire_idle_worker_sessions(
     client,
 ) -> None:
     del client
-    if not config.persistent_workers_enabled:
+    session_config = _session_config(config)
+    if not session_config.persistent_workers_enabled:
         return
 
-    timeout_seconds = int(getattr(config, "persistent_workers_idle_timeout_seconds", 0) or 0)
+    timeout_seconds = int(getattr(session_config, "persistent_workers_idle_timeout_seconds", 0) or 0)
     if timeout_seconds <= 0:
         return
 

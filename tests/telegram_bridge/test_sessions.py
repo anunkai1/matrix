@@ -46,6 +46,32 @@ import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
 
 
 class TestSessions(unittest.TestCase):
+    def test_session_manager_accepts_grouped_only_config(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = SimpleNamespace(
+            core=SimpleNamespace(allowed_chat_ids={1}, rate_limit_per_minute=2),
+            session=SimpleNamespace(
+                persistent_workers_enabled=True,
+                persistent_workers_max=1,
+                persistent_workers_idle_timeout_seconds=3600,
+                persistent_workers_policy_files=[],
+            ),
+        )
+
+        self.assertFalse(bridge_session_manager.is_rate_limited(state, config, "tg:1"))
+        self.assertFalse(bridge_session_manager.is_rate_limited(state, config, "tg:1"))
+        self.assertTrue(bridge_session_manager.is_rate_limited(state, config, "tg:1"))
+        self.assertTrue(
+            bridge_session_manager.ensure_chat_worker_session(
+                state,
+                config,
+                client,
+                chat_id=1,
+                message_id=99,
+            )
+        )
+
     def test_ensure_chat_worker_session_rejects_when_all_workers_busy(self):
         state = bridge.State(
             chat_threads={2: "thread-busy"},

@@ -470,6 +470,66 @@ class TestPrompt(unittest.TestCase):
         self.assertIs(runtime.finalize_prompt_success_fn, bridge_handlers.finalize_prompt_success)
         self.assertIs(runtime.finalize_request_progress_fn, bridge_handlers.finalize_request_progress)
 
+    def test_process_prompt_request_web_context_failure_falls_back_to_plain_prompt(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        request = bridge_handlers.build_prompt_request(
+            state=state,
+            config=config,
+            client=client,
+            engine=None,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=55,
+            prompt="latest news",
+            photo_file_id=None,
+            voice_file_id=None,
+            document=None,
+        )
+        engine_prompts = []
+        events = []
+
+        runtime = bridge_prompt_execution.build_prompt_execution_runtime(
+            progress_reporter_cls=bridge_handlers.ProgressReporter,
+            state_repository_cls=bridge_handlers.StateRepository,
+            codex_engine_adapter_factory=bridge_handlers.CodexEngineAdapter,
+            assistant_label_fn=bridge_handlers.assistant_label,
+            build_engine_runtime_config_fn=bridge_handlers.build_engine_runtime_config,
+            build_engine_progress_context_label_fn=bridge_handlers.build_engine_progress_context_label,
+            refresh_runtime_auth_fingerprint_fn=lambda _state: {"applied": False, "counts": {}},
+            prepare_prompt_input_request_fn=lambda _request, _progress: bridge_handlers.PreparedPromptInput(
+                prompt_text="latest news"
+            ),
+            execute_prompt_with_retry_fn=lambda **kwargs: engine_prompts.append(kwargs["prompt_text"])
+            or bridge_handlers.subprocess.CompletedProcess(
+                args=["/bin/echo"],
+                returncode=0,
+                stdout="plain pi reply",
+                stderr="",
+            ),
+            finalize_prompt_success_fn=lambda **kwargs: (None, kwargs["result"].stdout),
+            finalize_request_progress_fn=lambda **_kwargs: None,
+            emit_event_fn=lambda event, **kwargs: events.append((event, kwargs)),
+        )
+
+        with mock.patch.object(
+            bridge_prompt_execution.web_context,
+            "maybe_build_web_context",
+            side_effect=RuntimeError("search exploded"),
+        ):
+            bridge_prompt_execution.process_prompt_request(request, runtime=runtime)
+
+        self.assertEqual(engine_prompts, ["latest news"])
+        self.assertTrue(
+            any(
+                event == "bridge.web_context_failed_open"
+                and payload.get("fields", {}).get("error") == "search exploded"
+                for event, payload in events
+            )
+        )
+
     @mock.patch.object(bridge_handlers, "finalize_chat_work")
     @mock.patch.object(bridge_request_processing, "run_dishframed_cli", return_value=("/tmp/menu_preview.png", "Rendered PNG preview"))
     @mock.patch.object(bridge_request_processing, "prepare_prompt_input")

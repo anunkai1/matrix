@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
 from telegram_bridge import goal_loop
+from telegram_bridge import web_context
 from telegram_bridge.engines.mavali_eth import MavaliEthEngineAdapter
 from telegram_bridge.handler_models import DocumentPayload, PromptRequest
 from telegram_bridge.state_store import StateRepository
@@ -370,6 +371,64 @@ def process_prompt_request(
         attachment_file_ids = list(prepared.attachment_file_ids)
         prompt_text = prepared.prompt_text
         previous_thread_id = None if stateless else state_repo.get_thread_id(scope_key)
+        web_context_started_at = time.monotonic()
+        web_context_result = None
+        web_context_error = None
+        try:
+            web_context_result = web_context.maybe_build_web_context(
+                config=engine_config,
+                active_engine=active_engine,
+                prompt_text=prompt_text,
+                raw_prompt_text=raw_prompt,
+            )
+        except Exception as exc:
+            web_context_error = str(exc) or exc.__class__.__name__
+            logging.warning(
+                "Web context augmentation failed for chat_id=%s message_id=%s engine=%s: %s",
+                chat_id,
+                message_id,
+                getattr(active_engine, "engine_name", ""),
+                web_context_error,
+            )
+            emit_event_fn(
+                "bridge.web_context_failed_open",
+                level=logging.WARNING,
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "engine": getattr(active_engine, "engine_name", ""),
+                    "error": web_context_error,
+                },
+            )
+        if web_context_result is not None:
+            progress.set_phase("Researching the web for current context.")
+            prompt_text = f"{web_context_result.context_text}\n\n{prompt_text}"
+            emit_event_fn(
+                "bridge.web_context_applied",
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "engine": getattr(active_engine, "engine_name", ""),
+                    "query": web_context_result.query,
+                    "search_result_count": len(web_context_result.search_results),
+                    "fetched_page_count": len(web_context_result.fetched_pages),
+                },
+            )
+        emit_phase_timing(
+            chat_id=chat_id,
+            message_id=message_id,
+            phase="augment_web_context",
+            started_at_monotonic=web_context_started_at,
+            emit_event_fn=emit_event_fn,
+            web_context_applied=web_context_result is not None,
+            web_context_failed=web_context_error is not None,
+            web_search_result_count=(
+                len(web_context_result.search_results) if web_context_result is not None else 0
+            ),
+            web_fetched_page_count=(
+                len(web_context_result.fetched_pages) if web_context_result is not None else 0
+            ),
+        )
         # Preserve the historical phase contract even though the dedicated
         # bridge memory layer has been removed and engine-native sessions are
         # now the source of truth for continuity.

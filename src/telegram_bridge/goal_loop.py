@@ -23,6 +23,7 @@ JUDGE_RESPONSE_SNIPPET_CHARS = 4000
 EXPLICIT_GOAL_DONE_PATTERNS = (
     re.compile(r"\bgoal complete\b", re.IGNORECASE),
     re.compile(r"\bgoal achieved\b", re.IGNORECASE),
+    re.compile(r"\bgoal is complete\b", re.IGNORECASE),
     re.compile(r"\bthe goal is complete\b", re.IGNORECASE),
     re.compile(r"\bi believe the goal is complete\b", re.IGNORECASE),
     re.compile(r"\btask complete\b", re.IGNORECASE),

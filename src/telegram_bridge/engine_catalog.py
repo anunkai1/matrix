@@ -27,6 +27,10 @@ PI_PROVIDER_CHOICES = (
 PI_MODEL_PICKER_PAGE_SIZE = 16
 
 
+def _engines_config(config):
+    return getattr(config, "engines", config)
+
+
 def normalize_engine_name(engine_name: str) -> str:
     normalized = str(engine_name or "").strip().lower()
     return ENGINE_NAME_ALIASES.get(normalized, normalized)
@@ -40,12 +44,14 @@ def display_engine_name(engine_name: str) -> str:
 
 
 def configured_default_engine(config) -> str:
-    return normalize_engine_name(getattr(config, "engine_plugin", "codex") or "codex")
+    engines = _engines_config(config)
+    return normalize_engine_name(getattr(engines, "engine_plugin", "codex") or "codex")
 
 
 def selectable_engine_plugins(config) -> List[str]:
+    engines = _engines_config(config)
     configured: List[str] = []
-    for value in getattr(config, "selectable_engine_plugins", ["codex", "gemma", "pi"]):
+    for value in getattr(engines, "selectable_engine_plugins", ["codex", "gemma", "pi"]):
         normalized = normalize_engine_name(str(value))
         if normalized and normalized not in configured:
             configured.append(normalized)
@@ -60,7 +66,8 @@ def selectable_engine_display_names(config) -> List[str]:
 
 
 def configured_pi_provider(config) -> str:
-    provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip().lower()
+    engines = _engines_config(config)
+    provider = str(getattr(engines, "pi_provider", "ollama") or "ollama").strip().lower()
     return PI_PROVIDER_ALIASES.get(provider, provider) or "ollama"
 
 
@@ -70,11 +77,13 @@ def normalize_pi_provider_name(provider_name: str) -> str:
 
 
 def configured_pi_model(config) -> str:
-    return str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip() or "qwen3-coder:30b"
+    engines = _engines_config(config)
+    return str(getattr(engines, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip() or "qwen3-coder:30b"
 
 
 def configured_gemma_model(config) -> str:
-    return str(getattr(config, "gemma_model", "gemma4:26b") or "gemma4:26b").strip() or "gemma4:26b"
+    engines = _engines_config(config)
+    return str(getattr(engines, "gemma_model", "gemma4:26b") or "gemma4:26b").strip() or "gemma4:26b"
 
 
 def pi_provider_uses_ollama_tunnel(config) -> bool:
@@ -82,11 +91,13 @@ def pi_provider_uses_ollama_tunnel(config) -> bool:
 
 
 def configured_codex_model(config) -> str:
-    return str(getattr(config, "codex_model", "") or "").strip()
+    engines = _engines_config(config)
+    return str(getattr(engines, "codex_model", "") or "").strip()
 
 
 def configured_codex_reasoning_effort(config) -> str:
-    return str(getattr(config, "codex_reasoning_effort", "") or "").strip().lower()
+    engines = _engines_config(config)
+    return str(getattr(engines, "codex_reasoning_effort", "") or "").strip().lower()
 
 
 def codex_models_cache_path() -> Path:

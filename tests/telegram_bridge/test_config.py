@@ -33,12 +33,14 @@ import telegram_bridge.channel_adapter as bridge_channel_adapter
 import telegram_bridge.command_routing as bridge_command_routing
 import telegram_bridge.control_commands as bridge_control_commands
 import telegram_bridge.engine_adapter as bridge_engine_adapter
+import telegram_bridge.engine_health as bridge_engine_health
 import telegram_bridge.executor as bridge_executor
 import telegram_bridge.handlers as bridge_handlers
 import telegram_bridge.http_channel as bridge_http_channel
 import telegram_bridge.main as bridge
 import telegram_bridge.plugin_registry as bridge_plugin_registry
 import telegram_bridge.prompt_execution as bridge_prompt_execution
+import telegram_bridge.runtime_routing as bridge_runtime_routing
 import telegram_bridge.runtime_config as bridge_runtime_config
 import telegram_bridge.session_manager as bridge_session_manager
 import telegram_bridge.signal_channel as bridge_signal_channel
@@ -105,6 +107,7 @@ class TestConfig(unittest.TestCase):
             engines=bridge_runtime_config.EngineConfig(
                 engine_plugin="codex",
                 selectable_engine_plugins=["codex", "pi"],
+                codex_sandbox_mode="off",
                 codex_model="gpt-5.5",
                 codex_reasoning_effort="medium",
                 gemma_provider="ollama_ssh",
@@ -255,6 +258,180 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.voice.voice_low_confidence_message, "low confidence")
         self.assertEqual(config.engines.codex_model, "gpt-5.5")
 
+    def test_build_help_and_status_text_accept_grouped_only_config(self):
+        config = SimpleNamespace(
+            core=SimpleNamespace(allowed_chat_ids={1}),
+            session=SimpleNamespace(
+                required_prefixes=["@architect"],
+                persistent_workers_enabled=True,
+                persistent_workers_max=4,
+            ),
+            identity=SimpleNamespace(
+                assistant_name="Architect",
+                channel_plugin="telegram",
+            ),
+            engines=SimpleNamespace(
+                engine_plugin="codex",
+                selectable_engine_plugins=["codex", "pi"],
+            ),
+            transport=SimpleNamespace(keyword_routing_enabled=True),
+        )
+        state = bridge.State()
+
+        help_text = bridge_handlers.build_help_text(config)
+        status_text = bridge_handlers.build_status_text(state, config, chat_id=1)
+
+        self.assertIn("Use `HA ...`", help_text)
+        self.assertIn("Allowed chats: 1", status_text)
+        self.assertIn("Required prefixes: @architect", status_text)
+        self.assertIn("Default engine: codex", status_text)
+
+    def test_check_pi_health_accepts_grouped_only_config(self):
+        config = SimpleNamespace(
+            engines=SimpleNamespace(
+                pi_model="gemma4:26b",
+                pi_runner="ssh",
+                pi_ssh_host="server4-beast",
+            )
+        )
+
+        def fake_run_pi_command(_config, command):
+            if command == "pi --version":
+                return subprocess.CompletedProcess(
+                    args=["pi", "--version"],
+                    returncode=0,
+                    stdout="pi 1.2.3\n",
+                    stderr="",
+                )
+            self.assertEqual(command, "pi --list-models")
+            return subprocess.CompletedProcess(
+                args=["pi", "--list-models"],
+                returncode=0,
+                stdout="ollama gemma4:26b\n",
+                stderr="",
+            )
+
+        health = bridge_engine_health.check_pi_health(
+            config,
+            provider="ollama",
+            run_pi_command_fn=fake_run_pi_command,
+            parse_pi_model_rows_fn=lambda rows: [tuple(rows.strip().split(maxsplit=1))],
+        )
+
+        self.assertTrue(health["ok"])
+        self.assertEqual(health["version"], "pi 1.2.3")
+        self.assertTrue(health["model_available"])
+
+    def test_runtime_routing_and_polling_accept_grouped_only_config(self):
+        config = SimpleNamespace(
+            core=SimpleNamespace(allowed_chat_ids={1}, state_dir="/tmp/state"),
+            session=SimpleNamespace(
+                required_prefixes=["@helper"],
+                required_prefix_ignore_case=True,
+                require_prefix_in_private=True,
+                allow_private_chats_unlisted=False,
+                allow_group_chats_unlisted=False,
+            ),
+            identity=SimpleNamespace(channel_plugin="whatsapp"),
+            transport=SimpleNamespace(keyword_routing_enabled=True),
+        )
+
+        prefix_result = bridge_runtime_routing.apply_required_prefix_gate(
+            client=SimpleNamespace(channel_name="telegram"),
+            config=config,
+            prompt_input="@helper summarize this",
+            has_reply_context=False,
+            voice_file_id=None,
+            document=None,
+            is_private_chat=True,
+            normalize_command=lambda _text: None,
+            strip_required_prefix=bridge_handlers.strip_required_prefix,
+        )
+
+        self.assertEqual(prefix_result.prompt_input, "summarize this")
+        self.assertTrue(bridge.should_resume_saved_update_offset(config))
+        self.assertFalse(bridge.should_discard_startup_backlog(config))
+
+    def test_allow_update_and_callback_query_accept_grouped_only_config(self):
+        config = SimpleNamespace(
+            core=SimpleNamespace(allowed_chat_ids={1}),
+            session=SimpleNamespace(
+                allow_private_chats_unlisted=False,
+                allow_group_chats_unlisted=False,
+            ),
+            identity=SimpleNamespace(channel_plugin="telegram"),
+            denied_message="Denied",
+        )
+        client = FakeTelegramClient()
+        ctx = bridge_handlers.IncomingUpdateContext(
+            update={},
+            message={},
+            chat_id=1,
+            message_thread_id=None,
+            scope_key="tg:1",
+            message_id=9,
+            actor_user_id=None,
+            is_private_chat=True,
+            update_id=1,
+        )
+
+        self.assertTrue(bridge_handlers.allow_update_chat(ctx, config, client))
+
+    def test_build_runtime_bootstrap_accepts_grouped_only_config(self):
+        config = SimpleNamespace(
+            core=SimpleNamespace(
+                state_dir="/tmp/architect-state",
+                attachment_retention_seconds=60,
+                attachment_max_total_bytes=1024 * 1024,
+            ),
+            session=SimpleNamespace(
+                persistent_workers_enabled=False,
+                persistent_workers_policy_files=[],
+                canonical_sessions_enabled=False,
+                canonical_legacy_mirror_enabled=False,
+                canonical_sqlite_enabled=False,
+                canonical_sqlite_path="/tmp/chat_sessions.sqlite3",
+                canonical_json_mirror_enabled=False,
+            ),
+            voice=SimpleNamespace(
+                voice_alias_learning_enabled=True,
+                voice_alias_learning_path="/tmp/voice-aliases.json",
+                voice_alias_learning_min_examples=2,
+                voice_alias_learning_confirmation_window_seconds=900,
+            ),
+        )
+
+        with (
+            mock.patch.object(bridge_runtime_setup, "ensure_state_dir"),
+            mock.patch.object(bridge_runtime_setup, "AttachmentStore", return_value=mock.sentinel.attachment_store),
+            mock.patch.object(bridge_runtime_setup, "build_affective_runtime", return_value=mock.sentinel.affective_runtime),
+            mock.patch.object(bridge_runtime_setup, "build_bridge_state_paths", return_value={}),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "load_bridge_state_mappings",
+                return_value={"threads": {}, "engines": {}, "codex_models": {}, "codex_efforts": {}, "pi_models": {}, "pi_providers": {}, "worker_sessions": {}, "in_flight": {}},
+            ),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "load_canonical_session_bootstrap",
+                return_value=({}, "none"),
+            ),
+            mock.patch.object(bridge_runtime_setup, "compute_current_auth_fingerprint", return_value="auth-fp"),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "apply_auth_change_thread_reset",
+                return_value={"applied": False, "counts": {}},
+            ),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "initialize_voice_alias_learning_store",
+                return_value=None,
+            ),
+        ):
+            bootstrap = bridge.build_runtime_bootstrap(config)
+
+        self.assertIsNotNone(bootstrap.state.attachment_store)
+
     def test_load_config_reads_allow_private_chats_unlisted_override(self):
         with mock.patch.dict(
             os.environ,
@@ -295,7 +472,7 @@ class TestConfig(unittest.TestCase):
         ):
             config = bridge.load_config()
         self.assertTrue(config.codex_app_server_enabled)
-        self.assertEqual(config.codex_sandbox_mode, "off")
+        self.assertEqual(config.codex_sandbox_mode, "danger-full-access")
 
     def test_load_config_keeps_codex_app_server_opt_in_for_non_architect(self):
         with mock.patch.dict(

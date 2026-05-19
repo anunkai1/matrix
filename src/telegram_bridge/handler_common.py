@@ -10,6 +10,10 @@ from telegram_bridge.engine_controls import selectable_engine_plugins
 
 RATE_LIMIT_MESSAGE = "Rate limit exceeded. Please wait a minute and retry."
 
+
+def _config_group(config, group_name: str):
+    return getattr(config, group_name, config)
+
 def normalize_command(text: str) -> Optional[str]:
     stripped = text.strip()
     head: Optional[str] = None
@@ -105,6 +109,8 @@ def extract_callback_query_context(
     return message, scope, message_id, callback_query_id, callback_data
 
 def build_help_text(config) -> str:
+    identity = _config_group(config, "identity")
+    transport = _config_group(config, "transport")
     selectable = selectable_engine_plugins(config)
     engine_help_choices = ["status", *(display_engine_name(name) for name in selectable), "reset"]
     minimal = (
@@ -135,7 +141,7 @@ def build_help_text(config) -> str:
         "/restart - queue a safe bridge restart\n"
         "/voice-alias add <source> => <target> - add approved alias manually"
     )
-    if getattr(config, "channel_plugin", "telegram") in {"whatsapp", "signal"}:
+    if getattr(identity, "channel_plugin", "telegram") in {"whatsapp", "signal"}:
         return minimal
 
     name = assistant_label(config)
@@ -149,7 +155,7 @@ def build_help_text(config) -> str:
         f"Send text, images, voice notes, or files and {name} will process them.\n"
         + (
             ""
-            if not getattr(config, "keyword_routing_enabled", True)
+            if not getattr(transport, "keyword_routing_enabled", True)
             else (
                 "Use `HA ...` or `Home Assistant ...` to force Home Assistant script routing.\n"
                 "Use `Server3 TV ...` for Server3 desktop/browser/UI operations.\n"
@@ -168,6 +174,9 @@ def build_status_text(
     scope_key: Optional[str] = None,
     message_thread_id: Optional[int] = None,
 ) -> str:
+    core = _config_group(config, "core")
+    session_config = _config_group(config, "session")
+    engines = _config_group(config, "engines")
     if scope_key is None and chat_id is not None:
         scope_key = build_telegram_scope_key(chat_id, message_thread_id=message_thread_id)
     with state.lock:
@@ -182,16 +191,16 @@ def build_status_text(
                 1
                 for session in state.chat_sessions.values()
                 if session.worker_created_at is not None and session.worker_last_used_at is not None
-            )
+                )
             has_thread = False
             has_worker = False
             if scope_key is not None:
-                session = state.chat_sessions.get(scope_key)
-                if session is not None:
-                    has_thread = bool(session.thread_id.strip())
+                chat_session = state.chat_sessions.get(scope_key)
+                if chat_session is not None:
+                    has_thread = bool(chat_session.thread_id.strip())
                     has_worker = (
-                        session.worker_created_at is not None
-                        and session.worker_last_used_at is not None
+                        chat_session.worker_created_at is not None
+                        and chat_session.worker_last_used_at is not None
                     )
         else:
             thread_count = len(state.chat_threads)
@@ -201,19 +210,22 @@ def build_status_text(
 
     lines = [
         "Bridge status: online",
-        f"Allowed chats: {len(config.allowed_chat_ids)}",
-        f"Required prefixes: {', '.join(config.required_prefixes) if config.required_prefixes else '(none)'}",
-        f"Default engine: {display_engine_name(getattr(config, 'engine_plugin', 'codex'))}",
+        f"Allowed chats: {len(core.allowed_chat_ids)}",
+        (
+            "Required prefixes: "
+            f"{', '.join(session_config.required_prefixes) if session_config.required_prefixes else '(none)'}"
+        ),
+        f"Default engine: {display_engine_name(getattr(engines, 'engine_plugin', 'codex'))}",
         (
             "Selectable engines: "
-            f"{', '.join(display_engine_name(name) for name in getattr(config, 'selectable_engine_plugins', [])) or '(none)'}"
+            f"{', '.join(display_engine_name(name) for name in getattr(engines, 'selectable_engine_plugins', [])) or '(none)'}"
         ),
         f"Busy chats: {busy_count}",
         f"Saved Codex threads: {thread_count}",
         (
             "Persistent workers: "
-            f"enabled={config.persistent_workers_enabled} "
-            f"active={worker_count}/{config.persistent_workers_max} "
+            f"enabled={session_config.persistent_workers_enabled} "
+            f"active={worker_count}/{session_config.persistent_workers_max} "
             f"idle_expiry=disabled"
         ),
         f"Safe restart queued: {restart_requested}",
@@ -225,7 +237,7 @@ def build_status_text(
         lines.append(f"This chat has Codex thread: {has_thread}")
         lines.append(f"This chat has worker session: {has_worker}")
         lines.append(
-            f"This chat engine: {display_engine_name(selected_engine or getattr(config, 'engine_plugin', 'codex'))}"
+            f"This chat engine: {display_engine_name(selected_engine or getattr(engines, 'engine_plugin', 'codex'))}"
         )
 
     return "\n".join(lines)

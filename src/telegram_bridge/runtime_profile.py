@@ -9,6 +9,13 @@ from pathlib import Path
 from typing import List, Optional
 
 from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.engine_catalog import (
+    configured_codex_model,
+    configured_default_engine,
+    configured_gemma_model,
+    configured_pi_model,
+    configured_pi_provider,
+)
 from telegram_bridge.runtime_paths import build_shared_core_root, shared_core_path
 
 HELP_COMMAND_ALIASES = ("/help", "/h")
@@ -80,7 +87,8 @@ def build_sro_routing_script_allowlist() -> List[str]:
     ]
 
 def assistant_label(config) -> str:
-    value = getattr(config, "assistant_name", "").strip()
+    identity = getattr(config, "identity", config)
+    value = getattr(identity, "assistant_name", "").strip()
     return value or "Architect"
 
 def _recent_codex_model_for_runtime(runtime_root: str) -> str:
@@ -135,32 +143,34 @@ def _recent_codex_model_for_runtime(runtime_root: str) -> str:
     return ""
 
 def _effective_codex_progress_model(config) -> str:
-    model = str(getattr(config, "codex_model", "") or "").strip()
+    model = configured_codex_model(config)
     if model:
         return model
     runtime_root = str(os.getenv("TELEGRAM_RUNTIME_ROOT", "") or "").strip()
     return _recent_codex_model_for_runtime(runtime_root)
 
 def build_engine_progress_context_label(config, engine_name: Optional[str] = None) -> str:
-    selected = str(engine_name or getattr(config, "engine_plugin", "codex") or "codex").strip().lower()
+    selected = str(engine_name or configured_default_engine(config) or "codex").strip().lower()
     if not selected:
         return ""
     if selected == "pi":
-        provider = str(getattr(config, "pi_provider", "ollama") or "ollama").strip().lower()
-        model = str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip()
+        provider = configured_pi_provider(config)
+        model = configured_pi_model(config)
         parts = ["pi", provider]
         if model:
             parts.append(model)
         return f"({' | '.join(parts)})"
     if selected == "venice":
-        model = str(getattr(config, "venice_model", "mistral-31-24b") or "mistral-31-24b").strip()
+        engines = getattr(config, "engines", config)
+        model = str(getattr(engines, "venice_model", "mistral-31-24b") or "mistral-31-24b").strip()
         parts = ["venice"]
         if model:
             parts.append(model)
         return f"({' | '.join(parts)})"
     if selected == "gemma":
-        provider = str(getattr(config, "gemma_provider", "ollama_ssh") or "ollama_ssh").strip().lower()
-        model = str(getattr(config, "gemma_model", "gemma4:26b") or "gemma4:26b").strip()
+        engines = getattr(config, "engines", config)
+        provider = str(getattr(engines, "gemma_provider", "ollama_ssh") or "ollama_ssh").strip().lower()
+        model = configured_gemma_model(config)
         parts = ["ollama(s4)"]
         if provider and provider not in {"ollama", "ollama_ssh"}:
             parts.append(provider)

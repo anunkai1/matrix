@@ -261,8 +261,8 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(recorded_first.text, "first part")
         self.assertEqual(recorded_second.text, "first part\n\nsecond part")
 
-    @mock.patch.object(bridge_handlers, "transcribe_voice")
-    @mock.patch.object(bridge_handlers, "download_voice_to_temp")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "transcribe_voice")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "download_voice_to_temp")
     def test_transcribe_voice_for_chat_blocks_low_confidence(self, download_voice_to_temp, transcribe_voice):
         with tempfile.NamedTemporaryFile(suffix=".oga", delete=False) as handle:
             voice_path = handle.name
@@ -293,8 +293,8 @@ class TestMisc(unittest.TestCase):
         self.assertEqual(len(client.messages), 1)
         self.assertEqual(client.messages[0][1], "Voice transcript confidence is low, resend")
 
-    @mock.patch.object(bridge_handlers, "transcribe_voice")
-    @mock.patch.object(bridge_handlers, "download_voice_to_temp")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "transcribe_voice")
+    @mock.patch.object(bridge_handlers.prompt_inputs, "download_voice_to_temp")
     def test_transcribe_voice_for_chat_applies_aliases_on_success(self, download_voice_to_temp, transcribe_voice):
         with tempfile.NamedTemporaryFile(suffix=".oga", delete=False) as handle:
             voice_path = handle.name

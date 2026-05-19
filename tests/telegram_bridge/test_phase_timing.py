@@ -17,6 +17,8 @@ if str(SRC_ROOT) not in sys.path:
 
 import telegram_bridge.main as bridge
 import telegram_bridge.handlers as bridge_handlers
+import telegram_bridge.prompt_runtime as bridge_prompt_runtime
+import telegram_bridge.request_prompt_processing as bridge_request_prompt_processing
 
 
 class FakeTelegramClient:
@@ -193,9 +195,12 @@ class PhaseTimingTests(unittest.TestCase):
         def sync_start_message_worker(*args, **kwargs):
             return bridge_handlers.process_message_worker(*args, **kwargs)
 
+        emit_mock = mock.Mock()
         with (
             mock.patch.object(bridge_handlers, "start_message_worker", side_effect=sync_start_message_worker),
-            mock.patch.object(bridge_handlers, "emit_event") as emit_mock,
+            mock.patch.object(bridge_handlers, "emit_event", emit_mock),
+            mock.patch.object(bridge_prompt_runtime, "emit_event", emit_mock),
+            mock.patch.object(bridge_request_prompt_processing, "emit_event", emit_mock),
         ):
             bridge.handle_update(state, config, client, update, engine=FakeEngine())
 

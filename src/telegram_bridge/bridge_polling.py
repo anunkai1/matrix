@@ -21,6 +21,14 @@ TEXT_BATCH_QUIET_WINDOW_SECONDS = 0.35
 TEXT_BATCH_MAX_WINDOW_SECONDS = 1.2
 
 
+def _core_config(config: Config):
+    return getattr(config, "core", config)
+
+
+def _identity_config(config: Config):
+    return getattr(config, "identity", config)
+
+
 def drop_pending_updates(client: ChannelAdapter) -> int:
     offset = 0
     dropped = 0
@@ -60,7 +68,8 @@ def drop_pending_updates(client: ChannelAdapter) -> int:
 
 
 def should_discard_startup_backlog(config: Config) -> bool:
-    return getattr(config, "channel_plugin", "telegram") == "telegram"
+    identity = _identity_config(config)
+    return getattr(identity, "channel_plugin", "telegram") == "telegram"
 
 
 def should_resume_saved_update_offset(config: Config) -> bool:
@@ -94,7 +103,9 @@ def compute_initial_update_offset(
     if should_discard_startup_backlog(config):
         return 0, None
 
-    offset_state_path = build_update_offset_state_path(config.state_dir, config.channel_plugin)
+    core = _core_config(config)
+    identity = _identity_config(config)
+    offset_state_path = build_update_offset_state_path(core.state_dir, identity.channel_plugin)
     saved_offset = load_saved_update_offset(offset_state_path)
     queue_min_update_id, queue_max_update_id = inspect_channel_update_bounds(client)
 
@@ -107,7 +118,7 @@ def compute_initial_update_offset(
     emit_event(
         "bridge.startup_offset_resume_checked",
         fields={
-            "channel_plugin": config.channel_plugin,
+            "channel_plugin": identity.channel_plugin,
             "saved_offset": saved_offset,
             "offset": offset,
             "offset_reset": offset_reset,
@@ -134,7 +145,7 @@ def maybe_reset_stale_runtime_offset(
         "bridge.runtime_offset_reset",
         level=logging.WARNING,
         fields={
-            "channel_plugin": config.channel_plugin,
+            "channel_plugin": getattr(_identity_config(config), "channel_plugin", "telegram"),
             "offset_before": offset,
             "queue_min_update_id": queue_min_update_id,
             "queue_max_update_id": queue_max_update_id,

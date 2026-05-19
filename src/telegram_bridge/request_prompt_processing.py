@@ -3,25 +3,23 @@ from typing import List, Optional
 from telegram_bridge.auth_state import refresh_runtime_auth_fingerprint
 from telegram_bridge.channel_adapter import ChannelAdapter
 from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
+from telegram_bridge.handler_progress import ProgressReporter
 from telegram_bridge.handler_models import DocumentPayload, PromptRequest
+from telegram_bridge.prompt_inputs import _prepare_prompt_input_request
+from telegram_bridge.prompt_runtime import execute_prompt_with_retry, finalize_prompt_success
 from telegram_bridge import prompt_execution
 from telegram_bridge import response_delivery
 from telegram_bridge.runtime_profile import assistant_label, build_engine_progress_context_label
 from telegram_bridge.state_store import StateRepository
+from telegram_bridge.structured_logging import emit_event
 from telegram_bridge.engine_controls import build_engine_runtime_config
 
 finalize_request_progress = response_delivery.finalize_request_progress
 emit_worker_exception_and_reply = response_delivery.emit_worker_exception_and_reply
 
 
-def _handlers():
-    import telegram_bridge.handlers as handlers
-
-    return handlers
-
-
 def _emit_event(*args, **kwargs) -> None:
-    _handlers().emit_event(*args, **kwargs)
+    emit_event(*args, **kwargs)
 
 
 def deliver_output_and_emit_success(
@@ -31,14 +29,15 @@ def deliver_output_and_emit_success(
     output: str,
     message_thread_id: Optional[int] = None,
     new_thread_id: bool = False,
+    reply_to_message_id: Optional[int] = None,
 ) -> str:
-    handlers = _handlers()
-    delivered_output = handlers.send_executor_output(
+    delivered_output = response_delivery.send_executor_output(
         client=client,
         chat_id=chat_id,
         message_id=message_id,
         output=output,
         message_thread_id=message_thread_id,
+        reply_to_message_id=reply_to_message_id,
     )
     _emit_event(
         "bridge.request_succeeded",
@@ -118,7 +117,6 @@ def build_progress_reporter(
     message_thread_id: Optional[int],
     progress_context_label: str,
 ):
-    handlers = _handlers()
     return prompt_execution.build_progress_reporter(
         client,
         config,
@@ -126,7 +124,7 @@ def build_progress_reporter(
         message_id,
         message_thread_id,
         progress_context_label,
-        progress_reporter_cls=handlers.ProgressReporter,
+        progress_reporter_cls=ProgressReporter,
         assistant_label_fn=assistant_label,
     )
 
@@ -135,39 +133,37 @@ def _build_prompt_progress_reporter(
     request: PromptRequest,
     active_engine: EngineAdapter,
 ):
-    handlers = _handlers()
     return prompt_execution.build_prompt_progress_reporter(
         request,
         active_engine,
         build_engine_runtime_config_fn=build_engine_runtime_config,
         build_engine_progress_context_label_fn=build_engine_progress_context_label,
-        progress_reporter_cls=handlers.ProgressReporter,
+        progress_reporter_cls=ProgressReporter,
         assistant_label_fn=assistant_label,
     )
 
 
-def _build_prompt_execution_runtime(handlers):
+def _build_prompt_execution_runtime():
     return prompt_execution.build_prompt_execution_runtime(
-        progress_reporter_cls=handlers.ProgressReporter,
+        progress_reporter_cls=ProgressReporter,
         state_repository_cls=StateRepository,
         codex_engine_adapter_factory=CodexEngineAdapter,
         assistant_label_fn=assistant_label,
         build_engine_runtime_config_fn=build_engine_runtime_config,
         build_engine_progress_context_label_fn=build_engine_progress_context_label,
         refresh_runtime_auth_fingerprint_fn=refresh_runtime_auth_fingerprint,
-        prepare_prompt_input_request_fn=handlers._prepare_prompt_input_request,
-        execute_prompt_with_retry_fn=handlers.execute_prompt_with_retry,
-        finalize_prompt_success_fn=handlers.finalize_prompt_success,
+        prepare_prompt_input_request_fn=_prepare_prompt_input_request,
+        execute_prompt_with_retry_fn=execute_prompt_with_retry,
+        finalize_prompt_success_fn=finalize_prompt_success,
         finalize_request_progress_fn=finalize_request_progress,
         emit_event_fn=_emit_event,
     )
 
 
 def _process_prompt_request(request: PromptRequest) -> None:
-    handlers = _handlers()
     prompt_execution.process_prompt_request(
         request,
-        runtime=_build_prompt_execution_runtime(handlers),
+        runtime=_build_prompt_execution_runtime(),
     )
 
 

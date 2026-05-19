@@ -365,6 +365,41 @@ class GoalLoopTests(unittest.TestCase):
             self.assertEqual(reason, "explicit completion")
             self.assertFalse(parse_failed)
 
+    def test_judge_done_accepts_goal_is_complete_stopping_wording(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+
+            with mock.patch.object(
+                goal_loop,
+                "build_engine_runtime_config",
+                return_value=object(),
+            ), mock.patch.object(
+                goal_loop,
+                "parse_executor_output",
+                return_value=("", '{"done": true, "reason": "explicit completion"}'),
+            ):
+                engine = mock.Mock()
+                engine.run.return_value = mock.Mock(returncode=0, stdout="ignored")
+                with mock.patch(
+                    "telegram_bridge.request_starts.resolve_engine_for_scope",
+                    return_value=engine,
+                ):
+                    verdict, reason, parse_failed = goal_loop._run_goal_judge(
+                        state=state,
+                        config=make_config(),
+                        client=client,
+                        scope_key="tg:-1003894351534:topic:1853",
+                        chat_id=-1003894351534,
+                        message_thread_id=1853,
+                        goal_state=goal_loop.GoalState(goal="build the thing"),
+                        last_response="Goal is complete. Stopping.",
+                    )
+
+            self.assertEqual(verdict, "done")
+            self.assertEqual(reason, "explicit completion")
+            self.assertFalse(parse_failed)
+
 
 if __name__ == "__main__":
     unittest.main()

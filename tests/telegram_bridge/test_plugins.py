@@ -1714,7 +1714,11 @@ class TestPlugins(unittest.TestCase):
 
         with (
             mock.patch.object(bridge_handlers, "parse_executor_output", return_value=(None, raw_output)),
-            mock.patch.object(bridge_handlers, "send_executor_output", return_value="ok") as send_mock,
+            mock.patch.object(
+                bridge_handlers.request_processing.request_prompt_processing.response_delivery,
+                "send_executor_output",
+                return_value="ok",
+            ) as send_mock,
         ):
             bridge_handlers.finalize_prompt_success(
                 state_repo=state_repo,

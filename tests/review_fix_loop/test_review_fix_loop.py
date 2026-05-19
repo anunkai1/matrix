@@ -4,6 +4,13 @@ from pathlib import Path
 from unittest import mock
 
 MODULE_PATH = Path(__file__).resolve().parents[2] / "ops" / "review_fix_loop" / "review_fix_loop.py"
+REPO_LOCAL_CAMPAIGN_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "ops"
+    / "mavali_loop"
+    / "campaigns"
+    / "server3_code_review_may_2026.json"
+)
 SPEC = spec_from_file_location("review_fix_loop", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 review_fix_loop = module_from_spec(SPEC)
@@ -35,3 +42,6 @@ class ReviewFixLoopWrapperTests(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         fake_runner.main.assert_called_once_with(["status", str(review_fix_loop.CAMPAIGN_PATH)])
+
+    def test_repo_local_campaign_mirror_is_absent(self) -> None:
+        self.assertFalse(REPO_LOCAL_CAMPAIGN_PATH.exists())

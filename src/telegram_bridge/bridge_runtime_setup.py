@@ -20,8 +20,18 @@ from telegram_bridge.bridge_state_bootstrap import (
     load_saved_policy_fingerprint,
     persist_saved_policy_fingerprint,
 )
+from telegram_bridge.codex_app_server import live_codex_turn_is_active, try_steer_live_codex_turn
+from telegram_bridge.command_routing import handle_known_command
+from telegram_bridge.diary_processing import queue_diary_capture
+from telegram_bridge.diary_store import diary_mode_enabled
+from telegram_bridge.dishframed_processing import DISHFRAMED_USAGE_MESSAGE
+from telegram_bridge.message_inputs import get_recent_scope_photos
+from telegram_bridge.request_prompt_processing import emit_phase_timing
+from telegram_bridge.request_starts import start_dishframed_worker, start_message_worker, start_youtube_worker
 from telegram_bridge.runtime_config import Config
-from telegram_bridge.session_manager import compute_policy_fingerprint
+from telegram_bridge.session_manager import compute_policy_fingerprint, ensure_chat_worker_session, mark_busy
+from telegram_bridge.engine_controls import resolve_engine_for_scope
+from telegram_bridge.response_delivery import register_cancel_event, request_chat_cancel
 from telegram_bridge.state_store import (
     CanonicalSession,
     State,
@@ -35,6 +45,18 @@ from telegram_bridge.state_store import (
 from telegram_bridge.structured_logging import emit_event
 from telegram_bridge.update_flow import UpdateFlowDependencies
 from telegram_bridge.voice_alias_learning import VoiceAliasLearningStore
+
+
+def _core_config(config: Config):
+    return getattr(config, "core", config)
+
+
+def _session_config(config: Config):
+    return getattr(config, "session", config)
+
+
+def _voice_config(config: Config):
+    return getattr(config, "voice", config)
 
 
 @dataclass
@@ -51,25 +73,24 @@ class RuntimeBootstrap:
 
 
 def build_update_flow_dependencies() -> UpdateFlowDependencies:
-    from telegram_bridge import handlers
-
     return UpdateFlowDependencies(
-        get_recent_scope_photos=handlers.get_recent_scope_photos,
-        mark_busy=handlers.mark_busy,
-        emit_event=handlers.emit_event,
-        register_cancel_event=handlers.register_cancel_event,
-        try_steer_live_codex_turn=handlers.try_steer_live_codex_turn,
-        live_codex_turn_is_active=handlers.live_codex_turn_is_active,
-        start_dishframed_worker=handlers.start_dishframed_worker,
-        resolve_engine_for_scope=handlers.resolve_engine_for_scope,
-        ensure_chat_worker_session=handlers.ensure_chat_worker_session,
-        start_youtube_worker=handlers.start_youtube_worker,
-        start_message_worker=handlers.start_message_worker,
-        emit_phase_timing=handlers.emit_phase_timing,
-        dishframed_usage_message=handlers.DISHFRAMED_USAGE_MESSAGE,
-        diary_mode_enabled=handlers.diary_mode_enabled,
-        handle_known_command=handlers.handle_known_command,
-        queue_diary_capture=handlers.queue_diary_capture,
+        get_recent_scope_photos=get_recent_scope_photos,
+        mark_busy=mark_busy,
+        emit_event=emit_event,
+        request_chat_cancel=request_chat_cancel,
+        register_cancel_event=register_cancel_event,
+        try_steer_live_codex_turn=try_steer_live_codex_turn,
+        live_codex_turn_is_active=live_codex_turn_is_active,
+        start_dishframed_worker=start_dishframed_worker,
+        resolve_engine_for_scope=resolve_engine_for_scope,
+        ensure_chat_worker_session=ensure_chat_worker_session,
+        start_youtube_worker=start_youtube_worker,
+        start_message_worker=start_message_worker,
+        emit_phase_timing=emit_phase_timing,
+        dishframed_usage_message=DISHFRAMED_USAGE_MESSAGE,
+        diary_mode_enabled=diary_mode_enabled,
+        handle_known_command=handle_known_command,
+        queue_diary_capture=queue_diary_capture,
     )
 
 
@@ -126,18 +147,19 @@ def apply_policy_change_thread_reset(
 def initialize_voice_alias_learning_store(
     config: Config,
 ) -> Optional[VoiceAliasLearningStore]:
-    if not config.voice_alias_learning_enabled:
+    voice = _voice_config(config)
+    if not voice.voice_alias_learning_enabled:
         return None
     try:
         return VoiceAliasLearningStore(
-            path=config.voice_alias_learning_path,
-            min_examples=config.voice_alias_learning_min_examples,
-            confirmation_window_seconds=config.voice_alias_learning_confirmation_window_seconds,
+            path=voice.voice_alias_learning_path,
+            min_examples=voice.voice_alias_learning_min_examples,
+            confirmation_window_seconds=voice.voice_alias_learning_confirmation_window_seconds,
         )
     except Exception:
         logging.exception(
             "Failed to initialize voice alias learning store at %s; continuing without learning.",
-            config.voice_alias_learning_path,
+            voice.voice_alias_learning_path,
         )
         return None
 
@@ -167,15 +189,17 @@ def _log_thread_reset(
 
 
 def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
-    ensure_state_dir(config.state_dir)
+    core = _core_config(config)
+    session = _session_config(config)
+    ensure_state_dir(core.state_dir)
     attachment_store = AttachmentStore(
-        os.path.join(config.state_dir, "attachments.sqlite3"),
-        os.path.join(config.state_dir, "attachments"),
-        retention_seconds=config.attachment_retention_seconds,
-        max_total_bytes=config.attachment_max_total_bytes,
+        os.path.join(core.state_dir, "attachments.sqlite3"),
+        os.path.join(core.state_dir, "attachments"),
+        retention_seconds=core.attachment_retention_seconds,
+        max_total_bytes=core.attachment_max_total_bytes,
     )
     affective_runtime = build_affective_runtime(config)
-    state_paths = build_bridge_state_paths(config.state_dir)
+    state_paths = build_bridge_state_paths(core.state_dir)
     loaded_state = load_bridge_state_mappings(state_paths)
     loaded_threads = loaded_state.get("threads", {})
     loaded_engines = loaded_state.get("engines", {})
@@ -195,12 +219,12 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
     )
 
     current_policy_fingerprint = ""
-    if config.persistent_workers_policy_files:
+    if session.persistent_workers_policy_files:
         current_policy_fingerprint = compute_policy_fingerprint(
-            config.persistent_workers_policy_files
+            session.persistent_workers_policy_files
         )
         policy_reset_result = apply_policy_change_thread_reset(
-            state_dir=config.state_dir,
+            state_dir=core.state_dir,
             current_policy_fingerprint=current_policy_fingerprint,
             loaded_threads=loaded_threads,
             loaded_worker_sessions=loaded_worker_sessions,
@@ -214,7 +238,7 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
 
     current_auth_fingerprint = compute_current_auth_fingerprint()
     auth_reset_result = apply_auth_change_thread_reset(
-        state_dir=config.state_dir,
+        state_dir=core.state_dir,
         current_auth_fingerprint=current_auth_fingerprint,
         loaded_threads=loaded_threads,
         loaded_worker_sessions=loaded_worker_sessions,
@@ -226,11 +250,11 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
             counts=auth_reset_result["counts"],
         )
 
-    if config.persistent_workers_enabled and not config.canonical_sessions_enabled:
+    if session.persistent_workers_enabled and not session.canonical_sessions_enabled:
         now = time.time()
         if not current_policy_fingerprint:
             current_policy_fingerprint = compute_policy_fingerprint(
-                config.persistent_workers_policy_files
+                session.persistent_workers_policy_files
             )
         if not loaded_worker_sessions and loaded_threads:
             loaded_worker_sessions = {
@@ -242,13 +266,13 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
                 )
                 for chat_id, thread_id in loaded_threads.items()
             }
-        for chat_id, session in loaded_worker_sessions.items():
-            if session.thread_id:
-                loaded_threads[chat_id] = session.thread_id
+        for chat_id, worker_session in loaded_worker_sessions.items():
+            if worker_session.thread_id:
+                loaded_threads[chat_id] = worker_session.thread_id
 
     voice_alias_learning_store = initialize_voice_alias_learning_store(config)
     state = State(
-        chat_threads=loaded_threads if not config.canonical_sessions_enabled else {},
+        chat_threads=loaded_threads if not session.canonical_sessions_enabled else {},
         chat_thread_path=state_paths.get("chat_threads", ""),
         chat_engines=loaded_engines,
         chat_engine_path=state_paths.get("chat_engines", ""),
@@ -264,23 +288,23 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
         chat_pi_model_path=state_paths.get("chat_pi_models", ""),
         chat_goals=loaded_state.get("goals", {}),
         chat_goal_path=state_paths.get("chat_goals", ""),
-        worker_sessions=loaded_worker_sessions if not config.canonical_sessions_enabled else {},
+        worker_sessions=loaded_worker_sessions if not session.canonical_sessions_enabled else {},
         worker_sessions_path=state_paths.get("worker_sessions", ""),
-        in_flight_requests=loaded_in_flight if not config.canonical_sessions_enabled else {},
+        in_flight_requests=loaded_in_flight if not session.canonical_sessions_enabled else {},
         in_flight_path=state_paths.get("in_flight_requests", ""),
-        canonical_sessions_enabled=config.canonical_sessions_enabled,
-        canonical_legacy_mirror_enabled=config.canonical_legacy_mirror_enabled,
+        canonical_sessions_enabled=session.canonical_sessions_enabled,
+        canonical_legacy_mirror_enabled=session.canonical_legacy_mirror_enabled,
         canonical_sqlite_enabled=(
-            config.canonical_sessions_enabled and config.canonical_sqlite_enabled
+            session.canonical_sessions_enabled and session.canonical_sqlite_enabled
         ),
-        canonical_sqlite_path=config.canonical_sqlite_path,
-        canonical_json_mirror_enabled=config.canonical_json_mirror_enabled,
+        canonical_sqlite_path=session.canonical_sqlite_path,
+        canonical_json_mirror_enabled=session.canonical_json_mirror_enabled,
         chat_sessions=loaded_canonical_sessions,
         chat_sessions_path=state_paths.get("chat_sessions", ""),
         affective_runtime=affective_runtime,
         attachment_store=attachment_store,
         voice_alias_learning_store=voice_alias_learning_store,
-        auth_fingerprint_path=build_auth_fingerprint_state_path(config.state_dir),
+        auth_fingerprint_path=build_auth_fingerprint_state_path(core.state_dir),
         auth_fingerprint=current_auth_fingerprint,
     )
     return RuntimeBootstrap(
@@ -297,10 +321,11 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
 
 
 def persist_bootstrap_state(config: Config, bootstrap: RuntimeBootstrap) -> None:
-    if config.persistent_workers_enabled and not config.canonical_sessions_enabled:
+    session = _session_config(config)
+    if session.persistent_workers_enabled and not session.canonical_sessions_enabled:
         persist_chat_threads(bootstrap.state)
         persist_worker_sessions(bootstrap.state)
-    if config.canonical_sessions_enabled:
+    if session.canonical_sessions_enabled:
         if not bootstrap.state.chat_sessions:
             bootstrap.state.chat_sessions = build_canonical_sessions_from_legacy(
                 bootstrap.loaded_threads,

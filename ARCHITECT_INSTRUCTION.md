@@ -54,9 +54,7 @@ Assistant name: `Architect`
 - If sandbox or `bwrap`/`bubblewrap` messages appear in Architect runtime logs, treat that as configuration drift or regression and correct it at the runtime/config level.
 
 ## 4) File Delivery Rule
-- If a request involves sending or sharing a file and destination is ambiguous, clarify the target first.
-- The explicit question to ask is:
-  - `Inline chat link/content or Telegram document attachment?`
+- If a request involves sending or sharing a file and destination is ambiguous, send it to the current chat, group, topic
 
 ## 4A) Telegram Reply Path Rule
 - If the current request already arrived through `telegram-architect-bridge.service`, the default and preferred outbound path is the bridge's normal final response.

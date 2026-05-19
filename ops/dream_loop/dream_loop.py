@@ -411,10 +411,8 @@ def _observer_schedule_text(timer_unit_text: str) -> str:
 
 def _collect_summary_live_facts(
     run_text_command: Callable[[Sequence[str]], str],
+    observer_status_payload: Dict[str, Any],
 ) -> Dict[str, Any]:
-    observer_env_text = run_text_command(
-        ("systemctl", "show", "server3-runtime-observer.service", "-p", "Environment", "--value")
-    )
     timer_unit_text = run_text_command(("systemctl", "cat", "server3-runtime-observer.timer"))
     dream_loop_timer_enabled = False
     try:
@@ -424,10 +422,7 @@ def _collect_summary_live_facts(
         dream_loop_timer_enabled = enabled_text == "enabled"
     except Exception:
         dream_loop_timer_enabled = False
-    observer_mode = "unknown"
-    mode_match = re.search(r"\bRUNTIME_OBSERVER_MODE=([^\s]+)", observer_env_text)
-    if mode_match:
-        observer_mode = mode_match.group(1).strip()
+    observer_mode = str(observer_status_payload.get("mode") or "").strip() or "unknown"
     return {
         "observer_mode": observer_mode,
         "observer_schedule_text": _observer_schedule_text(timer_unit_text),
@@ -841,7 +836,7 @@ def execute_dream_loop(
     observer_summary_payload = run_json_command(
         ("python3", "ops/runtime_observer/runtime_observer.py", "--json", "summary", "--hours", "24")
     )
-    summary_live_facts = _collect_summary_live_facts(run_text_command)
+    summary_live_facts = _collect_summary_live_facts(run_text_command, observer_status_payload)
 
     runtime_shape, runtime_shape_findings = _extract_runtime_shape_truth(
         manifest_payload,

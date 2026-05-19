@@ -94,6 +94,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             }
         if command == ("python3", "ops/runtime_observer/runtime_observer.py", "--json", "status"):
             return {
+                "mode": "collect_only",
                 "kpis": {
                     "service_up": {"severity": "ok"},
                     "telegram_retry_rate": {"severity": "warn"},

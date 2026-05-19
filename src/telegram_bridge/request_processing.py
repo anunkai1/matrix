@@ -1,10 +1,20 @@
 from telegram_bridge.engine_adapter import CodexEngineAdapter
+from telegram_bridge.dishframed_processing import DISHFRAMED_USAGE_MESSAGE, run_dishframed_cli
 from telegram_bridge.handler_models import DishframedRequest, YoutubeRequest
 from telegram_bridge import request_prompt_processing
 from telegram_bridge import special_request_processing
+from telegram_bridge.prompt_inputs import prepare_prompt_input
+from telegram_bridge.prompt_runtime import execute_prompt_with_retry, finalize_prompt_success
 from telegram_bridge import response_delivery
 from telegram_bridge.runtime_profile import build_engine_progress_context_label
 from telegram_bridge.state_store import StateRepository
+from telegram_bridge.transport import TELEGRAM_CAPTION_LIMIT
+from telegram_bridge.youtube_processing import (
+    build_youtube_summary_prompt,
+    build_youtube_transcript_output,
+    build_youtube_unavailable_message,
+    run_youtube_analyzer,
+)
 
 finalize_request_progress = response_delivery.finalize_request_progress
 send_canceled_response = response_delivery.send_canceled_response
@@ -13,7 +23,6 @@ emit_worker_exception_and_reply = response_delivery.emit_worker_exception_and_re
 send_chat_action_safe = response_delivery.send_chat_action_safe
 infer_media_kind = response_delivery.infer_media_kind
 
-_handlers = request_prompt_processing._handlers
 _emit_event = request_prompt_processing._emit_event
 deliver_output_and_emit_success = request_prompt_processing.deliver_output_and_emit_success
 begin_affective_turn = request_prompt_processing.begin_affective_turn
@@ -26,39 +35,31 @@ _process_prompt_request = request_prompt_processing._process_prompt_request
 _process_message_worker_request = request_prompt_processing._process_message_worker_request
 
 
-def _process_special_request(request, *, build_runtime_fn, process_request_fn) -> None:
-    handlers = _handlers()
-    process_request_fn(
-        request,
-        runtime=build_runtime_fn(handlers),
-    )
-
-
-def _build_youtube_processing_runtime(handlers):
+def _build_youtube_processing_runtime():
     return special_request_processing.build_youtube_processing_runtime(
         build_progress_reporter_fn=build_progress_reporter,
         build_engine_progress_context_label_fn=build_engine_progress_context_label,
         state_repository_cls=StateRepository,
         codex_engine_adapter_factory=CodexEngineAdapter,
         send_canceled_response_fn=send_canceled_response,
-        run_youtube_analyzer_fn=handlers.run_youtube_analyzer,
-        build_youtube_transcript_output_fn=handlers.build_youtube_transcript_output,
+        run_youtube_analyzer_fn=run_youtube_analyzer,
+        build_youtube_transcript_output_fn=build_youtube_transcript_output,
         deliver_output_and_emit_success_fn=deliver_output_and_emit_success,
-        build_youtube_unavailable_message_fn=handlers.build_youtube_unavailable_message,
-        execute_prompt_with_retry_fn=handlers.execute_prompt_with_retry,
-        build_youtube_summary_prompt_fn=handlers.build_youtube_summary_prompt,
-        finalize_prompt_success_fn=handlers.finalize_prompt_success,
+        build_youtube_unavailable_message_fn=build_youtube_unavailable_message,
+        execute_prompt_with_retry_fn=execute_prompt_with_retry,
+        build_youtube_summary_prompt_fn=build_youtube_summary_prompt,
+        finalize_prompt_success_fn=finalize_prompt_success,
         finalize_request_progress_fn=finalize_request_progress,
     )
 
 
-def _build_dishframed_processing_runtime(handlers):
+def _build_dishframed_processing_runtime():
     return special_request_processing.build_dishframed_processing_runtime(
         build_progress_reporter_fn=build_progress_reporter,
-        prepare_prompt_input_fn=handlers.prepare_prompt_input,
-        dishframed_usage_message=handlers.DISHFRAMED_USAGE_MESSAGE,
-        run_dishframed_cli_fn=handlers.run_dishframed_cli,
-        telegram_caption_limit=handlers.TELEGRAM_CAPTION_LIMIT,
+        prepare_prompt_input_fn=prepare_prompt_input,
+        dishframed_usage_message=DISHFRAMED_USAGE_MESSAGE,
+        run_dishframed_cli_fn=run_dishframed_cli,
+        telegram_caption_limit=TELEGRAM_CAPTION_LIMIT,
         infer_media_kind_fn=infer_media_kind,
         send_chat_action_safe_fn=send_chat_action_safe,
         finalize_request_progress_fn=finalize_request_progress,
@@ -66,10 +67,9 @@ def _build_dishframed_processing_runtime(handlers):
 
 
 def _process_youtube_request(request: YoutubeRequest) -> None:
-    _process_special_request(
+    special_request_processing.process_youtube_request(
         request,
-        build_runtime_fn=_build_youtube_processing_runtime,
-        process_request_fn=special_request_processing.process_youtube_request,
+        runtime=_build_youtube_processing_runtime(),
     )
 
 
@@ -84,10 +84,9 @@ def _process_youtube_worker_request(request: YoutubeRequest) -> None:
 
 
 def _process_dishframed_request(request: DishframedRequest) -> None:
-    _process_special_request(
+    special_request_processing.process_dishframed_request(
         request,
-        build_runtime_fn=_build_dishframed_processing_runtime,
-        process_request_fn=special_request_processing.process_dishframed_request,
+        runtime=_build_dishframed_processing_runtime(),
     )
 
 

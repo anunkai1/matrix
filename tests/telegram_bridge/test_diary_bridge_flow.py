@@ -14,6 +14,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 import telegram_bridge.main as bridge_main
+import telegram_bridge.diary_processing as bridge_diary_processing
 import telegram_bridge.handlers as bridge_handlers
 import telegram_bridge.state_store as bridge_state_store
 import telegram_bridge.diary_store as diary_store
@@ -218,7 +219,11 @@ class DiaryBridgeFlowTests(unittest.TestCase):
                 scope_key=scope_key,
             )
 
-        with mock.patch.object(bridge_handlers, "process_diary_batch", side_effect=fake_process_diary_batch):
+        with mock.patch.object(
+            bridge_diary_processing,
+            "process_diary_batch",
+            side_effect=fake_process_diary_batch,
+        ):
             bridge_handlers.handle_update(
                 state,
                 config,

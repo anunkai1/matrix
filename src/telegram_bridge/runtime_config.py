@@ -118,6 +118,11 @@ class EngineConfig:
     pi_ollama_tunnel_remote_port: int
     pi_request_timeout_seconds: int
     codex_sandbox_mode: str = "danger-full-access"
+    pi_web_context_enabled: bool = True
+    pi_web_max_search_results: int = 5
+    pi_web_max_fetched_pages: int = 2
+    pi_web_max_page_chars: int = 3500
+    pi_web_timeout_seconds: int = 20
     codex_app_server_enabled: bool = False
     telegram_context_injection_policy: str = ""
 
@@ -661,6 +666,27 @@ def load_engine_config_values(*, assistant_name: str) -> Dict[str, object]:
             "PI_REQUEST_TIMEOUT_SECONDS",
             1800,
             minimum=1,
+        ),
+        "pi_web_context_enabled": parse_bool_env("PI_WEB_CONTEXT_ENABLED", True),
+        "pi_web_max_search_results": parse_int_env(
+            "PI_WEB_MAX_SEARCH_RESULTS",
+            5,
+            minimum=1,
+        ),
+        "pi_web_max_fetched_pages": parse_int_env(
+            "PI_WEB_MAX_FETCHED_PAGES",
+            2,
+            minimum=1,
+        ),
+        "pi_web_max_page_chars": parse_int_env(
+            "PI_WEB_MAX_PAGE_CHARS",
+            3500,
+            minimum=500,
+        ),
+        "pi_web_timeout_seconds": parse_int_env(
+            "PI_WEB_TIMEOUT_SECONDS",
+            20,
+            minimum=5,
         ),
     }
 

@@ -46,20 +46,19 @@ class TestPromptInputs(unittest.TestCase):
             timeout_message="Timed out",
         )
 
-        with mock.patch.object(prompt_inputs, "_handlers") as handlers_factory:
-            handlers = handlers_factory.return_value
-            handlers.download_voice_to_temp.return_value = "/tmp/fake.oga"
-            handlers.transcribe_voice.side_effect = subprocess.TimeoutExpired(cmd=["/bin/echo"], timeout=10)
-
-            with mock.patch.object(prompt_inputs.os, "remove"):
-                transcript = prompt_inputs.transcribe_voice_for_chat(
-                    state=state,
-                    config=config,
-                    client=client,
-                    chat_id=1,
-                    message_id=104,
-                    voice_file_id="voice-2",
-                )
+        with mock.patch.object(prompt_inputs, "download_voice_to_temp", return_value="/tmp/fake.oga"), mock.patch.object(
+            prompt_inputs,
+            "transcribe_voice",
+            side_effect=subprocess.TimeoutExpired(cmd=["/bin/echo"], timeout=10),
+        ), mock.patch.object(prompt_inputs.os, "remove"):
+            transcript = prompt_inputs.transcribe_voice_for_chat(
+                state=state,
+                config=config,
+                client=client,
+                chat_id=1,
+                message_id=104,
+                voice_file_id="voice-2",
+            )
 
         self.assertIsNone(transcript)
         self.assertEqual(client.messages[-1], (1, "Timed out", 104, None))
@@ -130,9 +129,9 @@ class TestPromptInputs(unittest.TestCase):
 
         self.assertEqual(prepared, "prepared")
         kwargs = prepare_prompt_input_request.call_args.kwargs
-        self.assertIs(kwargs["transcribe_voice_for_chat_fn"], bridge_handlers.transcribe_voice_for_chat)
-        self.assertIs(kwargs["strip_required_prefix_fn"], bridge_handlers.strip_required_prefix)
-        self.assertIs(kwargs["send_input_too_long_fn"], bridge_handlers.send_input_too_long)
+        self.assertIs(kwargs["transcribe_voice_for_chat_fn"], prompt_inputs.transcribe_voice_for_chat)
+        self.assertIs(kwargs["strip_required_prefix_fn"], prompt_inputs.strip_required_prefix)
+        self.assertIs(kwargs["send_input_too_long_fn"], prompt_inputs.send_input_too_long)
 
     def test_prewarm_attachment_archive_for_message_delegates_to_prompt_preparation(self):
         state = bridge.State()
@@ -155,9 +154,9 @@ class TestPromptInputs(unittest.TestCase):
         args = prewarm_attachment_archive_for_message.call_args.args
         self.assertEqual(args[:5], (state, config, client, 1, message))
         kwargs = prewarm_attachment_archive_for_message.call_args.kwargs
-        self.assertIs(kwargs["extract_message_photo_file_ids_fn"], bridge_handlers.extract_message_photo_file_ids)
-        self.assertIs(kwargs["extract_message_media_payload_fn"], bridge_handlers.extract_message_media_payload)
-        self.assertIs(kwargs["download_photo_to_temp_fn"], bridge_handlers.download_photo_to_temp)
+        self.assertIs(kwargs["extract_message_photo_file_ids_fn"], prompt_inputs.extract_message_photo_file_ids)
+        self.assertIs(kwargs["extract_message_media_payload_fn"], prompt_inputs.extract_message_media_payload)
+        self.assertIs(kwargs["download_photo_to_temp_fn"], prompt_inputs.download_photo_to_temp)
 
 
 if __name__ == "__main__":

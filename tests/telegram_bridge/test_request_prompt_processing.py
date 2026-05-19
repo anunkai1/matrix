@@ -11,9 +11,13 @@ if str(SRC_ROOT) not in sys.path:
 from tests.telegram_bridge.helpers import FakeTelegramClient, make_config
 
 import telegram_bridge.handlers as bridge_handlers
+import telegram_bridge.handler_progress as bridge_handler_progress
 import telegram_bridge.main as bridge
 import telegram_bridge.prompt_execution as bridge_prompt_execution
+import telegram_bridge.prompt_inputs as bridge_prompt_inputs
+import telegram_bridge.prompt_runtime as bridge_prompt_runtime
 import telegram_bridge.request_prompt_processing as request_prompt_processing
+import telegram_bridge.response_delivery as bridge_response_delivery
 
 
 class TestRequestPromptProcessing(unittest.TestCase):
@@ -22,7 +26,7 @@ class TestRequestPromptProcessing(unittest.TestCase):
 
         with (
             mock.patch.object(
-                bridge_handlers,
+                request_prompt_processing.response_delivery,
                 "send_executor_output",
                 return_value="delivered output",
             ) as send_executor_output,
@@ -35,6 +39,7 @@ class TestRequestPromptProcessing(unittest.TestCase):
                 output="raw output",
                 message_thread_id=77,
                 new_thread_id=True,
+                reply_to_message_id=44,
             )
 
         self.assertEqual(delivered, "delivered output")
@@ -44,6 +49,7 @@ class TestRequestPromptProcessing(unittest.TestCase):
             message_id=55,
             output="raw output",
             message_thread_id=77,
+            reply_to_message_id=44,
         )
         emit_event.assert_called_once_with(
             "bridge.request_succeeded",
@@ -85,13 +91,13 @@ class TestRequestPromptProcessing(unittest.TestCase):
         self.assertIs(args[0], request)
         runtime = kwargs["runtime"]
         self.assertIsInstance(runtime, bridge_prompt_execution.PromptExecutionRuntime)
-        self.assertIs(runtime.progress_reporter_cls, bridge_handlers.ProgressReporter)
+        self.assertIs(runtime.progress_reporter_cls, bridge_handler_progress.ProgressReporter)
         self.assertIs(
             runtime.prepare_prompt_input_request_fn,
-            bridge_handlers._prepare_prompt_input_request,
+            bridge_prompt_inputs._prepare_prompt_input_request,
         )
-        self.assertIs(runtime.execute_prompt_with_retry_fn, bridge_handlers.execute_prompt_with_retry)
-        self.assertIs(runtime.finalize_prompt_success_fn, bridge_handlers.finalize_prompt_success)
+        self.assertIs(runtime.execute_prompt_with_retry_fn, bridge_prompt_runtime.execute_prompt_with_retry)
+        self.assertIs(runtime.finalize_prompt_success_fn, bridge_prompt_runtime.finalize_prompt_success)
         self.assertIs(runtime.finalize_request_progress_fn, bridge_handlers.finalize_request_progress)
 
     def test_process_message_worker_request_emits_worker_exception_reply(self):
@@ -135,6 +141,24 @@ class TestRequestPromptProcessing(unittest.TestCase):
             chat_id=1,
             message_id=56,
             message_thread_id=99,
+        )
+
+    def test_build_prompt_runtime_hooks_use_leaf_dependencies(self):
+        hooks = bridge_prompt_runtime.build_prompt_runtime_hooks()
+
+        self.assertIs(hooks.emit_phase_timing_fn, bridge_prompt_runtime.emit_phase_timing)
+        self.assertIs(
+            hooks.deliver_output_and_emit_success_fn,
+            bridge_prompt_runtime.deliver_output_and_emit_success,
+        )
+        self.assertIs(hooks.send_canceled_response_fn, bridge_response_delivery.send_canceled_response)
+        self.assertIs(
+            hooks.send_executor_failure_message_fn,
+            bridge_response_delivery.send_executor_failure_message,
+        )
+        self.assertIs(
+            hooks.extract_executor_failure_message_fn,
+            bridge_response_delivery.extract_executor_failure_message,
         )
 
 

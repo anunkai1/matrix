@@ -482,6 +482,31 @@ def send_input_too_long(
         reply_to_message_id=message_id,
     )
 
+def send_prompt_trimmed_warning(
+    client: ChannelAdapter,
+    chat_id: int,
+    message_id: Optional[int],
+    *,
+    original_length: int,
+    final_length: int,
+    max_input_chars: int,
+    dropped_sections: list[str],
+    trimmed_user_chars: int,
+) -> None:
+    dropped_text = ", ".join(dropped_sections) if dropped_sections else "none"
+    trimmed_text = str(trimmed_user_chars) if trimmed_user_chars > 0 else "0"
+    client.send_message(
+        chat_id,
+        (
+            "Input was long, so the bridge trimmed prompt context before sending it to the model.\n"
+            f"- Original assembled prompt: {original_length} chars\n"
+            f"- Final sent prompt: {final_length} chars\n"
+            f"- Max allowed: {max_input_chars} chars\n"
+            f"- Dropped sections: {dropped_text}\n"
+            f"- User-message chars trimmed: {trimmed_text}"
+        ),
+        reply_to_message_id=message_id,
+    )
 
 def send_canceled_response(
     client: ChannelAdapter,

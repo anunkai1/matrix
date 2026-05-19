@@ -236,6 +236,7 @@ def make_config(**overrides):
         "channel_plugin": "telegram",
         "engine_plugin": "codex",
         "selectable_engine_plugins": ["codex", "gemma", "pi"],
+        "codex_sandbox_mode": "off",
         "telegram_context_injection_policy": "",
         "codex_app_server_enabled": False,
         "codex_model": "gpt-5.4-mini",

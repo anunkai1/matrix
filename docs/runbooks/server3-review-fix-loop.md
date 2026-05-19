@@ -1,8 +1,10 @@
 # Server3 Review Fix Loop
 
 Purpose:
-- temporary autonomous loop for the seven code-review / architecture issues identified in May 2026
+- temporary autonomous loop for the remaining code-review / architecture follow-up still relevant from the May 2026 review
 - intended to be launched manually, run until the seven issues are complete, then be deleted
+- the canonical campaign JSON lives only in `/home/architect/mavali-loop/campaigns/examples/server3_code_review_may_2026.json`
+- do not recreate a mirrored copy under `matrix`; the compatibility wrapper here forwards directly to the standalone repo
 
 Primary files:
 - loop script: `ops/review_fix_loop/review_fix_loop.py`
@@ -22,7 +24,7 @@ Commands:
 - limit retries per issue for one invocation: `python3 /home/architect/matrix/ops/review_fix_loop/review_fix_loop.py run --max-attempts-per-issue 8`
 
 Behavior:
-- processes the seven issues in a fixed order
+- processes the remaining task list in the campaign JSON order
 - does not advance to the next issue until the current issue is marked complete
 - retries the same issue within the same run when an attempt fails
 - requires a clean worktree before each attempt
@@ -36,7 +38,7 @@ QA:
 - repo QA path includes this loop through `bash ops/dev/run_python_checks.sh --skip-smoke`
 
 Removal intent:
-- once all seven issues are completed and verified well, remove:
+- once the remaining campaign task is completed and verified well, remove:
   - `ops/review_fix_loop/review_fix_loop.py`
   - `ops/review_fix_loop/tmux_control.sh`
   - `tests/review_fix_loop/test_review_fix_loop.py`

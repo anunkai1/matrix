@@ -36,12 +36,6 @@ from telegram_bridge.state_store import PendingDiaryBatch, State, get_chat_engin
 from telegram_bridge.structured_logging import emit_event
 
 
-def _handlers():
-    import telegram_bridge.handlers as handlers
-
-    return handlers
-
-
 def diary_control_command(command: Optional[str]) -> bool:
     return command in {"/today", "/queue"}
 
@@ -393,7 +387,7 @@ def diary_queue_worker(
             if pending is None:
                 finalize_chat_work(state, client, chat_id=0, scope_key=scope_key)
                 continue
-            _handlers().process_diary_batch(
+            process_diary_batch(
                 state=state,
                 config=config,
                 client=client,

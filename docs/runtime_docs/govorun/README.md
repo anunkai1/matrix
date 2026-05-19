@@ -15,6 +15,7 @@ Repo-backed companion README for the live Govorun runtime root at `/home/govorun
 - Persona source: `infra/runtime_personas/govorun.AGENTS.md`
 - Default language: reply in Russian by default; only switch when the user explicitly asks for translation or quoted text in another language
 - Current live posture: WhatsApp Govorun is pinned back to Russian-only default replies
+- Govorun now defaults to live Codex app-server turns, so same-scope plain-text follow-up WhatsApp messages can be folded into the active Codex turn instead of hitting the old busy rejection path.
 - Selectable engines: `codex`, `pi`, `venice`
 
 ## Runtime Behavior

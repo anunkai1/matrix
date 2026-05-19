@@ -23,6 +23,15 @@ from telegram_bridge.runtime_profile import (
     extract_youtube_link_request,
 )
 
+
+def _session_config(config):
+    return getattr(config, "session", config)
+
+
+def _transport_config(config):
+    return getattr(config, "transport", config)
+
+
 @dataclass(frozen=True)
 class PrefixGateResult:
     prompt_input: Optional[str]
@@ -55,8 +64,9 @@ def apply_required_prefix_gate(
     normalize_command,
     strip_required_prefix,
 ) -> PrefixGateResult:
-    requires_prefix_for_message = bool(config.required_prefixes) and (
-        config.require_prefix_in_private or not is_private_chat
+    session = _session_config(config)
+    requires_prefix_for_message = bool(session.required_prefixes) and (
+        session.require_prefix_in_private or not is_private_chat
     )
     prefix_bypass_command = normalize_command(prompt_input or "")
 
@@ -80,8 +90,8 @@ def apply_required_prefix_gate(
 
     has_required_prefix, stripped_prompt = strip_required_prefix(
         prompt_input,
-        config.required_prefixes,
-        config.required_prefix_ignore_case,
+        session.required_prefixes,
+        session.required_prefix_ignore_case,
     )
     if not has_required_prefix:
         return PrefixGateResult(prompt_input=prompt_input, ignored=True, rejection_reason="prefix_required")
@@ -100,7 +110,8 @@ def apply_priority_keyword_routing(
     command: Optional[str],
     chat_id: int,
 ) -> KeywordRouteResult:
-    if not prompt_input or not getattr(config, "keyword_routing_enabled", True):
+    transport = _transport_config(config)
+    if not prompt_input or not getattr(transport, "keyword_routing_enabled", True):
         return KeywordRouteResult(
             prompt_input=prompt_input or "",
             command=command,

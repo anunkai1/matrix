@@ -1,6 +1,24 @@
 # Server3 Dream Loop
 
-Status: proposed
+Status: proposed, partially implemented
+
+## Implementation Status
+
+This document currently describes two layers:
+
+- the implemented bounded `v1` dream-loop runner
+- the broader `v2+` truth-alignment system that is not yet fully built
+
+Current reality:
+
+- `v1` exists in `ops/dream_loop/dream_loop.py`
+- `v1` is the authoritative implementation target for the current runner
+- the broader system-wide truth-alignment behaviors in this document are follow-on scope and should not be used to judge `v1` completeness
+
+Reading rule:
+
+- treat `V1 Contract`, `Machine State Split`, and `V1 Scope` as the current implementation contract
+- treat the broader alignment design outside those sections as the intended `v2+` direction unless a section explicitly says otherwise
 
 ## Document Role
 
@@ -15,9 +33,9 @@ It explains:
 - what it updates
 - what it does not update
 - how it fits the current bridge, session, and runtime workflows
-- how stale-session warnings and `/refresh` fit into the design
+- how stale-session warnings and `/reset` fit into the design
 
-## Purpose
+## Overall Purpose
 
 The goal is to make actual system truth and maintained structured truth state converge, with actual system truth as the target and human-readable explanation only as a secondary rendered effect.
 
@@ -120,7 +138,7 @@ The dream loop should secondarily keep:
 
 aligned.
 
-## What The Dream Loop Is
+## Overall Dream-Loop Vision
 
 The dream loop is a nightly alignment pass that:
 
@@ -135,7 +153,7 @@ It is not meant to solve every live operational problem at night.
 
 Its job is alignment, not open-ended automation.
 
-## Goals
+## Overall Goals
 
 - Align actual system truth <-> structured truth state.
 - Keep Architect aligned to the current system across days and sessions.
@@ -147,7 +165,7 @@ Its job is alignment, not open-ended automation.
 - Avoid unnecessary live checks during normal daytime replies.
 - Make drift visible and auditable.
 
-## Non-Goals
+## Overall Non-Goals
 
 - Do not rewrite the whole repo each night.
 - Do not auto-edit every doc file.
@@ -156,7 +174,7 @@ Its job is alignment, not open-ended automation.
 - Do not force live verification before every normal reply.
 - Do not replace operator judgment for destructive changes.
 
-## Truth Layers
+## Truth Model
 
 The loop must keep these layers separate.
 
@@ -405,11 +423,184 @@ It should not expand into:
 - open-ended nightly automation beyond the declared truth and health outputs
 - generalized refactoring of session, bridge, or runtime systems
 
-Any later behavior that touches stale-session delivery, `/refresh`, `/truth_status`, commit/push automation, or wider summary maintenance should be treated as follow-on scope unless it is strictly needed to support the three v1 artifacts above.
+Any later behavior that touches stale-session delivery, `/reset`, `/truth_status`, commit/push automation, or wider summary maintenance should be treated as follow-on scope unless it is strictly needed to support the three v1 artifacts above.
 
-## What The Dream Loop Scans
+## V2+ Follow-On Scope
 
-The nightly pass should scan a small set of high-value truth sources.
+The sections below this point describe the intended follow-on system beyond the bounded `v1` runner.
+
+These items are not required for `v1` completeness.
+
+The main `v2+` areas are:
+
+- broader truth scanning beyond the fixed `v1` input set
+- a declared dream-loop check registry as a first-class implementation object
+- wider rendered-doc and capability-truth reconciliation
+- stale-context warning delivery to affected chats or scopes
+- read-only user-facing truth inspection such as `/truth_status`
+- user-driven stale-context reset flow such as `/reset`
+- optional history output such as `history.jsonl`
+- optional Telegram alignment summaries
+- later automation such as commit/push only if explicitly approved and still aligned with the truth-layer boundaries
+
+Implementation rule:
+
+- if a requirement depends on these `v2+` behaviors, it must be specified and implemented as follow-on work rather than treated as an already-missing part of `v1`
+
+## V2 Implementation Target
+
+`V2` is the next implementation phase after the bounded `v1` runner.
+
+Its purpose is to make the dream loop a real declared truth-alignment system, not just a bounded nightly snapshotter.
+
+`V2` should stay strict and affordable. It should add the minimum new machinery required to make the broader design operational without turning the loop into an uncontrolled repo scanner or an autonomous doc-rewriter.
+
+### V2 Must Deliver
+
+- a declared check registry stored as code or structured data, rather than hard-coded check selection only in the runner
+- a `v2` scan planner that executes fixed checks and declared conditional checks from that registry
+- broader secondary-doc alignment for explicitly approved truth surfaces, starting with `SERVER3_SUMMARY.md`
+- persisted stale-context warning state for eligible chats/scopes
+- a read-only `/truth_status` view over dream-loop state
+- a user-driven `/reset` flow that clears stale carried context for the current scope
+
+### V2 Must Not Deliver
+
+- open-ended scanning of the whole repo
+- free-form capability inference without a declared check
+- automatic rewriting of arbitrary docs outside approved correction targets
+- commit/push automation
+- proactive Telegram warning delivery to every eligible scope unless the delivery contract is explicitly implemented and tested
+
+### V2 Artifact Changes
+
+`V2` should keep the existing `v1` artifacts and extend them conservatively.
+
+Required `v2` additions:
+
+- `latest_truth_state.json`
+  - add registry-driven check results
+  - add explicit rendered-doc alignment facts for approved secondary docs
+  - add stale-context warning state for eligible scopes
+- `latest_health_state.json`
+  - keep health truth separate from structural truth
+  - add any new health checks only through the registry
+- `latest_run_state.json`
+  - add executed registry checks, skipped registry checks, and reasons
+  - add any `/truth_status` or `/reset`-related maintenance bookkeeping only if it is run-level rather than truth-level
+
+Optional `v2` additions:
+
+- `history.jsonl`
+  - append-only per-run summary for drift history and later operator inspection
+
+### V2 Registry Minimum Shape
+
+`V2` should make the registry a first-class implementation object with, at minimum:
+
+- `check_id`
+- `truth_area`
+- `mode`
+- `trigger`
+- `inputs`
+- `executor`
+- `mismatch_rule`
+- `correction_target`
+- `severity`
+
+Additional `v2` rule:
+
+- every correction target must name whether it writes to truth state, health state, run state, or an approved secondary rendered document
+
+### V2 Minimum Check Set
+
+`V2` should promote the current implemented checks into the declared registry and add only the smallest missing checks needed for broader alignment.
+
+Required fixed checks:
+
+- `truth_files_fingerprint`
+- `runtime_manifest_vs_status`
+- `runtime_observer_truth`
+
+Required conditional checks:
+
+- `policy_watch_truth`
+- `telegram_context_routing_truth`
+- `server3_summary_truth`
+  - purpose: validate approved `SERVER3_SUMMARY.md` claims against structured truth and live inputs that are already in dream-loop scope
+  - correction target: `SERVER3_SUMMARY.md` only for explicitly mapped fields
+
+The `server3_summary_truth` check is the key `v2` step that turns summary maintenance from ad hoc rendering into declared truth alignment.
+
+### V2 Approved Secondary Truth Surface
+
+`V2` should approve exactly one broader rendered-doc target first:
+
+- `SERVER3_SUMMARY.md`
+
+For `v2`, approval of `SERVER3_SUMMARY.md` means:
+
+- specific summary fields are explicitly mapped to structured truth or approved live inputs
+- each mapped field has one declared correction path
+- unmapped prose remains operator-owned and must not be rewritten by the loop
+
+Initial `v2` mapped summary fields should be narrow:
+
+- dream-loop timer/status line
+- runtime observer mode/schedule line
+- other summary lines only when they already have a declared upstream truth source and a stable correction rule
+
+### V2 Stale-Context Contract
+
+`V2` should persist stale-context status per scope, but should keep delivery conservative.
+
+Required `v2` behaviors:
+
+- mark eligible scopes when watched truth or policy inputs changed
+- persist whether a stale-context warning is outstanding for each eligible scope
+- persist whether `/reset` has cleared that stale warning for the scope
+
+`V2` may expose this status through `/truth_status` before any proactive notification delivery is enabled.
+
+### V2 User-Facing Bridge Additions
+
+`V2` should add two bridge-facing behaviors only:
+
+- `/truth_status`
+  - read-only view over current dream-loop truth/run state for the current scope
+- `/reset`
+  - clear the current scope's stale carried context and mark the outstanding stale warning as handled
+
+`V2` should not add any broader conversational command set than this.
+
+### V2 Exit Criteria
+
+`V2` is complete when all of the following are true:
+
+- the check registry exists and drives check selection
+- the runner no longer relies only on hard-coded check orchestration
+- `SERVER3_SUMMARY.md` alignment is registry-backed for approved mapped fields
+- stale-context warning state is persisted per scope
+- `/truth_status` works as a read-only scope-aware view
+- `/reset` works as a scope-aware stale-context reset
+- tests cover registry execution, summary-alignment mapping, stale-context state transitions, and the bridge-facing `v2` commands
+
+## Post-V2 Scope
+
+Anything beyond the `V2` exit criteria should be treated as later scope, not silently absorbed into `v2`.
+
+Examples:
+
+- proactive Telegram stale-context warning delivery
+- Telegram alignment summaries
+- broader approved secondary docs beyond `SERVER3_SUMMARY.md`
+- additional capability-specific checks that need new truth surfaces
+- `history.jsonl` if it is not needed for the first `v2` rollout
+- commit/push or any other outbound automation
+
+## V2+ Truth Surfaces And Scan Expansion
+
+Beyond the fixed `v1` inputs, later phases may expand the nightly pass to scan a broader but still declared set of high-value truth sources.
 
 ### A. Local Truth Rules
 
@@ -425,7 +616,7 @@ Purpose:
 - know the current collaboration guidance
 - contribute structured truth facts about current operating rules, validated lessons, and declared collaboration constraints
 
-For this v1 design, `ARCHITECT_INSTRUCTION.md` and `LESSONS.md` are watched only for the structured truth facts they encode, not for their explanatory prose. `ARCHITECT_INSTRUCTION.md` contributes current operating rules and declared truth boundaries. `LESSONS.md` contributes validated lessons that have become structured truth facts about what has already been verified. `SERVER3_SUMMARY.md` remains secondary rendered explanation output and does not contribute machine-truth fingerprint inputs by itself.
+For the implemented `v1` runner, `ARCHITECT_INSTRUCTION.md` and `LESSONS.md` are watched only for the structured truth facts they encode, not for their explanatory prose. `ARCHITECT_INSTRUCTION.md` contributes current operating rules and declared truth boundaries. `LESSONS.md` contributes validated lessons that have become structured truth facts about what has already been verified. `SERVER3_SUMMARY.md` remains secondary rendered explanation output and does not contribute machine-truth fingerprint inputs by itself.
 
 `SERVER3_SUMMARY.md` is a secondary rendered explainer. It may be scanned for rendering alignment, but it is not part of the machine-truth fingerprint input set.
 
@@ -490,9 +681,9 @@ Purpose:
 - compare that state against observed reality
 - compare secondary summary outputs against the structured truth state
 
-## Dream Loop Check Registry
+## V2+ Dream Loop Check Registry
 
-To keep the implementation unambiguous, the dream loop should not freely decide what files to inspect.
+To keep later-phase implementation unambiguous, the dream loop should not freely decide what files to inspect.
 
 It should use a declared check registry.
 
@@ -572,7 +763,9 @@ Examples:
 
 The loop should not improvise new scan targets outside the registry.
 
-For v1, the registry should be narrow enough to support the primary machine truth and health outputs plus the conservative report layer.
+For `v1`, the implemented check set is still hard-coded in the runner.
+
+For `v2+`, the registry should be narrow enough to support the primary machine truth and health outputs plus the conservative report layer without expanding into an uncontrolled repo-wide scan.
 
 ### Initial Checks For Affordable Alignment
 
@@ -605,7 +798,7 @@ These checks are the first concrete alignment slice because they cover the highe
 
 Anything beyond these checks should be added only when it is clearly justified by a new truth boundary, a recurring mismatch, or a direct dependency of the primary truth or health outputs.
 
-## Runtime Shape Checks
+## V2+ Runtime Shape Expansion
 
 Runtime shape should be validated by a fixed, explicit set of checks.
 
@@ -699,7 +892,7 @@ Initial conditional checks:
 
 The first slice should not add a larger registry than this unless a later section clearly depends on it.
 
-## What The Dream Loop Does Not Need To Scan
+## V2+ Scan Limits
 
 - the whole repo every night
 - every log file on the machine
@@ -709,7 +902,7 @@ The first slice should not add a larger registry than this unless a later sectio
 
 The loop should stay focused on the files and commands that define stable truth and current health.
 
-## Alignment Logic
+## Shared Alignment Logic
 
 For each mismatch, the loop must answer four questions.
 
@@ -759,9 +952,9 @@ Action:
 - leave stable docs unchanged
 - rely on code/runtime truth
 
-## Stale Session Handling
+## V2+ Stale Session Handling
 
-The system should not silently discard session context when structured-truth inputs change.
+The follow-on system should not silently discard session context when structured-truth inputs change.
 
 Instead, it should:
 
@@ -774,9 +967,9 @@ This keeps the system transparent.
 
 The user-facing command for dropping stale carried context should be:
 
-- `/refresh`
+- `/reset`
 
-The meaning of `/refresh` in this design is:
+The meaning of `/reset` in this design is:
 
 - clear the carried session context for this chat or scope
 - keep the runtime alive
@@ -784,7 +977,7 @@ The meaning of `/refresh` in this design is:
 
 This is narrower than a broad global reset.
 
-## How Alignment Is Achieved
+## Shared Alignment Flow
 
 The loop achieves alignment in five steps, always with the primary end state being actual system truth aligned to maintained structured truth state.
 
@@ -913,7 +1106,7 @@ Suggested fields:
 - whether truth changed on the last run
 - which watched structured-truth inputs changed
 - whether this current chat or topic has a stale-context warning outstanding
-- whether `/refresh` has already been used in this chat or topic since the last truth change
+- whether `/reset` has already been used in this chat or topic since the last truth change
 - short summary of what was aligned
 - unresolved items that were skipped because they needed human judgment
 - one short global system line
@@ -1003,7 +1196,7 @@ When one or more watched structured-truth inputs change in a way that changes th
 
 - the system should consider long-lived carried context potentially stale
 - the system should record stale-context warning eligibility for affected chats
-- the user can choose to run `/refresh`
+- the user can choose to run `/reset`
 
 If the structured truth state or its fingerprint does not change, the loop should not send stale-context warnings just because prose was edited.
 
@@ -1024,7 +1217,7 @@ That means:
 - a nightly truth update changes the structured truth state or machine-truth fingerprint
 - affected chats are marked stale-context eligible
 - v1 does not deliver the notification to chats; later bridge work handles actual delivery
-- later delivery can tell them to use `/refresh` if they want a fresh session aligned to the new truth
+- later delivery can tell them to use `/reset` if they want a fresh session aligned to the new truth
 
 This is how corrected truth reaches the live assistant behavior without hidden session loss.
 
@@ -1055,7 +1248,7 @@ Initial behavior:
 
 - one warning per truth change per scope
 - suppress repeated warnings until either:
-  - the user runs `/refresh`
+  - the user runs `/reset`
   - a later truth change creates a new warning condition
 
 Warning delivery rule:
@@ -1072,28 +1265,28 @@ If the warning was triggered by a machine-truth fingerprint change, it should in
 - that structured-truth inputs changed
 - that carried session context may now be stale
 - the changed watched structured-truth inputs
-- that the user can send `/refresh`
+- that the user can send `/reset`
 
 Suggested message shape:
 
-`Truth inputs changed and this session may now carry stale context. Changed inputs: ARCHITECT_INSTRUCTION.md, infra/server3-runtime-manifest.json. Send /refresh if you want a fresh session aligned to the new truth.`
+`Truth inputs changed and this session may now carry stale context. Changed inputs: ARCHITECT_INSTRUCTION.md, infra/server3-runtime-manifest.json. Send /reset if you want a fresh session aligned to the new truth.`
 
 If the warning was triggered by a policy-only stale-context eligibility change, it should instead include:
 
 - that stale-context policy changed
 - that carried session context may now be stale under the new policy
 - the changed policy source or rule area
-- that the user can send `/refresh`
+- that the user can send `/reset`
 
 Suggested message shape:
 
-`Stale-context policy changed and this session may now be stale under the new policy. Changed policy sources: src/telegram_bridge/runtime_config.py, src/telegram_bridge/session_manager.py. Send /refresh if you want a fresh session aligned to current truth.`
+`Stale-context policy changed and this session may now be stale under the new policy. Changed policy sources: src/telegram_bridge/runtime_config.py, src/telegram_bridge/session_manager.py. Send /reset if you want a fresh session aligned to current truth.`
 
-## Refresh Command
+## Reset Command
 
 User-facing command:
 
-- `/refresh`
+- `/reset`
 
 Meaning:
 
@@ -1119,7 +1312,7 @@ During the day:
 - if a user makes an unverified claim, it does not become truth
 - if the reply depends on fresh live state, do a small live check
 - otherwise use the structured nightly truth baseline plus current verified session changes
-- if a stale-context warning was sent, the user may choose `/refresh` before continuing
+- if a stale-context warning was sent, the user may choose `/reset` before continuing
 
 The dream loop reduces future drift.
 
@@ -1143,7 +1336,7 @@ Likely supporting changes:
 Later-phase supporting changes may include:
 
 - update watched structured-truth inputs in `src/telegram_bridge/runtime_config.py`
-- add a user-facing `/refresh` command in the bridge command layer
+- use the existing user-facing `/reset` command in the bridge command layer for stale-context realignment
 - add a user-facing `/truth_status` command in the bridge command layer
 - add stale-context notification delivery tied to watched structured-truth input changes
 - add daily Telegram summary delivery if operators still want it after the bounded runner is stable
@@ -1289,7 +1482,7 @@ V1 is working if:
 Later-phase success criteria may include:
 
 - users are warned when persistent sessions may now carry stale truth
-- `/refresh` gives users a clean way to realign a chat to the new truth baseline
+- `/reset` gives users a clean way to realign a chat to the new truth baseline
 - `/truth_status` lets a user inspect the current alignment state of the chat or topic
 
 ## Source Of Truth

@@ -121,8 +121,8 @@ fi
 if [[ -n "${CODEX_REASONING_EFFORT:-}" ]]; then
   EXEC_COMMON_ARGS+=(-c "model_reasoning_effort=\"${CODEX_REASONING_EFFORT}\"")
 fi
-codex_sandbox_mode="${CODEX_SANDBOX_MODE:-off}"
-if [[ "${codex_sandbox_mode}" == "off" ]]; then
+codex_sandbox_mode="${CODEX_SANDBOX_MODE:-danger-full-access}"
+if [[ "${codex_sandbox_mode}" == "off" || "${codex_sandbox_mode}" == "danger-full-access" ]]; then
   sanitized_exec_common_args=()
   idx=0
   while (( idx < ${#EXEC_COMMON_ARGS[@]} )); do
@@ -163,13 +163,13 @@ fi
 EXEC_NEW_ARGS=(--color never)
 
 if [[ "${mode}" == "resume" ]]; then
-  if [[ "${codex_sandbox_mode}" == "off" ]]; then
+  if [[ "${codex_sandbox_mode}" == "off" || "${codex_sandbox_mode}" == "danger-full-access" ]]; then
     CMD=("${CODEX_BIN}" exec resume --dangerously-bypass-approvals-and-sandbox "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" "${thread_id}" -)
   else
     CMD=("${CODEX_BIN}" exec resume "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" "${thread_id}" -)
   fi
 else
-  if [[ "${codex_sandbox_mode}" == "off" ]]; then
+  if [[ "${codex_sandbox_mode}" == "off" || "${codex_sandbox_mode}" == "danger-full-access" ]]; then
     CMD=("${CODEX_BIN}" exec --dangerously-bypass-approvals-and-sandbox "${EXEC_NEW_ARGS[@]}" "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" -)
   else
     CMD=("${CODEX_BIN}" exec "${EXEC_NEW_ARGS[@]}" "${EXEC_COMMON_ARGS[@]}" --json "${IMAGE_ARGS[@]}" -)

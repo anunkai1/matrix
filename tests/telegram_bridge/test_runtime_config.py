@@ -178,6 +178,27 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(config.diary_nextcloud_app_password, "secret")
         self.assertEqual(config.diary_nextcloud_remote_root, "/Travel Diary")
 
+    def test_load_config_reads_pi_web_context_overrides(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "PI_WEB_CONTEXT_ENABLED": "false",
+                "PI_WEB_MAX_SEARCH_RESULTS": "7",
+                "PI_WEB_MAX_FETCHED_PAGES": "3",
+                "PI_WEB_MAX_PAGE_CHARS": "4200",
+                "PI_WEB_TIMEOUT_SECONDS": "25",
+            },
+            clear=True,
+        ):
+            config = runtime_config.load_config()
+        self.assertFalse(config.pi_web_context_enabled)
+        self.assertEqual(config.pi_web_max_search_results, 7)
+        self.assertEqual(config.pi_web_max_fetched_pages, 3)
+        self.assertEqual(config.pi_web_max_page_chars, 4200)
+        self.assertEqual(config.pi_web_timeout_seconds, 25)
+
 
 if __name__ == "__main__":
     unittest.main()

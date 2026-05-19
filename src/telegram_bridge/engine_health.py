@@ -5,6 +5,11 @@ from typing import Callable, Dict, List, Tuple
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+
+def _engine_config(config):
+    return getattr(config, "engines", config)
+
+
 def _brief_health_error(error: object, limit: int = 180) -> str:
     text = str(error).strip().replace("\n", " ")
     if not text:
@@ -47,17 +52,18 @@ def check_gemma_health(
     health_timeout_seconds: int = 6,
     curl_timeout_seconds: int = 5,
 ) -> Dict[str, object]:
+    engines = _engine_config(config)
     provider = (
-        str(getattr(config, "gemma_provider", "ollama_ssh") or "ollama_ssh")
+        str(getattr(engines, "gemma_provider", "ollama_ssh") or "ollama_ssh")
         .strip()
         .lower()
     )
-    model = str(getattr(config, "gemma_model", "gemma4:26b") or "gemma4:26b").strip()
+    model = str(getattr(engines, "gemma_model", "gemma4:26b") or "gemma4:26b").strip()
     started = time.monotonic()
     try:
         if provider == "ollama_http":
             base_url = str(
-                getattr(config, "gemma_base_url", "http://127.0.0.1:11434") or ""
+                getattr(engines, "gemma_base_url", "http://127.0.0.1:11434") or ""
             ).rstrip("/")
             if not base_url:
                 raise ValueError("GEMMA_BASE_URL is empty")
@@ -67,7 +73,7 @@ def check_gemma_health(
             ) as response:
                 payload = response.read().decode("utf-8", errors="replace")
         elif provider == "ollama_ssh":
-            host = str(getattr(config, "gemma_ssh_host", "server4-beast") or "").strip()
+            host = str(getattr(engines, "gemma_ssh_host", "server4-beast") or "").strip()
             if not host:
                 raise ValueError("GEMMA_SSH_HOST is empty")
             remote_cmd = (
@@ -123,9 +129,10 @@ def check_gemma_health(
         }
 
 def check_venice_health(config, *, health_timeout_seconds: int = 6) -> Dict[str, object]:
-    api_key = str(getattr(config, "venice_api_key", "") or "").strip()
-    base_url = str(getattr(config, "venice_base_url", "https://api.venice.ai/api/v1") or "").strip().rstrip("/")
-    model = str(getattr(config, "venice_model", "mistral-31-24b") or "mistral-31-24b").strip()
+    engines = _engine_config(config)
+    api_key = str(getattr(engines, "venice_api_key", "") or "").strip()
+    base_url = str(getattr(engines, "venice_base_url", "https://api.venice.ai/api/v1") or "").strip().rstrip("/")
+    model = str(getattr(engines, "venice_model", "mistral-31-24b") or "mistral-31-24b").strip()
     if not api_key:
         return {
             "ok": False,
@@ -173,9 +180,10 @@ def check_pi_health(
     run_pi_command_fn: Callable[[object, str], subprocess.CompletedProcess[str]],
     parse_pi_model_rows_fn: Callable[[str], List[Tuple[str, str]]],
 ) -> Dict[str, object]:
-    model = str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip()
-    runner = str(getattr(config, "pi_runner", "ssh") or "ssh").strip().lower()
-    host = str(getattr(config, "pi_ssh_host", "server4-beast") or "").strip()
+    engines = _engine_config(config)
+    model = str(getattr(engines, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip()
+    runner = str(getattr(engines, "pi_runner", "ssh") or "ssh").strip().lower()
+    host = str(getattr(engines, "pi_ssh_host", "server4-beast") or "").strip()
     if runner not in {"local", "server3"} and not host:
         return {
             "ok": False,

@@ -3,16 +3,30 @@ import os
 import subprocess
 from typing import Dict, List, Optional
 
+from telegram_bridge.attachment_processing import (
+    apply_voice_alias_replacements,
+    archive_media_path,
+    build_active_voice_alias_replacements,
+    build_low_confidence_voice_message,
+    download_document_to_temp,
+    download_photo_to_temp,
+    download_voice_to_temp,
+    transcribe_voice,
+)
 from telegram_bridge.channel_adapter import ChannelAdapter
-from telegram_bridge.handler_models import DocumentPayload, PreparedPromptInput, PromptRequest
+from telegram_bridge.handler_common import strip_required_prefix
+from telegram_bridge.handler_models import (
+    DocumentPayload,
+    PreparedPromptInput,
+    PromptRequest,
+    build_prompt_request,
+)
+from telegram_bridge.message_inputs import extract_message_media_payload, extract_message_photo_file_ids
+from telegram_bridge.response_delivery import send_input_too_long
+from telegram_bridge.runtime_profile import PREFIX_HELP_MESSAGE, is_whatsapp_channel
 from telegram_bridge.state_store import State
+from telegram_bridge.structured_logging import emit_event
 from telegram_bridge import prompt_preparation
-
-
-def _handlers():
-    import telegram_bridge.handlers as handlers
-
-    return handlers
 
 
 def _reply(client: ChannelAdapter, chat_id: int, message_id: Optional[int], text: str) -> None:
@@ -32,7 +46,6 @@ def transcribe_voice_for_chat(
     voice_file_id: str,
     echo_transcript: bool = True,
 ) -> Optional[str]:
-    handlers = _handlers()
     if not config.voice_transcribe_cmd:
         _reply(client, chat_id, message_id, config.voice_not_configured_message)
         return None
@@ -40,7 +53,7 @@ def transcribe_voice_for_chat(
     voice_path: Optional[str] = None
     try:
         try:
-            voice_path = handlers.download_voice_to_temp(client, config, voice_file_id)
+            voice_path = download_voice_to_temp(client, config, voice_file_id)
         except ValueError as exc:
             logging.warning("Voice rejected for chat_id=%s: %s", chat_id, exc)
             _reply(client, chat_id, message_id, str(exc))
@@ -51,7 +64,7 @@ def transcribe_voice_for_chat(
             return None
 
         try:
-            transcript, confidence = handlers.transcribe_voice(config, voice_path)
+            transcript, confidence = transcribe_voice(config, voice_path)
         except subprocess.TimeoutExpired:
             logging.warning("Voice transcription timeout for chat_id=%s", chat_id)
             _reply(client, chat_id, message_id, config.timeout_message)
@@ -68,9 +81,9 @@ def transcribe_voice_for_chat(
             _reply(client, chat_id, message_id, config.voice_transcribe_error_message)
             return None
 
-        transcript, aliases_applied = handlers.apply_voice_alias_replacements(
+        transcript, aliases_applied = apply_voice_alias_replacements(
             transcript,
-            handlers.build_active_voice_alias_replacements(config, state),
+            build_active_voice_alias_replacements(config, state),
         )
         if aliases_applied:
             logging.info("Applied voice alias corrections chat_id=%s", chat_id)
@@ -94,7 +107,7 @@ def transcribe_voice_for_chat(
                 client,
                 chat_id,
                 message_id,
-                handlers.build_low_confidence_voice_message(config, transcript, confidence),
+                build_low_confidence_voice_message(config, transcript, confidence),
             )
             return None
 
@@ -119,16 +132,15 @@ def _prepare_prompt_input_request(
     request: PromptRequest,
     progress,
 ) -> Optional[PreparedPromptInput]:
-    handlers = _handlers()
     return prompt_preparation.prepare_prompt_input_request(
         request,
         progress,
-        transcribe_voice_for_chat_fn=handlers.transcribe_voice_for_chat,
-        strip_required_prefix_fn=handlers.strip_required_prefix,
-        is_whatsapp_channel_fn=handlers.is_whatsapp_channel,
-        send_input_too_long_fn=handlers.send_input_too_long,
-        emit_event_fn=handlers.emit_event,
-        prefix_help_message=handlers.PREFIX_HELP_MESSAGE,
+        transcribe_voice_for_chat_fn=transcribe_voice_for_chat,
+        strip_required_prefix_fn=strip_required_prefix,
+        is_whatsapp_channel_fn=is_whatsapp_channel,
+        send_input_too_long_fn=send_input_too_long,
+        emit_event_fn=emit_event,
+        prefix_help_message=PREFIX_HELP_MESSAGE,
     )
 
 
@@ -146,9 +158,8 @@ def prepare_prompt_input(
     photo_file_ids: Optional[List[str]] = None,
     enforce_voice_prefix_from_transcript: bool = False,
 ) -> Optional[PreparedPromptInput]:
-    handlers = _handlers()
     return _prepare_prompt_input_request(
-        handlers.build_prompt_request(
+        build_prompt_request(
             state=state,
             config=config,
             client=client,
@@ -175,16 +186,15 @@ def prewarm_attachment_archive_for_message(
     chat_id: int,
     message: Dict[str, object],
 ) -> None:
-    handlers = _handlers()
     prompt_preparation.prewarm_attachment_archive_for_message(
         state,
         config,
         client,
         chat_id,
         message,
-        extract_message_photo_file_ids_fn=handlers.extract_message_photo_file_ids,
-        extract_message_media_payload_fn=handlers.extract_message_media_payload,
-        download_photo_to_temp_fn=handlers.download_photo_to_temp,
-        download_document_to_temp_fn=handlers.download_document_to_temp,
-        archive_media_path_fn=handlers.archive_media_path,
+        extract_message_photo_file_ids_fn=extract_message_photo_file_ids,
+        extract_message_media_payload_fn=extract_message_media_payload,
+        download_photo_to_temp_fn=download_photo_to_temp,
+        download_document_to_temp_fn=download_document_to_temp,
+        archive_media_path_fn=archive_media_path,
     )

@@ -257,6 +257,11 @@ The bridge can also select the `pi` coding agent as an engine through the same `
 - The generic shared-bridge defaults are still Ollama-oriented: `PI_PROVIDER=ollama`, `PI_MODEL=qwen3-coder:30b`, `PI_RUNNER=ssh`, `PI_SSH_HOST=server4-beast`, `PI_TOOLS_MODE=default`.
 - For true runtime-root preservation, set `PI_RUNNER=local` and `PI_LOCAL_CWD` to the bot runtime root, for example `/home/tank/tankbot`.
 - Pi can use Venice-backed models by setting `PI_PROVIDER=venice`; Pi can use DeepSeek-backed models by setting `PI_PROVIDER=deepseek`. The available provider/model mappings are defined in the Pi config, for example `~/.pi/agent/models.json`.
+- Pi requests that clearly need live web context now get bridge-side web enrichment before inference:
+  - current/news/latest-style prompts trigger a lightweight DuckDuckGo search plus fetch of the top public pages
+  - prompts containing a public `http(s)` URL fetch that page directly and inject a readable excerpt
+  - this is search-and-fetch enrichment, not full browser automation
+  - optional tuning knobs: `PI_WEB_CONTEXT_ENABLED`, `PI_WEB_MAX_SEARCH_RESULTS`, `PI_WEB_MAX_FETCHED_PAGES`, `PI_WEB_MAX_PAGE_CHARS`, `PI_WEB_TIMEOUT_SECONDS`
 - When `PI_PROVIDER=ollama`, `/model list` now merges Pi's own `pi --list-models` output with raw Ollama tags fetched from Server4 over SSH, so newly pulled Ollama models can still be selected even if Pi's provider catalog has not been refreshed yet.
 - Use `/pi` to inspect Pi status for the current chat/topic.
 - Live Server3 Pi bridges now run with `PI_SESSION_MODE=telegram_scope`; that maps native Pi sessions to Telegram scope keys instead of the shared working directory.

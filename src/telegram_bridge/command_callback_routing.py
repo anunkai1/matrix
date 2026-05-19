@@ -7,6 +7,14 @@ from telegram_bridge.handler_models import CallbackActionContext, CallbackAction
 CallbackActionFn = Callable[[CallbackActionContext], CallbackActionResult]
 
 
+def _core_config(config):
+    return getattr(config, "core", config)
+
+
+def _session_config(config):
+    return getattr(config, "session", config)
+
+
 def _answer_callback_query(client, callback_query_id: str, text: str) -> bool:
     client.answer_callback_query(callback_query_id, text=text)
     return True
@@ -68,9 +76,11 @@ def handle_callback_query(
     chat_obj = message.get("chat")
     chat_type = chat_obj.get("type") if isinstance(chat_obj, dict) else None
     is_private_chat = isinstance(chat_type, str) and chat_type == "private"
-    allow_private_unlisted = bool(getattr(config, "allow_private_chats_unlisted", False))
-    allow_group_unlisted = bool(getattr(config, "allow_group_chats_unlisted", False))
-    if chat_id not in config.allowed_chat_ids and not (
+    core = _core_config(config)
+    session = _session_config(config)
+    allow_private_unlisted = bool(getattr(session, "allow_private_chats_unlisted", False))
+    allow_group_unlisted = bool(getattr(session, "allow_group_chats_unlisted", False))
+    if chat_id not in core.allowed_chat_ids and not (
         (allow_private_unlisted and is_private_chat) or (allow_group_unlisted and not is_private_chat)
     ):
         return _answer_callback_query(client, callback_query_id, "Access denied.")

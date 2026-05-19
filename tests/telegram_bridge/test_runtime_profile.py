@@ -45,6 +45,10 @@ class RuntimeProfileTests(unittest.TestCase):
         config = SimpleNamespace(assistant_name="HelperBot")
         self.assertIn("HelperBot", runtime_profile.start_command_message(config))
 
+    def test_start_command_message_accepts_grouped_identity_config(self) -> None:
+        config = SimpleNamespace(identity=SimpleNamespace(assistant_name="HelperBot"))
+        self.assertIn("HelperBot", runtime_profile.start_command_message(config))
+
     def test_engine_progress_context_uses_recent_codex_model_when_unset(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             codex_home = Path(tmpdir) / ".codex"
@@ -92,6 +96,21 @@ class RuntimeProfileTests(unittest.TestCase):
                 runtime_profile.build_engine_progress_context_label(config, "mavali_eth"),
                 "(mavali_eth | codex | gpt-5.5)",
             )
+
+    def test_engine_progress_context_accepts_grouped_engine_config(self) -> None:
+        config = SimpleNamespace(
+            engines=SimpleNamespace(
+                engine_plugin="gemma",
+                gemma_provider="ollama_ssh",
+                gemma_model="gemma4:26b",
+                pi_provider="ollama",
+                pi_model="qwen3-coder:30b",
+            )
+        )
+        self.assertEqual(
+            runtime_profile.build_engine_progress_context_label(config, None),
+            "(ollama(s4) | gemma4:26b)",
+        )
 
     def test_extract_sro_keyword_request_supports_expected_separators(self) -> None:
         self.assertEqual(
