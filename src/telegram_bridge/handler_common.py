@@ -136,7 +136,7 @@ def build_help_text(config) -> str:
         "/subgoal <text> - add extra criteria to the active goal\n"
         "/subgoal remove <n> | clear - manage active goal criteria\n"
         "/remember <text> - propose exact text to save in remember.md\n"
-        "/remember delete <number> - remove a numbered item from remember.md\n"
+        "/remember forget <number> - remove a numbered item from remember.md\n"
         "/reset - clear saved context for this chat\n"
         "/cancel or /c - cancel current in-flight request for this chat\n"
         "/restart - queue a safe bridge restart\n"

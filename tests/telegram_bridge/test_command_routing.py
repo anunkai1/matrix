@@ -89,8 +89,8 @@ class TestCommandRouting(unittest.TestCase):
             (1, bridge_remember_commands.USAGE_MESSAGE, 88, None),
         )
 
-    def test_handle_remember_known_command_delete_removes_numbered_item(self):
-        ctx = self._ctx(raw_text="/remember delete 2")
+    def test_handle_remember_known_command_forget_removes_numbered_item(self):
+        ctx = self._ctx(raw_text="/remember forget 2")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             remember_path = Path(tmpdir) / "remember.md"
@@ -107,13 +107,13 @@ class TestCommandRouting(unittest.TestCase):
         self.assertIn("Removed remembered item 2", ctx.client.messages[-1][1])
         self.assertEqual(saved_text, "1. First item.\n2. Third item.\n")
 
-    def test_handle_remember_known_command_delete_requires_valid_number(self):
-        ctx = self._ctx(raw_text="/remember delete nope")
+    def test_handle_remember_known_command_forget_requires_valid_number(self):
+        ctx = self._ctx(raw_text="/remember forget nope")
 
         handled = bridge_command_routing._handle_remember_known_command(ctx)
 
         self.assertTrue(handled)
-        self.assertEqual(ctx.client.messages[-1][1], "Usage: /remember delete <number>")
+        self.assertEqual(ctx.client.messages[-1][1], "Usage: /remember forget <number>")
 
     def test_handle_remember_callback_action_saves_numbered_text(self):
         state = State()

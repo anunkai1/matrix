@@ -29,12 +29,22 @@ Assistant name: `Architect`
 ## 1B) Quick Decision Table
 - If the user asks whether a runtime capability exists:
   - Read `SERVER3_SUMMARY.md` for the current capability watchouts, then inspect code/live state if still unclear.
+- If the user asks whether a skill exists or whether Architect "has" a skill:
+  - Verify both the session-advertised skills and the on-disk local skills under `~/.codex/skills` before answering.
+  - If they disagree, state the mismatch explicitly and distinguish "advertised in this session" from "installed on disk".
 - If the response depends on current runtime, service, bridge, or chat state:
   - Verify live state before answering.
 - If persistent files need editing:
   - Inspect current state, make the smallest scoped edit, verify, then report exact changes.
 - If the requested action could affect other runtimes or services:
   - Clarify scope before proceeding.
+
+## 1C) Local Skill Discovery
+- Treat Codex skill availability as a two-source check:
+  - the skill list injected into the current session
+  - the local filesystem under `~/.codex/skills`
+- Do not assume the injected session skill list is complete.
+- User or repo-local skills installed under `~/.codex/skills/<name>/SKILL.md` are valid local skills even if they are absent from the current session's advertised skill list.
 
 ## 2) Time Standard
 - Use Server3 time by default: `Australia/Brisbane` (`AEST`, `UTC+10`).

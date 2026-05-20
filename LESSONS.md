@@ -18,6 +18,11 @@ Use one section per lesson:
 
 ## Active Lessons
 
+### 2026-05-20T12:15:00+10:00 - Verify Skills On Disk And In Session
+- Mistake pattern: I answered a skill-availability question from the injected session skill list and missed a valid local skill installed under `~/.codex/skills`.
+- Prevention rule: For any "do you have this skill?" or skill-availability check, verify both the session-advertised skill list and the on-disk `~/.codex/skills` tree, and call out mismatches explicitly.
+- Where/when applied: Any Architect turn involving Codex skill discovery, capability checks, or user questions about installed skills.
+
 ### 2026-05-19T16:30:00+10:00 - Verify And Use Outbound Voice Replies When Explicitly Requested
 - Mistake pattern: The owner explicitly asked for a voice reply, but I answered in plain text because I treated the turn like a normal text response instead of verifying and using the outbound Telegram voice-note path.
 - Prevention rule: When the owner explicitly asks for "reply in voice", "send as voice", or similar, verify outbound voice-note delivery support in the active runtime first and use that path when it exists instead of defaulting to text.

@@ -104,6 +104,8 @@ Local validation:
 bash ops/dev/run_python_checks.sh
 # optional when you want the smoke test deferred:
 # bash ops/dev/run_python_checks.sh --skip-smoke
+# targeted pytest runs use the repo QA venv automatically:
+# bash ops/dev/run_pytest.sh tests/telegram_bridge/test_command_routing.py -q
 ```
 
 ## Operations

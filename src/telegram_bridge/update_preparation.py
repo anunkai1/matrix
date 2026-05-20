@@ -34,6 +34,7 @@ from telegram_bridge.session_manager import is_rate_limited
 from telegram_bridge.state_store import State, get_chat_engine, get_thread_id
 from telegram_bridge.structured_logging import emit_event
 from telegram_bridge.command_routing import handle_known_command
+from telegram_bridge.remember_commands import ensure_numbered_remember_file
 from telegram_bridge.voice_alias_commands import maybe_process_voice_alias_learning_confirmation
 from telegram_bridge.engine_catalog import configured_default_engine, normalize_engine_name
 
@@ -290,6 +291,7 @@ def prepare_update_request(
     client: ChannelAdapter,
     ctx: IncomingUpdateContext,
 ) -> Optional[PreparedUpdateRequest]:
+    ensure_numbered_remember_file()
     record_recent_scope_messages(state, ctx.scope_key, ctx.message)
     prompt_input, photo_file_ids, voice_file_id, document = extract_prompt_and_media(ctx.message)
     if prompt_input is None and not photo_file_ids and voice_file_id is None and document is None:

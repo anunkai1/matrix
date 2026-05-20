@@ -8,7 +8,7 @@ from telegram_bridge.handler_models import CallbackActionResult
 from telegram_bridge.state_models import PendingRememberProposal, State
 
 
-USAGE_MESSAGE = "Usage: /remember <text> | /remember delete <number>"
+USAGE_MESSAGE = "Usage: /remember <text> | /remember forget <number>"
 SAVE_SUCCESS_TOAST = "Saved to remember.md."
 CANCEL_SUCCESS_TOAST = "Remember proposal dismissed."
 UNKNOWN_PROPOSAL_TOAST = "Remember proposal not found."
@@ -66,12 +66,12 @@ def build_remember_proposal(raw_text: str) -> str:
     return normalized
 
 
-def _parse_delete_number(raw_text: str) -> Optional[int]:
+def _parse_forget_number(raw_text: str) -> Optional[int]:
     args = _parse_remember_args(raw_text)
     if not args:
         return None
     head, _, tail = args.partition(" ")
-    if head.lower() != "delete":
+    if head.lower() != "forget":
         return None
     value = tail.strip()
     if not value.isdigit():
@@ -153,6 +153,20 @@ def _write_remember_entries(entries: list[str]) -> None:
     path.write_text("\n".join(numbered) + ("\n" if numbered else ""), encoding="utf-8")
 
 
+def ensure_numbered_remember_file() -> bool:
+    path = remember_file_path()
+    if not path.exists():
+        return False
+    existing = path.read_text(encoding="utf-8")
+    entries = _load_remember_entries()
+    numbered = "\n".join(f"{index}. {entry}" for index, entry in enumerate(entries, start=1))
+    normalized = numbered + ("\n" if numbered else "")
+    if existing == normalized:
+        return False
+    _write_remember_entries(entries)
+    return True
+
+
 def _append_remember_text(text: str) -> Optional[int]:
     line = _normalize_remember_text(text)
     if not line:
@@ -185,8 +199,8 @@ def _missing_delete_response_text(number: int) -> str:
     return f"Remembered item {number} was not found in `remember.md`."
 
 
-def _invalid_delete_number_response_text() -> str:
-    return "Usage: /remember delete <number>"
+def _invalid_forget_number_response_text() -> str:
+    return "Usage: /remember forget <number>"
 
 
 def _saved_response_text(number: int, proposal: str) -> str:
@@ -203,18 +217,18 @@ def _already_saved_response_text(proposal: str) -> str:
     )
 
 
-def handle_remember_delete_command(
+def handle_remember_forget_command(
     *,
     client: ChannelAdapter,
     chat_id: int,
     message_id: Optional[int],
     raw_text: str,
 ) -> bool:
-    number = _parse_delete_number(raw_text)
+    number = _parse_forget_number(raw_text)
     if number is None:
         return False
     if number < 1:
-        return _reply(client, chat_id, message_id, _invalid_delete_number_response_text())
+        return _reply(client, chat_id, message_id, _invalid_forget_number_response_text())
     removed = _delete_remember_entry(number)
     if removed is None:
         return _reply(client, chat_id, message_id, _missing_delete_response_text(number))
@@ -235,7 +249,7 @@ def handle_remember_command(
     message_id: Optional[int],
     raw_text: str,
 ) -> bool:
-    if handle_remember_delete_command(
+    if handle_remember_forget_command(
         client=client,
         chat_id=chat_id,
         message_id=message_id,
