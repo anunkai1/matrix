@@ -11,6 +11,23 @@ Last updated: 2026-05-20 (AEST, +10:00)
 - Core capabilities: text/photo/voice/document handling, voice transcription, outbound Telegram voice-note replies, persistent workers, safe queued `/restart`, and canonical SQLite session state. Provider-side continuity still relies on engine-native sessions (Pi JSONL per scope, Codex JSONL per exec session).
 - Priority stateless routes: `HA ...`, `Server3 TV ...`, `Nextcloud ...`, `SRO ...`, and bare YouTube links.
 
+## Operator Capabilities
+- Channel/runtime surface: Server3 is a multi-channel host across Telegram, WhatsApp, and Signal, with Architect as the main operator runtime and other runtimes kept isolated by runtime root and service identity.
+- Browser/UI path: Server3 has an on-demand TV desktop path (`server3-tv-start` / `server3-tv-stop`) plus script-backed browser control under `ops/tv-desktop`; the preferred visible-browser attach path is `ops/tv-desktop/server3-tv-brave-remote-debug-session.sh`.
+- Browser harness: local `browser-harness` is the current browser automation path, but it needs an attachable Chrome/Brave CDP session; on this host the reliable path is the TV Brave remote-debug session rather than assuming a headless local browser is already available.
+- Home Assistant verification: HA control and scheduling are script-routed through `ops/ha`, but frontend/dashboard verification sometimes requires a real rendered Lovelace view; API-only checks are not sufficient for visible card/configuration issues.
+- Media handling: Architect can ingest text, photos, voice notes, documents, and Telegram photo albums; attachment state is archived in SQLite-backed attachment storage for reuse/summarization.
+- Photo album batching: multi-photo Telegram handling is supported, so album-style image batches are processed as one request rather than only the first image surviving the chat busy path.
+- Message targeting: Architect keeps a bounded recent-message index per chat/topic so prompts that reference a specific Telegram message ID can resolve against recent local message context instead of guessing from history.
+- Outbound delivery: Architect can send Telegram file/photo attachments and outbound voice-note replies through the shared transport path.
+- Voice runtime: voice-note handling uses a warm transcription service with confidence gating plus learned alias correction for recurring transcript mistakes.
+- Engine/runtime selection: Architect can switch per chat/topic between `codex`, `gemma` (`ollama(s4)`), and `pi`; `/engine status` is the live truth source for engine health and overrides.
+- Follow-up steering: active Codex app-server turns support same-scope plain-text follow-up steering across direct chats, groups, and forum topics, with short coalescing to fold nearby follow-up messages together.
+- Safe restart: operator-triggered `/restart` is queueable and generally drain-aware, so active work usually clears before the bridge restart proceeds.
+- Deterministic side corridors: Server3 exposes bounded operator routes for Home Assistant (`HA ...`), TV/Desktop (`Server3 TV ...`), Nextcloud file/calendar ops (`Nextcloud ...`), Server3 Runtime Observer (`SRO ...`), and transcript-first YouTube link handling.
+- Multi-runtime host: live sibling runtimes currently include Architect, AgentSmith, Diary, Tank, Trinity, Sentinel, Govorun (WhatsApp transport + bridge), Oracle (Signal transport + bridge), Mavali ETH, and Macrorayd.
+- Control-plane/ops surface: Server3 also has a local control-plane snapshot/export path, runtime observer timers, monitoring stack, monthly state backup path, and the bounded dream loop health/truth baseline.
+
 ## Operational Memory (Pinned)
 - Runtime observer runs from `server3-runtime-observer.timer` every 5 minutes; live mode is currently `telegram_alerts`.
 - Govorun cross-channel routing contract guard is enforced by `ops/chat-routing/validate_chat_routing_contract.py` with canonical policy in `infra/contracts/server3-chat-routing.contract.env`; daily drift timer is `server3-chat-routing-contract-check.timer`.
@@ -20,7 +37,7 @@ Last updated: 2026-05-20 (AEST, +10:00)
 - Server3 state resilience now uses a monthly quiesced backup path (`server3-state-backup.service` / `server3-state-backup.timer`) that snapshots rebuild-critical host/app/runtime state to `/srv/external/server3-backups/state`; the Arr media payload stays on the external data disk and is intentionally excluded.
 - Dream loop now runs from `server3-dream-loop.timer` around `02:15 AEST` and writes the production truth/health baseline under `/var/lib/server3-dream-loop`.
 
-## Recent Changes (Rolling Max 8)
+## Recent Changes (Rolling Max 20)
 - 2026-05-20: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
 - 2026-05-19: removed the DishFramed bridge integration and host repo/cache from Server3; the bridge keeps a minimal `/dishframed` rejection guard so the old command cannot fall through into Codex prompt handling.
 - 2026-05-19: Architect Codex runtime now hardwires unrestricted `danger-full-access` in bridge code, ignores `TELEGRAM_CODEX_SANDBOX_MODE` overrides, and suppresses the known bundled-`bubblewrap` advisory when Codex is already unrestricted.

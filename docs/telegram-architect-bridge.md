@@ -225,7 +225,8 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/pi models` deprecated compatibility alias for `/model list`
 - `/cancel` cancel the current in-flight request for this chat
 - `/restart` safe bridge restart (queues until current work finishes)
-- `/reset` clear this chat's saved context/thread and Pi session files
+- `/truth_status` show this chat/topic's current dream-loop truth and stale-warning status
+- `/reset` clear this chat's saved context/thread and Pi session files, and mark any outstanding stale-context warning handled for this scope
 - `/voice-alias list` show pending learned voice corrections
 - `/voice-alias approve <id>` approve one learned correction
 - `/voice-alias reject <id>` reject one learned correction

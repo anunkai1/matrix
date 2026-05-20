@@ -1815,6 +1815,27 @@ class TestPlugins(unittest.TestCase):
         self.assertTrue(handled)
         handler.assert_called_once_with(state, config, client, "tg:1", 1, 77, 88)
 
+    def test_handle_known_command_routes_truth_status_to_control_commands(self):
+        client = FakeTelegramClient()
+        state = bridge.State()
+        config = make_config()
+
+        with mock.patch.object(bridge_control_commands, "handle_truth_status_command") as handler:
+            handled = bridge_command_routing.handle_known_command(
+                state=state,
+                config=config,
+                client=client,
+                scope_key="tg:1",
+                chat_id=1,
+                message_thread_id=77,
+                message_id=88,
+                command="/truth_status",
+                raw_text="/truth_status",
+            )
+
+        self.assertTrue(handled)
+        handler.assert_called_once_with(state, config, client, "tg:1", 1, 77, 88)
+
     def test_handle_known_command_routes_voice_alias_to_voice_alias_commands(self):
         client = FakeTelegramClient()
         state = bridge.State()

@@ -139,6 +139,18 @@ def _handle_reset_known_command(ctx: KnownCommandContext) -> bool:
     )
     return True
 
+def _handle_truth_status_known_command(ctx: KnownCommandContext) -> bool:
+    control_commands.handle_truth_status_command(
+        ctx.state,
+        ctx.config,
+        ctx.client,
+        ctx.scope_key,
+        ctx.chat_id,
+        ctx.message_thread_id,
+        ctx.message_id,
+    )
+    return True
+
 def _handle_voice_alias_known_command(ctx: KnownCommandContext) -> bool:
     return voice_alias_commands.handle_voice_alias_command(
         state=ctx.state,
@@ -209,6 +221,7 @@ KNOWN_COMMAND_HANDLERS: Dict[str, KnownCommandFn] = {
     "/effort": _handle_effort_known_command,
     "/pi": _handle_pi_known_command,
     "/reset": _handle_reset_known_command,
+    "/truth_status": _handle_truth_status_known_command,
     "/goal": _handle_goal_known_command,
     "/remember": _handle_remember_known_command,
     "/subgoal": _handle_subgoal_known_command,

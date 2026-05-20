@@ -21,7 +21,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -29,6 +29,23 @@ from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from telegram_bridge.dream_loop_state import (
+    LATEST_HEALTH_STATE,
+    LATEST_REPORT,
+    LATEST_RUN_STATE,
+    LATEST_TRUTH_STATE,
+    apply_stale_context_updates,
+    build_stale_context_state_path,
+    load_stale_context_statuses,
+    persist_stale_context_statuses,
+    snapshot_stale_context_statuses,
+)
+
+
 DEFAULT_STATE_DIR = Path(os.getenv("DREAM_LOOP_STATE_DIR", "/var/lib/server3-dream-loop"))
 DEFAULT_BRIDGE_STATE_DIR = Path(
     os.getenv("DREAM_LOOP_ARCHITECT_BRIDGE_STATE_DIR", "/home/architect/.local/state/telegram-architect-bridge")
@@ -51,10 +68,6 @@ TELEGRAM_CONTEXT_ROUTING_INPUT_PATHS = (
     ROOT / "src" / "telegram_bridge" / "session_manager.py",
 )
 
-LATEST_TRUTH_STATE = "latest_truth_state.json"
-LATEST_HEALTH_STATE = "latest_health_state.json"
-LATEST_RUN_STATE = "latest_run_state.json"
-LATEST_REPORT = "latest_report.md"
 DEFAULT_SUMMARY_PATH = ROOT / "SERVER3_SUMMARY.md"
 
 
@@ -65,6 +78,59 @@ class DreamLoopConfig:
     timezone: str = DEFAULT_TZ
     dry_run: bool = False
     summary_path: Path = DEFAULT_SUMMARY_PATH
+
+
+@dataclass(frozen=True)
+class DreamLoopCheckSpec:
+    check_id: str
+    truth_area: str
+    mode: str
+    trigger: str
+    inputs: Tuple[str, ...]
+    executor: str
+    mismatch_rule: str
+    correction_target: str
+    severity: str
+
+
+@dataclass
+class DreamLoopExecutionContext:
+    config: DreamLoopConfig
+    generated_at: str
+    run_started_at: datetime
+    previous_truth_state: Dict[str, Any]
+    run_json_command: Callable[[Sequence[str]], Dict[str, Any]]
+    run_text_command: Callable[[Sequence[str]], str]
+    checks_executed: List[str] = field(default_factory=list)
+    skipped_checks: List[Dict[str, str]] = field(default_factory=list)
+    unresolved_items: List[str] = field(default_factory=list)
+    warnings_emitted: List[str] = field(default_factory=list)
+    files_updated: List[str] = field(default_factory=list)
+    truth_state: Dict[str, Any] = field(default_factory=dict)
+    health_state: Dict[str, Any] = field(default_factory=dict)
+    registry_check_results: List[Dict[str, Any]] = field(default_factory=list)
+    truth_entries: List[Dict[str, Any]] = field(default_factory=list)
+    policy_entries: List[Dict[str, Any]] = field(default_factory=list)
+    routing_entries: List[Dict[str, Any]] = field(default_factory=list)
+    machine_truth_fingerprint: str = ""
+    policy_truth_fingerprint: str = ""
+    changed_machine_inputs: List[str] = field(default_factory=list)
+    changed_policy_inputs: List[str] = field(default_factory=list)
+    runtime_status_payload: Dict[str, Any] = field(default_factory=dict)
+    runtime_shape: Dict[str, Any] = field(default_factory=dict)
+    runtime_shape_findings: List[str] = field(default_factory=list)
+    runtime_state_mismatches: List[Dict[str, Any]] = field(default_factory=list)
+    observer_status_payload: Dict[str, Any] = field(default_factory=dict)
+    observer_summary_payload: Dict[str, Any] = field(default_factory=dict)
+    observer_worst: str = "ok"
+    summary_live_facts: Dict[str, Any] = field(default_factory=dict)
+    telegram_context_routing: Dict[str, Any] = field(default_factory=dict)
+    summary_text: str = ""
+    aligned_summary_text: str = ""
+    summary_changed_fields: List[str] = field(default_factory=list)
+
+
+GitCommandRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -103,6 +169,103 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Secondary summary file that the loop may align conservatively.",
     )
     return parser.parse_args(argv)
+
+
+def build_check_registry(config: DreamLoopConfig) -> List[DreamLoopCheckSpec]:
+    return [
+        DreamLoopCheckSpec(
+            check_id="truth_files_fingerprint",
+            truth_area="machine_truth",
+            mode="fixed",
+            trigger="always",
+            inputs=tuple(str(path.relative_to(ROOT)) for path in TRUTH_INPUT_PATHS),
+            executor="truth_files_fingerprint",
+            mismatch_rule="watched_truth_input_fingerprint_changed",
+            correction_target="truth_state",
+            severity="info",
+        ),
+        DreamLoopCheckSpec(
+            check_id="runtime_manifest_vs_status",
+            truth_area="runtime_alignment",
+            mode="fixed",
+            trigger="always",
+            inputs=(
+                "infra/server3-runtime-manifest.json",
+                "python3 ops/server3_runtime_status.py --json",
+            ),
+            executor="runtime_manifest_vs_status",
+            mismatch_rule="manifest_runtime_names_or_expected_states_do_not_match_live_runtime_status",
+            correction_target="truth_state,health_state",
+            severity="warn",
+        ),
+        DreamLoopCheckSpec(
+            check_id="runtime_observer_truth",
+            truth_area="health_truth",
+            mode="fixed",
+            trigger="always",
+            inputs=(
+                "python3 ops/runtime_observer/runtime_observer.py --json status",
+                "python3 ops/runtime_observer/runtime_observer.py --json summary --hours 24",
+                "systemctl cat server3-runtime-observer.timer",
+                "systemctl is-enabled server3-dream-loop.timer",
+            ),
+            executor="runtime_observer_truth",
+            mismatch_rule="observer_status_or_summary_reports_non_ok_health",
+            correction_target="health_state",
+            severity="warn",
+        ),
+        DreamLoopCheckSpec(
+            check_id="policy_watch_truth",
+            truth_area="policy_truth",
+            mode="conditional",
+            trigger="all_inputs_exist",
+            inputs=tuple(str(path.relative_to(ROOT)) for path in POLICY_INPUT_PATHS),
+            executor="policy_watch_truth",
+            mismatch_rule="watched_policy_inputs_changed",
+            correction_target="truth_state",
+            severity="info",
+        ),
+        DreamLoopCheckSpec(
+            check_id="telegram_context_routing_truth",
+            truth_area="telegram_context_routing",
+            mode="conditional",
+            trigger="all_inputs_exist",
+            inputs=tuple(str(path.relative_to(ROOT)) for path in TELEGRAM_CONTEXT_ROUTING_INPUT_PATHS),
+            executor="telegram_context_routing_truth",
+            mismatch_rule="routing_anchor_markers_missing",
+            correction_target="truth_state",
+            severity="warn",
+        ),
+        DreamLoopCheckSpec(
+            check_id="server3_summary_truth",
+            truth_area="secondary_truth_surface",
+            mode="conditional",
+            trigger="summary_target_exists",
+            inputs=(
+                str(config.summary_path.relative_to(ROOT) if config.summary_path.is_relative_to(ROOT) else config.summary_path),
+                "systemctl cat server3-runtime-observer.timer",
+                "systemctl is-enabled server3-dream-loop.timer",
+            ),
+            executor="server3_summary_truth",
+            mismatch_rule="mapped_summary_fields_do_not_match_structured_truth_or_approved_live_inputs",
+            correction_target="SERVER3_SUMMARY.md",
+            severity="warn",
+        ),
+    ]
+
+
+def _serialize_registry_check(spec: DreamLoopCheckSpec) -> Dict[str, Any]:
+    return {
+        "check_id": spec.check_id,
+        "truth_area": spec.truth_area,
+        "mode": spec.mode,
+        "trigger": spec.trigger,
+        "inputs": list(spec.inputs),
+        "executor": spec.executor,
+        "mismatch_rule": spec.mismatch_rule,
+        "correction_target": spec.correction_target,
+        "severity": spec.severity,
+    }
 
 
 def _now(tz_name: str) -> datetime:
@@ -188,6 +351,10 @@ def _run_text_command(args: Sequence[str]) -> str:
         stderr = proc.stderr.strip() or proc.stdout.strip() or "command failed"
         raise RuntimeError(f"{' '.join(args)} -> {stderr}")
     return proc.stdout
+
+
+def _run_capture_command(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, capture_output=True, text=True, check=False, cwd=str(ROOT))
 
 
 def _compare_entries(
@@ -527,26 +694,9 @@ def _align_server3_summary(
     generated_at: datetime,
     summary_facts: Dict[str, Any],
 ) -> Tuple[str, List[str]]:
+    del generated_at
     original_text = summary_text
     changed_fields: List[str] = []
-    date_text = generated_at.strftime("%Y-%m-%d")
-    last_updated_line = f"Last updated: {date_text} (AEST, +10:00)"
-    new_text = re.sub(
-        r"^Last updated: .*$",
-        last_updated_line,
-        summary_text,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    if new_text != summary_text:
-        changed_fields.append("last_updated")
-    summary_text = new_text
-    summary_text = re.sub(
-        r"(?m)^- Dream loop now runs from `server3-dream-loop\.timer`.*(?:\n|$)",
-        "",
-        summary_text,
-    )
-
     observer_mode = summary_facts.get("observer_mode", "unknown")
     observer_schedule = summary_facts.get("observer_schedule_text", "on its configured schedule")
     observer_line = (
@@ -575,16 +725,6 @@ def _align_server3_summary(
         )
         if changed:
             changed_fields.append("dream_loop_operational_memory")
-        summary_text, changed = _ensure_recent_change_entry(
-            summary_text,
-            date_text=date_text,
-            entry_text=(
-                "enabled the bounded Server3 dream loop with a live systemd timer/service and "
-                "production truth/health state under `/var/lib/server3-dream-loop`."
-            ),
-        )
-        if changed:
-            changed_fields.append("dream_loop_recent_change")
 
     if summary_text == original_text:
         return summary_text, []
@@ -695,6 +835,605 @@ def _verify_persisted_outputs(
     return mismatches
 
 
+def _build_execution_context(
+    config: DreamLoopConfig,
+    *,
+    generated_at: str,
+    run_started_at: datetime,
+    previous_truth_state: Dict[str, Any],
+    run_json_command: Callable[[Sequence[str]], Dict[str, Any]],
+    run_text_command: Callable[[Sequence[str]], str],
+) -> DreamLoopExecutionContext:
+    previous_watched = previous_truth_state.get("watched_inputs", {}) if isinstance(previous_truth_state, dict) else {}
+    previous_truth_entries = previous_watched.get("machine_truth_inputs", []) if isinstance(previous_watched, dict) else []
+    previous_policy_entries = previous_watched.get("policy_inputs", []) if isinstance(previous_watched, dict) else []
+
+    truth_entries = _file_entries(TRUTH_INPUT_PATHS)
+    policy_entries = _file_entries(POLICY_INPUT_PATHS)
+    routing_entries = _file_entries(TELEGRAM_CONTEXT_ROUTING_INPUT_PATHS)
+
+    machine_truth_fingerprint = _file_entries_fingerprint(truth_entries)
+    policy_truth_fingerprint = _file_entries_fingerprint(policy_entries)
+
+    changed_machine_inputs = _compare_entries(truth_entries, previous_truth_entries)
+    changed_policy_inputs = _compare_entries(policy_entries, previous_policy_entries)
+
+    return DreamLoopExecutionContext(
+        config=config,
+        generated_at=generated_at,
+        run_started_at=run_started_at,
+        previous_truth_state=previous_truth_state,
+        run_json_command=run_json_command,
+        run_text_command=run_text_command,
+        truth_state={
+            "generated_at": generated_at,
+            "timezone": config.timezone,
+            "machine_truth_fingerprint": machine_truth_fingerprint,
+            "policy_truth_fingerprint": policy_truth_fingerprint,
+            "watched_inputs": {
+                "machine_truth_inputs": truth_entries,
+                "policy_inputs": policy_entries,
+                "telegram_context_routing_inputs": routing_entries,
+            },
+            "registry_checks": {
+                "approved_secondary_truth_surfaces": ["SERVER3_SUMMARY.md"],
+                "checks": [],
+            },
+            "runtime_shape": {},
+            "live_runtime_alignment": {
+                "machine_truth_fingerprint_uses_structured_inputs_only": True,
+                "machine_truth_boundary_reason": (
+                    "The machine-truth fingerprint follows the spec and only hashes watched structured-truth inputs. "
+                    "Live runtime state and log-derived health are recorded separately so drift is visible without "
+                    "changing the stale-context trigger."
+                ),
+                "runtime_shape_matches_manifest": False,
+                "runtime_shape_findings": [],
+                "runtime_state_mismatches": [],
+                "live_inputs_reflected_in_health_state": [],
+            },
+            "telegram_context_routing": {},
+            "secondary_doc_alignment": {},
+            "generated_output_status": {},
+            "stale_context_eligibility": {
+                "rollout_scope": "Architect",
+                "machine_truth_changed": False,
+                "policy_inputs_changed": False,
+                "changed_machine_inputs": changed_machine_inputs,
+                "changed_policy_inputs": changed_policy_inputs,
+                "eligible_scope_keys": [],
+                "eligible_scope_count": 0,
+                "scope_basis": {
+                    "recent_activity_window_days": RECENT_ACTIVITY_DAYS,
+                    "active_or_recent_scopes": [],
+                },
+                "scope_warning_statuses": [],
+                "stale_warning_state_path": build_stale_context_state_path(str(config.bridge_state_dir)),
+            },
+        },
+        health_state={
+            "generated_at": generated_at,
+            "timezone": config.timezone,
+            "health_status": "ok",
+            "health_findings": [],
+            "observer_status": {},
+            "observer_summary": {},
+            "runtime_status_summary": {
+                "generated_at": None,
+                "runtime_count": 0,
+                "mismatched_runtime_count": 0,
+            },
+            "registry_checks": [],
+        },
+        truth_entries=truth_entries,
+        policy_entries=policy_entries,
+        routing_entries=routing_entries,
+        machine_truth_fingerprint=machine_truth_fingerprint,
+        policy_truth_fingerprint=policy_truth_fingerprint,
+        changed_machine_inputs=changed_machine_inputs,
+        changed_policy_inputs=changed_policy_inputs,
+    )
+
+
+def _check_truth_files_fingerprint(spec: DreamLoopCheckSpec, ctx: DreamLoopExecutionContext) -> Dict[str, Any]:
+    ctx.truth_state["machine_truth_fingerprint"] = ctx.machine_truth_fingerprint
+    ctx.truth_state["watched_inputs"]["machine_truth_inputs"] = ctx.truth_entries
+    return {
+        **_serialize_registry_check(spec),
+        "status": "ok",
+        "fingerprint": ctx.machine_truth_fingerprint,
+        "changed_inputs": list(ctx.changed_machine_inputs),
+    }
+
+
+def _check_policy_watch_truth(spec: DreamLoopCheckSpec, ctx: DreamLoopExecutionContext) -> Dict[str, Any]:
+    ctx.truth_state["policy_truth_fingerprint"] = ctx.policy_truth_fingerprint
+    ctx.truth_state["watched_inputs"]["policy_inputs"] = ctx.policy_entries
+    return {
+        **_serialize_registry_check(spec),
+        "status": "ok",
+        "fingerprint": ctx.policy_truth_fingerprint,
+        "changed_inputs": list(ctx.changed_policy_inputs),
+    }
+
+
+def _check_runtime_manifest_vs_status(spec: DreamLoopCheckSpec, ctx: DreamLoopExecutionContext) -> Dict[str, Any]:
+    manifest_payload = json.loads((ROOT / "infra" / "server3-runtime-manifest.json").read_text(encoding="utf-8"))
+    ctx.runtime_status_payload = ctx.run_json_command(("python3", "ops/server3_runtime_status.py", "--json"))
+    ctx.runtime_shape, ctx.runtime_shape_findings = _extract_runtime_shape_truth(
+        manifest_payload,
+        ctx.runtime_status_payload,
+    )
+    ctx.runtime_state_mismatches = _build_runtime_state_mismatches(ctx.runtime_status_payload)
+    ctx.truth_state["runtime_shape"] = ctx.runtime_shape
+    ctx.truth_state["live_runtime_alignment"].update(
+        {
+            "runtime_shape_matches_manifest": ctx.runtime_shape.get("all_runtime_names_match", False),
+            "runtime_shape_findings": ctx.runtime_shape_findings,
+            "runtime_state_mismatches": ctx.runtime_state_mismatches,
+            "live_inputs_reflected_in_health_state": [
+                "ops/server3_runtime_status.py --json",
+            ],
+        }
+    )
+    for finding in ctx.runtime_shape_findings:
+        ctx.health_state["health_findings"].append(
+            {
+                "source": "runtime_manifest_vs_status",
+                "name": "runtime_shape_mismatch",
+                "severity": "warn",
+                "summary": finding,
+            }
+        )
+    for runtime in ctx.runtime_status_payload.get("runtimes", []) or []:
+        if not isinstance(runtime, dict) or runtime.get("matches_expected", True):
+            continue
+        ctx.health_state["health_findings"].append(
+            {
+                "source": "server3_runtime_status",
+                "name": str(runtime.get("name") or "runtime"),
+                "severity": "warn",
+                "summary": (
+                    f"{runtime.get('name', 'runtime')} is {runtime.get('live_state', 'unknown')}, "
+                    f"expected {runtime.get('expected_default_state', 'unknown')}"
+                ),
+            }
+        )
+    return {
+        **_serialize_registry_check(spec),
+        "status": "mismatch" if ctx.runtime_shape_findings or ctx.runtime_state_mismatches else "ok",
+        "runtime_shape_matches_manifest": ctx.runtime_shape.get("all_runtime_names_match", False),
+        "runtime_shape_findings": list(ctx.runtime_shape_findings),
+        "runtime_state_mismatches": list(ctx.runtime_state_mismatches),
+    }
+
+
+def _check_runtime_observer_truth(spec: DreamLoopCheckSpec, ctx: DreamLoopExecutionContext) -> Dict[str, Any]:
+    ctx.observer_status_payload = ctx.run_json_command(
+        ("python3", "ops/runtime_observer/runtime_observer.py", "--json", "status")
+    )
+    ctx.observer_summary_payload = ctx.run_json_command(
+        ("python3", "ops/runtime_observer/runtime_observer.py", "--json", "summary", "--hours", "24")
+    )
+    ctx.summary_live_facts = _collect_summary_live_facts(ctx.run_text_command, ctx.observer_status_payload)
+    ctx.observer_worst, observer_findings, observer_warnings = _health_findings_from_observer_status(
+        ctx.observer_status_payload
+    )
+    ctx.warnings_emitted.extend(observer_warnings)
+    ctx.health_state["health_findings"].extend(observer_findings)
+    summary_kpis = ctx.observer_summary_payload.get("kpis", {})
+    if isinstance(summary_kpis, dict):
+        for name, payload in sorted(summary_kpis.items()):
+            if not isinstance(payload, dict):
+                continue
+            worst = str(payload.get("worst_severity", "ok"))
+            if worst == "ok":
+                continue
+            ctx.health_state["health_findings"].append(
+                {
+                    "source": "runtime_observer_summary",
+                    "name": name,
+                    "severity": worst,
+                    "summary": f"{name} worst severity in last 24h is {worst}",
+                }
+            )
+    ctx.health_state["observer_status"] = ctx.observer_status_payload
+    ctx.health_state["observer_summary"] = ctx.observer_summary_payload
+    ctx.truth_state["live_runtime_alignment"]["live_inputs_reflected_in_health_state"] = [
+        "ops/server3_runtime_status.py --json",
+        "ops/runtime_observer/runtime_observer.py --json status",
+        "ops/runtime_observer/runtime_observer.py --json summary --hours 24",
+    ]
+    return {
+        **_serialize_registry_check(spec),
+        "status": "mismatch" if ctx.observer_worst != "ok" else "ok",
+        "observer_mode": str(ctx.observer_status_payload.get("mode") or "unknown"),
+        "observer_worst_severity": ctx.observer_worst,
+        "warning_count": len(observer_warnings),
+    }
+
+
+def _check_telegram_context_routing_truth(spec: DreamLoopCheckSpec, ctx: DreamLoopExecutionContext) -> Dict[str, Any]:
+    ctx.truth_state["watched_inputs"]["telegram_context_routing_inputs"] = ctx.routing_entries
+    ctx.telegram_context_routing = _collect_telegram_context_routing_truth()
+    ctx.truth_state["telegram_context_routing"] = ctx.telegram_context_routing
+    if not ctx.telegram_context_routing.get("validated", False):
+        ctx.unresolved_items.append("telegram context routing anchors no longer match expected bridge functions")
+    return {
+        **_serialize_registry_check(spec),
+        "status": "ok" if ctx.telegram_context_routing.get("validated", False) else "mismatch",
+        "validated": bool(ctx.telegram_context_routing.get("validated", False)),
+        "sources": list(ctx.telegram_context_routing.get("sources", [])),
+    }
+
+
+def _check_server3_summary_truth(spec: DreamLoopCheckSpec, ctx: DreamLoopExecutionContext) -> Dict[str, Any]:
+    ctx.summary_text = ctx.config.summary_path.read_text(encoding="utf-8")
+    ctx.aligned_summary_text, ctx.summary_changed_fields = _align_server3_summary(
+        ctx.summary_text,
+        generated_at=ctx.run_started_at,
+        summary_facts=ctx.summary_live_facts,
+    )
+    return {
+        **_serialize_registry_check(spec),
+        "status": "mismatch" if ctx.summary_changed_fields else "ok",
+        "approved_secondary_truth_surface": "SERVER3_SUMMARY.md",
+        "mapped_fields": ["runtime_observer_line", "dream_loop_operational_memory"],
+        "changed_fields": list(ctx.summary_changed_fields),
+    }
+
+
+CHECK_EXECUTORS: Dict[str, Callable[[DreamLoopCheckSpec, DreamLoopExecutionContext], Dict[str, Any]]] = {
+    "truth_files_fingerprint": _check_truth_files_fingerprint,
+    "policy_watch_truth": _check_policy_watch_truth,
+    "runtime_manifest_vs_status": _check_runtime_manifest_vs_status,
+    "runtime_observer_truth": _check_runtime_observer_truth,
+    "telegram_context_routing_truth": _check_telegram_context_routing_truth,
+    "server3_summary_truth": _check_server3_summary_truth,
+}
+
+
+def _should_execute_check(spec: DreamLoopCheckSpec, config: DreamLoopConfig) -> Tuple[bool, str]:
+    if spec.trigger == "always":
+        return True, ""
+    if spec.trigger == "all_inputs_exist":
+        for relative in spec.inputs:
+            if relative.startswith("python3 ") or relative.startswith("systemctl "):
+                continue
+            path = ROOT / relative
+            if not path.exists():
+                return False, f"missing input: {relative}"
+        return True, ""
+    if spec.trigger == "summary_target_exists":
+        if not config.summary_path.exists():
+            return False, f"missing input: {config.summary_path}"
+        return True, ""
+    return False, f"unsupported trigger: {spec.trigger}"
+
+
+def _run_registry_checks(
+    registry: Sequence[DreamLoopCheckSpec],
+    ctx: DreamLoopExecutionContext,
+) -> None:
+    for spec in registry:
+        should_execute, reason = _should_execute_check(spec, ctx.config)
+        if not should_execute:
+            ctx.skipped_checks.append({"check_id": spec.check_id, "reason": reason})
+            continue
+        executor = CHECK_EXECUTORS[spec.executor]
+        result = executor(spec, ctx)
+        ctx.checks_executed.append(spec.check_id)
+        ctx.registry_check_results.append(result)
+    ctx.truth_state["registry_checks"]["checks"] = list(ctx.registry_check_results)
+    ctx.health_state["registry_checks"] = [
+        result
+        for result in ctx.registry_check_results
+        if result.get("correction_target") == "health_state" or "health_state" in str(result.get("correction_target"))
+    ]
+
+
+def _finalize_health_state(ctx: DreamLoopExecutionContext) -> None:
+    severity_order = {"ok": 0, "warn": 1, "unknown": 2, "critical": 3}
+    health_status = "ok"
+    for finding in ctx.health_state.get("health_findings", []):
+        severity = str(finding.get("severity", "unknown"))
+        if severity_order.get(severity, 3) > severity_order.get(health_status, 0):
+            health_status = severity if severity in severity_order else "unknown"
+    if ctx.observer_worst != "ok" and severity_order.get(ctx.observer_worst, 3) > severity_order.get(health_status, 0):
+        health_status = ctx.observer_worst
+    ctx.health_state["health_status"] = health_status
+    ctx.health_state["runtime_status_summary"] = {
+        "generated_at": ctx.runtime_status_payload.get("generated_at"),
+        "runtime_count": len(ctx.runtime_status_payload.get("runtimes", []) or []),
+        "mismatched_runtime_count": sum(
+            1
+            for runtime in ctx.runtime_status_payload.get("runtimes", []) or []
+            if isinstance(runtime, dict) and not runtime.get("matches_expected", True)
+        ),
+    }
+
+
+def _finalize_stale_context_state(ctx: DreamLoopExecutionContext) -> None:
+    recent_or_active_scopes = _collect_recent_or_active_scopes(
+        ctx.config.bridge_state_dir,
+        now_ts=ctx.run_started_at.timestamp(),
+    )
+    previous_machine_truth_fingerprint = str(ctx.previous_truth_state.get("machine_truth_fingerprint") or "")
+    previous_policy_truth_fingerprint = str(ctx.previous_truth_state.get("policy_truth_fingerprint") or "")
+    machine_truth_changed = bool(previous_machine_truth_fingerprint) and (
+        previous_machine_truth_fingerprint != ctx.machine_truth_fingerprint
+    )
+    policy_inputs_changed = bool(previous_policy_truth_fingerprint) and (
+        previous_policy_truth_fingerprint != ctx.policy_truth_fingerprint
+    )
+    eligible_scope_keys = (
+        [scope["scope_key"] for scope in recent_or_active_scopes]
+        if machine_truth_changed or policy_inputs_changed
+        else []
+    )
+    stale_fingerprint = _hash_json_payload(
+        {
+            "machine_truth_fingerprint": ctx.machine_truth_fingerprint,
+            "policy_truth_fingerprint": ctx.policy_truth_fingerprint,
+        }
+    )
+    stale_state_path = build_stale_context_state_path(str(ctx.config.bridge_state_dir))
+    persisted_statuses = load_stale_context_statuses(stale_state_path)
+    updated_statuses = apply_stale_context_updates(
+        persisted_statuses,
+        eligible_scope_keys=eligible_scope_keys,
+        stale_fingerprint=stale_fingerprint,
+        generated_at=ctx.generated_at,
+        trigger_changed=machine_truth_changed or policy_inputs_changed,
+    )
+    if not ctx.config.dry_run and updated_statuses != persisted_statuses:
+        persist_stale_context_statuses(stale_state_path, updated_statuses)
+    ctx.truth_state["stale_context_eligibility"] = {
+        "rollout_scope": "Architect",
+        "machine_truth_changed": machine_truth_changed,
+        "policy_inputs_changed": policy_inputs_changed,
+        "changed_machine_inputs": list(ctx.changed_machine_inputs),
+        "changed_policy_inputs": list(ctx.changed_policy_inputs),
+        "eligible_scope_keys": list(eligible_scope_keys),
+        "eligible_scope_count": len(eligible_scope_keys),
+        "scope_basis": {
+            "recent_activity_window_days": RECENT_ACTIVITY_DAYS,
+            "active_or_recent_scopes": [
+                {
+                    "scope_key": scope["scope_key"],
+                    "has_thread": bool(scope.get("thread_id")),
+                    "worker_last_used_at": scope.get("worker_last_used_at"),
+                    "in_flight_started_at": scope.get("in_flight_started_at"),
+                }
+                for scope in recent_or_active_scopes
+            ],
+        },
+        "scope_warning_statuses": snapshot_stale_context_statuses(updated_statuses, eligible_scope_keys),
+        "stale_warning_state_path": stale_state_path,
+        "stale_warning_fingerprint": stale_fingerprint,
+    }
+
+
+def _repo_relative_path(path_value: str | Path) -> Optional[str]:
+    path = Path(path_value)
+    try:
+        relative = path.resolve().relative_to(ROOT.resolve())
+    except Exception:
+        return None
+    return str(relative)
+
+
+def _git_status_entries_for_paths(
+    relative_paths: Sequence[str],
+    *,
+    run_capture_command: GitCommandRunner,
+) -> Dict[str, str]:
+    if not relative_paths:
+        return {}
+    proc = run_capture_command(("git", "status", "--porcelain", "--", *relative_paths))
+    if proc.returncode != 0:
+        stderr = proc.stderr.strip() or proc.stdout.strip() or "git status failed"
+        raise RuntimeError(stderr)
+    entries: Dict[str, str] = {}
+    for line in (proc.stdout or "").splitlines():
+        if len(line) < 4:
+            continue
+        status = line[:2]
+        path_text = line[3:].strip()
+        if " -> " in path_text:
+            path_text = path_text.split(" -> ", 1)[1].strip()
+        if path_text:
+            entries[path_text] = status
+    return entries
+
+
+def _git_has_preexisting_staged_changes(*, run_capture_command: GitCommandRunner) -> bool:
+    proc = run_capture_command(("git", "diff", "--cached", "--name-only"))
+    if proc.returncode != 0:
+        stderr = proc.stderr.strip() or proc.stdout.strip() or "git diff --cached failed"
+        raise RuntimeError(stderr)
+    return bool((proc.stdout or "").strip())
+
+
+def _git_push_command(*, run_capture_command: GitCommandRunner) -> List[str]:
+    proc = run_capture_command(("git", "remote"))
+    if proc.returncode != 0:
+        return ["git", "push"]
+    remotes = {line.strip() for line in (proc.stdout or "").splitlines() if line.strip()}
+    if "origin" in remotes:
+        return ["git", "push", "origin", "HEAD"]
+    return ["git", "push"]
+
+
+def _commit_candidate_repo_paths(config: DreamLoopConfig) -> List[str]:
+    candidates = [
+        config.summary_path,
+        config.state_dir / LATEST_TRUTH_STATE,
+        config.state_dir / LATEST_HEALTH_STATE,
+    ]
+    relative_paths = []
+    for candidate in candidates:
+        relative = _repo_relative_path(candidate)
+        if relative is not None:
+            relative_paths.append(relative)
+    return sorted(dict.fromkeys(relative_paths))
+
+
+def _build_git_automation_result(
+    *,
+    status: str,
+    candidate_paths: Sequence[str],
+    skipped_dirty_paths: Sequence[str],
+    safe_paths: Sequence[str],
+    commit_attempted: bool,
+    commit_message: str = "",
+    committed_sha: str = "",
+    push_attempted: bool = False,
+    push_succeeded: bool = False,
+    commit_stdout: str = "",
+    commit_stderr: str = "",
+    push_stdout: str = "",
+    push_stderr: str = "",
+    skip_reason: str = "",
+    preexisting_staged_changes: bool = False,
+) -> Dict[str, Any]:
+    return {
+        "status": status,
+        "candidate_repo_paths": list(candidate_paths),
+        "skipped_dirty_paths": list(skipped_dirty_paths),
+        "safe_repo_paths": list(safe_paths),
+        "preexisting_staged_changes": preexisting_staged_changes,
+        "skip_reason": skip_reason,
+        "commit_attempted": commit_attempted,
+        "commit_message": commit_message,
+        "committed_sha": committed_sha,
+        "push_attempted": push_attempted,
+        "push_succeeded": push_succeeded,
+        "commit_stdout": commit_stdout,
+        "commit_stderr": commit_stderr,
+        "push_stdout": push_stdout,
+        "push_stderr": push_stderr,
+    }
+
+
+def _run_git_automation(
+    *,
+    config: DreamLoopConfig,
+    run_capture_command: GitCommandRunner,
+    generated_at: str,
+    candidate_paths: Sequence[str],
+    preexisting_staged_changes: bool,
+    pre_run_dirty_entries: Dict[str, str],
+) -> Dict[str, Any]:
+    if not candidate_paths:
+        return _build_git_automation_result(
+            status="skipped_no_repo_managed_paths",
+            candidate_paths=[],
+            skipped_dirty_paths=[],
+            safe_paths=[],
+            commit_attempted=False,
+            skip_reason="no repo-managed dream-loop outputs are inside the git repo",
+        )
+
+    post_run_dirty_entries = _git_status_entries_for_paths(candidate_paths, run_capture_command=run_capture_command)
+    changed_candidate_paths = [path for path in candidate_paths if path in post_run_dirty_entries]
+    if not changed_candidate_paths:
+        return _build_git_automation_result(
+            status="skipped_no_repo_changes",
+            candidate_paths=candidate_paths,
+            skipped_dirty_paths=[],
+            safe_paths=[],
+            commit_attempted=False,
+            skip_reason="no repo-managed candidate files changed in this run",
+            preexisting_staged_changes=preexisting_staged_changes,
+        )
+    if preexisting_staged_changes:
+        return _build_git_automation_result(
+            status="skipped_preexisting_staged_changes",
+            candidate_paths=candidate_paths,
+            skipped_dirty_paths=[],
+            safe_paths=[],
+            commit_attempted=False,
+            skip_reason="repo already had staged changes before dream-loop git automation",
+            preexisting_staged_changes=True,
+        )
+
+    skipped_dirty_paths = [path for path in changed_candidate_paths if path in pre_run_dirty_entries]
+    safe_paths = [path for path in changed_candidate_paths if path not in pre_run_dirty_entries]
+    if not safe_paths:
+        return _build_git_automation_result(
+            status="skipped_only_preexisting_dirty_paths",
+            candidate_paths=candidate_paths,
+            skipped_dirty_paths=skipped_dirty_paths,
+            safe_paths=[],
+            commit_attempted=False,
+            skip_reason="all changed repo-managed candidate files were already dirty before the run",
+        )
+
+    add_proc = run_capture_command(("git", "add", "--", *safe_paths))
+    if add_proc.returncode != 0:
+        return _build_git_automation_result(
+            status="commit_failed",
+            candidate_paths=candidate_paths,
+            skipped_dirty_paths=skipped_dirty_paths,
+            safe_paths=safe_paths,
+            commit_attempted=True,
+            commit_message="",
+            commit_stdout=add_proc.stdout.strip(),
+            commit_stderr=add_proc.stderr.strip(),
+            skip_reason="git add failed",
+        )
+    commit_message = f"Dream loop v2.1 auto-align {generated_at}"
+    commit_proc = run_capture_command(("git", "commit", "-m", commit_message))
+    if commit_proc.returncode != 0:
+        return _build_git_automation_result(
+            status="commit_failed",
+            candidate_paths=candidate_paths,
+            skipped_dirty_paths=skipped_dirty_paths,
+            safe_paths=safe_paths,
+            commit_attempted=True,
+            commit_message=commit_message,
+            commit_stdout=commit_proc.stdout.strip(),
+            commit_stderr=commit_proc.stderr.strip(),
+            skip_reason="git commit failed",
+        )
+    sha_proc = run_capture_command(("git", "rev-parse", "HEAD"))
+    committed_sha = (sha_proc.stdout or "").strip() if sha_proc.returncode == 0 else ""
+    push_command = _git_push_command(run_capture_command=run_capture_command)
+    push_proc = run_capture_command(tuple(push_command))
+    if push_proc.returncode != 0:
+        return _build_git_automation_result(
+            status="push_failed",
+            candidate_paths=candidate_paths,
+            skipped_dirty_paths=skipped_dirty_paths,
+            safe_paths=safe_paths,
+            commit_attempted=True,
+            commit_message=commit_message,
+            committed_sha=committed_sha,
+            push_attempted=True,
+            push_succeeded=False,
+            commit_stdout=commit_proc.stdout.strip(),
+            commit_stderr=commit_proc.stderr.strip(),
+            push_stdout=push_proc.stdout.strip(),
+            push_stderr=push_proc.stderr.strip(),
+        )
+    return _build_git_automation_result(
+        status="committed_and_pushed",
+        candidate_paths=candidate_paths,
+        skipped_dirty_paths=skipped_dirty_paths,
+        safe_paths=safe_paths,
+        commit_attempted=True,
+        commit_message=commit_message,
+        committed_sha=committed_sha,
+        push_attempted=True,
+        push_succeeded=True,
+        commit_stdout=commit_proc.stdout.strip(),
+        commit_stderr=commit_proc.stderr.strip(),
+        push_stdout=push_proc.stdout.strip(),
+        push_stderr=push_proc.stderr.strip(),
+    )
+
+
 def _build_report(
     truth_state: Dict[str, Any],
     health_state: Dict[str, Any],
@@ -704,6 +1443,7 @@ def _build_report(
     doc_alignment = truth_state.get("secondary_doc_alignment", {}) or {}
     generated_outputs = truth_state.get("generated_output_status", {}) or {}
     live_runtime_alignment = truth_state.get("live_runtime_alignment", {}) or {}
+    git_automation = run_state.get("git_automation", {}) or {}
     lines = [
         "# Server3 Dream Loop Report",
         "",
@@ -714,10 +1454,21 @@ def _build_report(
         f"- Policy eligibility changed: {'yes' if stale.get('policy_inputs_changed') else 'no'}",
         "- Machine truth fingerprint excludes live runtime/log health by design; those are tracked separately below.",
         f"- Health status: {health_state['health_status']}",
+    ]
+    if git_automation:
+        lines.append(f"- Git automation: {git_automation.get('status', 'unknown')}")
+        committed_sha = str(git_automation.get("committed_sha") or "")
+        if committed_sha:
+            lines.append(f"- Committed SHA: `{committed_sha}`")
+        if git_automation.get("push_attempted"):
+            lines.append(
+                f"- Push succeeded: {'yes' if git_automation.get('push_succeeded') else 'no'}"
+            )
+    lines.extend([
         "",
         "## Artifacts",
         "",
-    ]
+    ])
     for artifact in run_state.get("artifacts_written", []):
         lines.append(f"- {artifact}")
     files_updated = run_state.get("files_updated", []) or []
@@ -752,6 +1503,27 @@ def _build_report(
     lines.extend(["", "## Generated Outputs", ""])
     for output in generated_outputs.get("outputs", []) or []:
         lines.append(f"- [rendered] {output.get('path', 'unknown')}")
+    lines.extend(["", "## Git Automation", ""])
+    if git_automation:
+        lines.append(f"- Status: {git_automation.get('status', 'unknown')}")
+        candidate_paths = git_automation.get("candidate_repo_paths", []) or []
+        lines.append("- Candidate repo-managed files: " + (", ".join(candidate_paths) if candidate_paths else "none"))
+        safe_paths = git_automation.get("safe_repo_paths", []) or []
+        lines.append("- Safe files committed this run: " + (", ".join(safe_paths) if safe_paths else "none"))
+        skipped_dirty = git_automation.get("skipped_dirty_paths", []) or []
+        lines.append("- Skipped pre-existing dirty files: " + (", ".join(skipped_dirty) if skipped_dirty else "none"))
+        skip_reason = str(git_automation.get("skip_reason") or "")
+        if skip_reason:
+            lines.append(f"- Skip/failure reason: {skip_reason}")
+        committed_sha = str(git_automation.get("committed_sha") or "")
+        if committed_sha:
+            lines.append(f"- Commit SHA: `{committed_sha}`")
+        if git_automation.get("push_attempted"):
+            lines.append(
+                f"- Push outcome: {'succeeded' if git_automation.get('push_succeeded') else 'failed'}"
+            )
+    else:
+        lines.append("- none")
     lines.extend(["", "## Live Runtime Alignment", ""])
     lines.append(
         "- Structured machine-truth inputs only: "
@@ -799,213 +1571,33 @@ def execute_dream_loop(
     now_fn: Callable[[str], datetime] = _now,
     run_json_command: Callable[[Sequence[str]], Dict[str, Any]] = _run_json_command,
     run_text_command: Callable[[Sequence[str]], str] = _run_text_command,
+    run_capture_command: GitCommandRunner = _run_capture_command,
 ) -> Dict[str, Any]:
     run_started_at = now_fn(config.timezone)
     generated_at = _iso(run_started_at)
     previous_truth_state = _read_json_file(config.state_dir / LATEST_TRUTH_STATE) or {}
-
-    checks_executed = [
-        "truth_files_fingerprint",
-        "runtime_manifest_vs_status",
-        "runtime_observer_truth",
-        "policy_watch_truth",
-        "telegram_context_routing_truth",
-    ]
-    unresolved_items: List[str] = []
-    warnings_emitted: List[str] = []
-    files_updated: List[str] = []
-
-    truth_entries = _file_entries(TRUTH_INPUT_PATHS)
-    policy_entries = _file_entries(POLICY_INPUT_PATHS)
-    routing_entries = _file_entries(TELEGRAM_CONTEXT_ROUTING_INPUT_PATHS)
-
-    machine_truth_fingerprint = _file_entries_fingerprint(truth_entries)
-    policy_truth_fingerprint = _file_entries_fingerprint(policy_entries)
-
-    previous_watched = previous_truth_state.get("watched_inputs", {}) if isinstance(previous_truth_state, dict) else {}
-    previous_truth_entries = previous_watched.get("machine_truth_inputs", []) if isinstance(previous_watched, dict) else []
-    previous_policy_entries = previous_watched.get("policy_inputs", []) if isinstance(previous_watched, dict) else []
-    changed_machine_inputs = _compare_entries(truth_entries, previous_truth_entries)
-    changed_policy_inputs = _compare_entries(policy_entries, previous_policy_entries)
-
-    manifest_payload = json.loads((ROOT / "infra" / "server3-runtime-manifest.json").read_text(encoding="utf-8"))
-    runtime_status_payload = run_json_command(("python3", "ops/server3_runtime_status.py", "--json"))
-    observer_status_payload = run_json_command(
-        ("python3", "ops/runtime_observer/runtime_observer.py", "--json", "status")
-    )
-    observer_summary_payload = run_json_command(
-        ("python3", "ops/runtime_observer/runtime_observer.py", "--json", "summary", "--hours", "24")
-    )
-    summary_live_facts = _collect_summary_live_facts(run_text_command, observer_status_payload)
-
-    runtime_shape, runtime_shape_findings = _extract_runtime_shape_truth(
-        manifest_payload,
-        runtime_status_payload,
-    )
-    runtime_state_mismatches = _build_runtime_state_mismatches(runtime_status_payload)
-    telegram_context_routing = _collect_telegram_context_routing_truth()
-    if not telegram_context_routing.get("validated", False):
-        unresolved_items.append("telegram context routing anchors no longer match expected bridge functions")
-
-    recent_or_active_scopes = _collect_recent_or_active_scopes(
-        config.bridge_state_dir,
-        now_ts=run_started_at.timestamp(),
-    )
-    previous_machine_truth_fingerprint = str(previous_truth_state.get("machine_truth_fingerprint") or "")
-    previous_policy_truth_fingerprint = str(previous_truth_state.get("policy_truth_fingerprint") or "")
-    machine_truth_changed = bool(previous_machine_truth_fingerprint) and (
-        previous_machine_truth_fingerprint != machine_truth_fingerprint
-    )
-    policy_inputs_changed = bool(previous_policy_truth_fingerprint) and (
-        previous_policy_truth_fingerprint != policy_truth_fingerprint
-    )
-    if not previous_machine_truth_fingerprint:
-        machine_truth_changed = False
-    if not previous_policy_truth_fingerprint:
-        policy_inputs_changed = False
-
-    truth_state: Dict[str, Any] = {
-        "generated_at": generated_at,
-        "timezone": config.timezone,
-        "machine_truth_fingerprint": machine_truth_fingerprint,
-        "policy_truth_fingerprint": policy_truth_fingerprint,
-        "watched_inputs": {
-            "machine_truth_inputs": truth_entries,
-            "policy_inputs": policy_entries,
-            "telegram_context_routing_inputs": routing_entries,
-        },
-        "runtime_shape": runtime_shape,
-        "live_runtime_alignment": {
-            "machine_truth_fingerprint_uses_structured_inputs_only": True,
-            "machine_truth_boundary_reason": (
-                "The machine-truth fingerprint follows the spec and only hashes watched structured-truth inputs. "
-                "Live runtime state and log-derived health are recorded separately so drift is visible without "
-                "changing the stale-context trigger."
-            ),
-            "runtime_shape_matches_manifest": runtime_shape.get("all_runtime_names_match", False),
-            "runtime_shape_findings": runtime_shape_findings,
-            "runtime_state_mismatches": runtime_state_mismatches,
-            "live_inputs_reflected_in_health_state": [
-                "ops/server3_runtime_status.py --json",
-                "ops/runtime_observer/runtime_observer.py --json status",
-                "ops/runtime_observer/runtime_observer.py --json summary --hours 24",
-            ],
-        },
-        "telegram_context_routing": telegram_context_routing,
-        "secondary_doc_alignment": {},
-        "generated_output_status": {},
-        "stale_context_eligibility": {
-            "rollout_scope": "Architect",
-            "machine_truth_changed": machine_truth_changed,
-            "policy_inputs_changed": policy_inputs_changed,
-            "changed_machine_inputs": changed_machine_inputs,
-            "changed_policy_inputs": changed_policy_inputs,
-            "eligible_scope_keys": (
-                [scope["scope_key"] for scope in recent_or_active_scopes]
-                if machine_truth_changed or policy_inputs_changed
-                else []
-            ),
-            "eligible_scope_count": (
-                len(recent_or_active_scopes)
-                if machine_truth_changed or policy_inputs_changed
-                else 0
-            ),
-            "scope_basis": {
-                "recent_activity_window_days": RECENT_ACTIVITY_DAYS,
-                "active_or_recent_scopes": [
-                    {
-                        "scope_key": scope["scope_key"],
-                        "has_thread": bool(scope.get("thread_id")),
-                        "worker_last_used_at": scope.get("worker_last_used_at"),
-                        "in_flight_started_at": scope.get("in_flight_started_at"),
-                    }
-                    for scope in recent_or_active_scopes
-                ],
-            },
-        },
-    }
-
-    observer_worst, observer_findings, observer_warnings = _health_findings_from_observer_status(
-        observer_status_payload
-    )
-    warnings_emitted.extend(observer_warnings)
-    health_findings: List[Dict[str, Any]] = list(observer_findings)
-    for finding in runtime_shape_findings:
-        health_findings.append(
-            {
-                "source": "runtime_manifest_vs_status",
-                "name": "runtime_shape_mismatch",
-                "severity": "warn",
-                "summary": finding,
-            }
+    git_candidate_paths = _commit_candidate_repo_paths(config)
+    if config.dry_run or not git_candidate_paths:
+        git_preexisting_staged_changes = False
+        git_pre_run_dirty_entries: Dict[str, str] = {}
+    else:
+        git_preexisting_staged_changes = _git_has_preexisting_staged_changes(run_capture_command=run_capture_command)
+        git_pre_run_dirty_entries = _git_status_entries_for_paths(
+            git_candidate_paths,
+            run_capture_command=run_capture_command,
         )
-    for runtime in runtime_status_payload.get("runtimes", []) or []:
-        if not isinstance(runtime, dict):
-            continue
-        if runtime.get("matches_expected", True):
-            continue
-        health_findings.append(
-            {
-                "source": "server3_runtime_status",
-                "name": str(runtime.get("name") or "runtime"),
-                "severity": "warn",
-                "summary": (
-                    f"{runtime.get('name', 'runtime')} is {runtime.get('live_state', 'unknown')}, "
-                    f"expected {runtime.get('expected_default_state', 'unknown')}"
-                ),
-            }
-        )
-
-    summary_kpis = observer_summary_payload.get("kpis", {})
-    if isinstance(summary_kpis, dict):
-        for name, payload in sorted(summary_kpis.items()):
-            if not isinstance(payload, dict):
-                continue
-            worst = str(payload.get("worst_severity", "ok"))
-            if worst == "ok":
-                continue
-            health_findings.append(
-                {
-                    "source": "runtime_observer_summary",
-                    "name": name,
-                    "severity": worst,
-                    "summary": f"{name} worst severity in last 24h is {worst}",
-                }
-            )
-
-    severity_order = {"ok": 0, "warn": 1, "unknown": 2, "critical": 3}
-    health_status = "ok"
-    for finding in health_findings:
-        severity = str(finding.get("severity", "unknown"))
-        if severity_order.get(severity, 3) > severity_order.get(health_status, 0):
-            health_status = severity if severity in severity_order else "unknown"
-    if observer_worst != "ok" and severity_order.get(observer_worst, 3) > severity_order.get(health_status, 0):
-        health_status = observer_worst
-
-    health_state: Dict[str, Any] = {
-        "generated_at": generated_at,
-        "timezone": config.timezone,
-        "health_status": health_status,
-        "health_findings": health_findings,
-        "observer_status": observer_status_payload,
-        "observer_summary": observer_summary_payload,
-        "runtime_status_summary": {
-            "generated_at": runtime_status_payload.get("generated_at"),
-            "runtime_count": len(runtime_status_payload.get("runtimes", []) or []),
-            "mismatched_runtime_count": sum(
-                1
-                for runtime in runtime_status_payload.get("runtimes", []) or []
-                if isinstance(runtime, dict) and not runtime.get("matches_expected", True)
-            ),
-        },
-    }
-
-    summary_text = config.summary_path.read_text(encoding="utf-8")
-    aligned_summary_text, summary_changed_fields = _align_server3_summary(
-        summary_text,
-        generated_at=run_started_at,
-        summary_facts=summary_live_facts,
+    ctx = _build_execution_context(
+        config,
+        generated_at=generated_at,
+        run_started_at=run_started_at,
+        previous_truth_state=previous_truth_state,
+        run_json_command=run_json_command,
+        run_text_command=run_text_command,
     )
+    registry = build_check_registry(config)
+    _run_registry_checks(registry, ctx)
+    _finalize_health_state(ctx)
+    _finalize_stale_context_state(ctx)
 
     artifact_paths = [
         str(config.state_dir / LATEST_TRUTH_STATE),
@@ -1013,10 +1605,19 @@ def execute_dream_loop(
         str(config.state_dir / LATEST_RUN_STATE),
         str(config.state_dir / LATEST_REPORT),
     ]
-    if summary_changed_fields:
-        files_updated.append(str(config.summary_path))
+    if ctx.summary_changed_fields:
+        ctx.files_updated.append(str(config.summary_path))
 
     run_finished_at = now_fn(config.timezone)
+    git_automation = _build_git_automation_result(
+        status="dry_run_not_attempted" if config.dry_run else "not_attempted_yet",
+        candidate_paths=git_candidate_paths,
+        skipped_dirty_paths=[],
+        safe_paths=[],
+        commit_attempted=False,
+        skip_reason="dry-run mode" if config.dry_run else "",
+        preexisting_staged_changes=git_preexisting_staged_changes,
+    )
     run_status = "dry_run_succeeded" if config.dry_run else "succeeded"
     run_state: Dict[str, Any] = {
         "generated_at": _iso(run_finished_at),
@@ -1025,50 +1626,82 @@ def execute_dream_loop(
         "run_finished_at": _iso(run_finished_at),
         "run_status": run_status,
         "dry_run": config.dry_run,
-        "checks_executed": checks_executed,
-        "skipped_checks": [],
+        "checks_executed": list(ctx.checks_executed),
+        "skipped_checks": list(ctx.skipped_checks),
         "artifacts_written": [] if config.dry_run else artifact_paths,
         "planned_artifacts": artifact_paths,
-        "files_updated": [] if config.dry_run else files_updated,
-        "warnings_emitted": warnings_emitted,
-        "unresolved_items": unresolved_items,
+        "files_updated": [] if config.dry_run else list(ctx.files_updated),
+        "warnings_emitted": list(ctx.warnings_emitted),
+        "unresolved_items": list(ctx.unresolved_items),
+        "git_automation": git_automation,
     }
-    effective_summary_changed_fields = list(summary_changed_fields) if config.dry_run else []
-    truth_state["secondary_doc_alignment"] = _render_secondary_doc_alignment(
+    effective_summary_changed_fields = list(ctx.summary_changed_fields) if config.dry_run else []
+    ctx.truth_state["secondary_doc_alignment"] = _render_secondary_doc_alignment(
         summary_path=config.summary_path,
         summary_changed_fields=effective_summary_changed_fields,
     )
-    truth_state["generated_output_status"] = _render_generated_output_status(
+    ctx.truth_state["generated_output_status"] = _render_generated_output_status(
         report_path=config.state_dir / LATEST_REPORT,
     )
-    report_text = _build_report(truth_state=truth_state, health_state=health_state, run_state=run_state)
+    report_text = _build_report(truth_state=ctx.truth_state, health_state=ctx.health_state, run_state=run_state)
 
     if not config.dry_run:
         config.state_dir.mkdir(parents=True, exist_ok=True)
-        if summary_changed_fields:
-            _atomic_write_text(config.summary_path, aligned_summary_text)
-        _atomic_write_json(config.state_dir / LATEST_TRUTH_STATE, truth_state)
-        _atomic_write_json(config.state_dir / LATEST_HEALTH_STATE, health_state)
+        if ctx.summary_changed_fields:
+            _atomic_write_text(config.summary_path, ctx.aligned_summary_text)
+        _atomic_write_json(config.state_dir / LATEST_TRUTH_STATE, ctx.truth_state)
+        _atomic_write_json(config.state_dir / LATEST_HEALTH_STATE, ctx.health_state)
         _atomic_write_json(config.state_dir / LATEST_RUN_STATE, run_state)
         _atomic_write_text(config.state_dir / LATEST_REPORT, report_text)
         verification_mismatches = _verify_persisted_outputs(
             truth_state_path=config.state_dir / LATEST_TRUTH_STATE,
-            expected_truth_state=truth_state,
+            expected_truth_state=ctx.truth_state,
             health_state_path=config.state_dir / LATEST_HEALTH_STATE,
-            expected_health_state=health_state,
+            expected_health_state=ctx.health_state,
             run_state_path=config.state_dir / LATEST_RUN_STATE,
             expected_run_state=run_state,
             report_path=config.state_dir / LATEST_REPORT,
             expected_report_text=report_text,
             summary_path=config.summary_path,
-            expected_summary_text=aligned_summary_text if summary_changed_fields else None,
+            expected_summary_text=ctx.aligned_summary_text if ctx.summary_changed_fields else None,
         )
         if verification_mismatches:
             raise RuntimeError("dream loop output verification failed: " + "; ".join(verification_mismatches))
 
+        git_automation = _run_git_automation(
+            config=config,
+            run_capture_command=run_capture_command,
+            generated_at=generated_at,
+            candidate_paths=git_candidate_paths,
+            preexisting_staged_changes=git_preexisting_staged_changes,
+            pre_run_dirty_entries=git_pre_run_dirty_entries,
+        )
+        run_state["git_automation"] = git_automation
+        if git_automation["status"] == "commit_failed":
+            run_state["run_status"] = "succeeded_with_git_commit_failure"
+        elif git_automation["status"] == "push_failed":
+            run_state["run_status"] = "succeeded_with_git_push_failure"
+        report_text = _build_report(truth_state=ctx.truth_state, health_state=ctx.health_state, run_state=run_state)
+        _atomic_write_json(config.state_dir / LATEST_RUN_STATE, run_state)
+        _atomic_write_text(config.state_dir / LATEST_REPORT, report_text)
+        final_verification_mismatches = _verify_persisted_outputs(
+            truth_state_path=config.state_dir / LATEST_TRUTH_STATE,
+            expected_truth_state=ctx.truth_state,
+            health_state_path=config.state_dir / LATEST_HEALTH_STATE,
+            expected_health_state=ctx.health_state,
+            run_state_path=config.state_dir / LATEST_RUN_STATE,
+            expected_run_state=run_state,
+            report_path=config.state_dir / LATEST_REPORT,
+            expected_report_text=report_text,
+            summary_path=config.summary_path,
+            expected_summary_text=ctx.aligned_summary_text if ctx.summary_changed_fields else None,
+        )
+        if final_verification_mismatches:
+            raise RuntimeError("dream loop output verification failed: " + "; ".join(final_verification_mismatches))
+
     return {
-        "truth_state": truth_state,
-        "health_state": health_state,
+        "truth_state": ctx.truth_state,
+        "health_state": ctx.health_state,
         "run_state": run_state,
         "report_text": report_text,
     }

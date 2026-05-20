@@ -53,7 +53,8 @@ class TestTransport(unittest.TestCase):
         self.assertIn("/start - verify bridge connectivity", text)
         self.assertIn("/help or /h - show this message", text)
         self.assertIn("/status - show bridge status and context", text)
-        self.assertIn("/reset - clear saved context for this chat", text)
+        self.assertIn("/truth_status - show dream-loop truth status for this chat", text)
+        self.assertIn("/reset - clear saved context for this chat and handle stale warning", text)
         self.assertIn("/cancel or /c - cancel current in-flight request for this chat", text)
         self.assertIn("/restart - queue a safe bridge restart", text)
         self.assertIn(
@@ -467,4 +468,3 @@ class TestTransport(unittest.TestCase):
         with self.assertRaises(ValueError):
             bridge.download_telegram_file_to_temp(client, spec)
         self.assertEqual(client.download_calls, 0)
-

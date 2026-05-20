@@ -47,7 +47,7 @@ Open a visible Brave session with local remote debugging enabled:
 ```bash
 bash ops/tv-desktop/server3-tv-brave-remote-debug-session.sh https://x.com/home
 ```
-This launches Brave for the `tv` desktop user with a local remote-debugging port and a dedicated profile so other local browser tools can attach to it later without needing headed mode themselves.
+This launches Brave for the `tv` desktop user with a local remote-debugging port and a dedicated profile so `browser-harness` and similar local browser tools can attach to it later without needing headed mode themselves. This is the current maintained browser-automation path on Server3.
 
 Resolve and open top YouTube search result (with optional duration constraint):
 ```bash

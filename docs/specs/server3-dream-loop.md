@@ -598,6 +598,108 @@ Examples:
 - `history.jsonl` if it is not needed for the first `v2` rollout
 - commit/push or any other outbound automation
 
+## V2.1 Implementation Target
+
+`V2.1` is the first bounded outbound automation slice after `v2`.
+
+Its purpose is to let the dream loop commit and push safe repo-managed changes that it made itself, without turning the loop into a general git janitor that sweeps up unrelated operator work.
+
+`V2.1` must stay conservative.
+
+### V2.1 Must Deliver
+
+- automatic git commit behavior for safe repo-managed files changed by the current dream-loop run
+- automatic git push behavior immediately after a successful dream-loop auto-commit
+- explicit run-state reporting of:
+  - which repo-managed files were considered for commit
+  - which files were skipped because they were already dirty before the run
+  - whether a commit was created
+  - commit SHA if created
+  - whether push succeeded
+  - push/commit failure details when relevant
+- report-layer visibility of git automation outcome
+
+### V2.1 Must Not Deliver
+
+- committing unrelated pre-existing dirty files
+- committing unrelated pre-existing staged files
+- broad `git add .` or repo-wide staging
+- automatic conflict resolution, rebases, pulls, or force-push behavior
+- commit/push behavior in dry-run mode
+
+### V2.1 Commit Boundary
+
+`V2.1` may only auto-stage files that are both:
+
+- inside the `matrix` git repo
+- in the dream loop's approved managed-output set for the current run
+
+The initial `v2.1` managed-output set is:
+
+- approved secondary-doc correction targets changed by the loop
+- structured truth/health artifacts written under the repo root, if that deployment path is used
+
+Initial `v2.1` explicit exclusions:
+
+- `latest_run_state.json`
+- `latest_report.md`
+
+Reason:
+
+- those files must report the git automation result for the current run, so treating them as part of the same commit would create a self-referential write cycle
+
+### V2.1 Safety Rules
+
+Before auto-commit, the loop must detect:
+
+- pre-existing staged changes anywhere in the repo
+- pre-existing dirty state for candidate managed files
+
+Required behavior:
+
+- if unrelated pre-existing staged changes exist, skip auto-commit and record that skip in run state
+- if a candidate managed file was already dirty before the run, do not auto-commit that file
+- if safe current-run repo-managed changes remain after those filters, stage only those files and commit only those files
+- if no safe repo-managed changes remain, skip commit/push and report why
+
+### V2.1 Push Rule
+
+After a successful auto-commit, the loop should push conservatively:
+
+- prefer `origin HEAD` when `origin` exists
+- otherwise use the repo's default `git push` behavior
+
+If push fails:
+
+- the run should still keep its truth/health outputs
+- the failure must be recorded in run state and the report
+
+### V2.1 Artifact Changes
+
+`V2.1` extends `latest_run_state.json` with a git automation block.
+
+Required `v2.1` run-state fields:
+
+- candidate repo-managed files
+- skipped dirty files
+- skip reason when commit/push was not attempted
+- commit attempted boolean
+- commit message when attempted
+- committed SHA when successful
+- push attempted boolean
+- push success boolean
+- commit/push stdout/stderr snapshots as needed for debugging
+
+### V2.1 Exit Criteria
+
+`V2.1` is complete when all of the following are true:
+
+- safe current-run repo-managed changes are auto-committed without sweeping up unrelated dirt
+- a successful auto-commit triggers an automatic push
+- dry-run mode never commits or pushes
+- commit/push outcomes are visible in run state and the rendered report
+- tests cover success, no-change skip, pre-existing-dirty skip, pre-existing-staged skip, and push failure behavior
+
 ## V2+ Truth Surfaces And Scan Expansion
 
 Beyond the fixed `v1` inputs, later phases may expand the nightly pass to scan a broader but still declared set of high-value truth sources.
