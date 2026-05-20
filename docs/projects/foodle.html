@@ -17,7 +17,7 @@
       --dairy: #4d8dc7;
       --fasting: #52c7b8;
       --coffee: #8b5a2b;
-      --overeating: #d84c4c;
+      --overeating: #3aa76d;
       --ok: #2f8f5b;
       --bad: #c64545;
       --shadow: 0 20px 60px rgba(70, 44, 11, 0.12);
@@ -589,14 +589,6 @@
       left: -3px;
       right: auto;
     }
-    .combined-marker.track-overeating {
-      top: auto;
-      bottom: -3px;
-      left: -3px;
-      right: auto;
-      transform: none;
-    }
-
     .legend {
       display: flex;
       flex-wrap: wrap;
@@ -942,7 +934,7 @@
           <strong class="mini-value" id="heroCoffee">0</strong>
         </article>
         <article class="mini-stat">
-          <span class="mini-label">Over eating days logged</span>
+          <span class="mini-label">Did not over eat days logged</span>
           <strong class="mini-value" id="heroOvereating">0</strong>
         </article>
       </div>
@@ -955,7 +947,7 @@
           Choose one result for the selected day for each category. That is enough to keep the streak going.
         </p>
         <div class="heatmap-shell">
-          <p class="calendar-intro">One shared calendar. Each day cell has three bands for sugar, carbs, dairy, plus dots for fasting, coffee, and over eating.</p>
+          <p class="calendar-intro">One shared calendar. Each day cell has three bands for sugar, carbs, dairy, plus dots for fasting, coffee, and did not over eat.</p>
           <div id="combinedCalendar"></div>
         </div>
         <div class="tracker-list" id="trackerList"></div>
@@ -983,6 +975,7 @@
     const STORAGE_KEY = "foodle-v2";
     const LEGACY_STORAGE_KEYS = ["foodle-v1"];
     const LEGACY_MIGRATION_KEY = "foodle-v2-migrated";
+    const OVEREATING_MIGRATION_KEY = "foodle-v2-overeating-inverted";
     const THEME_KEY = "foodle-theme";
     const DESKTOP_CALENDAR_WEEKS = 26;
     const MOBILE_CALENDAR_WEEKS = 12;
@@ -1039,18 +1032,18 @@
       },
       {
         id: "overeating",
-        label: "Over eating",
+        label: "Did not over eat",
         accent: "overeating",
         mode: "count",
-        copy: "Optional red dot for days when you over ate.",
-        countLabel: "over eating days",
-        countNoun: "over eating day",
-        actionGoodText: "Over ate yesterday",
-        actionBadText: "Did not over eat yesterday",
-        statusGoodText: "Yesterday: over eating logged",
-        statusBadText: "Yesterday: no over eating",
+        copy: "Optional green dot for days when you did not over eat.",
+        countLabel: "did not over eat days",
+        countNoun: "did not over eat day",
+        actionGoodText: "Did not over eat yesterday",
+        actionBadText: "Over ate yesterday",
+        statusGoodText: "Yesterday: did not over eat",
+        statusBadText: "Yesterday: over ate",
         statusEmptyText: "Yesterday: not logged yet",
-        lastSuccessEmptyText: "No over eating day logged yet"
+        lastSuccessEmptyText: "No did not over eat day logged yet"
       }
     ];
 
@@ -1127,6 +1120,12 @@
           shouldPersist = true;
         }
 
+        if (!localStorage.getItem(OVEREATING_MIGRATION_KEY)) {
+          merged = invertOvereatingData(merged);
+          localStorage.setItem(OVEREATING_MIGRATION_KEY, "1");
+          shouldPersist = true;
+        }
+
         if (shouldPersist) {
           saveData(merged);
         }
@@ -1162,6 +1161,18 @@
         merged.days[key] = { ...(merged.days[key] || {}), ...value };
       }
       return merged;
+    }
+
+    function invertOvereatingData(data) {
+      const migrated = { days: {} };
+      for (const [key, value] of Object.entries(data?.days || {})) {
+        const nextValue = { ...value };
+        if (typeof nextValue.overeating === "boolean") {
+          nextValue.overeating = !nextValue.overeating;
+        }
+        migrated.days[key] = nextValue;
+      }
+      return migrated;
     }
 
     function readStatus(data, date, trackerId) {
@@ -1486,7 +1497,7 @@
                 <span class="combined-marker good track-coffee" style="position: static;"></span> Coffee day
               </span>
               <span class="legend-group">
-                <span class="combined-marker good track-overeating" style="position: static; transform: none;"></span> Over eating day
+                <span class="combined-marker good track-overeating" style="position: static;"></span> Did not over eat day
               </span>
               <span class="legend-group">
                 <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some

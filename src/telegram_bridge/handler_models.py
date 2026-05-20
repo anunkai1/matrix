@@ -107,18 +107,6 @@ class YoutubeRequest:
     cancel_event: Optional[threading.Event] = None
 
 @dataclass(frozen=True)
-class DishframedRequest:
-    state: State
-    config: Any
-    client: ChannelAdapter
-    scope_key: str
-    chat_id: int
-    message_thread_id: Optional[int]
-    message_id: Optional[int]
-    photo_file_ids: List[str]
-    cancel_event: Optional[threading.Event] = None
-
-@dataclass(frozen=True)
 class UpdateDispatchRequest:
     state: State
     config: Any
@@ -264,28 +252,5 @@ def build_youtube_request(
         request_text=request_text,
         youtube_url=youtube_url,
         actor_user_id=actor_user_id,
-        cancel_event=cancel_event,
-    )
-
-def build_dishframed_request(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    photo_file_ids: List[str],
-    cancel_event: Optional[threading.Event] = None,
-) -> DishframedRequest:
-    return DishframedRequest(
-        state=state,
-        config=config,
-        client=client,
-        scope_key=scope_key,
-        chat_id=chat_id,
-        message_thread_id=message_thread_id,
-        message_id=message_id,
-        photo_file_ids=list(photo_file_ids),
         cancel_event=cancel_event,
     )

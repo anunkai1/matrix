@@ -12,12 +12,16 @@ from telegram_bridge import engine_controls
 from telegram_bridge import goal_loop
 from telegram_bridge.handler_common import build_help_text, build_status_text, extract_callback_query_context
 from telegram_bridge.handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
+from telegram_bridge import remember_commands
 from telegram_bridge.runtime_profile import CANCEL_COMMAND_ALIASES, HELP_COMMAND_ALIASES, start_command_message
 from telegram_bridge.state_store import State
 from telegram_bridge import voice_alias_commands
 
 KnownCommandFn = Callable[[KnownCommandContext], bool]
 CallbackActionFn = Callable[[CallbackActionContext], CallbackActionResult]
+DISHFRAMED_RETIRED_MESSAGE = (
+    "DishFramed has been retired on Server3. `/dishframed` is no longer available."
+)
 
 
 def _reply_to_known_command(
@@ -157,6 +161,16 @@ def _handle_goal_known_command(ctx: KnownCommandContext) -> bool:
         raw_text=ctx.raw_text,
     )
 
+def _handle_remember_known_command(ctx: KnownCommandContext) -> bool:
+    return remember_commands.handle_remember_command(
+        state=ctx.state,
+        scope_key=ctx.scope_key,
+        client=ctx.client,
+        chat_id=ctx.chat_id,
+        message_id=ctx.message_id,
+        raw_text=ctx.raw_text,
+    )
+
 def _handle_subgoal_known_command(ctx: KnownCommandContext) -> bool:
     return goal_loop.handle_subgoal_command(
         state=ctx.state,
@@ -166,6 +180,12 @@ def _handle_subgoal_known_command(ctx: KnownCommandContext) -> bool:
         message_thread_id=ctx.message_thread_id,
         message_id=ctx.message_id,
         raw_text=ctx.raw_text,
+    )
+
+def _handle_dishframed_known_command(ctx: KnownCommandContext) -> bool:
+    return _reply_to_known_command(
+        ctx,
+        DISHFRAMED_RETIRED_MESSAGE,
     )
 
 def _handle_diary_today_known_command(ctx: KnownCommandContext) -> bool:
@@ -190,7 +210,9 @@ KNOWN_COMMAND_HANDLERS: Dict[str, KnownCommandFn] = {
     "/pi": _handle_pi_known_command,
     "/reset": _handle_reset_known_command,
     "/goal": _handle_goal_known_command,
+    "/remember": _handle_remember_known_command,
     "/subgoal": _handle_subgoal_known_command,
+    "/dishframed": _handle_dishframed_known_command,
     "/voice-alias": _handle_voice_alias_known_command,
 }
 
@@ -268,11 +290,20 @@ def _handle_codex_effort_callback_action(ctx: CallbackActionContext) -> Callback
         ctx.value,
     )
 
+def _handle_remember_callback_action(ctx: CallbackActionContext) -> CallbackActionResult:
+    return remember_commands.handle_remember_callback_action(
+        state=ctx.state,
+        scope_key=ctx.scope_key,
+        action=ctx.action,
+        token=ctx.value,
+    )
+
 CALLBACK_ACTION_HANDLERS: Dict[Tuple[str, Optional[str]], CallbackActionFn] = {
     ("engine", None): _handle_engine_callback_action,
     ("provider", "pi"): _handle_pi_provider_callback_action,
     ("model", None): _handle_model_callback_action,
     ("effort", "codex"): _handle_codex_effort_callback_action,
+    ("remember", None): _handle_remember_callback_action,
 }
 
 def _resolve_callback_action_handler(

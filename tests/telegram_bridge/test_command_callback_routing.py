@@ -1,7 +1,9 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = ROOT / "src"
@@ -11,6 +13,8 @@ if str(SRC_ROOT) not in sys.path:
 from tests.telegram_bridge.helpers import FakeTelegramClient, make_config
 
 import telegram_bridge.command_callback_routing as command_callback_routing
+import telegram_bridge.command_routing as bridge_command_routing
+import telegram_bridge.remember_commands as bridge_remember_commands
 from telegram_bridge.handler_models import CallbackActionContext, CallbackActionResult
 from telegram_bridge.state_store import State
 
@@ -216,6 +220,45 @@ class TestCommandCallbackRouting(unittest.TestCase):
         self.assertEqual(client.callback_answers[0], ("cb-failed", "Action failed."))
         self.assertIn("Action failed.", client.edits[0][2])
         self.assertIn("boom", client.edits[0][2])
+
+    def test_handle_callback_query_routes_remember_save_action(self):
+        client = FakeTelegramClient()
+        config = make_config()
+        state = State()
+        token = "remember-1"
+        state.pending_remember_proposals[token] = bridge_remember_commands.PendingRememberProposal(
+            scope_key="tg:1",
+            text="Remember this exact line.",
+        )
+        update = {
+            "callback_query": {
+                "id": "cb-remember",
+                "data": bridge_remember_commands.remember_callback_data("save", token),
+                "message": {
+                    "message_id": 15,
+                    "chat": {"id": 1, "type": "private"},
+                },
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with mock.patch.object(
+                bridge_remember_commands,
+                "remember_file_path",
+                return_value=Path(tmpdir) / "remember.md",
+            ):
+                handled = bridge_command_routing.handle_callback_query(
+                    state,
+                    config,
+                    client,
+                    update,
+                )
+                saved_text = (Path(tmpdir) / "remember.md").read_text(encoding="utf-8")
+
+        self.assertTrue(handled)
+        self.assertEqual(client.callback_answers[0], ("cb-remember", bridge_remember_commands.SAVE_SUCCESS_TOAST))
+        self.assertIn("Saved to `remember.md` as item 1", client.edits[0][2])
+        self.assertEqual(saved_text, "1. Remember this exact line.\n")
 
 
 if __name__ == "__main__":

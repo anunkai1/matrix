@@ -232,8 +232,8 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/voice-alias add <source> => <target>` add manual correction
 - `server3-tv-start` start TV desktop mode from shell
 - `server3-tv-stop` stop TV desktop mode and return to CLI from shell
-- `/remember ...` legacy compatibility command
-- `/forget ...` legacy compatibility command
+- `/remember <text>` propose exact text to append to `remember.md`, with Save/Cancel approval buttons
+- `/remember delete <number>` remove a numbered item from `remember.md` and renumber the remaining entries
 
 ## Server4 Gemma Engine
 

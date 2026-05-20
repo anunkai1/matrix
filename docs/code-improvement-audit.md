@@ -113,7 +113,7 @@ It currently owns:
 - media handling
 - memory turn setup
 - engine-specific command UX
-- integrations such as YouTube, DishFramed, Nextcloud, Server3 TV
+- integrations such as YouTube, Nextcloud, Server3 TV
 - diary queue orchestration
 
 Impact:

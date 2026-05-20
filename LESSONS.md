@@ -53,11 +53,6 @@ Use one section per lesson:
 - Prevention rule: When a user asks for Telegram image or file delivery, check the live bridge transport/runtime state first and attempt the supported outbound path before claiming the capability is unavailable.
 - Where/when applied: Any Architect request involving Telegram delivery of images, files, or other media.
 
-### 2026-03-03T19:18:12+10:00 - Clarify File Delivery Target Before Sending
-- Mistake pattern: I assumed a file-delivery destination instead of confirming whether the owner wanted in-chat content or a Telegram attachment.
-- Prevention rule: When a request mentions sending or sharing a file and the destination is ambiguous, ask one explicit routing question first.
-- Where/when applied: Before executing any file-delivery request in chat operations or Telegram bridge actions.
-
 ### 2026-02-23T07:24:07+10:00 - One-Shot Timer Verification
 - Mistake pattern: I checked active timers and repo notes but missed unit journal history, so I gave the wrong answer about whether a scheduled action existed.
 - Prevention rule: For schedule verification, check both current unit state and historical evidence in `systemctl` and `journalctl`.

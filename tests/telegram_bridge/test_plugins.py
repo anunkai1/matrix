@@ -80,7 +80,7 @@ class TestPlugins(unittest.TestCase):
         self.assertIn("/pi providers - list available Pi providers", text)
         self.assertIn("/pi provider <name> - set this chat's Pi provider", text)
         self.assertIn("/pi reset - clear this chat's Pi provider and model overrides", text)
-        self.assertIn("/dishframed - turn a menu photo into a DishFramed preview", text)
+        self.assertNotIn("/dishframed", text)
 
     def test_default_plugin_registry_exposes_telegram_and_codex(self):
         registry = bridge_plugin_registry.build_default_plugin_registry()
@@ -1845,6 +1845,53 @@ class TestPlugins(unittest.TestCase):
             chat_id=1,
             message_id=89,
             raw_text="/voice-alias list",
+        )
+
+    def test_handle_known_command_replies_that_dishframed_is_retired(self):
+        client = FakeTelegramClient()
+        state = bridge.State()
+        config = make_config()
+
+        handled = bridge_command_routing.handle_known_command(
+            state=state,
+            config=config,
+            client=client,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=90,
+            command="/dishframed",
+            raw_text="/dishframed",
+        )
+
+        self.assertTrue(handled)
+        self.assertEqual(
+            client.messages[-1][:3],
+            (1, bridge_command_routing.DISHFRAMED_RETIRED_MESSAGE, 90),
+        )
+
+    def test_handle_known_command_routes_remember_command(self):
+        client = FakeTelegramClient()
+        state = bridge.State()
+        config = make_config()
+
+        handled = bridge_command_routing.handle_known_command(
+            state=state,
+            config=config,
+            client=client,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=None,
+            message_id=91,
+            command="/remember",
+            raw_text="/remember codex keeps local session history in jsonl files",
+        )
+
+        self.assertTrue(handled)
+        self.assertIn("Proposed `remember.md` text:", client.messages[-1][1])
+        self.assertIn(
+            "codex keeps local session history in jsonl files.",
+            client.messages[-1][1],
         )
 
     def test_voice_alias_command_adds_manual_alias(self):

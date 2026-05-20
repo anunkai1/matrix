@@ -578,68 +578,6 @@ class HandleUpdateHelperTests(unittest.TestCase):
         self.assertTrue(started)
         start_message_worker.assert_called_once()
 
-    def test_start_dishframed_dispatch_uses_recent_scope_photos(self):
-        flow = self._make_flow()
-        dispatch = bridge_handlers.UpdateDispatchRequest(
-            state=flow.state,
-            config=flow.config,
-            client=flow.client,
-            engine=None,
-            scope_key=flow.ctx.scope_key,
-            chat_id=flow.ctx.chat_id,
-            message_thread_id=flow.ctx.message_thread_id,
-            message_id=flow.ctx.message_id,
-            prompt="",
-            raw_prompt="",
-            photo_file_ids=[],
-            voice_file_id=None,
-            document=None,
-            actor_user_id=flow.ctx.actor_user_id,
-            sender_name=flow.sender_name,
-            stateless=True,
-            enforce_voice_prefix_from_transcript=False,
-            youtube_route_url=None,
-            handle_update_started_at=15.0,
-        )
-
-        with mock.patch.object(bridge_runtime_setup, "get_recent_scope_photos", return_value=["photo-1"]) as recent:
-            with mock.patch.object(bridge_runtime_setup, "start_dishframed_worker") as start_worker:
-                started = bridge_handlers.start_dishframed_dispatch(dispatch)
-
-        self.assertTrue(started)
-        recent.assert_called_once()
-        start_worker.assert_called_once()
-
-    def test_start_dishframed_dispatch_rejects_when_busy(self):
-        flow = self._make_flow()
-        dispatch = bridge_handlers.UpdateDispatchRequest(
-            state=flow.state,
-            config=flow.config,
-            client=flow.client,
-            engine=None,
-            scope_key=flow.ctx.scope_key,
-            chat_id=flow.ctx.chat_id,
-            message_thread_id=flow.ctx.message_thread_id,
-            message_id=flow.ctx.message_id,
-            prompt="",
-            raw_prompt="",
-            photo_file_ids=["photo-1"],
-            voice_file_id=None,
-            document=None,
-            actor_user_id=flow.ctx.actor_user_id,
-            sender_name=flow.sender_name,
-            stateless=True,
-            enforce_voice_prefix_from_transcript=False,
-            youtube_route_url=None,
-            handle_update_started_at=16.0,
-        )
-
-        with mock.patch.object(bridge_runtime_setup, "mark_busy", return_value=False):
-            started = bridge_handlers.start_dishframed_dispatch(dispatch)
-
-        self.assertFalse(started)
-        self.assertEqual(flow.client.messages[-1][:3], (1, flow.config.busy_message, 95))
-
     def test_start_standard_dispatch_rejects_when_engine_resolution_fails(self):
         flow = self._make_flow(prompt_input="hello")
         dispatch = bridge_handlers.UpdateDispatchRequest(

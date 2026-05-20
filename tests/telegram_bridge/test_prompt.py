@@ -530,40 +530,6 @@ class TestPrompt(unittest.TestCase):
             )
         )
 
-    @mock.patch.object(bridge_handlers, "finalize_chat_work")
-    @mock.patch.object(bridge_request_processing, "run_dishframed_cli", return_value=("/tmp/menu_preview.png", "Rendered PNG preview"))
-    @mock.patch.object(bridge_request_processing, "prepare_prompt_input")
-    def test_process_dishframed_request_sends_photo_when_png_output(
-        self,
-        prepare_prompt_input,
-        run_dishframed_cli,
-        finalize_chat_work,
-    ):
-        del finalize_chat_work
-        prepare_prompt_input.return_value = SimpleNamespace(
-            cleanup_paths=[],
-            image_paths=["/tmp/incoming.jpg"],
-        )
-        state = bridge.State()
-        client = FakeTelegramClient()
-        config = make_config()
-
-        bridge_handlers.process_dishframed_request(
-            state=state,
-            config=config,
-            client=client,
-            scope_key="tg:1",
-            chat_id=1,
-            message_thread_id=None,
-            message_id=99,
-            photo_file_ids=["photo-file-id"],
-            cancel_event=None,
-        )
-
-        self.assertEqual(client.photos[0][:3], (1, "/tmp/menu_preview.png", "Rendered PNG preview"))
-        self.assertEqual(client.documents, [])
-        run_dishframed_cli.assert_called_once()
-
     @mock.patch.object(bridge_request_processing.request_prompt_processing.response_delivery, "send_executor_output", return_value="unavailable")
     @mock.patch.object(bridge_request_processing, "run_youtube_analyzer")
     def test_process_youtube_request_returns_unavailable_when_transcript_request_has_no_transcript(
@@ -635,40 +601,6 @@ class TestPrompt(unittest.TestCase):
         self.assertIs(runtime.build_progress_reporter_fn, bridge_handlers.build_progress_reporter)
         self.assertIs(runtime.execute_prompt_with_retry_fn, bridge_prompt_runtime.execute_prompt_with_retry)
         self.assertIs(runtime.finalize_prompt_success_fn, bridge_prompt_runtime.finalize_prompt_success)
-        self.assertIs(runtime.finalize_request_progress_fn, bridge_handlers.finalize_request_progress)
-
-    def test_process_dishframed_request_delegates_to_special_request_processing_module(self):
-        state = bridge.State()
-        client = FakeTelegramClient()
-        config = make_config()
-        request = bridge_handlers.build_dishframed_request(
-            state=state,
-            config=config,
-            client=client,
-            scope_key="tg:1",
-            chat_id=1,
-            message_thread_id=None,
-            message_id=402,
-            photo_file_ids=["photo-1"],
-        )
-
-        with mock.patch.object(
-            bridge_special_request_processing,
-            "process_dishframed_request",
-        ) as process_dishframed_request:
-            bridge_handlers._process_dishframed_request(request)
-
-        process_dishframed_request.assert_called_once()
-        args, kwargs = process_dishframed_request.call_args
-        self.assertIs(args[0], request)
-        runtime = kwargs["runtime"]
-        self.assertIsInstance(
-            runtime,
-            bridge_special_request_processing.DishframedProcessingRuntime,
-        )
-        self.assertIs(runtime.build_progress_reporter_fn, bridge_handlers.build_progress_reporter)
-        self.assertIs(runtime.prepare_prompt_input_fn, bridge_request_processing.prepare_prompt_input)
-        self.assertIs(runtime.run_dishframed_cli_fn, bridge_request_processing.run_dishframed_cli)
         self.assertIs(runtime.finalize_request_progress_fn, bridge_handlers.finalize_request_progress)
 
     def test_build_youtube_summary_prompt_includes_basic_video_fields(self):

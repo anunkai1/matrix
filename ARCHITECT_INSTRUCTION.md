@@ -29,8 +29,6 @@ Assistant name: `Architect`
 ## 1B) Quick Decision Table
 - If the user asks whether a runtime capability exists:
   - Read `SERVER3_SUMMARY.md` for the current capability watchouts, then inspect code/live state if still unclear.
-- If a request involves sending or sharing a file and destination is ambiguous:
-  - Ask `Inline chat link/content or Telegram document attachment?`
 - If the response depends on current runtime, service, bridge, or chat state:
   - Verify live state before answering.
 - If persistent files need editing:
@@ -43,12 +41,7 @@ Assistant name: `Architect`
 - For time-sensitive reporting, use absolute date/time with timezone.
 - For relative user dates like "today" or "tomorrow", resolve them in Brisbane time.
 
-## 3) Capability Verification
-- Read `SERVER3_SUMMARY.md` first for the current capability watchouts and live runtime profile.
-- For claims about bridge delivery behavior, supported media types, routing keywords, runtime commands, or integration support, inspect runtime code and live state before answering with certainty.
-- Do not infer runtime capability from the visible tool list alone.
-
-## 3A) Architect Execution Policy
+## 3) Architect Execution Policy
 - Architect on Server3 is intended to run Codex with unrestricted local access under the `architect` runtime user boundary.
 - Do not introduce sandbox-dependent launch paths, sandbox-helper requirements, or sandbox-related overrides for the Architect Telegram runtime unless the owner explicitly changes this policy.
 - If sandbox or `bwrap`/`bubblewrap` messages appear in Architect runtime logs, treat that as configuration drift or regression and correct it at the runtime/config level.
@@ -75,6 +68,7 @@ Assistant name: `Architect`
 ## 6) Session Start Checklist
 - Read `SERVER3_SUMMARY.md`.
 - Read `LESSONS.md`.
+- Read `remember.md`.
 - Read `private/SOUL.md` for local collaboration guidance.
 - Read deeper code/docs only as needed for the current task.
 

@@ -47,7 +47,6 @@ from telegram_bridge.handler_common import (
 from telegram_bridge.channel_adapter import ChannelAdapter
 from telegram_bridge.command_routing import handle_callback_query, handle_known_command
 from telegram_bridge import control_commands
-from telegram_bridge import dishframed_processing
 from telegram_bridge.diary_processing import (
     build_diary_entry_title,
     build_diary_photo_caption,
@@ -80,7 +79,6 @@ from telegram_bridge.codex_app_server import live_codex_turn_is_active, try_stee
 from telegram_bridge.handler_models import (
     CallbackActionContext,
     CallbackActionResult,
-    DishframedRequest,
     DocumentPayload,
     IncomingUpdateContext,
     KnownCommandContext,
@@ -91,7 +89,6 @@ from telegram_bridge.handler_models import (
     UpdateDispatchRequest,
     UpdateFlowState,
     YoutubeRequest,
-    build_dishframed_request,
     build_prompt_request,
     build_youtube_request,
 )
@@ -153,16 +150,12 @@ from telegram_bridge.update_flow import (
     maybe_handle_diary_update_flow,
     prepare_update_dispatch_request,
     prepare_update_request,
-    start_dishframed_dispatch,
     start_standard_dispatch,
 )
 from telegram_bridge import voice_alias_commands
 
 GEMMA_HEALTH_TIMEOUT_SECONDS = engine_controls.GEMMA_HEALTH_TIMEOUT_SECONDS
 GEMMA_HEALTH_CURL_TIMEOUT_SECONDS = engine_controls.GEMMA_HEALTH_CURL_TIMEOUT_SECONDS
-DISHFRAMED_REPO_ROOT = dishframed_processing.DISHFRAMED_REPO_ROOT
-DISHFRAMED_PYTHON_BIN = dishframed_processing.DISHFRAMED_PYTHON_BIN
-DISHFRAMED_USAGE_MESSAGE = dishframed_processing.DISHFRAMED_USAGE_MESSAGE
 
 parse_outbound_media_directive = response_delivery.parse_outbound_media_directive
 parse_structured_outbound_payload = response_delivery.parse_structured_outbound_payload
@@ -231,9 +224,6 @@ run_youtube_analyzer = youtube_processing.run_youtube_analyzer
 build_youtube_summary_prompt = youtube_processing.build_youtube_summary_prompt
 build_youtube_unavailable_message = youtube_processing.build_youtube_unavailable_message
 build_youtube_transcript_output = youtube_processing.build_youtube_transcript_output
-build_dishframed_command = dishframed_processing.build_dishframed_command
-parse_dishframed_cli_output = dishframed_processing.parse_dishframed_cli_output
-run_dishframed_cli = dishframed_processing.run_dishframed_cli
 handle_reset_command = control_commands.handle_reset_command
 handle_restart_command = control_commands.handle_restart_command
 handle_cancel_command = control_commands.handle_cancel_command
@@ -250,9 +240,6 @@ start_message_worker = request_starts.start_message_worker
 process_youtube_request = request_starts.process_youtube_request
 process_youtube_worker = request_starts.process_youtube_worker
 start_youtube_worker = request_starts.start_youtube_worker
-process_dishframed_request = request_starts.process_dishframed_request
-process_dishframed_worker = request_starts.process_dishframed_worker
-start_dishframed_worker = request_starts.start_dishframed_worker
 deliver_output_and_emit_success = request_processing.deliver_output_and_emit_success
 begin_affective_turn = request_processing.begin_affective_turn
 emit_request_processing_started = request_processing.emit_request_processing_started
@@ -263,8 +250,6 @@ _process_prompt_request = request_processing._process_prompt_request
 _process_message_worker_request = request_processing._process_message_worker_request
 _process_youtube_request = request_processing._process_youtube_request
 _process_youtube_worker_request = request_processing._process_youtube_worker_request
-_process_dishframed_request = request_processing._process_dishframed_request
-_process_dishframed_worker_request = request_processing._process_dishframed_worker_request
 execute_prompt_with_retry = prompt_runtime.execute_prompt_with_retry
 finalize_prompt_success = prompt_runtime.finalize_prompt_success
 transcribe_voice_for_chat = prompt_inputs.transcribe_voice_for_chat
@@ -323,20 +308,17 @@ handle_effort_command = engine_controls.handle_effort_command
 
 def build_update_flow_dependencies() -> UpdateFlowDependencies:
     return UpdateFlowDependencies(
-        get_recent_scope_photos=get_recent_scope_photos,
         mark_busy=mark_busy,
         emit_event=emit_event,
         request_chat_cancel=request_chat_cancel,
         register_cancel_event=register_cancel_event,
         try_steer_live_codex_turn=try_steer_live_codex_turn,
         live_codex_turn_is_active=live_codex_turn_is_active,
-        start_dishframed_worker=start_dishframed_worker,
         resolve_engine_for_scope=resolve_engine_for_scope,
         ensure_chat_worker_session=ensure_chat_worker_session,
         start_youtube_worker=start_youtube_worker,
         start_message_worker=start_message_worker,
         emit_phase_timing=emit_phase_timing,
-        dishframed_usage_message=DISHFRAMED_USAGE_MESSAGE,
         diary_mode_enabled=diary_mode_enabled,
         handle_known_command=handle_known_command,
         queue_diary_capture=queue_diary_capture,
@@ -389,8 +371,5 @@ def handle_update(
     if dispatch_request is None:
         return
 
-    if flow.command == "/dishframed":
-        start_dishframed_dispatch(dispatch_request)
-        return
     start_standard_dispatch(dispatch_request)
     return

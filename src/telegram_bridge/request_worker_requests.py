@@ -6,13 +6,10 @@ from telegram_bridge.conversation_scope import build_telegram_scope_key
 from telegram_bridge.engine_adapter import EngineAdapter
 from telegram_bridge.handler_models import (
     DocumentPayload,
-    build_dishframed_request,
     build_prompt_request,
     build_youtube_request,
 )
 from telegram_bridge.request_processing import (
-    _process_dishframed_request,
-    _process_dishframed_worker_request,
     _process_message_worker_request,
     _process_prompt_request,
     _process_youtube_request,
@@ -106,30 +103,6 @@ def build_youtube_worker_request(
     )
 
 
-def build_dishframed_worker_request(
-    state: State,
-    config,
-    client: ChannelAdapter,
-    scope_key: str,
-    chat_id: int,
-    message_thread_id: Optional[int],
-    message_id: Optional[int],
-    photo_file_ids: List[str],
-    cancel_event: Optional[threading.Event],
-):
-    return build_dishframed_request(
-        state=state,
-        config=config,
-        client=client,
-        scope_key=scope_key,
-        chat_id=chat_id,
-        message_thread_id=message_thread_id,
-        message_id=message_id,
-        photo_file_ids=photo_file_ids,
-        cancel_event=cancel_event,
-    )
-
-
 def process_prompt(request) -> None:
     _process_prompt_request(request)
 
@@ -152,15 +125,3 @@ def process_youtube_worker(request) -> None:
 
 def start_youtube_worker(request) -> None:
     _start_worker(_process_youtube_worker_request, request)
-
-
-def process_dishframed_request(request) -> None:
-    _process_dishframed_request(request)
-
-
-def process_dishframed_worker(request) -> None:
-    _process_dishframed_worker_request(request)
-
-
-def start_dishframed_worker(request) -> None:
-    _start_worker(_process_dishframed_worker_request, request)

@@ -24,10 +24,8 @@ from telegram_bridge.codex_app_server import live_codex_turn_is_active, try_stee
 from telegram_bridge.command_routing import handle_known_command
 from telegram_bridge.diary_processing import queue_diary_capture
 from telegram_bridge.diary_store import diary_mode_enabled
-from telegram_bridge.dishframed_processing import DISHFRAMED_USAGE_MESSAGE
-from telegram_bridge.message_inputs import get_recent_scope_photos
 from telegram_bridge.request_prompt_processing import emit_phase_timing
-from telegram_bridge.request_starts import start_dishframed_worker, start_message_worker, start_youtube_worker
+from telegram_bridge.request_starts import start_message_worker, start_youtube_worker
 from telegram_bridge.runtime_config import Config
 from telegram_bridge.session_manager import compute_policy_fingerprint, ensure_chat_worker_session, mark_busy
 from telegram_bridge.engine_controls import resolve_engine_for_scope
@@ -74,20 +72,17 @@ class RuntimeBootstrap:
 
 def build_update_flow_dependencies() -> UpdateFlowDependencies:
     return UpdateFlowDependencies(
-        get_recent_scope_photos=get_recent_scope_photos,
         mark_busy=mark_busy,
         emit_event=emit_event,
         request_chat_cancel=request_chat_cancel,
         register_cancel_event=register_cancel_event,
         try_steer_live_codex_turn=try_steer_live_codex_turn,
         live_codex_turn_is_active=live_codex_turn_is_active,
-        start_dishframed_worker=start_dishframed_worker,
         resolve_engine_for_scope=resolve_engine_for_scope,
         ensure_chat_worker_session=ensure_chat_worker_session,
         start_youtube_worker=start_youtube_worker,
         start_message_worker=start_message_worker,
         emit_phase_timing=emit_phase_timing,
-        dishframed_usage_message=DISHFRAMED_USAGE_MESSAGE,
         diary_mode_enabled=diary_mode_enabled,
         handle_known_command=handle_known_command,
         queue_diary_capture=queue_diary_capture,

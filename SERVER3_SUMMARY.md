@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-05-19 (AEST, +10:00)
+Last updated: 2026-05-20 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
@@ -21,16 +21,14 @@ Last updated: 2026-05-19 (AEST, +10:00)
 - Dream loop now runs from `server3-dream-loop.timer` around `02:15 AEST` and writes the production truth/health baseline under `/var/lib/server3-dream-loop`.
 
 ## Recent Changes (Rolling Max 8)
+- 2026-05-20: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
+- 2026-05-19: removed the DishFramed bridge integration and host repo/cache from Server3; the bridge keeps a minimal `/dishframed` rejection guard so the old command cannot fall through into Codex prompt handling.
 - 2026-05-19: Architect Codex runtime now hardwires unrestricted `danger-full-access` in bridge code, ignores `TELEGRAM_CODEX_SANDBOX_MODE` overrides, and suppresses the known bundled-`bubblewrap` advisory when Codex is already unrestricted.
 - 2026-05-19: Architect Telegram Codex app-server sessions now default to unrestricted `sandbox=danger-full-access`; the bridge no longer treats the bundled-bubblewrap advisory as a startup failure.
 - 2026-05-19: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
 - 2026-05-18: Server3 audit fixes landed: Grafana admin credentials now load from `/etc/server3-monitoring/grafana-admin.env`, the control-plane auto-refreshes stale snapshots before serving them, restore verification matches the live timer inventory again, and the Oracle transport now tolerates client disconnects with a longer daemon startup timeout.
 - 2026-05-18: Architect Telegram Codex turns now default to live `codex app-server` on Server3, and same-scope plain-text follow-up messages can steer into an active turn across direct chats, group chats, and forum topics.
 - 2026-05-17: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
-- 2026-05-16: removed the retired `Ralph` loop from the repo and host cleanup scope; the old Ralph code, tests, runbook, and systemd unit definitions are no longer part of the supported Server3 runtime.
-- 2026-05-15: Architect's user-facing `/engine` label for the Server4 Gemma path is now `ollama(s4)`; that engine now supports chat-scoped `/model list` and `/model <name>` selection from the live Server4 Ollama tag catalog, and Pi `ollama` model selection now also merges raw Server4 Ollama tags into `/model list` so freshly pulled tags remain selectable before Pi's own catalog refreshes.
-- 2026-05-15: runtime observer now classifies Telegram poll incidents by outage bursts/duration instead of raw retry-attempt totals, and WhatsApp reconnect alerts now include close status-code context (for example `428`, `503`) to make transport instability easier to diagnose.
-- 2026-05-10: added English TTS voice replies via `ops/telegram-voice/tts_english.sh`; the bridge can now return Telegram voice notes through the existing `sendVoice` pipeline.
 
 ## Current Risks/Watchouts (Max 5)
 - The external USB HDD at `/srv/external/server3-arr` is now the live Arr data disk for both `downloads` and `media`; avoid unplugging it while Server3 is running, and treat any future disk replacement as a full data-plane migration rather than a casual hot-swap.

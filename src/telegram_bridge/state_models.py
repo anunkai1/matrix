@@ -81,6 +81,13 @@ class RecentPhotoSelection:
 
 
 @dataclass
+class PendingRememberProposal:
+    scope_key: str
+    text: str
+    created_at: float = field(default_factory=time.time)
+
+
+@dataclass
 class State:
     started_at: float = field(default_factory=time.time)
     busy_chats: Set[ScopeKey] = field(default_factory=set)
@@ -123,6 +130,7 @@ class State:
     pending_text_batches: Dict[ScopeKey, PendingTextBatch] = field(default_factory=dict)
     recent_scope_messages: Dict[ScopeKey, Dict[int, RecentTelegramMessage]] = field(default_factory=dict)
     recent_scope_photos: Dict[ScopeKey, RecentPhotoSelection] = field(default_factory=dict)
+    pending_remember_proposals: Dict[str, PendingRememberProposal] = field(default_factory=dict)
     chat_goals: Dict[ScopeKey, object] = field(default_factory=dict)
     chat_goal_path: str = ""
     pending_diary_batches: Dict[ScopeKey, PendingDiaryBatch] = field(default_factory=dict)

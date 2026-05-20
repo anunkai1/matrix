@@ -58,17 +58,6 @@ class TestRequestWorkerRequests(unittest.TestCase):
             request,
         )
 
-    def test_start_dishframed_worker_uses_background_worker_helper(self):
-        request = object()
-
-        with mock.patch.object(request_worker_requests, "start_background_worker") as start_background_worker:
-            request_worker_requests.start_dishframed_worker(request)
-
-        start_background_worker.assert_called_once_with(
-            request_worker_requests._process_dishframed_worker_request,
-            request,
-        )
-
     def test_build_prompt_worker_request_preserves_delivery_metadata(self):
         delivery_metadata = TelegramDeliveryMetadata(
             chat_id=1,

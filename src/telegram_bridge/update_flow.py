@@ -17,20 +17,17 @@ from telegram_bridge.update_preparation import (
 
 @dataclass(frozen=True)
 class UpdateFlowDependencies:
-    get_recent_scope_photos: Callable[[Any, str], list[str]]
     mark_busy: Callable[[Any, str], bool]
     emit_event: Callable[..., None]
     request_chat_cancel: Callable[[Any, str], str]
     register_cancel_event: Callable[[Any, str], Any]
     try_steer_live_codex_turn: Callable[..., bool]
     live_codex_turn_is_active: Callable[..., Optional[bool]]
-    start_dishframed_worker: Callable[..., None]
     resolve_engine_for_scope: Callable[[Any, Any, str, Any], Any]
     ensure_chat_worker_session: Callable[..., bool]
     start_youtube_worker: Callable[..., None]
     start_message_worker: Callable[..., None]
     emit_phase_timing: Callable[..., None]
-    dishframed_usage_message: str
     diary_mode_enabled: Callable[[Any], bool]
     handle_known_command: Callable[..., bool]
     queue_diary_capture: Callable[..., None]
@@ -252,14 +249,6 @@ def _maybe_recover_stale_busy_scope(
     )
 
 
-def _resolve_dishframed_photo_file_ids(request: UpdateDispatchRequest) -> list[str]:
-    photo_file_ids = list(request.photo_file_ids)
-    if photo_file_ids:
-        return photo_file_ids
-    dependencies = _resolve_dependencies(request.dependencies)
-    return dependencies.get_recent_scope_photos(request.state, request.scope_key)
-
-
 def _accept_dispatch_request(
     request: UpdateDispatchRequest,
     *,
@@ -336,31 +325,6 @@ def _accept_dispatch_request(
         accepted_fields["route"] = route
     dependencies.emit_event("bridge.request_accepted", fields=accepted_fields)
     return DispatchAcceptance(cancel_event=cancel_event)
-
-
-def _start_dishframed_worker(
-    request: UpdateDispatchRequest,
-    *,
-    photo_file_ids: list[str],
-    acceptance: DispatchAcceptance,
-) -> None:
-    dependencies = _resolve_dependencies(request.dependencies)
-    dependencies.start_dishframed_worker(
-        state=request.state,
-        config=request.config,
-        client=request.client,
-        scope_key=request.scope_key,
-        chat_id=request.chat_id,
-        message_thread_id=request.message_thread_id,
-        message_id=request.message_id,
-        photo_file_ids=photo_file_ids,
-        cancel_event=acceptance.cancel_event,
-    )
-    dependencies.emit_event(
-        "bridge.worker_started",
-        fields={"chat_id": request.chat_id, "message_id": request.message_id, "route": "dishframed"},
-    )
-
 
 def _resolve_standard_dispatch_plan(request: UpdateDispatchRequest) -> Optional[StandardDispatchPlan]:
     dependencies = _resolve_dependencies(request.dependencies)
@@ -469,24 +433,6 @@ def _run_standard_dispatch_worker(
             stateless=request.stateless,
         )
 
-
-def start_dishframed_dispatch(request: UpdateDispatchRequest) -> bool:
-    photo_file_ids = _resolve_dishframed_photo_file_ids(request)
-    if not photo_file_ids:
-        dependencies = _resolve_dependencies(request.dependencies)
-        request.client.send_message(
-            request.chat_id,
-            dependencies.dishframed_usage_message,
-            reply_to_message_id=request.message_id,
-            message_thread_id=request.message_thread_id,
-        )
-        return False
-
-    acceptance = _accept_dispatch_request(request, route="dishframed")
-    if acceptance is None:
-        return False
-    _start_dishframed_worker(request, photo_file_ids=photo_file_ids, acceptance=acceptance)
-    return True
 
 def start_standard_dispatch(request: UpdateDispatchRequest) -> bool:
     plan = _resolve_standard_dispatch_plan(request)

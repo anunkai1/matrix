@@ -880,15 +880,7 @@ class TestHandlers(unittest.TestCase):
         self.assertEqual(kwargs["youtube_url"], "https://www.youtube.com/watch?v=yD5DFL3xPmo")
         self.assertEqual(client.messages, [])
 
-    @mock.patch.object(bridge_handlers, "start_dishframed_worker")
-    @mock.patch.object(bridge_handlers, "register_cancel_event", return_value=threading.Event())
-    @mock.patch.object(bridge_handlers, "mark_busy", return_value=True)
-    def test_handle_update_routes_dishframed_command_with_photo(
-        self,
-        mark_busy,
-        register_cancel_event,
-        start_dishframed_worker,
-    ):
+    def test_handle_update_replies_that_dishframed_is_retired_with_photo(self):
         state = bridge.State()
         client = FakeTelegramClient()
         config = make_config()
@@ -904,13 +896,12 @@ class TestHandlers(unittest.TestCase):
 
         bridge.handle_update(state, config, client, update)
 
-        self.assertTrue(start_dishframed_worker.called)
-        kwargs = start_dishframed_worker.call_args.kwargs
-        self.assertEqual(kwargs["photo_file_ids"], ["large"])
-        mark_busy.assert_called_once()
-        register_cancel_event.assert_called_once()
+        self.assertEqual(
+            client.messages[-1][:3],
+            (1, bridge_command_routing.DISHFRAMED_RETIRED_MESSAGE, 281),
+        )
 
-    def test_handle_update_rejects_dishframed_without_photo(self):
+    def test_handle_update_replies_that_dishframed_is_retired_without_photo(self):
         state = bridge.State()
         client = FakeTelegramClient()
         config = make_config()
@@ -927,18 +918,10 @@ class TestHandlers(unittest.TestCase):
 
         self.assertEqual(
             client.messages[-1][:3],
-            (1, bridge_handlers.DISHFRAMED_USAGE_MESSAGE, 282),
+            (1, bridge_command_routing.DISHFRAMED_RETIRED_MESSAGE, 282),
         )
 
-    @mock.patch.object(bridge_handlers, "start_dishframed_worker")
-    @mock.patch.object(bridge_handlers, "register_cancel_event", return_value=threading.Event())
-    @mock.patch.object(bridge_handlers, "mark_busy", return_value=True)
-    def test_handle_update_routes_dishframed_command_with_recent_scope_photo(
-        self,
-        mark_busy,
-        register_cancel_event,
-        start_dishframed_worker,
-    ):
+    def test_handle_update_replies_that_dishframed_is_retired_with_recent_scope_photo(self):
         state = bridge.State()
         client = FakeTelegramClient()
         config = make_config()
@@ -966,11 +949,10 @@ class TestHandlers(unittest.TestCase):
             },
         )
 
-        self.assertTrue(start_dishframed_worker.called)
-        kwargs = start_dishframed_worker.call_args.kwargs
-        self.assertEqual(kwargs["photo_file_ids"], ["large"])
-        mark_busy.assert_called_once()
-        register_cancel_event.assert_called_once()
+        self.assertEqual(
+            client.messages[-1][:3],
+            (1, bridge_command_routing.DISHFRAMED_RETIRED_MESSAGE, 284),
+        )
 
     @mock.patch.object(bridge_handlers, "start_youtube_worker")
     @mock.patch.object(bridge_handlers, "start_message_worker")
