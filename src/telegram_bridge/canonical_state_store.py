@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -10,6 +11,36 @@ from telegram_bridge.state_models import (
     normalize_scope_key,
     normalize_scope_storage_key,
 )
+
+_CANONICAL_SQLITE_SCHEMA_CACHE_LOCK = threading.Lock()
+_CANONICAL_SQLITE_SCHEMA_CACHE: Dict[str, tuple[int, int]] = {}
+
+
+def _canonical_sqlite_path(path: str) -> str:
+    return str(Path(path).expanduser())
+
+
+def _connect_canonical_sessions_sqlite(path: str, *, apply_journal_mode: bool = True) -> sqlite3.Connection:
+    conn = sqlite3.connect(_canonical_sqlite_path(path), timeout=30)
+    if apply_journal_mode:
+        conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
+
+
+def _canonical_sqlite_path_key(path: str) -> str:
+    return _canonical_sqlite_path(path)
+
+
+def _canonical_sqlite_file_signature(path: Path) -> Optional[tuple[int, int]]:
+    try:
+        stat_result = path.stat()
+    except OSError:
+        return None
+    return (
+        int(stat_result.st_dev),
+        int(stat_result.st_ino),
+    )
 
 
 def load_canonical_sessions_from_json_object(
@@ -63,9 +94,16 @@ def load_canonical_sessions_from_json_object(
 def ensure_canonical_sessions_sqlite(path: str) -> None:
     if not path:
         return
-    db_path = Path(path)
+    db_path = Path(_canonical_sqlite_path(path))
+    cache_key = _canonical_sqlite_path_key(path)
+    cached_signature = _canonical_sqlite_file_signature(db_path)
+    if cached_signature is not None:
+        with _CANONICAL_SQLITE_SCHEMA_CACHE_LOCK:
+            if _CANONICAL_SQLITE_SCHEMA_CACHE.get(cache_key) == cached_signature:
+                return
+
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(str(db_path)) as conn:
+    with _connect_canonical_sessions_sqlite(str(db_path), apply_journal_mode=True) as conn:
         has_table = conn.execute(
             """
             SELECT name
@@ -138,28 +176,38 @@ def ensure_canonical_sessions_sqlite(path: str) -> None:
             """
         )
         conn.commit()
+    updated_signature = _canonical_sqlite_file_signature(db_path)
+    if updated_signature is not None:
+        with _CANONICAL_SQLITE_SCHEMA_CACHE_LOCK:
+            _CANONICAL_SQLITE_SCHEMA_CACHE[cache_key] = updated_signature
+    else:
+        with _CANONICAL_SQLITE_SCHEMA_CACHE_LOCK:
+            _CANONICAL_SQLITE_SCHEMA_CACHE.pop(cache_key, None)
 
 
-def load_canonical_sessions_sqlite(path: str) -> Dict[ScopeKey, CanonicalSession]:
-    if not path:
-        return {}
-    ensure_canonical_sessions_sqlite(path)
+def _load_canonical_sessions_rows(
+    conn: sqlite3.Connection,
+) -> list[tuple[object, ...]]:
+    return conn.execute(
+        """
+        SELECT
+            scope_key,
+            thread_id,
+            worker_created_at,
+            worker_last_used_at,
+            worker_policy_fingerprint,
+            in_flight_started_at,
+            in_flight_message_id
+        FROM canonical_sessions
+        ORDER BY scope_key
+        """
+    ).fetchall()
+
+
+def _parse_canonical_sessions_rows(
+    rows: list[tuple[object, ...]],
+) -> Dict[ScopeKey, CanonicalSession]:
     parsed: Dict[ScopeKey, CanonicalSession] = {}
-    with sqlite3.connect(path) as conn:
-        rows = conn.execute(
-            """
-            SELECT
-                scope_key,
-                thread_id,
-                worker_created_at,
-                worker_last_used_at,
-                worker_policy_fingerprint,
-                in_flight_started_at,
-                in_flight_message_id
-            FROM canonical_sessions
-            ORDER BY scope_key
-            """
-        ).fetchall()
     for row in rows:
         scope_key = normalize_scope_storage_key(row[0])
         if scope_key is None:
@@ -179,6 +227,15 @@ def load_canonical_sessions_sqlite(path: str) -> Dict[ScopeKey, CanonicalSession
             in_flight_message_id=in_flight_message_id,
         )
     return parsed
+
+
+def load_canonical_sessions_sqlite(path: str) -> Dict[ScopeKey, CanonicalSession]:
+    if not path:
+        return {}
+    ensure_canonical_sessions_sqlite(path)
+    with _connect_canonical_sessions_sqlite(path, apply_journal_mode=False) as conn:
+        rows = _load_canonical_sessions_rows(conn)
+    return _parse_canonical_sessions_rows(rows)
 
 
 def _canonical_session_sqlite_row(
@@ -216,7 +273,7 @@ def persist_canonical_sessions_sqlite(
     if not path:
         return
     ensure_canonical_sessions_sqlite(path)
-    with sqlite3.connect(path) as conn:
+    with _connect_canonical_sessions_sqlite(path, apply_journal_mode=False) as conn:
         conn.execute("BEGIN IMMEDIATE")
         conn.execute("DELETE FROM canonical_sessions")
         if sessions:
@@ -251,7 +308,7 @@ def persist_canonical_session_sqlite(
         return
     ensure_canonical_sessions_sqlite(path)
     normalized_scope_key = normalize_scope_key(scope_key)
-    with sqlite3.connect(path) as conn:
+    with _connect_canonical_sessions_sqlite(path, apply_journal_mode=False) as conn:
         conn.execute("BEGIN IMMEDIATE")
         if session is None:
             conn.execute(
@@ -295,14 +352,45 @@ def load_or_import_canonical_sessions_sqlite(
         if import_sessions:
             return dict(import_sessions), False
         return {}, False
-    sessions = load_canonical_sessions_sqlite(path)
-    if sessions:
-        return sessions, False
     ensure_canonical_sessions_sqlite(path)
-    if not import_sessions:
-        return {}, False
-    persist_canonical_sessions_sqlite(path, import_sessions)
-    return load_canonical_sessions_sqlite(path), True
+    with _connect_canonical_sessions_sqlite(path, apply_journal_mode=False) as conn:
+        rows = _load_canonical_sessions_rows(conn)
+        if rows:
+            return _parse_canonical_sessions_rows(rows), False
+        if not import_sessions:
+            return {}, False
+        conn.execute("BEGIN IMMEDIATE")
+        conn.executemany(
+            """
+            INSERT INTO canonical_sessions (
+                scope_key,
+                chat_id,
+                message_thread_id,
+                thread_id,
+                worker_created_at,
+                worker_last_used_at,
+                worker_policy_fingerprint,
+                in_flight_started_at,
+                in_flight_message_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                _canonical_session_sqlite_row(scope_key, session)
+                for scope_key, session in sorted(import_sessions.items())
+            ],
+        )
+        conn.commit()
+    return {
+        normalize_scope_key(scope_key): CanonicalSession(
+            thread_id=session.thread_id,
+            worker_created_at=session.worker_created_at,
+            worker_last_used_at=session.worker_last_used_at,
+            worker_policy_fingerprint=session.worker_policy_fingerprint,
+            in_flight_started_at=session.in_flight_started_at,
+            in_flight_message_id=session.in_flight_message_id,
+        )
+        for scope_key, session in import_sessions.items()
+    }, True
 
 
 def _build_canonical_session_for_scope(

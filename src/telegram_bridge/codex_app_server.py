@@ -384,7 +384,6 @@ class CodexAppServerSession:
                 return True
 
     def has_active_turn(self) -> bool:
-        self._ensure_process()
         with self._state_lock:
             pending_turn = self._pending_turn
             return pending_turn is not None and not pending_turn.done.is_set()
@@ -568,6 +567,7 @@ class CodexAppServerSession:
             self._check_fail_open_on_stderr(line)
         # Process stderr closed (process likely exited)
         self._check_fail_open_on_exit()
+        self._fail_inflight_requests("stderr stream closed")
 
     def _reader_loop(self) -> None:
         process = self.process
@@ -589,6 +589,7 @@ class CodexAppServerSession:
                 self._handle_response(payload)
                 continue
             self._handle_notification(payload)
+        self._fail_inflight_requests("stdout stream closed")
 
     def _handle_response(self, payload: dict) -> None:
         request_id = payload.get("id")
@@ -782,12 +783,39 @@ class CodexAppServerSession:
                 process.kill()
             except Exception:
                 pass
+        self._fail_inflight_requests("process stopped")
         self.process = None
         self._initialized = False
+        with self._state_lock:
+            self._thread_id = None
 
     def _mark_activity(self) -> None:
         with self._state_lock:
             self._last_activity_at = time.monotonic()
+
+    def _fail_inflight_requests(self, reason: str) -> None:
+        message = f"Codex app-server became unavailable for scope={self.scope_key}: {reason}"
+        with self._write_lock:
+            pending_events = list(self._request_events.items())
+            for request_id, _event in pending_events:
+                self._request_results.setdefault(
+                    request_id,
+                    {
+                        "error": {
+                            "code": -32001,
+                            "message": message,
+                        }
+                    },
+                )
+        for _, event in pending_events:
+            event.set()
+        with self._state_lock:
+            pending_turn = self._pending_turn
+            if pending_turn is not None and not pending_turn.done.is_set():
+                pending_turn.error = RuntimeError(message)
+                pending_turn.status = "failed"
+                pending_turn.steer_in_flight = False
+                pending_turn.done.set()
 
     def _call(self, method: str, params: dict) -> dict:
         process = self.process

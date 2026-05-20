@@ -1,7 +1,91 @@
+import threading
+import time
 from typing import Dict
 
 from telegram_bridge.scope_state_store import load_json_object, persist_json_state_file
 from telegram_bridge.state_models import ScopeKey, State, WorkerSession, normalize_scope_key, normalize_scope_storage_key
+
+_IN_FLIGHT_WRITE_LOCK = threading.Lock()
+_IN_FLIGHT_WRITE_CONDITION = threading.Condition(_IN_FLIGHT_WRITE_LOCK)
+_IN_FLIGHT_WRITE_ACTIVE: Dict[str, bool] = {}
+_IN_FLIGHT_WRITE_CONTENDED: Dict[str, bool] = {}
+_IN_FLIGHT_WRITE_PENDING: Dict[str, Dict[str, object]] = {}
+_IN_FLIGHT_WRITE_LAST_PERSISTED: Dict[str, Dict[str, object]] = {}
+# Allow a short quiet window so overlapping request-start/request-finish updates
+# collapse into one persisted snapshot instead of thrashing the same file.
+_IN_FLIGHT_COALESCE_IDLE_SECONDS = 0.005
+
+
+def _persist_in_flight_snapshot(path_value: str, serialized: Dict[str, object]) -> None:
+    with _IN_FLIGHT_WRITE_LOCK:
+        last_persisted = _IN_FLIGHT_WRITE_LAST_PERSISTED.get(path_value)
+        if last_persisted == serialized and not _IN_FLIGHT_WRITE_ACTIVE.get(path_value, False):
+            return
+        if _IN_FLIGHT_WRITE_ACTIVE.get(path_value, False):
+            pending = _IN_FLIGHT_WRITE_PENDING.get(path_value)
+            if pending == serialized or last_persisted == serialized:
+                return
+            _IN_FLIGHT_WRITE_PENDING[path_value] = serialized
+            _IN_FLIGHT_WRITE_CONTENDED[path_value] = True
+            _IN_FLIGHT_WRITE_CONDITION.notify_all()
+            return
+        _IN_FLIGHT_WRITE_ACTIVE[path_value] = True
+        _IN_FLIGHT_WRITE_CONTENDED[path_value] = False
+
+    next_payload = serialized
+    saw_distinct_pending = False
+    while True:
+        try:
+            # In-flight request state churns on every request start/finish. Preserve
+            # atomic replacement but skip per-write fsync to avoid turning concurrent
+            # request bookkeeping into a disk-bound bottleneck.
+            persist_json_state_file(
+                path_value,
+                next_payload,
+                fsync_file=False,
+                pretty=False,
+                delete_when_empty=True,
+            )
+        except Exception:
+            with _IN_FLIGHT_WRITE_LOCK:
+                _IN_FLIGHT_WRITE_ACTIVE.pop(path_value, None)
+                _IN_FLIGHT_WRITE_CONTENDED.pop(path_value, None)
+                _IN_FLIGHT_WRITE_PENDING.pop(path_value, None)
+            raise
+
+        with _IN_FLIGHT_WRITE_LOCK:
+            _IN_FLIGHT_WRITE_LAST_PERSISTED[path_value] = next_payload
+            pending = _IN_FLIGHT_WRITE_PENDING.pop(path_value, None)
+            if pending is not None:
+                if pending != next_payload:
+                    saw_distinct_pending = True
+                    next_payload = pending
+                    continue
+
+            contended = _IN_FLIGHT_WRITE_CONTENDED.get(path_value, False)
+            if (
+                not contended
+                or not saw_distinct_pending
+                or _IN_FLIGHT_COALESCE_IDLE_SECONDS <= 0
+            ):
+                _IN_FLIGHT_WRITE_ACTIVE.pop(path_value, None)
+                _IN_FLIGHT_WRITE_CONTENDED.pop(path_value, None)
+                return
+
+            deadline = time.monotonic() + _IN_FLIGHT_COALESCE_IDLE_SECONDS
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    _IN_FLIGHT_WRITE_ACTIVE.pop(path_value, None)
+                    _IN_FLIGHT_WRITE_CONTENDED.pop(path_value, None)
+                    return
+                _IN_FLIGHT_WRITE_CONDITION.wait(timeout=remaining)
+                pending = _IN_FLIGHT_WRITE_PENDING.pop(path_value, None)
+                if pending is not None:
+                    _IN_FLIGHT_WRITE_CONTENDED[path_value] = False
+                    saw_distinct_pending = True
+                    next_payload = pending
+                    break
 
 
 def load_worker_sessions(path: str) -> Dict[ScopeKey, WorkerSession]:
@@ -74,4 +158,4 @@ def persist_in_flight_requests(state: State) -> None:
             normalize_scope_key(scope_key): payload
             for scope_key, payload in state.in_flight_requests.items()
         }
-    persist_json_state_file(state.in_flight_path, serialized)
+    _persist_in_flight_snapshot(state.in_flight_path, serialized)

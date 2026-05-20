@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -47,6 +48,18 @@ import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
 
 
 class TestExecutor(unittest.TestCase):
+    def test_codex_app_server_has_active_turn_does_not_start_process(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(),
+        )
+        session._pending_turn = bridge_codex_app_server._PendingTurn()
+
+        with mock.patch.object(session, "_ensure_process") as ensure_process:
+            self.assertTrue(session.has_active_turn())
+
+        ensure_process.assert_not_called()
+
     def test_codex_app_server_turn_start_requests_sandbox_off(self):
         session = bridge_codex_app_server.CodexAppServerSession(
             scope_key="tg:1:topic:870",
@@ -104,6 +117,58 @@ class TestExecutor(unittest.TestCase):
                 "Codex will use the bundled bubblewrap in the meantime."
             )
         restart.assert_not_called()
+
+    def test_codex_app_server_fail_inflight_requests_unblocks_waiters(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(exec_timeout_seconds=30),
+        )
+        session.process = SimpleNamespace(stdin=io.StringIO())
+        session._pending_turn = bridge_codex_app_server._PendingTurn()
+        error_messages = []
+
+        def make_call():
+            try:
+                session._call("turn/start", {"threadId": "thread-1"})
+            except RuntimeError as exc:
+                error_messages.append(str(exc))
+
+        worker = threading.Thread(target=make_call)
+        worker.start()
+        deadline = time.time() + 1.0
+        while time.time() < deadline:
+            with session._write_lock:
+                if session._request_events:
+                    break
+            time.sleep(0.01)
+
+        session._fail_inflight_requests("stdout stream closed")
+        worker.join(timeout=1.0)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(len(error_messages), 1)
+        self.assertIn("became unavailable", error_messages[0])
+        self.assertTrue(session._pending_turn.done.is_set())
+        self.assertEqual(session._pending_turn.status, "failed")
+
+    def test_codex_app_server_stop_process_clears_cached_thread_id(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(),
+        )
+        session._thread_id = "thread-stale"
+
+        class FakeProcess:
+            def terminate(self):
+                return None
+
+            def wait(self, timeout=None):
+                return 0
+
+        session.process = FakeProcess()
+        session._stop_process()
+
+        self.assertIsNone(session._thread_id)
 
     def test_parse_executor_output_json_stream(self):
         sample_stream = (

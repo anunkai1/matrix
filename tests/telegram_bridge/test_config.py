@@ -432,6 +432,107 @@ class TestConfig(unittest.TestCase):
 
         self.assertIsNotNone(bootstrap.state.attachment_store)
 
+    def test_close_runtime_bootstrap_closes_distinct_runtime_resources_once(self):
+        attachment_store = mock.Mock()
+        affective_runtime = mock.Mock()
+        voice_store = mock.Mock()
+        bootstrap = bridge.RuntimeBootstrap(
+            state=bridge.State(
+                attachment_store=attachment_store,
+                affective_runtime=affective_runtime,
+                voice_alias_learning_store=voice_store,
+            ),
+            state_paths={},
+            loaded_threads={},
+            loaded_worker_sessions={},
+            loaded_in_flight={},
+            canonical_bootstrap_source="none",
+            affective_runtime=affective_runtime,
+            voice_alias_learning_store=voice_store,
+        )
+
+        bridge.close_runtime_bootstrap(bootstrap)
+
+        voice_store.close.assert_called_once_with()
+        attachment_store.close.assert_called_once_with()
+        affective_runtime.close.assert_called_once_with()
+
+    def test_run_bridge_closes_runtime_bootstrap_when_plugin_selection_fails(self):
+        bootstrap = bridge.RuntimeBootstrap(
+            state=bridge.State(
+                attachment_store=mock.Mock(),
+                affective_runtime=mock.Mock(),
+            ),
+            state_paths={},
+            loaded_threads={},
+            loaded_worker_sessions={},
+            loaded_in_flight={},
+            canonical_bootstrap_source="none",
+            affective_runtime=None,
+            voice_alias_learning_store=None,
+        )
+        registry = mock.Mock()
+        registry.build_channel.side_effect = RuntimeError("bad channel")
+        registry.list_channels.return_value = ["telegram"]
+        registry.list_engines.return_value = ["codex"]
+        config = make_config()
+
+        with (
+            mock.patch.object(bridge, "build_runtime_bootstrap", return_value=bootstrap),
+            mock.patch.object(bridge, "build_default_plugin_registry", return_value=registry),
+        ):
+            result = bridge.run_bridge(config)
+
+        self.assertEqual(result, 1)
+        bootstrap.state.attachment_store.close.assert_called_once_with()
+        bootstrap.state.affective_runtime.close.assert_called_once_with()
+
+    def test_run_bridge_closes_runtime_bootstrap_on_keyboard_interrupt(self):
+        attachment_store = mock.Mock()
+        affective_runtime = mock.Mock()
+        bootstrap = bridge.RuntimeBootstrap(
+            state=bridge.State(
+                attachment_store=attachment_store,
+                affective_runtime=affective_runtime,
+            ),
+            state_paths={
+                "chat_threads": "/tmp/chat_threads.json",
+                "in_flight_requests": "/tmp/in_flight_requests.json",
+                "chat_sessions": "/tmp/chat_sessions.json",
+            },
+            loaded_threads={},
+            loaded_worker_sessions={},
+            loaded_in_flight={},
+            canonical_bootstrap_source="none",
+            affective_runtime=affective_runtime,
+            voice_alias_learning_store=None,
+        )
+        client = mock.Mock()
+        client.get_updates.side_effect = KeyboardInterrupt()
+        registry = mock.Mock()
+        registry.build_channel.return_value = client
+        registry.build_engine.return_value = mock.Mock()
+        config = make_config()
+
+        with (
+            mock.patch.object(bridge, "build_runtime_bootstrap", return_value=bootstrap),
+            mock.patch.object(bridge, "build_default_plugin_registry", return_value=registry),
+            mock.patch.object(bridge, "persist_bootstrap_state"),
+            mock.patch.object(bridge, "pop_interrupted_requests", return_value=[]),
+            mock.patch.object(bridge, "should_discard_startup_backlog", return_value=False),
+            mock.patch.object(bridge, "compute_initial_update_offset", return_value=(0, "/tmp/update_offset.json")),
+            mock.patch.object(bridge, "persist_saved_update_offset"),
+            mock.patch.object(bridge, "expire_idle_worker_sessions"),
+            mock.patch.object(bridge, "flush_ready_media_group_updates", return_value=[]),
+            mock.patch.object(bridge, "flush_ready_text_batch_updates", return_value=[]),
+            mock.patch.object(bridge, "compute_poll_timeout_seconds", return_value=1),
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                bridge.run_bridge(config)
+
+        attachment_store.close.assert_called_once_with()
+        affective_runtime.close.assert_called_once_with()
+
     def test_load_config_reads_allow_private_chats_unlisted_override(self):
         with mock.patch.dict(
             os.environ,

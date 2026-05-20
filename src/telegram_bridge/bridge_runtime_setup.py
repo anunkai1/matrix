@@ -89,6 +89,27 @@ def build_update_flow_dependencies() -> UpdateFlowDependencies:
     )
 
 
+def close_runtime_bootstrap(bootstrap: RuntimeBootstrap) -> None:
+    closed_ids = set()
+    state = getattr(bootstrap, "state", None)
+    for resource in (
+        getattr(state, "voice_alias_learning_store", None),
+        getattr(state, "attachment_store", None),
+        getattr(state, "affective_runtime", None),
+    ):
+        close = getattr(resource, "close", None)
+        if not callable(close):
+            continue
+        resource_id = id(resource)
+        if resource_id in closed_ids:
+            continue
+        closed_ids.add(resource_id)
+        try:
+            close()
+        except Exception:
+            logging.exception("Failed to close runtime resource %r during bridge shutdown.", resource)
+
+
 def clear_thread_state_for_policy_change(
     loaded_threads: Dict[int, str],
     loaded_worker_sessions: Dict[int, WorkerSession],

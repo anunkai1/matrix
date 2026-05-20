@@ -208,20 +208,84 @@ def make_config(**overrides):
 
 
 class AffectiveRuntimeTests(unittest.TestCase):
+    def test_first_runtime_use_emits_storage_ready_event(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "affective.sqlite3")
+            with mock.patch.object(
+                bridge_affective_runtime,
+                "emit_event",
+            ) as emit_event_mock:
+                runtime = bridge_affective_runtime.AffectiveRuntime(db_path, ping_target="")
+                runtime.begin_turn("thanks this is excellent")
+                runtime.close()
+
+        event_names = [call.args[0] for call in emit_event_mock.call_args_list]
+        self.assertIn("bridge.affective_runtime_initialized", event_names)
+        self.assertIn("bridge.affective_runtime_storage_ready", event_names)
+
+    def test_constructor_defers_sqlite_open_until_first_runtime_use(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "affective.sqlite3")
+            real_connect = bridge_affective_runtime.sqlite3.connect
+
+            with mock.patch.object(
+                bridge_affective_runtime.sqlite3,
+                "connect",
+                wraps=real_connect,
+            ) as connect_mock:
+                runtime = bridge_affective_runtime.AffectiveRuntime(db_path, ping_target="")
+                self.assertEqual(connect_mock.call_count, 0)
+
+                runtime.begin_turn("thanks this is excellent")
+                runtime.finish_turn(success=True)
+                runtime.close()
+
+            self.assertEqual(connect_mock.call_count, 1)
+
     def test_state_persists_across_restart(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = str(Path(tmpdir) / "affective.sqlite3")
             runtime = bridge_affective_runtime.AffectiveRuntime(db_path, ping_target="")
-            runtime.begin_turn("thanks this is excellent")
-            runtime.finish_turn(success=True)
+            first_connection = runtime._connect()
+            with mock.patch.object(
+                bridge_affective_runtime.sqlite3,
+                "connect",
+                side_effect=AssertionError("sqlite3.connect should not be called again for this runtime instance"),
+            ):
+                runtime.begin_turn("thanks this is excellent")
+                runtime.finish_turn(success=True)
             snapshot = runtime.telemetry()["state"]
+            self.assertIs(runtime._connect(), first_connection)
+            runtime.close()
 
             restored = bridge_affective_runtime.AffectiveRuntime(db_path, ping_target="")
             restored_snapshot = restored.telemetry()["state"]
+            restored.close()
 
         self.assertAlmostEqual(restored_snapshot["valence"], snapshot["valence"], places=5)
         self.assertAlmostEqual(restored_snapshot["confidence"], snapshot["confidence"], places=5)
         self.assertAlmostEqual(restored_snapshot["trust_user"], snapshot["trust_user"], places=5)
+
+    def test_begin_turn_defers_persisting_state_until_turn_finishes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "affective.sqlite3")
+            runtime = bridge_affective_runtime.AffectiveRuntime(db_path, ping_target="")
+
+            runtime.begin_turn("thanks this is excellent")
+            with bridge_affective_runtime.sqlite3.connect(db_path) as conn:
+                row = conn.execute(
+                    "SELECT valence, confidence, trust_user FROM affective_state WHERE id = 1"
+                ).fetchone()
+            self.assertIsNone(row)
+
+            runtime.finish_turn(success=True)
+            with bridge_affective_runtime.sqlite3.connect(db_path) as conn:
+                persisted = conn.execute(
+                    "SELECT valence, confidence, trust_user FROM affective_state WHERE id = 1"
+                ).fetchone()
+            runtime.close()
+
+        self.assertIsNotNone(persisted)
 
     def test_failure_path_raises_stress_and_reduces_confidence(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -232,6 +296,7 @@ class AffectiveRuntimeTests(unittest.TestCase):
             runtime.begin_turn("this is broken and wrong")
             runtime.finish_turn(success=False)
             state = runtime.telemetry()["state"]
+            runtime.close()
         self.assertGreater(state["stress"], 0.0)
         self.assertLess(state["confidence"], 0.0)
 
@@ -277,6 +342,7 @@ class AffectiveRuntimeTests(unittest.TestCase):
                 voice_file_id=None,
                 document=None,
             )
+            state.affective_runtime.close()
 
         self.assertEqual(len(engine.prompts), 2)
         self.assertIn("Affective runtime context", engine.prompts[0])
@@ -335,6 +401,7 @@ class AffectiveRuntimeTests(unittest.TestCase):
             voice_file_id=None,
             document=None,
         )
+        state.affective_runtime.close()
 
         self.assertEqual(client.messages[-1][1], "still works")
         self.assertIn("Affective runtime context", engine.prompts[0])

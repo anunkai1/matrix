@@ -5,8 +5,10 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import time
+from collections import OrderedDict
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from telegram_bridge.channel_adapter import ChannelAdapter
 from telegram_bridge.engine_catalog import (
@@ -47,6 +49,56 @@ YOUTUBE_LIGHTWEIGHT_REQUEST_RE = re.compile(
 WHATSAPP_REPLY_PREFIX = "Даю справку:"
 WHATSAPP_REPLY_PREFIX_RE = re.compile(r"^\s*даю\s+справку\s*:\s*", re.IGNORECASE)
 WHATSAPP_LEGACY_REPLY_PREFIX_RE = re.compile(r"^\s*говорун\s*:\s*", re.IGNORECASE)
+_RECENT_CODEX_MODEL_CACHE: "OrderedDict[Tuple[str, str, str], Tuple[float, Optional[int], str]]" = OrderedDict()
+_RECENT_CODEX_STATE_PATH_CACHE: "OrderedDict[str, Tuple[float, Optional[str]]]" = OrderedDict()
+_RECENT_CODEX_CACHE_LIMIT = 8
+_RECENT_CODEX_STATE_PATH_CACHE_TTL_SECONDS = 1.0
+_RECENT_CODEX_MODEL_CACHE_TTL_SECONDS = 1.0
+
+
+def _remember_recent_cache_entry(cache: "OrderedDict[object, object]", key: object, value: object) -> None:
+    cache[key] = value
+    cache.move_to_end(key)
+    while len(cache) > _RECENT_CODEX_CACHE_LIMIT:
+        cache.popitem(last=False)
+
+
+def _latest_codex_state_path(codex_home: Path) -> Optional[Path]:
+    cache_key = str(codex_home)
+    now = time.monotonic()
+    cached_entry = _RECENT_CODEX_STATE_PATH_CACHE.get(cache_key)
+    if cached_entry is not None:
+        expires_at, cached_path = cached_entry
+        if now < expires_at:
+            _RECENT_CODEX_STATE_PATH_CACHE.move_to_end(cache_key)
+            return Path(cached_path) if cached_path else None
+        _RECENT_CODEX_STATE_PATH_CACHE.pop(cache_key, None)
+
+    try:
+        codex_home.stat()
+    except OSError:
+        return None
+
+    latest_path: Optional[Path] = None
+    latest_mtime_ns = -1
+    for candidate in codex_home.glob("state_*.sqlite"):
+        try:
+            candidate_mtime_ns = candidate.stat().st_mtime_ns
+        except OSError:
+            continue
+        if candidate_mtime_ns > latest_mtime_ns:
+            latest_mtime_ns = candidate_mtime_ns
+            latest_path = candidate
+
+    _remember_recent_cache_entry(
+        _RECENT_CODEX_STATE_PATH_CACHE,
+        cache_key,
+        (
+            now + _RECENT_CODEX_STATE_PATH_CACHE_TTL_SECONDS,
+            str(latest_path) if latest_path is not None else None,
+        ),
+    )
+    return latest_path
 
 def build_repo_root() -> str:
     return build_shared_core_root()
@@ -94,53 +146,67 @@ def assistant_label(config) -> str:
 def _recent_codex_model_for_runtime(runtime_root: str) -> str:
     codex_home_raw = str(os.getenv("CODEX_HOME", "") or "").strip()
     codex_home = Path(codex_home_raw).expanduser() if codex_home_raw else Path.home() / ".codex"
-    state_paths = sorted(
-        codex_home.glob("state_*.sqlite"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    if not state_paths:
+    state_path = _latest_codex_state_path(codex_home)
+    if state_path is None:
         return ""
-    state_path = state_paths[0]
+    now = time.monotonic()
+    cache_key = (str(codex_home), runtime_root, str(state_path))
+    cached_entry = _RECENT_CODEX_MODEL_CACHE.get(cache_key)
+    if cached_entry is not None:
+        expires_at, _cached_mtime_ns, cached_model = cached_entry
+        if now < expires_at:
+            _RECENT_CODEX_MODEL_CACHE.move_to_end(cache_key)
+            return cached_model
+    try:
+        state_mtime_ns = state_path.stat().st_mtime_ns
+    except OSError:
+        return ""
+    if cached_entry is not None:
+        expires_at, cached_mtime_ns, cached_model = cached_entry
+        if cached_mtime_ns == int(state_mtime_ns):
+            _remember_recent_cache_entry(
+                _RECENT_CODEX_MODEL_CACHE,
+                cache_key,
+                (now + _RECENT_CODEX_MODEL_CACHE_TTL_SECONDS, cached_mtime_ns, cached_model),
+            )
+            return cached_model
     try:
         connection = sqlite3.connect(f"file:{state_path}?mode=ro", uri=True)
     except sqlite3.Error:
         return ""
+    model = ""
     try:
         cursor = connection.cursor()
         order_clause = "coalesce(updated_at_ms, updated_at * 1000) desc"
-        if runtime_root:
-            row = cursor.execute(
-                f"""
-                select model
-                from threads
-                where model is not null
-                  and trim(model) <> ''
-                  and cwd = ?
-                order by {order_clause}
-                limit 1
-                """,
-                (runtime_root,),
-            ).fetchone()
-            if row and row[0]:
-                return str(row[0]).strip()
         row = cursor.execute(
             f"""
             select model
             from threads
             where model is not null
               and trim(model) <> ''
-            order by {order_clause}
+            order by
+                case
+                    when ? <> '' and cwd = ? then 1
+                    else 0
+                end desc,
+                {order_clause}
             limit 1
-            """
+            """,
+            (runtime_root, runtime_root),
         ).fetchone()
         if row and row[0]:
-            return str(row[0]).strip()
+            model = str(row[0]).strip()
+            return model
     except sqlite3.Error:
         return ""
     finally:
         connection.close()
-    return ""
+        _remember_recent_cache_entry(
+            _RECENT_CODEX_MODEL_CACHE,
+            cache_key,
+            (now + _RECENT_CODEX_MODEL_CACHE_TTL_SECONDS, int(state_mtime_ns), model),
+        )
+    return model
 
 def _effective_codex_progress_model(config) -> str:
     model = configured_codex_model(config)

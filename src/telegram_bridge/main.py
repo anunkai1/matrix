@@ -32,6 +32,7 @@ from telegram_bridge.bridge_runtime_setup import (
     RuntimeBootstrap,
     apply_policy_change_thread_reset,
     build_runtime_bootstrap,
+    close_runtime_bootstrap,
     clear_thread_state_for_policy_change,
     persist_bootstrap_state,
 )
@@ -202,273 +203,276 @@ def run_bridge(config: Config) -> int:
         },
     )
     bootstrap: RuntimeBootstrap = build_runtime_bootstrap(config)
-    state_paths = bootstrap.state_paths
-    state = bootstrap.state
-    registry = build_default_plugin_registry()
     try:
-        client = registry.build_channel(config.channel_plugin, config)
-        engine: EngineAdapter = registry.build_engine(config.engine_plugin)
-    except (KeyError, RuntimeError, ValueError) as exc:
-        logging.error(
-            "Plugin selection error: channel=%s engine=%s error=%s",
-            config.channel_plugin,
-            config.engine_plugin,
-            exc,
-        )
-        logging.error(
-            "Available plugins: channels=%s engines=%s",
-            registry.list_channels(),
-            registry.list_engines(),
-        )
+        state_paths = bootstrap.state_paths
+        state = bootstrap.state
+        registry = build_default_plugin_registry()
+        try:
+            client = registry.build_channel(config.channel_plugin, config)
+            engine: EngineAdapter = registry.build_engine(config.engine_plugin)
+        except (KeyError, RuntimeError, ValueError) as exc:
+            logging.error(
+                "Plugin selection error: channel=%s engine=%s error=%s",
+                config.channel_plugin,
+                config.engine_plugin,
+                exc,
+            )
+            logging.error(
+                "Available plugins: channels=%s engines=%s",
+                registry.list_channels(),
+                registry.list_engines(),
+            )
+            emit_event(
+                "bridge.plugin_selection_failed",
+                level=logging.ERROR,
+                fields={
+                    "channel_plugin": config.channel_plugin,
+                    "engine_plugin": config.engine_plugin,
+                    "available_channels": registry.list_channels(),
+                    "available_engines": registry.list_engines(),
+                    "error_type": type(exc).__name__,
+                },
+            )
+            return 1
+
+        persist_bootstrap_state(config, bootstrap)
+
+        interrupted = pop_interrupted_requests(state)
+        if interrupted:
+            for scope_key in sorted(interrupted):
+                try:
+                    target = parse_telegram_scope_key(scope_key)
+                except ValueError:
+                    continue
+                if target.chat_id not in config.allowed_chat_ids:
+                    continue
+                try:
+                    client.send_message(
+                        target.chat_id,
+                        "Your previous request was interrupted because the bridge restarted. "
+                        "Please resend it.",
+                        message_thread_id=target.message_thread_id,
+                    )
+                except Exception:
+                    logging.exception(
+                        "Failed to send restart-interruption notice for scope=%s",
+                        scope_key,
+                    )
+            logging.warning(
+                "Detected %s interrupted in-flight request(s) from previous runtime.",
+                len(interrupted),
+            )
         emit_event(
-            "bridge.plugin_selection_failed",
-            level=logging.ERROR,
-            fields={
-                "channel_plugin": config.channel_plugin,
-                "engine_plugin": config.engine_plugin,
-                "available_channels": registry.list_channels(),
-                "available_engines": registry.list_engines(),
-                "error_type": type(exc).__name__,
-            },
+            "bridge.interrupted_requests_processed",
+            fields={"count": len(interrupted)},
         )
-        return 1
 
-    persist_bootstrap_state(config, bootstrap)
-
-    interrupted = pop_interrupted_requests(state)
-    if interrupted:
-        for scope_key in sorted(interrupted):
+        offset = 0
+        offset_state_path: Optional[str] = None
+        if should_discard_startup_backlog(config):
             try:
-                target = parse_telegram_scope_key(scope_key)
-            except ValueError:
-                continue
-            if target.chat_id not in config.allowed_chat_ids:
-                continue
-            try:
-                client.send_message(
-                    target.chat_id,
-                    "Your previous request was interrupted because the bridge restarted. "
-                    "Please resend it.",
-                    message_thread_id=target.message_thread_id,
-                )
+                offset = drop_pending_updates(client)
             except Exception:
-                logging.exception(
-                    "Failed to send restart-interruption notice for scope=%s",
-                    scope_key,
+                logging.exception("Failed to discard queued startup updates; defaulting to offset=0")
+                emit_event(
+                    "bridge.startup_backlog_discard_failed",
+                    level=logging.WARNING,
                 )
-        logging.warning(
-            "Detected %s interrupted in-flight request(s) from previous runtime.",
-            len(interrupted),
-        )
-    emit_event(
-        "bridge.interrupted_requests_processed",
-        fields={"count": len(interrupted)},
-    )
-
-    offset = 0
-    offset_state_path: Optional[str] = None
-    if should_discard_startup_backlog(config):
-        try:
-            offset = drop_pending_updates(client)
-        except Exception:
-            logging.exception("Failed to discard queued startup updates; defaulting to offset=0")
+                offset = 0
+        else:
+            try:
+                offset, offset_state_path = compute_initial_update_offset(config, client)
+            except Exception:
+                logging.exception("Failed to restore saved update offset; defaulting to offset=0")
+                emit_event(
+                    "bridge.startup_offset_resume_failed",
+                    level=logging.WARNING,
+                    fields={"channel_plugin": config.channel_plugin},
+                )
+                offset = 0
+                offset_state_path = build_update_offset_state_path(config.state_dir, config.channel_plugin)
             emit_event(
-                "bridge.startup_backlog_discard_failed",
-                level=logging.WARNING,
+                "bridge.startup_backlog_discard_skipped",
+                fields={
+                    "channel_plugin": config.channel_plugin,
+                    "offset": offset,
+                },
             )
-            offset = 0
-    else:
-        try:
-            offset, offset_state_path = compute_initial_update_offset(config, client)
-        except Exception:
-            logging.exception("Failed to restore saved update offset; defaulting to offset=0")
-            emit_event(
-                "bridge.startup_offset_resume_failed",
-                level=logging.WARNING,
-                fields={"channel_plugin": config.channel_plugin},
-            )
-            offset = 0
-            offset_state_path = build_update_offset_state_path(config.state_dir, config.channel_plugin)
-        emit_event(
-            "bridge.startup_backlog_discard_skipped",
-            fields={
-                "channel_plugin": config.channel_plugin,
-                "offset": offset,
-            },
-        )
-        persist_saved_update_offset(offset_state_path, offset)
+            persist_saved_update_offset(offset_state_path, offset)
 
-    logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
-    logging.info("Channel plugin active=%s", config.channel_plugin)
-    logging.info("Engine plugin active=%s", config.engine_plugin)
-    logging.info(
-        "WhatsApp plugin enabled=%s api_base=%s poll_timeout_seconds=%s",
-        config.whatsapp_plugin_enabled,
-        config.whatsapp_bridge_api_base,
-        config.whatsapp_poll_timeout_seconds,
-    )
-    logging.info("Executor command=%s", config.executor_cmd)
-    logging.info(
-        "Loaded %s chat thread mappings from %s",
-        len(bootstrap.loaded_threads),
-        state_paths["chat_threads"],
-    )
-    logging.info(
-        "Persistent workers enabled=%s count=%s max=%s idle_expiry=%s idle_timeout_setting=%ss",
-        config.persistent_workers_enabled,
-        len(bootstrap.loaded_worker_sessions),
-        config.persistent_workers_max,
-        (
-            "enabled"
-            if config.persistent_workers_enabled and config.persistent_workers_idle_timeout_seconds > 0
-            else "disabled"
-        ),
-        config.persistent_workers_idle_timeout_seconds,
-    )
-    logging.info(
-        "Loaded %s in-flight request marker(s) from %s",
-        len(bootstrap.loaded_in_flight),
-        state_paths["in_flight_requests"],
-    )
-    logging.info(
-        "Affective runtime enabled=%s db_path=%s ping_target=%s",
-        bool(bootstrap.affective_runtime),
-        config.affective_runtime_db_path,
-        config.affective_runtime_ping_target,
-    )
-    logging.info(
-        "Attachment archive path=%s retention_seconds=%s max_total_bytes=%s",
-        os.path.join(config.state_dir, "attachments.sqlite3"),
-        config.attachment_retention_seconds,
-        config.attachment_max_total_bytes,
-    )
-    logging.info(
-        "Voice alias learning enabled=%s path=%s min_examples=%s confirmation_window_seconds=%s",
-        bool(bootstrap.voice_alias_learning_store),
-        config.voice_alias_learning_path,
-        config.voice_alias_learning_min_examples,
-        config.voice_alias_learning_confirmation_window_seconds,
-    )
-    logging.info(
-        "Canonical sessions enabled=%s count=%s backend=%s source=%s json_path=%s sqlite_path=%s",
-        config.canonical_sessions_enabled,
-        len(state.chat_sessions),
-        (
-            "sqlite"
-            if config.canonical_sessions_enabled and config.canonical_sqlite_enabled
-            else "json"
-        ),
-        bootstrap.canonical_bootstrap_source,
-        state_paths["chat_sessions"],
-        config.canonical_sqlite_path,
-    )
-    logging.info(
-        "Canonical legacy mirror configured=%s (live mirroring disabled) canonical_json_mirror_enabled=%s",
-        config.canonical_legacy_mirror_enabled,
-        config.canonical_json_mirror_enabled,
-    )
-    emit_event(
-        "bridge.started",
-        fields={
-            "offset": offset,
-            "chat_thread_count": len(bootstrap.loaded_threads),
-            "worker_session_count": len(bootstrap.loaded_worker_sessions),
-            "in_flight_count": len(bootstrap.loaded_in_flight),
-            "canonical_session_count": len(state.chat_sessions),
-            "canonical_state_backend": (
+        logging.info("Bridge started. Allowed chats=%s", sorted(config.allowed_chat_ids))
+        logging.info("Channel plugin active=%s", config.channel_plugin)
+        logging.info("Engine plugin active=%s", config.engine_plugin)
+        logging.info(
+            "WhatsApp plugin enabled=%s api_base=%s poll_timeout_seconds=%s",
+            config.whatsapp_plugin_enabled,
+            config.whatsapp_bridge_api_base,
+            config.whatsapp_poll_timeout_seconds,
+        )
+        logging.info("Executor command=%s", config.executor_cmd)
+        logging.info(
+            "Loaded %s chat thread mappings from %s",
+            len(bootstrap.loaded_threads),
+            state_paths["chat_threads"],
+        )
+        logging.info(
+            "Persistent workers enabled=%s count=%s max=%s idle_expiry=%s idle_timeout_setting=%ss",
+            config.persistent_workers_enabled,
+            len(bootstrap.loaded_worker_sessions),
+            config.persistent_workers_max,
+            (
+                "enabled"
+                if config.persistent_workers_enabled and config.persistent_workers_idle_timeout_seconds > 0
+                else "disabled"
+            ),
+            config.persistent_workers_idle_timeout_seconds,
+        )
+        logging.info(
+            "Loaded %s in-flight request marker(s) from %s",
+            len(bootstrap.loaded_in_flight),
+            state_paths["in_flight_requests"],
+        )
+        logging.info(
+            "Affective runtime enabled=%s db_path=%s ping_target=%s",
+            bool(bootstrap.affective_runtime),
+            config.affective_runtime_db_path,
+            config.affective_runtime_ping_target,
+        )
+        logging.info(
+            "Attachment archive path=%s retention_seconds=%s max_total_bytes=%s",
+            os.path.join(config.state_dir, "attachments.sqlite3"),
+            config.attachment_retention_seconds,
+            config.attachment_max_total_bytes,
+        )
+        logging.info(
+            "Voice alias learning enabled=%s path=%s min_examples=%s confirmation_window_seconds=%s",
+            bool(bootstrap.voice_alias_learning_store),
+            config.voice_alias_learning_path,
+            config.voice_alias_learning_min_examples,
+            config.voice_alias_learning_confirmation_window_seconds,
+        )
+        logging.info(
+            "Canonical sessions enabled=%s count=%s backend=%s source=%s json_path=%s sqlite_path=%s",
+            config.canonical_sessions_enabled,
+            len(state.chat_sessions),
+            (
                 "sqlite"
                 if config.canonical_sessions_enabled and config.canonical_sqlite_enabled
                 else "json"
             ),
-            "canonical_bootstrap_source": bootstrap.canonical_bootstrap_source,
-            "attachment_retention_seconds": config.attachment_retention_seconds,
-            "attachment_max_total_bytes": config.attachment_max_total_bytes,
-            "channel_plugin": config.channel_plugin,
-            "engine_plugin": config.engine_plugin,
-            "whatsapp_plugin_enabled": config.whatsapp_plugin_enabled,
-            "affective_runtime_enabled": bool(bootstrap.affective_runtime),
-        },
-    )
+            bootstrap.canonical_bootstrap_source,
+            state_paths["chat_sessions"],
+            config.canonical_sqlite_path,
+        )
+        logging.info(
+            "Canonical legacy mirror configured=%s (live mirroring disabled) canonical_json_mirror_enabled=%s",
+            config.canonical_legacy_mirror_enabled,
+            config.canonical_json_mirror_enabled,
+        )
+        emit_event(
+            "bridge.started",
+            fields={
+                "offset": offset,
+                "chat_thread_count": len(bootstrap.loaded_threads),
+                "worker_session_count": len(bootstrap.loaded_worker_sessions),
+                "in_flight_count": len(bootstrap.loaded_in_flight),
+                "canonical_session_count": len(state.chat_sessions),
+                "canonical_state_backend": (
+                    "sqlite"
+                    if config.canonical_sessions_enabled and config.canonical_sqlite_enabled
+                    else "json"
+                ),
+                "canonical_bootstrap_source": bootstrap.canonical_bootstrap_source,
+                "attachment_retention_seconds": config.attachment_retention_seconds,
+                "attachment_max_total_bytes": config.attachment_max_total_bytes,
+                "channel_plugin": config.channel_plugin,
+                "engine_plugin": config.engine_plugin,
+                "whatsapp_plugin_enabled": config.whatsapp_plugin_enabled,
+                "affective_runtime_enabled": bool(bootstrap.affective_runtime),
+            },
+        )
 
-    while True:
-        try:
-            expire_idle_worker_sessions(state, config, client)
-            ready_updates = flush_ready_media_group_updates(state)
-            if ready_updates:
-                for update in ready_updates:
-                    handle_update(
-                        state,
-                        config,
-                        client,
-                        update,
-                        engine=engine,
-                        update_flow_dependencies=bootstrap.update_flow_dependencies,
-                    )
-                continue
-            ready_text_updates = flush_ready_text_batch_updates(state)
-            if ready_text_updates:
-                for update in ready_text_updates:
-                    handle_update(
-                        state,
-                        config,
-                        client,
-                        update,
-                        engine=engine,
-                        update_flow_dependencies=bootstrap.update_flow_dependencies,
-                    )
-                continue
-
-            poll_timeout_seconds = compute_poll_timeout_seconds(state, config)
-            updates = client.get_updates(offset, timeout_seconds=poll_timeout_seconds)
-            if not updates and offset_state_path is not None and offset > 0:
-                reset_offset = maybe_reset_stale_runtime_offset(config, client, offset)
-                if reset_offset != offset:
-                    offset = reset_offset
-                    persist_saved_update_offset(offset_state_path, offset)
+        while True:
+            try:
+                expire_idle_worker_sessions(state, config, client)
+                ready_updates = flush_ready_media_group_updates(state)
+                if ready_updates:
+                    for update in ready_updates:
+                        handle_update(
+                            state,
+                            config,
+                            client,
+                            update,
+                            engine=engine,
+                            update_flow_dependencies=bootstrap.update_flow_dependencies,
+                        )
                     continue
-            if updates:
+                ready_text_updates = flush_ready_text_batch_updates(state)
+                if ready_text_updates:
+                    for update in ready_text_updates:
+                        handle_update(
+                            state,
+                            config,
+                            client,
+                            update,
+                            engine=engine,
+                            update_flow_dependencies=bootstrap.update_flow_dependencies,
+                        )
+                    continue
+
+                poll_timeout_seconds = compute_poll_timeout_seconds(state, config)
+                updates = client.get_updates(offset, timeout_seconds=poll_timeout_seconds)
+                if not updates and offset_state_path is not None and offset > 0:
+                    reset_offset = maybe_reset_stale_runtime_offset(config, client, offset)
+                    if reset_offset != offset:
+                        offset = reset_offset
+                        persist_saved_update_offset(offset_state_path, offset)
+                        continue
+                if updates:
+                    emit_event(
+                        "bridge.poll_updates_received",
+                        fields={
+                            "count": len(updates),
+                            "offset_before": offset,
+                            "pending_media_group_count": len(state.pending_media_groups),
+                            "poll_timeout_seconds": poll_timeout_seconds,
+                        },
+                    )
+                for update in updates:
+                    update_id = update.get("update_id")
+                    if isinstance(update_id, int):
+                        offset = max(offset, update_id + 1)
+                immediate_updates = buffer_pending_media_group_updates(state, updates)
+                immediate_updates = buffer_pending_text_updates(state, immediate_updates)
+                for update in immediate_updates:
+                    handle_update(
+                        state,
+                        config,
+                        client,
+                        update,
+                        engine=engine,
+                        update_flow_dependencies=bootstrap.update_flow_dependencies,
+                    )
+                if offset_state_path is not None:
+                    persist_saved_update_offset(offset_state_path, offset)
+            except (HTTPError, URLError, TimeoutError):
+                logging.exception("Network/API error while polling Telegram")
                 emit_event(
-                    "bridge.poll_updates_received",
-                    fields={
-                        "count": len(updates),
-                        "offset_before": offset,
-                        "pending_media_group_count": len(state.pending_media_groups),
-                        "poll_timeout_seconds": poll_timeout_seconds,
-                    },
+                    "bridge.poll_error",
+                    level=logging.WARNING,
+                    fields={"category": "network_api"},
                 )
-            for update in updates:
-                update_id = update.get("update_id")
-                if isinstance(update_id, int):
-                    offset = max(offset, update_id + 1)
-            immediate_updates = buffer_pending_media_group_updates(state, updates)
-            immediate_updates = buffer_pending_text_updates(state, immediate_updates)
-            for update in immediate_updates:
-                handle_update(
-                    state,
-                    config,
-                    client,
-                    update,
-                    engine=engine,
-                    update_flow_dependencies=bootstrap.update_flow_dependencies,
+                time.sleep(config.retry_sleep_seconds)
+            except Exception:
+                logging.exception("Unexpected loop error")
+                emit_event(
+                    "bridge.poll_error",
+                    level=logging.WARNING,
+                    fields={"category": "unexpected"},
                 )
-            if offset_state_path is not None:
-                persist_saved_update_offset(offset_state_path, offset)
-        except (HTTPError, URLError, TimeoutError):
-            logging.exception("Network/API error while polling Telegram")
-            emit_event(
-                "bridge.poll_error",
-                level=logging.WARNING,
-                fields={"category": "network_api"},
-            )
-            time.sleep(config.retry_sleep_seconds)
-        except Exception:
-            logging.exception("Unexpected loop error")
-            emit_event(
-                "bridge.poll_error",
-                level=logging.WARNING,
-                fields={"category": "unexpected"},
-            )
-            time.sleep(config.retry_sleep_seconds)
+                time.sleep(config.retry_sleep_seconds)
+    finally:
+        close_runtime_bootstrap(bootstrap)
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Telegram Architect bridge")

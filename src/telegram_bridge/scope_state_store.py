@@ -1,11 +1,25 @@
 import json
 import os
 import tempfile
+import threading
 from pathlib import Path
 from typing import Dict, Optional
 
 from telegram_bridge.conversation_scope import normalize_scope_storage_key
 from telegram_bridge.state_models import ScopeKey, State, normalize_scope_key
+
+_PERSIST_PATH_LOCKS: Dict[str, threading.Lock] = {}
+_PERSIST_PATH_LOCKS_LOCK = threading.Lock()
+
+
+def _persist_lock_for_path(path_value: str) -> threading.Lock:
+    normalized_path = str(Path(path_value))
+    with _PERSIST_PATH_LOCKS_LOCK:
+        lock = _PERSIST_PATH_LOCKS.get(normalized_path)
+        if lock is None:
+            lock = threading.Lock()
+            _PERSIST_PATH_LOCKS[normalized_path] = lock
+        return lock
 
 
 def load_json_object(path: str, *, state_label: str) -> Dict[object, object]:
@@ -21,32 +35,50 @@ def load_json_object(path: str, *, state_label: str) -> Dict[object, object]:
     return raw
 
 
-def persist_json_state_file(path_value: str, serialized: Dict[str, object]) -> None:
+def persist_json_state_file(
+    path_value: str,
+    serialized: Dict[str, object],
+    *,
+    fsync_file: bool = True,
+    pretty: bool = True,
+    delete_when_empty: bool = False,
+) -> None:
     if not path_value:
         return
     path = Path(path_value)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(serialized, indent=2, sort_keys=True) + "\n"
-
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        dir=str(path.parent),
-    )
-    tmp_path = Path(tmp_name)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        tmp_path.replace(path)
-    except Exception:
+    if delete_when_empty and not serialized:
+        with _persist_lock_for_path(path_value):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        return
+    if pretty:
+        payload = json.dumps(serialized, indent=2, sort_keys=True) + "\n"
+    else:
+        payload = json.dumps(serialized, separators=(",", ":"), sort_keys=True)
+    with _persist_lock_for_path(path_value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=str(path.parent),
+        )
+        tmp_path = Path(tmp_name)
         try:
-            if tmp_path.exists():
-                tmp_path.unlink()
-        except OSError:
-            pass
-        raise
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(payload)
+                handle.flush()
+                if fsync_file:
+                    os.fsync(handle.fileno())
+            tmp_path.replace(path)
+        except Exception:
+            try:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+            except OSError:
+                pass
+            raise
 
 
 def _load_scope_string_map(

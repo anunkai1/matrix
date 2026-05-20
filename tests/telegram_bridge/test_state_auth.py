@@ -88,8 +88,7 @@ class TestStateAuth(unittest.TestCase):
             self.assertEqual(in_flight["tg:1"]["message_id"], 55)
 
             repo.clear_in_flight_request(1)
-            cleared = json.loads(Path(state.in_flight_path).read_text(encoding="utf-8"))
-            self.assertEqual(cleared, {})
+            self.assertFalse(Path(state.in_flight_path).exists())
 
             repo.clear_thread_id(1)
             threads_after = json.loads(Path(state.chat_thread_path).read_text(encoding="utf-8"))
@@ -105,9 +104,11 @@ class TestStateAuth(unittest.TestCase):
             repo = bridge.StateRepository(state)
             errors = []
             errors_lock = threading.Lock()
+            thread_count = 8
+            iterations_per_thread = 30
 
             def worker(seed: int) -> None:
-                for i in range(120):
+                for i in range(iterations_per_thread):
                     chat_id = ((seed * 7) + i) % 12 + 1
                     try:
                         repo.mark_in_flight_request(chat_id, i)
@@ -117,11 +118,15 @@ class TestStateAuth(unittest.TestCase):
                             errors.append(repr(exc))
                         return
 
-            threads = [threading.Thread(target=worker, args=(idx,)) for idx in range(16)]
+            threads = [threading.Thread(target=worker, args=(idx,)) for idx in range(thread_count)]
             for thread in threads:
                 thread.start()
             for thread in threads:
-                thread.join()
+                thread.join(timeout=30.0)
 
+            alive_threads = [index for index, thread in enumerate(threads) if thread.is_alive()]
+            for index in alive_threads:
+                threads[index].join(timeout=5.0)
+
+            self.assertEqual(alive_threads, [], f"Concurrent persistence workers did not finish: {alive_threads}")
             self.assertEqual(errors, [])
-

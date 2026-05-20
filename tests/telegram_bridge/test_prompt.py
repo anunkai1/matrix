@@ -227,6 +227,33 @@ class TestPrompt(unittest.TestCase):
         self.assertIn("1. or not?", only_prompt)
         self.assertIn("2. say cow", only_prompt)
 
+    def test_codex_app_server_ensure_thread_resumes_after_process_restart(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(),
+        )
+        session._thread_id = "thread-stale"
+
+        class FakeProcess:
+            def terminate(self):
+                return None
+
+            def wait(self, timeout=None):
+                return 0
+
+        session.process = FakeProcess()
+        session._stop_process()
+
+        with mock.patch.object(
+            session,
+            "_call",
+            return_value={"thread": {"id": "thread-resumed"}},
+        ) as call_mock:
+            session._ensure_thread("thread-stale")
+
+        call_mock.assert_called_once_with("thread/resume", {"threadId": "thread-stale"})
+        self.assertEqual(session._thread_id, "thread-resumed")
+
     def test_codex_engine_adapter_does_not_fall_back_to_legacy_executor_when_live_path_fails(self):
         engine = bridge_engine_adapter.CodexEngineAdapter()
         config = make_config(codex_app_server_enabled=True)

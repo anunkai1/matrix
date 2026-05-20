@@ -277,16 +277,21 @@ class GoalLoopTests(unittest.TestCase):
             state = self._make_state(tmpdir)
             state.chat_goals["tg:-1003894351534"] = goal_loop.GoalState(goal="legacy chat scope")
 
-            goal_loop.handle_goal_command(
-                state=state,
-                config=make_config(),
-                client=FakeTelegramClient(),
-                scope_key="tg:-1003894351534",
-                chat_id=-1003894351534,
-                message_thread_id=1853,
-                message_id=12,
-                raw_text="/goal topic scope",
-            )
+            with mock.patch.object(
+                goal_loop,
+                "maybe_start_goal_continuation",
+                return_value=True,
+            ):
+                goal_loop.handle_goal_command(
+                    state=state,
+                    config=make_config(),
+                    client=FakeTelegramClient(),
+                    scope_key="tg:-1003894351534",
+                    chat_id=-1003894351534,
+                    message_thread_id=1853,
+                    message_id=12,
+                    raw_text="/goal topic scope",
+                )
 
             self.assertNotIn("tg:-1003894351534", state.chat_goals)
             self.assertIn("tg:-1003894351534:topic:1853", state.chat_goals)

@@ -38,6 +38,12 @@ class DispatchAcceptance:
 
 
 @dataclass(frozen=True)
+class DispatchResult:
+    accepted: Optional[DispatchAcceptance] = None
+    handled: bool = False
+
+
+@dataclass(frozen=True)
 class StandardDispatchPlan:
     active_engine: Any
 
@@ -91,6 +97,29 @@ def _wait_for_scope_busy_clear(state: Any, scope_key: str, *, timeout_seconds: f
             return True
         time.sleep(0.05)
     return not _scope_is_busy(state, scope_key)
+
+
+def _build_dispatch_acceptance(
+    request: UpdateDispatchRequest,
+    dependencies: UpdateFlowDependencies,
+    *,
+    route: Optional[str] = None,
+) -> DispatchAcceptance:
+    cancel_event = dependencies.register_cancel_event(request.state, request.scope_key)
+    mark_in_flight_request(request.state, request.scope_key, request.message_id)
+    accepted_fields = {
+        "chat_id": request.chat_id,
+        "message_id": request.message_id,
+        "scope_key": request.scope_key,
+        "has_photo": bool(request.photo_file_ids),
+        "has_voice": bool(request.voice_file_id),
+        "has_document": request.document is not None,
+        "stateless": request.stateless,
+    }
+    if route is not None:
+        accepted_fields["route"] = route
+    dependencies.emit_event("bridge.request_accepted", fields=accepted_fields)
+    return DispatchAcceptance(cancel_event=cancel_event)
 
 
 def _resolve_dependencies(dependencies: Optional[UpdateFlowDependencies]) -> UpdateFlowDependencies:
@@ -253,46 +282,22 @@ def _accept_dispatch_request(
     request: UpdateDispatchRequest,
     *,
     route: Optional[str] = None,
-) -> Optional[DispatchAcceptance]:
+) -> DispatchResult:
     dependencies = _resolve_dependencies(request.dependencies)
     if not dependencies.mark_busy(request.state, request.scope_key):
         plan = _resolve_standard_dispatch_plan(request)
         if plan is not None and _maybe_handle_busy_live_codex_turn(request, plan):
-            return None
+            return DispatchResult(handled=True)
         if plan is not None and _wait_for_post_turn_busy_clear(request, plan):
             if dependencies.mark_busy(request.state, request.scope_key):
-                cancel_event = dependencies.register_cancel_event(request.state, request.scope_key)
-                mark_in_flight_request(request.state, request.scope_key, request.message_id)
-                accepted_fields = {
-                    "chat_id": request.chat_id,
-                    "message_id": request.message_id,
-                    "scope_key": request.scope_key,
-                    "has_photo": bool(request.photo_file_ids),
-                    "has_voice": bool(request.voice_file_id),
-                    "has_document": request.document is not None,
-                    "stateless": request.stateless,
-                }
-                if route is not None:
-                    accepted_fields["route"] = route
-                dependencies.emit_event("bridge.request_accepted", fields=accepted_fields)
-                return DispatchAcceptance(cancel_event=cancel_event)
+                return DispatchResult(
+                    accepted=_build_dispatch_acceptance(request, dependencies, route=route)
+                )
         if plan is not None and _maybe_recover_stale_busy_scope(request, plan):
             if dependencies.mark_busy(request.state, request.scope_key):
-                cancel_event = dependencies.register_cancel_event(request.state, request.scope_key)
-                mark_in_flight_request(request.state, request.scope_key, request.message_id)
-                accepted_fields = {
-                    "chat_id": request.chat_id,
-                    "message_id": request.message_id,
-                    "scope_key": request.scope_key,
-                    "has_photo": bool(request.photo_file_ids),
-                    "has_voice": bool(request.voice_file_id),
-                    "has_document": request.document is not None,
-                    "stateless": request.stateless,
-                }
-                if route is not None:
-                    accepted_fields["route"] = route
-                dependencies.emit_event("bridge.request_accepted", fields=accepted_fields)
-                return DispatchAcceptance(cancel_event=cancel_event)
+                return DispatchResult(
+                    accepted=_build_dispatch_acceptance(request, dependencies, route=route)
+                )
         dependencies.emit_event(
             "bridge.request_rejected",
             level=logging.WARNING,
@@ -308,23 +313,11 @@ def _accept_dispatch_request(
             reply_to_message_id=request.message_id,
             message_thread_id=request.message_thread_id,
         )
-        return None
+        return DispatchResult()
 
-    cancel_event = dependencies.register_cancel_event(request.state, request.scope_key)
-    mark_in_flight_request(request.state, request.scope_key, request.message_id)
-    accepted_fields = {
-        "chat_id": request.chat_id,
-        "message_id": request.message_id,
-        "scope_key": request.scope_key,
-        "has_photo": bool(request.photo_file_ids),
-        "has_voice": bool(request.voice_file_id),
-        "has_document": request.document is not None,
-        "stateless": request.stateless,
-    }
-    if route is not None:
-        accepted_fields["route"] = route
-    dependencies.emit_event("bridge.request_accepted", fields=accepted_fields)
-    return DispatchAcceptance(cancel_event=cancel_event)
+    return DispatchResult(
+        accepted=_build_dispatch_acceptance(request, dependencies, route=route)
+    )
 
 def _resolve_standard_dispatch_plan(request: UpdateDispatchRequest) -> Optional[StandardDispatchPlan]:
     dependencies = _resolve_dependencies(request.dependencies)
@@ -447,7 +440,10 @@ def start_standard_dispatch(request: UpdateDispatchRequest) -> bool:
 
     _wait_for_post_turn_busy_clear(request, plan)
 
-    acceptance = _accept_dispatch_request(request)
+    dispatch_result = _accept_dispatch_request(request)
+    if dispatch_result.handled:
+        return True
+    acceptance = dispatch_result.accepted
     if acceptance is None:
         return False
 

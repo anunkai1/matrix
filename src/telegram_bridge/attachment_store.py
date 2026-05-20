@@ -39,39 +39,73 @@ class AttachmentStore:
         self.retention_seconds = max(0, int(retention_seconds))
         self.max_total_bytes = max(0, int(max_total_bytes))
         self._lock = threading.RLock()
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(files_dir).mkdir(parents=True, exist_ok=True)
-        self.ensure_schema()
+        self._conn: Optional[sqlite3.Connection] = None
+        self._schema_ready = False
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, timeout=30)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        conn = self._conn
+        if conn is None:
+            conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            self._conn = conn
         return conn
 
-    def ensure_schema(self) -> None:
-        with self._lock, self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS attachments (
-                    channel TEXT NOT NULL,
-                    file_id TEXT NOT NULL,
-                    media_kind TEXT NOT NULL,
-                    local_path TEXT NOT NULL,
-                    file_name TEXT NOT NULL DEFAULT '',
-                    mime_type TEXT NOT NULL DEFAULT '',
-                    file_size INTEGER NOT NULL DEFAULT 0,
-                    sha256 TEXT NOT NULL DEFAULT '',
-                    created_at REAL NOT NULL,
-                    last_used_at REAL NOT NULL,
-                    expires_at REAL NOT NULL,
-                    summary TEXT NOT NULL DEFAULT '',
-                    PRIMARY KEY (channel, file_id)
+    def close(self) -> None:
+        with self._lock:
+            conn = self._conn
+            self._conn = None
+            if conn is not None:
+                conn.close()
+
+    def _ensure_ready(self) -> None:
+        if self._schema_ready:
+            return
+        with self._lock:
+            if self._schema_ready:
+                return
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(self.files_dir).mkdir(parents=True, exist_ok=True)
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS attachments (
+                        channel TEXT NOT NULL,
+                        file_id TEXT NOT NULL,
+                        media_kind TEXT NOT NULL,
+                        local_path TEXT NOT NULL,
+                        file_name TEXT NOT NULL DEFAULT '',
+                        mime_type TEXT NOT NULL DEFAULT '',
+                        file_size INTEGER NOT NULL DEFAULT 0,
+                        sha256 TEXT NOT NULL DEFAULT '',
+                        created_at REAL NOT NULL,
+                        last_used_at REAL NOT NULL,
+                        expires_at REAL NOT NULL,
+                        summary TEXT NOT NULL DEFAULT '',
+                        PRIMARY KEY (channel, file_id)
+                    )
+                    """
                 )
-                """
-            )
-            conn.commit()
+                conn.commit()
+            self._schema_ready = True
+
+    def ensure_schema(self) -> None:
+        self._ensure_ready()
+
+    def _record_from_row(self, row: sqlite3.Row) -> AttachmentRecord:
+        return AttachmentRecord(
+            channel=str(row["channel"]),
+            file_id=str(row["file_id"]),
+            media_kind=str(row["media_kind"]),
+            local_path=str(row["local_path"] or ""),
+            file_name=str(row["file_name"] or ""),
+            mime_type=str(row["mime_type"] or ""),
+            file_size=int(row["file_size"] or 0),
+            created_at=float(row["created_at"] or 0),
+            expires_at=float(row["expires_at"] or 0),
+            summary=str(row["summary"] or ""),
+        )
 
     def _expire_binary(self, conn: sqlite3.Connection, channel: str, file_id: str, local_path: str) -> None:
         row = conn.execute(
@@ -99,7 +133,27 @@ class AttachmentStore:
         except OSError:
             pass
 
+    def _remove_orphaned_binary(self, conn: sqlite3.Connection, local_path: str) -> None:
+        if not local_path:
+            return
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM attachments
+            WHERE local_path = ?
+            LIMIT 1
+            """,
+            (local_path,),
+        ).fetchone()
+        if row is not None:
+            return
+        try:
+            os.remove(local_path)
+        except OSError:
+            pass
+
     def prune(self) -> None:
+        self._ensure_ready()
         with self._lock, self._connect() as conn:
             now = time.time()
             rows = conn.execute(
@@ -160,8 +214,8 @@ class AttachmentStore:
             raise ValueError("file_id is required")
         if not source_path or not os.path.exists(source_path):
             raise FileNotFoundError(source_path)
+        self._ensure_ready()
 
-        self.prune()
         source = Path(source_path)
         suffix = Path(file_name).suffix or source.suffix
         sha256 = hashlib.sha256()
@@ -178,6 +232,15 @@ class AttachmentStore:
         expires_at = now + self.retention_seconds if self.retention_seconds > 0 else float("inf")
 
         with self._lock, self._connect() as conn:
+            existing_row = conn.execute(
+                """
+                SELECT local_path
+                FROM attachments
+                WHERE channel = ? AND file_id = ?
+                """,
+                (normalized_channel, normalized_file_id),
+            ).fetchone()
+            previous_local_path = str(existing_row["local_path"] or "") if existing_row is not None else ""
             conn.execute(
                 """
                 INSERT INTO attachments (
@@ -213,20 +276,32 @@ class AttachmentStore:
                     normalized_file_id,
                 ),
             )
+            if previous_local_path and previous_local_path != local_path:
+                self._remove_orphaned_binary(conn, previous_local_path)
             conn.commit()
 
         self.prune()
-        record = self.get_record(normalized_channel, normalized_file_id)
-        if record is None:
-            raise RuntimeError("Attachment record was not persisted")
-        return record
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    channel, file_id, media_kind, local_path, file_name, mime_type,
+                    file_size, created_at, expires_at, summary
+                FROM attachments
+                WHERE channel = ? AND file_id = ?
+                """,
+                (normalized_channel, normalized_file_id),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("Attachment record was not persisted")
+            return self._record_from_row(row)
 
     def get_record(self, channel: str, file_id: str) -> Optional[AttachmentRecord]:
-        self.prune()
         normalized_channel = (channel or "telegram").strip().lower() or "telegram"
         normalized_file_id = (file_id or "").strip()
         if not normalized_file_id:
             return None
+        self._ensure_ready()
         with self._lock, self._connect() as conn:
             row = conn.execute(
                 """
@@ -241,7 +316,13 @@ class AttachmentStore:
             if row is None:
                 return None
             local_path = str(row["local_path"] or "")
+            expires_at = float(row["expires_at"] or 0)
+            if expires_at and expires_at < time.time():
+                self._expire_binary(conn, normalized_channel, normalized_file_id, local_path)
+                conn.commit()
+                return None
             if not local_path or not os.path.exists(local_path):
+                self._expire_binary(conn, normalized_channel, normalized_file_id, local_path)
                 conn.commit()
                 return None
             conn.execute(
@@ -249,24 +330,14 @@ class AttachmentStore:
                 (time.time(), normalized_channel, normalized_file_id),
             )
             conn.commit()
-            return AttachmentRecord(
-                channel=str(row["channel"]),
-                file_id=str(row["file_id"]),
-                media_kind=str(row["media_kind"]),
-                local_path=local_path,
-                file_name=str(row["file_name"] or ""),
-                mime_type=str(row["mime_type"] or ""),
-                file_size=int(row["file_size"] or 0),
-                created_at=float(row["created_at"] or 0),
-                expires_at=float(row["expires_at"] or 0),
-                summary=str(row["summary"] or ""),
-            )
+            return self._record_from_row(row)
 
     def get_summary(self, channel: str, file_id: str) -> str:
         normalized_channel = (channel or "telegram").strip().lower() or "telegram"
         normalized_file_id = (file_id or "").strip()
         if not normalized_file_id:
             return ""
+        self._ensure_ready()
         with self._lock, self._connect() as conn:
             row = conn.execute(
                 "SELECT summary FROM attachments WHERE channel = ? AND file_id = ?",
@@ -285,6 +356,7 @@ class AttachmentStore:
         if not clean_summary:
             return
         clean_summary = clean_summary[:SUMMARY_MAX_CHARS]
+        self._ensure_ready()
         with self._lock, self._connect() as conn:
             conn.execute(
                 """

@@ -6,6 +6,7 @@ import logging
 import shutil
 import sqlite3
 import subprocess
+import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -184,21 +185,65 @@ class AffectiveRuntime:
         self._db_available = False
         self._pending_feedback = 0.0
         self._turn_open = False
+        self._lock = threading.RLock()
+        self._conn: Optional[sqlite3.Connection] = None
+        self._storage_checked = False
+        self._state_loaded = False
 
-        self._init_storage()
-        restored = self._load_state()
         emit_event(
             "bridge.affective_runtime_initialized",
             fields={
                 "db_path": str(self.db_path),
-                "db_available": self._db_available,
-                "restored": restored,
+                "db_available": False,
+                "restored": False,
+                "storage_deferred": True,
                 "ping_enabled": bool(self.ping_target),
             },
         )
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(str(self.db_path))
+        with self._lock:
+            connection = self._conn
+            if connection is None:
+                connection = sqlite3.connect(str(self.db_path), timeout=30, check_same_thread=False)
+                connection.execute("PRAGMA synchronous=NORMAL")
+                self._conn = connection
+            return connection
+
+    def close(self) -> None:
+        with self._lock:
+            connection = self._conn
+            self._conn = None
+            if connection is not None:
+                connection.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def _ensure_storage_ready(self) -> None:
+        if self._storage_checked:
+            return
+        with self._lock:
+            if self._storage_checked:
+                return
+            self._storage_checked = True
+        self._init_storage()
+        if self._db_available:
+            self._state_loaded = self._load_state()
+        else:
+            self._state_loaded = True
+        emit_event(
+            "bridge.affective_runtime_storage_ready",
+            fields={
+                "db_path": str(self.db_path),
+                "db_available": self._db_available,
+                "restored": bool(self._db_available and self._state_loaded),
+                "ping_enabled": bool(self.ping_target),
+            },
+        )
 
     def _init_storage(self) -> None:
         try:
@@ -218,6 +263,7 @@ class AffectiveRuntime:
                 fields={"db_path": str(self.db_path), "phase": "init"},
             )
             self._db_available = False
+            self.close()
 
     def _load_state(self) -> bool:
         if not self._db_available:
@@ -264,6 +310,7 @@ class AffectiveRuntime:
         return True
 
     def _save_state(self) -> None:
+        self._ensure_storage_ready()
         if not self._db_available:
             return
         payload = self.state.as_dict()
@@ -311,6 +358,8 @@ class AffectiveRuntime:
                 level=logging.WARNING,
                 fields={"db_path": str(self.db_path), "phase": "save"},
             )
+            self._db_available = False
+            self.close()
 
     def _sample_signals(self, *, user_feedback: float = 0.0, task_outcome: float = 0.0) -> HostSignals:
         load = _read_loadavg()
@@ -362,11 +411,11 @@ class AffectiveRuntime:
         self.state.clamp()
 
     def begin_turn(self, user_text: str) -> None:
+        self._ensure_storage_ready()
         self._pending_feedback = _extract_user_feedback(user_text)
         self._turn_open = True
         signals = self._sample_signals(user_feedback=self._pending_feedback, task_outcome=0.0)
         self._apply_signals(signals)
-        self._save_state()
         emit_event(
             "bridge.affective_runtime_begin_turn",
             fields={
@@ -377,6 +426,7 @@ class AffectiveRuntime:
         )
 
     def finish_turn(self, *, success: bool) -> None:
+        self._ensure_storage_ready()
         if not self._turn_open:
             return
         self._turn_open = False
@@ -396,6 +446,7 @@ class AffectiveRuntime:
         )
 
     def prompt_prefix(self) -> str:
+        self._ensure_storage_ready()
         state = self.state
         tone = "steady and concise"
         if state.valence >= 0.35:
@@ -435,6 +486,7 @@ class AffectiveRuntime:
         )
 
     def telemetry(self) -> Dict[str, object]:
+        self._ensure_storage_ready()
         return {
             "state": self.state.as_dict(),
             "signals": self.last_signals.as_dict(),
