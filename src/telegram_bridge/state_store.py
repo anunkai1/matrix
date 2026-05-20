@@ -44,6 +44,7 @@ from telegram_bridge.scope_state_store import (
     load_chat_pi_providers,
     load_chat_threads,
     load_json_object,
+    normalize_path_value,
     persist_chat_threads,
     persist_chat_codex_efforts,
     persist_chat_codex_models,
@@ -150,10 +151,10 @@ __all__ = [
 ]
 
 def ensure_state_dir(path: str) -> None:
-    Path(path).mkdir(parents=True, exist_ok=True)
+    Path(normalize_path_value(path)).mkdir(parents=True, exist_ok=True)
 
 def quarantine_corrupt_state_file(path: str) -> Optional[str]:
-    data_path = Path(path)
+    data_path = Path(normalize_path_value(path))
     if not data_path.exists():
         return None
     timestamp = time.strftime("%Y%m%d%H%M%S", time.gmtime())

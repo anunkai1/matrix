@@ -147,7 +147,7 @@ def apply_auth_change_thread_reset(
     }
     applied = False
 
-    if not previous_auth_fingerprint or previous_auth_fingerprint != current_auth_fingerprint:
+    if previous_auth_fingerprint and previous_auth_fingerprint != current_auth_fingerprint:
         reset_counts = clear_loaded_thread_state(
             loaded_threads,
             loaded_worker_sessions,

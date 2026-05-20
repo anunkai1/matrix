@@ -34,8 +34,8 @@ class AttachmentStore:
         retention_seconds: int,
         max_total_bytes: int,
     ) -> None:
-        self.db_path = db_path
-        self.files_dir = files_dir
+        self.db_path = str(Path(db_path).expanduser())
+        self.files_dir = str(Path(files_dir).expanduser())
         self.retention_seconds = max(0, int(retention_seconds))
         self.max_total_bytes = max(0, int(max_total_bytes))
         self._lock = threading.RLock()

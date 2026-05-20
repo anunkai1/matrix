@@ -130,3 +130,84 @@ class TestStateAuth(unittest.TestCase):
 
             self.assertEqual(alive_threads, [], f"Concurrent persistence workers did not finish: {alive_threads}")
             self.assertEqual(errors, [])
+
+    def test_apply_auth_change_thread_reset_does_not_clear_state_when_no_saved_fingerprint_exists(self):
+        loaded_threads = {1: "thread-1"}
+        loaded_worker_sessions = {
+            "tg:1": bridge.WorkerSession(
+                created_at=1.0,
+                last_used_at=2.0,
+                thread_id="thread-1",
+                policy_fingerprint="fp",
+            )
+        }
+        loaded_canonical_sessions = {
+            "tg:1": bridge.CanonicalSession(
+                thread_id="thread-1",
+                worker_created_at=1.0,
+                worker_last_used_at=2.0,
+                worker_policy_fingerprint="fp",
+            )
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = bridge_auth_state.apply_auth_change_thread_reset(
+                state_dir=tmpdir,
+                current_auth_fingerprint="auth-fp",
+                loaded_threads=loaded_threads,
+                loaded_worker_sessions=loaded_worker_sessions,
+                loaded_canonical_sessions=loaded_canonical_sessions,
+            )
+
+            self.assertFalse(result["applied"])
+            self.assertEqual(result["previous_auth_fingerprint"], "")
+            self.assertEqual(result["counts"], {"threads": 0, "worker_sessions": 0, "canonical_sessions": 0})
+            self.assertEqual(loaded_threads, {1: "thread-1"})
+            self.assertIn("tg:1", loaded_worker_sessions)
+            self.assertIn("tg:1", loaded_canonical_sessions)
+            saved = bridge_auth_state.load_saved_auth_fingerprint(
+                str(Path(tmpdir) / "auth_fingerprint.txt")
+            )
+            self.assertEqual(saved, "auth-fp")
+
+    def test_apply_auth_change_thread_reset_clears_state_when_saved_fingerprint_changes(self):
+        loaded_threads = {1: "thread-1"}
+        loaded_worker_sessions = {
+            "tg:1": bridge.WorkerSession(
+                created_at=1.0,
+                last_used_at=2.0,
+                thread_id="thread-1",
+                policy_fingerprint="fp",
+            )
+        }
+        loaded_canonical_sessions = {
+            "tg:1": bridge.CanonicalSession(
+                thread_id="thread-1",
+                worker_created_at=1.0,
+                worker_last_used_at=2.0,
+                worker_policy_fingerprint="fp",
+            )
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fingerprint_path = Path(tmpdir) / "auth_fingerprint.txt"
+            fingerprint_path.write_text("old-auth-fp\n", encoding="utf-8")
+
+            result = bridge_auth_state.apply_auth_change_thread_reset(
+                state_dir=tmpdir,
+                current_auth_fingerprint="new-auth-fp",
+                loaded_threads=loaded_threads,
+                loaded_worker_sessions=loaded_worker_sessions,
+                loaded_canonical_sessions=loaded_canonical_sessions,
+            )
+
+            self.assertTrue(result["applied"])
+            self.assertEqual(result["previous_auth_fingerprint"], "old-auth-fp")
+            self.assertEqual(result["counts"], {"threads": 1, "worker_sessions": 1, "canonical_sessions": 1})
+            self.assertEqual(loaded_threads, {})
+            self.assertEqual(loaded_worker_sessions, {})
+            self.assertEqual(loaded_canonical_sessions, {})
+            self.assertEqual(
+                bridge_auth_state.load_saved_auth_fingerprint(str(fingerprint_path)),
+                "new-auth-fp",
+            )

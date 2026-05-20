@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional
 
 from telegram_bridge.background_tasks import start_daemon_thread
@@ -80,13 +81,22 @@ def build_restart_unit_name() -> str:
             return configured
     return "telegram-architect-bridge.service"
 
+def _normalize_policy_path(path: object) -> str:
+    raw = str(path or "").strip()
+    if not raw:
+        return ""
+    return str(Path(raw).expanduser().resolve())
+
 def compute_policy_fingerprint(paths: List[str]) -> str:
     hasher = hashlib.sha256()
     for file_path in paths:
-        hasher.update(file_path.encode("utf-8"))
+        normalized_path = _normalize_policy_path(file_path)
+        if not normalized_path:
+            continue
+        hasher.update(normalized_path.encode("utf-8"))
         hasher.update(b"\0")
         try:
-            stats = os.stat(file_path)
+            stats = os.stat(normalized_path)
             hasher.update(str(stats.st_mtime_ns).encode("utf-8"))
             hasher.update(b":")
             hasher.update(str(stats.st_size).encode("utf-8"))
@@ -161,7 +171,7 @@ class WorkerSessionEnsureOutcome:
     session_replaced_for_policy: bool = False
 
 def _normalize_policy_fingerprint_paths(paths: List[str]) -> tuple[str, ...]:
-    return tuple(sorted({str(path) for path in paths if str(path).strip()}))
+    return tuple(sorted({normalized for path in paths if (normalized := _normalize_policy_path(path))}))
 
 def _send_worker_eviction_notice(client, scope_key: str) -> None:
     try:

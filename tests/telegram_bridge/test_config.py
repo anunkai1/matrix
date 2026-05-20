@@ -562,6 +562,30 @@ class TestConfig(unittest.TestCase):
             "Даю справку: уже занят предыдущим запросом.",
         )
 
+    def test_load_config_expands_state_dir_and_derived_state_paths(self):
+        home_dir = Path.home()
+        with tempfile.TemporaryDirectory(dir=home_dir) as tmpdir:
+            state_dir = Path(tmpdir) / "bridge-state"
+            voice_path = Path(tmpdir) / "voice-aliases.json"
+            env = {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_BRIDGE_STATE_DIR": f"~/{state_dir.relative_to(home_dir)}",
+                "TELEGRAM_CANONICAL_SQLITE_PATH": f"~/{(state_dir / 'custom-canonical.sqlite3').relative_to(home_dir)}",
+                "TELEGRAM_VOICE_ALIAS_LEARNING_PATH": f"~/{voice_path.relative_to(home_dir)}",
+            }
+            with mock.patch.dict(os.environ, env, clear=True):
+                config = bridge.load_config()
+
+        self.assertEqual(config.state_dir, str(state_dir))
+        self.assertEqual(
+            config.canonical_sqlite_path,
+            str(state_dir / "custom-canonical.sqlite3"),
+        )
+        self.assertEqual(config.voice_alias_learning_path, str(voice_path))
+        self.assertEqual(config.affective_runtime_db_path, str(state_dir / "affective_state.sqlite3"))
+        self.assertEqual(config.diary_local_root, str(state_dir / "diary"))
+
     def test_load_config_enables_codex_app_server_by_default_for_architect(self):
         with mock.patch.dict(
             os.environ,
@@ -737,6 +761,44 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(first, "fp-stable")
         self.assertEqual(second, "fp-stable")
         compute.assert_called_once_with(["/tmp/policy-a", "/tmp/policy-b"])
+
+    def test_policy_fingerprint_is_stable_across_tilde_and_absolute_paths(self):
+        home_dir = Path.home()
+        with tempfile.TemporaryDirectory(dir=home_dir) as tmpdir:
+            policy_path = Path(tmpdir) / "policy.txt"
+            policy_path.write_text("policy-v1\n", encoding="utf-8")
+            tilde_path = f"~/{policy_path.relative_to(home_dir)}"
+
+            absolute_fingerprint = bridge_session_manager.compute_policy_fingerprint([str(policy_path)])
+            tilde_fingerprint = bridge_session_manager.compute_policy_fingerprint([tilde_path])
+
+        self.assertEqual(absolute_fingerprint, tilde_fingerprint)
+
+    def test_policy_fingerprint_cache_normalizes_tilde_and_absolute_paths(self):
+        bridge_session_manager._policy_fingerprint_cache.clear()
+        home_dir = Path.home()
+        with tempfile.TemporaryDirectory(dir=home_dir) as tmpdir:
+            policy_path = Path(tmpdir) / "policy.txt"
+            policy_path.write_text("policy-v1\n", encoding="utf-8")
+            tilde_path = f"~/{policy_path.relative_to(home_dir)}"
+
+            with mock.patch.object(
+                bridge_session_manager,
+                "compute_policy_fingerprint",
+                return_value="fp-stable",
+            ) as compute:
+                first = bridge_session_manager.get_cached_policy_fingerprint(
+                    [tilde_path],
+                    now=100.0,
+                )
+                second = bridge_session_manager.get_cached_policy_fingerprint(
+                    [str(policy_path)],
+                    now=105.0,
+                )
+
+        self.assertEqual(first, "fp-stable")
+        self.assertEqual(second, "fp-stable")
+        compute.assert_called_once_with([str(policy_path)])
 
     def test_apply_policy_change_thread_reset_clears_stale_threads_and_persists_fingerprint(self):
         with tempfile.TemporaryDirectory() as tmpdir:

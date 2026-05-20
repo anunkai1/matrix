@@ -14,6 +14,7 @@ if str(BRIDGE_DIR) not in sys.path:
 import state_store
 import canonical_state_store
 import request_runtime_state_store
+import scope_state_store
 
 
 class StateStoreUnitTests(unittest.TestCase):
@@ -40,6 +41,21 @@ class StateStoreUnitTests(unittest.TestCase):
             "/tmp/in_flight_requests.json",
             {"tg:1": {"started_at": 1.0, "message_id": 2}},
         )
+
+    def test_persist_json_state_file_expands_tilde_path(self):
+        home_dir = Path.home()
+        with tempfile.TemporaryDirectory(dir=home_dir) as tmpdir:
+            json_path = Path(tmpdir) / "chat_threads.json"
+            tilde_path = f"~/{json_path.relative_to(home_dir)}"
+
+            scope_state_store.persist_json_state_file(
+                tilde_path,
+                {"tg:1": "thread-1"},
+            )
+
+            self.assertTrue(json_path.exists())
+            loaded = scope_state_store.load_json_object(tilde_path, state_label="chat thread")
+            self.assertEqual(loaded, {"tg:1": "thread-1"})
 
     def test_persist_in_flight_snapshot_skips_per_write_fsync(self):
         with mock.patch.object(

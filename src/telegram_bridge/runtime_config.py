@@ -19,6 +19,11 @@ from telegram_bridge.runtime_paths import (
 )
 from telegram_bridge.transport import TELEGRAM_LIMIT
 
+
+def normalize_filesystem_path(path_value: str) -> str:
+    return str(Path(path_value).expanduser())
+
+
 @dataclass
 class CoreConfig:
     token: str
@@ -368,14 +373,17 @@ def load_codex_reasoning_effort() -> str:
     return str(effort).strip().lower() if isinstance(effort, str) else ""
 
 def resolve_state_paths(state_dir: str) -> tuple[str, str]:
+    normalized_state_dir = normalize_filesystem_path(state_dir)
     canonical_sqlite_path = os.getenv("TELEGRAM_CANONICAL_SQLITE_PATH", "").strip()
     if not canonical_sqlite_path:
-        canonical_sqlite_path = os.path.join(state_dir, "chat_sessions.sqlite3")
+        canonical_sqlite_path = os.path.join(normalized_state_dir, "chat_sessions.sqlite3")
+    canonical_sqlite_path = normalize_filesystem_path(canonical_sqlite_path)
 
     affective_runtime_db_path = os.getenv(
         "TELEGRAM_AFFECTIVE_RUNTIME_DB_PATH",
-        os.path.join(state_dir, "affective_state.sqlite3"),
-    ).strip() or os.path.join(state_dir, "affective_state.sqlite3")
+        os.path.join(normalized_state_dir, "affective_state.sqlite3"),
+    ).strip() or os.path.join(normalized_state_dir, "affective_state.sqlite3")
+    affective_runtime_db_path = normalize_filesystem_path(affective_runtime_db_path)
 
     return canonical_sqlite_path, affective_runtime_db_path
 
@@ -445,6 +453,7 @@ def load_voice_config_values(*, state_dir: str) -> Dict[str, object]:
         "TELEGRAM_VOICE_ALIAS_LEARNING_PATH",
         os.path.join(state_dir, "voice_alias_learning.json"),
     ).strip() or os.path.join(state_dir, "voice_alias_learning.json")
+    voice_alias_learning_path = normalize_filesystem_path(voice_alias_learning_path)
     return {
         "voice_transcribe_cmd": parse_optional_cmd_env("TELEGRAM_VOICE_TRANSCRIBE_CMD"),
         "voice_transcribe_timeout_seconds": parse_int_env(
@@ -725,6 +734,10 @@ def load_diary_config_values(
     state_dir: str,
 ) -> Dict[str, object]:
     default_diary_root = os.path.join(state_dir, "diary")
+    diary_local_root = (
+        os.getenv("TELEGRAM_DIARY_LOCAL_ROOT", default_diary_root).strip()
+        or default_diary_root
+    )
     return {
         "diary_mode_enabled": parse_bool_env(
             "TELEGRAM_DIARY_MODE_ENABLED",
@@ -739,10 +752,7 @@ def load_diary_config_values(
             os.getenv("TELEGRAM_DIARY_TIMEZONE", "Australia/Brisbane").strip()
             or "Australia/Brisbane"
         ),
-        "diary_local_root": (
-            os.getenv("TELEGRAM_DIARY_LOCAL_ROOT", default_diary_root).strip()
-            or default_diary_root
-        ),
+        "diary_local_root": normalize_filesystem_path(diary_local_root),
         "diary_nextcloud_enabled": parse_bool_env(
             "TELEGRAM_DIARY_NEXTCLOUD_ENABLED",
             False,
@@ -808,6 +818,7 @@ def load_config() -> Config:
     ).strip()
     if not state_dir:
         raise ValueError("TELEGRAM_BRIDGE_STATE_DIR cannot be empty")
+    state_dir = normalize_filesystem_path(state_dir)
     canonical_sqlite_path, affective_runtime_db_path = resolve_state_paths(
         state_dir
     )

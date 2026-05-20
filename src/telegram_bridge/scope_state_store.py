@@ -12,8 +12,12 @@ _PERSIST_PATH_LOCKS: Dict[str, threading.Lock] = {}
 _PERSIST_PATH_LOCKS_LOCK = threading.Lock()
 
 
+def normalize_path_value(path_value: str) -> str:
+    return str(Path(path_value).expanduser())
+
+
 def _persist_lock_for_path(path_value: str) -> threading.Lock:
-    normalized_path = str(Path(path_value))
+    normalized_path = normalize_path_value(path_value)
     with _PERSIST_PATH_LOCKS_LOCK:
         lock = _PERSIST_PATH_LOCKS.get(normalized_path)
         if lock is None:
@@ -23,7 +27,7 @@ def _persist_lock_for_path(path_value: str) -> threading.Lock:
 
 
 def load_json_object(path: str, *, state_label: str) -> Dict[object, object]:
-    data_path = Path(path)
+    data_path = Path(normalize_path_value(path))
     if not data_path.exists():
         return {}
     try:
@@ -45,9 +49,10 @@ def persist_json_state_file(
 ) -> None:
     if not path_value:
         return
-    path = Path(path_value)
+    normalized_path_value = normalize_path_value(path_value)
+    path = Path(normalized_path_value)
     if delete_when_empty and not serialized:
-        with _persist_lock_for_path(path_value):
+        with _persist_lock_for_path(normalized_path_value):
             try:
                 path.unlink()
             except FileNotFoundError:
@@ -57,7 +62,7 @@ def persist_json_state_file(
         payload = json.dumps(serialized, indent=2, sort_keys=True) + "\n"
     else:
         payload = json.dumps(serialized, separators=(",", ":"), sort_keys=True)
-    with _persist_lock_for_path(path_value):
+    with _persist_lock_for_path(normalized_path_value):
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp_name = tempfile.mkstemp(
             prefix=f".{path.name}.",
