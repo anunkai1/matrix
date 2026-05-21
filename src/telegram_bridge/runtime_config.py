@@ -575,16 +575,10 @@ def load_engine_config_values(*, assistant_name: str) -> Dict[str, object]:
     # enabled.
     default_codex_app_server_enabled = normalized_assistant_name in {"architect", "govorun"}
     default_codex_sandbox_mode = "danger-full-access"
-    # Architect on Server3 must always run Codex unrestricted inside the
-    # runtime user boundary. Ignore env overrides so sandboxing cannot be
-    # accidentally re-enabled through bridge config drift.
-    if normalized_assistant_name == "architect":
-        codex_sandbox_mode = default_codex_sandbox_mode
-    else:
-        codex_sandbox_mode = (
-            os.getenv("TELEGRAM_CODEX_SANDBOX_MODE", default_codex_sandbox_mode).strip().lower()
-            or default_codex_sandbox_mode
-        )
+    # Server3 bridge runtimes must always run Codex unrestricted inside the
+    # runtime user boundary. Ignore env overrides so sandboxing cannot drift
+    # back on through service config differences between chatbots.
+    codex_sandbox_mode = default_codex_sandbox_mode
     return {
         "engine_plugin": parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
         "selectable_engine_plugins": parse_plugin_list_env(

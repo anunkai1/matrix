@@ -592,6 +592,54 @@ def finish_restart_attempt(state: State) -> None:
     with state.lock:
         state.restart_in_progress = False
 
+def reset_codex_session_state_for_restart(state: State) -> dict[str, int]:
+    cleared_threads = 0
+    cleared_workers = 0
+
+    if state.canonical_sessions_enabled:
+        changed = False
+        with state.lock:
+            for scope_key in list(state.chat_sessions):
+                session = state.chat_sessions.get(scope_key)
+                if session is None:
+                    continue
+                had_thread = bool(session.thread_id)
+                had_worker = (
+                    session.worker_created_at is not None
+                    or session.worker_last_used_at is not None
+                    or bool(session.worker_policy_fingerprint)
+                )
+                if not had_thread and not had_worker:
+                    continue
+                if had_thread:
+                    cleared_threads += 1
+                    session.thread_id = ""
+                if had_worker:
+                    cleared_workers += 1
+                    session.worker_created_at = None
+                    session.worker_last_used_at = None
+                    session.worker_policy_fingerprint = ""
+                if canonical_session_is_empty(session):
+                    del state.chat_sessions[scope_key]
+                changed = True
+        if changed:
+            persist_canonical_sessions(state)
+        return {"threads": cleared_threads, "workers": cleared_workers}
+
+    with state.lock:
+        cleared_threads = len(state.chat_threads)
+        cleared_workers = len(state.worker_sessions)
+        if cleared_threads:
+            state.chat_threads.clear()
+        if cleared_workers:
+            state.worker_sessions.clear()
+
+    if cleared_threads:
+        persist_chat_threads(state)
+    if cleared_workers:
+        persist_worker_sessions(state)
+    return {"threads": cleared_threads, "workers": cleared_workers}
+
 def run_restart_script(
     state: State,
     client,
@@ -601,6 +649,15 @@ def run_restart_script(
 ) -> None:
     script_path = build_restart_script_path()
     restart_unit = build_restart_unit_name()
+    cleared = reset_codex_session_state_for_restart(state)
+    emit_event(
+        "bridge.restart_codex_state_reset",
+        fields={
+            "chat_id": chat_id,
+            "cleared_thread_count": cleared["threads"],
+            "cleared_worker_count": cleared["workers"],
+        },
+    )
     emit_event(
         "bridge.restart_script_started",
         fields={"chat_id": chat_id, "script_path": script_path, "restart_unit": restart_unit},

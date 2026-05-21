@@ -27,15 +27,55 @@ class ExecutorCancelledError(Exception):
 _EXECUTOR_ENV_CACHE_ATTR = "_cached_executor_env"
 _EXECUTOR_RESULT_THREAD_ID_ATTR = "_executor_thread_id"
 _EXECUTOR_RESULT_OUTPUT_ATTR = "_executor_output"
+_EDITOR_HOST_ENV_PREFIXES = (
+    "VSCODE_",
+    "ELECTRON_",
+    "CURSOR_",
+    "WINDSURF_",
+    "ZED_",
+)
+_EDITOR_HOST_PROGRAM_VALUES = {"vscode", "cursor", "windsurf", "zed"}
+_EDITOR_HOST_ASKPASS_MARKERS = (
+    "vscode",
+    "cursor",
+    "windsurf",
+    "zed",
+    "/code",
+    "\\code",
+)
+
+
+def _should_strip_editor_host_env(name: str, value: str, *, term_program: str) -> bool:
+    normalized_name = str(name or "").strip()
+    if not normalized_name:
+        return False
+    upper_name = normalized_name.upper()
+    for prefix in _EDITOR_HOST_ENV_PREFIXES:
+        if upper_name.startswith(prefix):
+            return True
+    normalized_value = str(value or "").strip().lower()
+    if upper_name == "TERM_PROGRAM" and normalized_value in _EDITOR_HOST_PROGRAM_VALUES:
+        return True
+    if upper_name == "TERM_PROGRAM_VERSION" and term_program in _EDITOR_HOST_PROGRAM_VALUES:
+        return True
+    if upper_name in {"GIT_ASKPASS", "SSH_ASKPASS"}:
+        return any(marker in normalized_value for marker in _EDITOR_HOST_ASKPASS_MARKERS)
+    return False
+
+
+def build_codex_subprocess_env() -> Dict[str, str]:
+    env = os.environ.copy()
+    term_program = str(env.get("TERM_PROGRAM", "")).strip().lower()
+    for name in list(env):
+        if _should_strip_editor_host_env(name, env.get(name, ""), term_program=term_program):
+            env.pop(name, None)
+    return env
 
 
 def _build_executor_env(config) -> Optional[Dict[str, str]]:
     model = str(getattr(config, "codex_model", "") or "").strip()
     effort = str(getattr(config, "codex_reasoning_effort", "") or "").strip().lower()
-    assistant_name = str(getattr(config, "assistant_name", "") or "").strip().lower()
     sandbox_mode = str(getattr(config, "codex_sandbox_mode", "") or "").strip().lower()
-    if assistant_name == "architect":
-        sandbox_mode = "danger-full-access"
     if not model and not effort and not sandbox_mode:
         return None
 
@@ -46,7 +86,7 @@ def _build_executor_env(config) -> Optional[Dict[str, str]]:
         if isinstance(cached_env, dict):
             return cached_env
 
-    env = os.environ.copy()
+    env = build_codex_subprocess_env()
     if model:
         env["CODEX_MODEL"] = model
     if effort:
@@ -149,7 +189,13 @@ def run_executor(
         normalized_image_paths.append(image_path)
     for candidate in normalized_image_paths:
         cmd.extend(["--image", candidate])
-    logging.info("Running executor command: %s", cmd)
+    logging.info(
+        "Running executor command mode=%s sandbox=%s session_key=%s cmd=%s",
+        mode,
+        str(getattr(config, "codex_sandbox_mode", "") or "").strip().lower() or "danger-full-access",
+        session_key,
+        cmd,
+    )
     start = time.monotonic()
     emit_event(
         "bridge.executor_subprocess_start",
@@ -157,6 +203,9 @@ def run_executor(
             "mode": mode,
             "has_image": bool(normalized_image_paths),
             "image_count": len(normalized_image_paths),
+            "sandbox_mode": str(getattr(config, "codex_sandbox_mode", "") or "").strip().lower()
+            or "danger-full-access",
+            "session_key": session_key,
             "cmd": cmd,
         },
     )

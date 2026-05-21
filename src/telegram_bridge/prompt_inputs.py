@@ -11,6 +11,7 @@ from telegram_bridge.attachment_processing import (
     download_document_to_temp,
     download_photo_to_temp,
     download_voice_to_temp,
+    resolve_voice_attachment_for_prompt,
     transcribe_voice,
 )
 from telegram_bridge.channel_adapter import ChannelAdapter
@@ -51,9 +52,15 @@ def transcribe_voice_for_chat(
         return None
 
     voice_path: Optional[str] = None
+    cleanup_voice_path = False
     try:
         try:
-            voice_path = download_voice_to_temp(client, config, voice_file_id)
+            resolution = resolve_voice_attachment_for_prompt(
+                getattr(state, "attachment_store", None),
+                channel_name=getattr(client, "channel_name", "telegram"),
+                file_id=voice_file_id,
+                downloader=lambda: download_voice_to_temp(client, config, voice_file_id),
+            )
         except ValueError as exc:
             logging.warning("Voice rejected for chat_id=%s: %s", chat_id, exc)
             _reply(client, chat_id, message_id, str(exc))
@@ -61,6 +68,13 @@ def transcribe_voice_for_chat(
         except Exception:
             logging.exception("Voice download failed for chat_id=%s", chat_id)
             _reply(client, chat_id, message_id, config.voice_download_error_message)
+            return None
+
+        voice_path = resolution.local_path
+        cleanup_voice_path = bool(resolution.cleanup_path)
+        if voice_path is None:
+            logging.warning("Voice audio unavailable for chat_id=%s file_id=%s", chat_id, voice_file_id)
+            _reply(client, chat_id, message_id, config.voice_transcribe_error_message)
             return None
 
         try:
@@ -121,7 +135,7 @@ def transcribe_voice_for_chat(
                 logging.exception("Failed to send voice transcript echo for chat_id=%s", chat_id)
         return transcript
     finally:
-        if voice_path:
+        if voice_path and cleanup_voice_path:
             try:
                 os.remove(voice_path)
             except OSError:
@@ -195,6 +209,7 @@ def prewarm_attachment_archive_for_message(
         extract_message_photo_file_ids_fn=extract_message_photo_file_ids,
         extract_message_media_payload_fn=extract_message_media_payload,
         download_photo_to_temp_fn=download_photo_to_temp,
+        download_voice_to_temp_fn=download_voice_to_temp,
         download_document_to_temp_fn=download_document_to_temp,
         archive_media_path_fn=archive_media_path,
     )

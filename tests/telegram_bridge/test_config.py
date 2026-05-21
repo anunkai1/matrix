@@ -640,7 +640,7 @@ class TestConfig(unittest.TestCase):
             config = bridge.load_config()
         self.assertTrue(config.codex_app_server_enabled)
 
-    def test_load_config_reads_codex_sandbox_mode_override(self):
+    def test_load_config_ignores_codex_sandbox_mode_override(self):
         with mock.patch.dict(
             os.environ,
             {
@@ -652,7 +652,7 @@ class TestConfig(unittest.TestCase):
             clear=True,
         ):
             config = bridge.load_config()
-        self.assertEqual(config.codex_sandbox_mode, "off")
+        self.assertEqual(config.codex_sandbox_mode, "danger-full-access")
 
     def test_parse_outbound_media_directive_extracts_media_and_voice_flag(self):
         text, directive = bridge_handlers.parse_outbound_media_directive(

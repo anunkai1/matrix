@@ -119,6 +119,46 @@ class TestPromptPreparation(unittest.TestCase):
         self.assertEqual(prepared.attachment_file_ids, ["doc-1"])
         self.assertEqual(client.messages, [])
 
+    def test_prewarm_attachment_archive_for_message_archives_voice_notes(self):
+        state = bridge.State()
+        state.attachment_store = mock.Mock()
+        client = FakeTelegramClient()
+        config = make_config()
+        message = {
+            "message_id": 1025,
+            "chat": {"id": 1, "type": "private"},
+            "voice": {"file_id": "voice-1"},
+        }
+        voice_download = mock.Mock(return_value="/tmp/fake-voice.ogg")
+        archive_media_path = mock.Mock(return_value="/data/archive/fake-voice.ogg")
+
+        with (
+            mock.patch.object(
+                prompt_preparation.attachment_processing,
+                "resolve_attachment_binary_or_summary",
+                return_value=(None, ""),
+            ) as resolve_attachment_binary_or_summary,
+            mock.patch.object(prompt_preparation.os, "remove") as remove_temp,
+        ):
+            prompt_preparation.prewarm_attachment_archive_for_message(
+                state,
+                config,
+                client,
+                1,
+                message,
+                extract_message_photo_file_ids_fn=mock.Mock(return_value=[]),
+                extract_message_media_payload_fn=mock.Mock(return_value=(None, "voice-1", None)),
+                download_photo_to_temp_fn=mock.Mock(),
+                download_voice_to_temp_fn=voice_download,
+                download_document_to_temp_fn=mock.Mock(),
+                archive_media_path_fn=archive_media_path,
+            )
+
+        resolve_attachment_binary_or_summary.assert_called_once()
+        voice_download.assert_called_once()
+        archive_media_path.assert_called_once()
+        remove_temp.assert_called_once_with("/tmp/fake-voice.ogg")
+
     def test_prepare_prompt_input_request_rejects_voice_without_required_prefix(self):
         state = bridge.State()
         client = FakeTelegramClient()

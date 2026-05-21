@@ -7,7 +7,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
-from telegram_bridge.executor import ExecutorCancelledError, ExecutorProgressEvent, attach_cached_executor_result
+from telegram_bridge.executor import (
+    ExecutorCancelledError,
+    ExecutorProgressEvent,
+    attach_cached_executor_result,
+    build_codex_subprocess_env,
+)
 
 
 _SESSION_REGISTRY_LOCK = threading.Lock()
@@ -34,9 +39,6 @@ def _model_value(config) -> Optional[str]:
 
 
 def _sandbox_mode_value(config) -> str:
-    assistant_name = str(getattr(config, "assistant_name", "") or "").strip().lower()
-    if assistant_name == "architect":
-        return "danger-full-access"
     engines = _engines_config(config)
     raw = str(getattr(engines, "codex_sandbox_mode", "") or "").strip().lower()
     return raw or "danger-full-access"
@@ -511,6 +513,12 @@ class CodexAppServerSession:
             "-c", f"sandbox={self._sandbox_mode}",
             "-c", "approval_policy=never",
         ]
+        logging.info(
+            "Starting Codex app-server scope=%s sandbox=%s cmd=%s",
+            self.scope_key,
+            self._sandbox_mode,
+            cmd,
+        )
         self.process = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -518,6 +526,7 @@ class CodexAppServerSession:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            env=build_codex_subprocess_env(),
         )
         self._initialized = False
         self._stderr_buffer: List[str] = []

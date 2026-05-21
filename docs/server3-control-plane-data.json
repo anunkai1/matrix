@@ -1,18 +1,18 @@
 {
-  "generatedAt": "2026-05-18T21:10:56.477238+10:00",
+  "generatedAt": "2026-05-21T09:38:24.090454+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
     "runtimeValue": "6 live",
-    "runtimeCopy": "6 healthy, 0 degraded, 0 waiting, 0 offline",
+    "runtimeCopy": "5 healthy, 1 degraded, 0 waiting, 0 offline",
     "approvalValue": "0 pending",
     "approvalCopy": "explicit human gates from live Server3 state",
     "jobValue": "12 tracked",
     "jobCopy": "timers, approvals, and operator playback in one surface",
-    "hostValue": "load 11.70 / ram 13%",
+    "hostValue": "load 7.93 / ram 6%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "18 May 2026 21:10 AEST",
+      "21 May 2026 09:38 AEST",
       "snapshot file server3-control-plane-data.js",
       "0 approval item(s)"
     ],
@@ -50,7 +50,7 @@
         "title": "Nominal lane",
         "stateClass": "ok",
         "stateText": "healthy",
-        "body": "6 selected runtimes match expected live posture."
+        "body": "5 selected runtimes match expected live posture."
       },
       {
         "title": "Approval lane",
@@ -86,52 +86,52 @@
   },
   "activity": [
     {
-      "time": "21:10:48",
-      "title": "Oracle recent service activity",
-      "channel": "signal runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "Started signal-oracle-bridge.service - Signal Oracle Transport Bridge."
-    },
-    {
-      "time": "17:12:05",
-      "title": "Mavali ETH recent service activity",
-      "channel": "venue operations runtime",
+      "time": "09:40:27",
+      "title": "Architect recent service activity",
+      "channel": "telegram primary",
       "statusClass": "ok",
       "statusText": "healthy",
       "copy": "bridge.telegram_api_retry_succeeded | getUpdates"
     },
     {
-      "time": "13:11:19",
+      "time": "09:40:25",
+      "title": "Oracle recent service activity",
+      "channel": "signal runtime",
+      "statusClass": "danger",
+      "statusText": "degraded",
+      "copy": "2026-05-21 09:40:25,884 INFO 127.0.0.1 - \"GET /updates?offset=0&timeout=0 HTTP/1.1\" 200 -"
+    },
+    {
+      "time": "09:40:16",
       "title": "Diary recent service activity",
       "channel": "capture runtime",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "bridge.telegram_api_retry_succeeded | getUpdates"
+      "copy": "bridge.started"
     },
     {
-      "time": "13:11:13",
+      "time": "09:40:16",
+      "title": "Mavali ETH recent service activity",
+      "channel": "venue operations runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "09:40:16",
       "title": "Tank recent service activity",
       "channel": "telegram sibling",
       "statusClass": "ok",
       "statusText": "healthy",
-      "copy": "bridge.telegram_api_retry_succeeded | getUpdates"
+      "copy": "bridge.started"
     },
     {
-      "time": "08:15:30",
+      "time": "09:38:18",
       "title": "Govorun recent service activity",
       "channel": "whatsapp runtime",
       "statusClass": "ok",
       "statusText": "healthy",
       "copy": "Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
-    },
-    {
-      "time": "--:--:--",
-      "title": "Architect recent service activity",
-      "channel": "telegram primary",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "no recent log line"
     }
   ],
   "playback": {
@@ -231,14 +231,14 @@
     {
       "title": "Observer summary",
       "tagClass": "busy",
-      "tagText": "18 May 21:15",
-      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 18 May 21:10."
+      "tagText": "21 May 09:45",
+      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 21 May 09:40."
     },
     {
       "title": "Routing drift check",
       "tagClass": "busy",
-      "tagText": "19 May 06:15",
-      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 18 May 06:15."
+      "tagText": "22 May 06:15",
+      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 21 May 06:15."
     },
     {
       "title": "State backup",
@@ -250,7 +250,7 @@
       "title": "Receipt monitor",
       "tagClass": "busy",
       "tagText": "not scheduled",
-      "body": "mavali-eth-receipt-monitor.timer is active. Last trigger: 18 May 21:10."
+      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: not scheduled."
     }
   ],
   "floor": [
@@ -258,24 +258,24 @@
       "title": "Internal disk",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "14% used",
-      "body": "/ | 390 GiB free of 480 GiB",
+      "value": "37% used",
+      "body": "/ | 280 GiB free of 480 GiB",
       "statusLine": "system root filesystem"
     },
     {
       "title": "External disk",
       "stateClass": "warn",
       "stateText": "watch",
-      "value": "46% used",
-      "body": "/srv/external/server3-arr | 895 GiB free of 1833 GiB",
+      "value": "48% used",
+      "body": "/srv/external/server3-arr | 864 GiB free of 1833 GiB",
       "statusLine": "backup disk: 7% used"
     },
     {
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 11.70 / ram 13%",
-      "body": "primary route eno2 / 192.168.0.148",
+      "value": "load 7.77 / ram 6%",
+      "body": "primary route nordlynx / 10.5.0.2",
       "statusLine": "host: server3"
     },
     {
@@ -283,7 +283,7 @@
       "stateClass": "busy",
       "stateText": "live",
       "value": "/data/downloads",
-      "body": "14% used | 390 GiB free of 480 GiB",
+      "body": "37% used | 280 GiB free of 480 GiB",
       "statusLine": "canonical media namespace is /data/downloads and /data/media/..."
     },
     {
@@ -292,7 +292,7 @@
       "stateText": "queued",
       "value": "Observer summary, Routing drift check, State backup",
       "body": "Visible timers stay on the floor so continuity work is never hidden behind another tool.",
-      "statusLine": "next: 18 May 21:15"
+      "statusLine": "next: 21 May 09:45"
     }
   ],
   "runtimes": [
@@ -330,7 +330,7 @@
       "recentJobs": [
         {
           "label": "telegram-architect-bridge.service",
-          "value": "--:--:-- no recent log line"
+          "value": "09:38:18 Started telegram-architect-bridge.service - Telegram Architect Bridge."
         }
       ],
       "watchouts": [
@@ -413,7 +413,7 @@
       "recentJobs": [
         {
           "label": "telegram-tank-bridge.service",
-          "value": "13:11:13 bridge.telegram_api_retry_succeeded | getUpdates"
+          "value": "09:38:18 Started telegram-tank-bridge.service - Telegram Tank Bridge."
         }
       ],
       "watchouts": [
@@ -483,7 +483,7 @@
       "recentJobs": [
         {
           "label": "telegram-diary-bridge.service",
-          "value": "13:11:19 bridge.telegram_api_retry_succeeded | getUpdates"
+          "value": "09:38:18 Started telegram-diary-bridge.service - Telegram Diary Bridge."
         }
       ],
       "watchouts": [
@@ -553,11 +553,11 @@
       "recentJobs": [
         {
           "label": "whatsapp-govorun-bridge.service",
-          "value": "08:15:30 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
+          "value": "09:38:18 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
         },
         {
           "label": "govorun-whatsapp-bridge.service",
-          "value": "19:57:52 bridge.request_processing_finished"
+          "value": "09:38:19 Started govorun-whatsapp-bridge.service - Govorun WhatsApp Bridge."
         }
       ],
       "watchouts": [
@@ -597,8 +597,8 @@
     {
       "key": "oracle",
       "name": "Oracle",
-      "stateClass": "ok",
-      "stateText": "healthy",
+      "stateClass": "danger",
+      "stateText": "degraded",
       "role": "Signal runtime",
       "operatorNote": "transport + bridge",
       "summary": "Signal transport sidecar used by the Oracle bridge.",
@@ -622,23 +622,23 @@
         },
         {
           "label": "live state",
-          "value": "active / active"
+          "value": "active / activating"
         }
       ],
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "21:10:48 Started signal-oracle-bridge.service - Signal Oracle Transport Bridge."
+          "value": "09:38:17 Started signal-oracle-bridge.service - Signal Oracle Transport Bridge."
         },
         {
           "label": "oracle-signal-bridge.service",
-          "value": "21:10:56 bridge.poll_error"
+          "value": "09:38:17 Starting oracle-signal-bridge.service - Oracle Signal Bridge..."
         }
       ],
       "watchouts": [
         {
           "label": "current issue",
-          "value": "no active unit mismatch detected"
+          "value": "expected active, got activating"
         },
         {
           "label": "operator note",
@@ -697,17 +697,17 @@
         },
         {
           "label": "live state",
-          "value": "active"
+          "value": "mixed"
         }
       ],
       "recentJobs": [
         {
           "label": "telegram-mavali-eth-bridge.service",
-          "value": "17:12:05 bridge.telegram_api_retry_succeeded | getUpdates"
+          "value": "09:38:18 Started telegram-mavali-eth-bridge.service - Telegram Mavali ETH Bridge."
         },
         {
           "label": "mavali-eth-receipt-monitor.timer",
-          "value": "--:--:-- no recent log line"
+          "value": "09:38:09 Started mavali-eth-receipt-monitor.timer - Poll for confirmed inbound ETH for mavali_eth."
         }
       ],
       "watchouts": [

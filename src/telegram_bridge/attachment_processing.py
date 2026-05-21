@@ -231,6 +231,51 @@ def resolve_attachment_for_prompt(
         size_bytes=size_bytes,
     )
 
+def resolve_voice_attachment_for_prompt(
+    attachment_store,
+    *,
+    channel_name: str,
+    file_id: str,
+    downloader: Callable[[], object],
+    archiver: Optional[Callable[..., Optional[str]]] = None,
+) -> AttachmentResolution:
+    record_path, _ = resolve_attachment_binary_or_summary(
+        attachment_store,
+        channel_name=channel_name,
+        file_id=file_id,
+        media_label="voice note",
+    )
+    if record_path is not None:
+        return AttachmentResolution(
+            status=AttachmentResolutionStatus.BINARY,
+            local_path=record_path,
+            size_bytes=os.path.getsize(record_path),
+        )
+
+    temp_path, size_bytes = _normalize_downloaded_attachment(downloader())
+    archive_fn = archiver or archive_media_path
+    archived_path = archive_fn(
+        attachment_store,
+        channel_name=channel_name,
+        file_id=file_id,
+        media_kind="voice",
+        source_path=temp_path,
+    )
+    if archived_path:
+        _remove_temporary_attachment(temp_path, "voice note")
+        return AttachmentResolution(
+            status=AttachmentResolutionStatus.BINARY,
+            local_path=archived_path,
+            size_bytes=os.path.getsize(archived_path),
+        )
+
+    return AttachmentResolution(
+        status=AttachmentResolutionStatus.BINARY,
+        local_path=temp_path,
+        cleanup_path=temp_path,
+        size_bytes=size_bytes,
+    )
+
 def build_voice_transcribe_command(cmd_template: List[str], voice_path: str) -> List[str]:
     cmd: List[str] = []
     used_placeholder = False

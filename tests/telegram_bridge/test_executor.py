@@ -48,6 +48,49 @@ import telegram_bridge.whatsapp_channel as bridge_whatsapp_channel
 
 
 class TestExecutor(unittest.TestCase):
+    def test_build_codex_subprocess_env_strips_editor_host_markers(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PATH": "/usr/bin",
+                "TERM_PROGRAM": "vscode",
+                "TERM_PROGRAM_VERSION": "1.2.3",
+                "VSCODE_IPC_HOOK_CLI": "/tmp/vscode.sock",
+                "VSCODE_GIT_ASKPASS_NODE": "/tmp/node",
+                "GIT_ASKPASS": "/opt/Code/resources/app/extensions/git/dist/askpass.sh",
+                "SSH_ASKPASS": "/opt/Code/resources/app/extensions/git/dist/askpass.sh",
+                "KEEP_ME": "1",
+            },
+            clear=True,
+        ):
+            env = bridge_executor.build_codex_subprocess_env()
+
+        self.assertEqual(env["PATH"], "/usr/bin")
+        self.assertEqual(env["KEEP_ME"], "1")
+        self.assertNotIn("TERM_PROGRAM", env)
+        self.assertNotIn("TERM_PROGRAM_VERSION", env)
+        self.assertNotIn("VSCODE_IPC_HOOK_CLI", env)
+        self.assertNotIn("VSCODE_GIT_ASKPASS_NODE", env)
+        self.assertNotIn("GIT_ASKPASS", env)
+        self.assertNotIn("SSH_ASKPASS", env)
+
+    def test_build_codex_subprocess_env_preserves_non_editor_askpass(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PATH": "/usr/bin",
+                "TERM_PROGRAM": "tmux",
+                "GIT_ASKPASS": "/usr/local/bin/custom-askpass",
+                "SSH_ASKPASS": "/usr/local/bin/custom-ssh-askpass",
+            },
+            clear=True,
+        ):
+            env = bridge_executor.build_codex_subprocess_env()
+
+        self.assertEqual(env["TERM_PROGRAM"], "tmux")
+        self.assertEqual(env["GIT_ASKPASS"], "/usr/local/bin/custom-askpass")
+        self.assertEqual(env["SSH_ASKPASS"], "/usr/local/bin/custom-ssh-askpass")
+
     def test_codex_app_server_has_active_turn_does_not_start_process(self):
         session = bridge_codex_app_server.CodexAppServerSession(
             scope_key="tg:1",
@@ -169,6 +212,36 @@ class TestExecutor(unittest.TestCase):
         session._stop_process()
 
         self.assertIsNone(session._thread_id)
+
+    def test_codex_app_server_start_process_uses_scrubbed_env(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(),
+        )
+
+        fake_process = SimpleNamespace(
+            poll=lambda: None,
+            stdout=io.StringIO(),
+            stderr=io.StringIO(),
+            stdin=io.StringIO(),
+        )
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PATH": "/usr/bin",
+                "TERM_PROGRAM": "vscode",
+                "VSCODE_IPC_HOOK_CLI": "/tmp/vscode.sock",
+                "KEEP_ME": "1",
+            },
+            clear=True,
+        ), mock.patch("telegram_bridge.codex_app_server.subprocess.Popen", return_value=fake_process) as popen:
+            session._start_process()
+
+        launched_env = popen.call_args.kwargs["env"]
+        self.assertEqual(launched_env["KEEP_ME"], "1")
+        self.assertNotIn("TERM_PROGRAM", launched_env)
+        self.assertNotIn("VSCODE_IPC_HOOK_CLI", launched_env)
 
     def test_parse_executor_output_json_stream(self):
         sample_stream = (

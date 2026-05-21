@@ -1,14 +1,14 @@
 # Server3 Summary
 
-Last updated: 2026-05-20 (AEST, +10:00)
+Last updated: 2026-05-21 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
 - Runtime pattern: Telegram long polling + live `codex app-server` for Architect Codex turns, with per-scope coalesced follow-up steering for active plain-text turns
 - Live runtime inventory lives in `infra/server3-runtime-manifest.json`; verify actual state with `python3 ops/server3_runtime_status.py`.
 - Architect currently defaults to `codex`; selectable chat engines are driven by live env/config (`codex`, `gemma`, `pi` in the current Architect runtime), with the user-facing `/engine` alias `ollama(s4)` now mapped to internal engine key `gemma`.
-- Architect now hardwires Codex unrestricted mode in bridge code and ignores sandbox env overrides.
-- Core capabilities: text/photo/voice/document handling, voice transcription, outbound Telegram voice-note replies, persistent workers, safe queued `/restart`, and canonical SQLite session state. Provider-side continuity still relies on engine-native sessions (Pi JSONL per scope, Codex JSONL per exec session).
+- Server3 Telegram bridge runtimes now hardwire Codex unrestricted mode in shared bridge code and ignore sandbox env overrides.
+- Core capabilities: text/photo/voice/document handling, voice transcription, raw voice-note archival for reuse, outbound Telegram voice-note replies, persistent workers, safe queued `/restart`, and canonical SQLite session state. Provider-side continuity still relies on engine-native sessions (Pi JSONL per scope, Codex JSONL per exec session).
 - Priority stateless routes: `HA ...`, `Server3 TV ...`, `Nextcloud ...`, `SRO ...`, and bare YouTube links.
 
 ## Operator Capabilities
@@ -39,6 +39,8 @@ Last updated: 2026-05-20 (AEST, +10:00)
 
 ## Recent Changes (Rolling Max 20)
 - 2026-05-20: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
+- 2026-05-21: voice notes now archive their raw audio into the attachment store before temp cleanup, matching the photo/document reuse pattern and preserving the source clip for later analysis.
+- 2026-05-21: the shared Telegram bridge core now hardwires Codex `danger-full-access` for all Server3 Telegram bridge runtimes, ignores `TELEGRAM_CODEX_SANDBOX_MODE` drift, and logs the active Codex launch policy at startup and per turn.
 - 2026-05-19: removed the DishFramed bridge integration and host repo/cache from Server3; the bridge keeps a minimal `/dishframed` rejection guard so the old command cannot fall through into Codex prompt handling.
 - 2026-05-19: Architect Codex runtime now hardwires unrestricted `danger-full-access` in bridge code, ignores `TELEGRAM_CODEX_SANDBOX_MODE` overrides, and suppresses the known bundled-`bubblewrap` advisory when Codex is already unrestricted.
 - 2026-05-19: Architect Telegram Codex app-server sessions now default to unrestricted `sandbox=danger-full-access`; the bridge no longer treats the bundled-bubblewrap advisory as a startup failure.

@@ -108,6 +108,7 @@ def _handle_voice_attachment(
     if not request.voice_file_id:
         return preparation
 
+    preparation.attachment_file_ids.append(request.voice_file_id)
     progress.set_phase("Transcribing voice message.")
     transcript = transcribe_voice_for_chat_fn(
         state=request.state,
@@ -324,6 +325,7 @@ def prewarm_attachment_archive_for_message(
     extract_message_photo_file_ids_fn,
     extract_message_media_payload_fn,
     download_photo_to_temp_fn,
+    download_voice_to_temp_fn,
     download_document_to_temp_fn,
     archive_media_path_fn,
 ) -> None:
@@ -333,7 +335,7 @@ def prewarm_attachment_archive_for_message(
     channel_name = getattr(client, "channel_name", "telegram")
 
     photo_file_ids = extract_message_photo_file_ids_fn(message)
-    _, _, document = extract_message_media_payload_fn(message)
+    _, voice_file_id, document = extract_message_media_payload_fn(message)
     for photo_file_id in photo_file_ids:
         try:
             attachment_processing.resolve_attachment_for_prompt(
@@ -352,6 +354,33 @@ def prewarm_attachment_archive_for_message(
                 photo_file_id,
                 exc_info=True,
             )
+
+    if voice_file_id is not None:
+        record, _ = attachment_processing.resolve_attachment_binary_or_summary(
+            attachment_store,
+            channel_name=channel_name,
+            file_id=voice_file_id,
+            media_label="voice note",
+        )
+        if record is None:
+            try:
+                temp_path = download_voice_to_temp_fn(client, config, voice_file_id)
+                archived_path = archive_media_path_fn(
+                    attachment_store,
+                    channel_name=channel_name,
+                    file_id=voice_file_id,
+                    media_kind="voice",
+                    source_path=temp_path,
+                )
+                if archived_path:
+                    os.remove(temp_path)
+            except Exception:
+                logging.warning(
+                    "Failed to prewarm attachment archive for chat_id=%s voice_file_id=%s",
+                    chat_id,
+                    voice_file_id,
+                    exc_info=True,
+                )
 
     if document is not None:
         try:
