@@ -480,6 +480,7 @@ Required `v2` additions:
 
 - `latest_truth_state.json`
   - add registry-driven check results
+  - add claim-evaluation results such as `claim_results`, `claim_summary`, and `stale_claims`
   - add explicit rendered-doc alignment facts for approved secondary docs
   - add stale-context warning state for eligible scopes
 - `latest_health_state.json`
@@ -487,6 +488,7 @@ Required `v2` additions:
   - add any new health checks only through the registry
 - `latest_run_state.json`
   - add executed registry checks, skipped registry checks, and reasons
+  - add the active claim-verification mode such as `audit_only` or `corrective`
   - add any `/truth_status` or `/reset`-related maintenance bookkeeping only if it is run-level rather than truth-level
 
 Optional `v2` additions:
@@ -527,10 +529,16 @@ Required conditional checks:
 - `policy_watch_truth`
 - `telegram_context_routing_truth`
 - `server3_summary_truth`
-  - purpose: validate approved `SERVER3_SUMMARY.md` claims against structured truth and live inputs that are already in dream-loop scope
-  - correction target: `SERVER3_SUMMARY.md` only for explicitly mapped fields
+  - purpose: evaluate approved `SERVER3_SUMMARY.md` claims against structured truth and live inputs that are already in dream-loop scope
+  - correction target: claim results in truth/report state first, then `SERVER3_SUMMARY.md` only for explicitly approved claim-backed correction targets
 
 The `server3_summary_truth` check is the key `v2` step that turns summary maintenance from ad hoc rendering into declared truth alignment.
+
+The current narrow field-mapping approach is transitional only.
+
+It exists to keep the already-implemented bounded runner conservative until claim verification replaces it.
+
+`V2` should treat line-level or field-level summary mapping as legacy compatibility behavior, not as the long-term alignment model.
 
 ### V2 Approved Secondary Truth Surface
 
@@ -540,15 +548,255 @@ The `server3_summary_truth` check is the key `v2` step that turns summary mainte
 
 For `v2`, approval of `SERVER3_SUMMARY.md` means:
 
-- specific summary fields are explicitly mapped to structured truth or approved live inputs
-- each mapped field has one declared correction path
+- specific summary claims are explicitly declared and tied to bounded evidence
+- each approved claim has one declared correction path
 - unmapped prose remains operator-owned and must not be rewritten by the loop
 
-Initial `v2` mapped summary fields should be narrow:
+Initial `v2` correction targets should stay narrow:
 
 - dream-loop timer/status line
 - runtime observer mode/schedule line
-- other summary lines only when they already have a declared upstream truth source and a stable correction rule
+- other summary lines only when they already have a declared upstream truth source, a stable claim definition, and a stable correction rule
+
+During the migration from field mapping to claim verification:
+
+- already-implemented mapped summary fields may remain in place temporarily
+- no new summary maintenance should be added as free-standing field mapping when a claim-backed verifier can be declared instead
+- once a summary area is claim-backed, the claim becomes the unit of verification and correction rather than the raw line text
+
+### V2 Claim Verification Model
+
+`V2` should move broader doc alignment from line-based summary maintenance to bounded claim verification.
+
+The dream loop should treat selected startup-loaded docs and approved explainer docs as claim surfaces, not as free-form prose that must be semantically reinterpreted from scratch on every run.
+
+The preferred model is:
+
+1. declare concrete operational or capability claims
+2. attach each claim to bounded evidence
+3. evaluate each claim against code, config, commands, or live runtime state
+4. record the result in structured truth/report state
+5. allow correction only for explicitly approved claim-backed targets
+
+The claim-verification model exists because broad prose drift is too open-ended, while the current hard-coded field mapping is too narrow.
+
+#### Claim Surfaces
+
+Initial claim surfaces should be:
+
+- `ARCHITECT_INSTRUCTION.md`
+- `SERVER3_SUMMARY.md`
+
+Later surfaces may include:
+
+- `LESSONS.md`, but only for concrete validated operational lessons that the loop is explicitly meant to enforce
+- `private/SOUL.md`, but only when it contains concrete operational constraints rather than collaboration tone
+
+`remember.md` and other private or informal notes should not be included by default unless they are explicitly promoted into approved claim surfaces.
+
+#### Claim Eligibility
+
+Not every sentence in an approved doc is a claim.
+
+A statement should only become a dream-loop claim when all of the following are true:
+
+- it describes runtime behavior, capability, policy, config, workflow, or another operational fact
+- it can be reduced to bounded observable evidence
+- it can be evaluated without open-ended repo interpretation
+- it matters enough that truth drift should be tracked
+
+These are valid examples:
+
+- restart behavior
+- follow-up steering behavior
+- worker/session persistence behavior
+- timer schedule behavior
+- declared runtime capability behavior
+
+These are not valid examples:
+
+- personality or tone statements
+- vague aspirations
+- broad prose that cannot be tied to observable evidence
+
+#### Claim Registry
+
+The dream loop should keep a separate executable claim registry.
+
+That registry should be read at runtime.
+
+The dream-loop design spec should define how claim verification works, but the spec itself should not need to be parsed every run.
+
+Each claim entry should define at minimum:
+
+- `claim_id`
+- `source_doc`
+- `source_anchor`
+- `claim_text`
+- `claim_kind`
+- `verifier`
+- `evidence_inputs`
+- `correction_target`
+- `severity`
+
+The registry should be the runtime source of truth for which claims are evaluated.
+
+Approved claim-surface docs do not, by themselves, force every sentence in those docs to be read as a runtime claim.
+
+Only claims explicitly declared in the claim registry should be evaluated by the loop.
+
+The claim registry is not the same thing as the dream-loop check registry.
+
+Their responsibilities should stay separate:
+
+- the check registry defines which bounded scan/evaluation routines the dream loop can run
+- the claim registry defines which approved human-authored claims are evaluated by those routines or by claim-specific verifiers
+
+In practice:
+
+- the check registry controls execution flow
+- the claim registry controls claim coverage
+
+The initial claim-registry implementation should stay separate from prose docs and from the large design spec.
+
+#### Verifier Types
+
+Initial verifier types should stay bounded and mechanical.
+
+Examples:
+
+- file-marker or code-anchor verifier
+- config/env value verifier
+- systemd unit or timer verifier
+- runtime command output verifier
+- structured JSON/state-field verifier
+
+If a claim cannot be checked through a bounded verifier, it should not be in the first-wave claim set.
+
+#### Claim Statuses
+
+Each evaluated claim should resolve to one of:
+
+- `verified`
+- `stale`
+- `ambiguous`
+- `unverifiable`
+
+Meaning:
+
+- `verified`
+  - bounded evidence matches the declared claim
+- `stale`
+  - bounded evidence contradicts the declared claim
+- `ambiguous`
+  - the claim or evidence boundary is not precise enough to decide safely
+- `unverifiable`
+  - the current loop has no acceptable verifier path for the claim
+
+`ambiguous` and `unverifiable` claims should not trigger automatic doc edits.
+
+They should be surfaced for operator review and claim-registry cleanup.
+
+#### Claim Correction Rule
+
+The first correction target for claim evaluation should be structured truth/report state, not prose rewrites.
+
+That means:
+
+- first detect and persist claim drift
+- then review claim quality and verifier quality
+- only later enable narrow claim-backed doc correction for explicitly approved surfaces
+
+This keeps the first rollout focused on trustworthy detection rather than premature auto-editing.
+
+#### Claim Result Persistence
+
+Claim evaluation results should be written into structured truth state first.
+
+Suggested truth-state additions:
+
+- `claim_results`
+- `claim_summary`
+- `stale_claims`
+
+Suggested meanings:
+
+- `claim_results`
+  - per-claim status and supporting evidence summary
+- `claim_summary`
+  - compact counts such as verified, stale, ambiguous, and unverifiable
+- `stale_claims`
+  - compact list of claim IDs or source anchors currently in stale status
+
+The rendered report should summarize claim drift from those truth-state fields rather than becoming the primary record of claim evaluation.
+
+### V2 Claim Verification Rollout Phases
+
+Claim verification should roll out in phases.
+
+#### Phase 1: Audit-Only
+
+Required behavior:
+
+- load the claim registry
+- evaluate approved claims
+- record claim results in truth state and the rendered report
+- do not edit source docs because of claim drift
+- do not auto-correct `SERVER3_SUMMARY.md` except for the already-approved transitional narrow mappings, if they remain enabled during migration
+
+Purpose:
+
+- tune claims and verifiers
+- measure noise
+- identify stale, ambiguous, and weak claims safely before correction is enabled
+
+#### Phase 2: Approved Correction Targets
+
+Required behavior:
+
+- keep claim evaluation running
+- allow auto-correction only for explicitly approved claim-backed targets
+- start with `SERVER3_SUMMARY.md`
+- keep unmapped prose operator-owned
+
+The unit of correction in this phase should be the approved claim, not arbitrary paragraph rewriting.
+
+#### Runtime Mode
+
+The implementation should expose an explicit claim-verification mode so rollout state is visible both in code and in run outputs.
+
+Suggested values:
+
+- `audit_only`
+- `corrective`
+
+Suggested behavior:
+
+- `audit_only`
+  - evaluate and persist claim results
+  - do not perform claim-triggered doc correction
+- `corrective`
+  - evaluate and persist claim results
+  - allow claim-triggered correction only for explicitly approved correction targets
+
+The current mode should be recorded in run state.
+
+#### Phase 3: Expanded Claim Coverage
+
+Only after audit-mode claim quality is stable:
+
+- add more claim surfaces
+- add more verifier types
+- widen the approved claim set
+
+#### Audit Exit Criteria
+
+The loop should not leave audit-only mode until all of the following are true:
+
+- first-wave claims have produced stable low-noise results across multiple runs
+- ambiguous and unverifiable claims have been reduced to an acceptable level
+- approved correction targets are explicitly named
+- tests cover the enabled verifier types and claim-status classification
 
 ### V2 Stale-Context Contract
 
@@ -579,11 +827,11 @@ Required `v2` behaviors:
 
 - the check registry exists and drives check selection
 - the runner no longer relies only on hard-coded check orchestration
-- `SERVER3_SUMMARY.md` alignment is registry-backed for approved mapped fields
+- `SERVER3_SUMMARY.md` alignment is registry-backed for approved claim-backed correction targets
 - stale-context warning state is persisted per scope
 - `/truth_status` works as a read-only scope-aware view
 - `/reset` works as a scope-aware stale-context reset
-- tests cover registry execution, summary-alignment mapping, stale-context state transitions, and the bridge-facing `v2` commands
+- tests cover registry execution, claim evaluation, stale-context state transitions, and the bridge-facing `v2` commands
 
 ## Post-V2 Scope
 
@@ -714,13 +962,13 @@ Beyond the fixed `v1` inputs, later phases may expand the nightly pass to scan a
 Purpose:
 
 - know the current declared rules
-- know the current summary claims and rule claims that may need rendering alignment
+- know the current approved rule claims and summary claims that may need verification or rendering alignment
 - know the current collaboration guidance
 - contribute structured truth facts about current operating rules, validated lessons, and declared collaboration constraints
 
 For the implemented `v1` runner, `ARCHITECT_INSTRUCTION.md` and `LESSONS.md` are watched only for the structured truth facts they encode, not for their explanatory prose. `ARCHITECT_INSTRUCTION.md` contributes current operating rules and declared truth boundaries. `LESSONS.md` contributes validated lessons that have become structured truth facts about what has already been verified. `SERVER3_SUMMARY.md` remains secondary rendered explanation output and does not contribute machine-truth fingerprint inputs by itself.
 
-`SERVER3_SUMMARY.md` is a secondary rendered explainer. It may be scanned for rendering alignment, but it is not part of the machine-truth fingerprint input set.
+`SERVER3_SUMMARY.md` is a secondary rendered explainer. It may be scanned for claim-backed verification and approved correction, but it is not part of the machine-truth fingerprint input set.
 
 Policy-derived stale-context eligibility inputs are separate from the machine-truth fingerprint inputs.
 Those policy inputs are:
@@ -1024,9 +1272,15 @@ Examples:
 Action:
 
 - update structured truth state first
-- then update any rendered stable truth doc or summary file that is now out of date
+- then update only explicitly approved rendered truth targets that are now out of date
 - record what changed and why
 - mark that stale-context warnings may need to be sent to active chats
+
+If the mismatch comes from claim verification in audit-only mode:
+
+- do not rewrite the source doc yet
+- persist the stale claim result
+- surface the mismatch in the report for operator review
 
 ### If The Mismatch Is Operational
 
@@ -1207,6 +1461,8 @@ Suggested fields:
 - whether the last run succeeded or failed
 - whether truth changed on the last run
 - which watched structured-truth inputs changed
+- whether any approved claims are currently stale for this chat/runtime scope
+- short claim-drift summary
 - whether this current chat or topic has a stale-context warning outstanding
 - whether `/reset` has already been used in this chat or topic since the last truth change
 - short summary of what was aligned
@@ -1229,6 +1485,7 @@ Suggested contents:
 - last run time
 - success or failure
 - whether truth changed
+- claim drift summary
 - files changed
 - commit SHA if a push succeeded
 - warning count
@@ -1528,14 +1785,16 @@ Implementation order:
 
 ### Dream Loop Edit Rights
 
-The dream loop may directly edit `SERVER3_SUMMARY.md` wherever edits are needed to align the file to truth.
+The dream loop may directly edit `SERVER3_SUMMARY.md` only where an explicit approved correction target allows it.
 
-The intended rule is not section-based ownership.
+The intended rule is not broad section-based ownership.
 
 The intended rule is:
 
-- edit any section that must change to align the summary to current truth
+- in audit-only mode, do not edit claim surfaces just because claim drift was detected
+- in corrective mode, edit only approved claim-backed targets or the small transitional mapped fields that remain explicitly allowed during migration
 - do not rewrite the file casually when no truth mismatch exists
+- do not treat whole-section ownership as permission for broad free-form rewriting
 
 In this design, `SERVER3_SUMMARY.md` is a secondary rendered explanation layer, not the primary truth store.
 
