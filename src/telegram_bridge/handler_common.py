@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 from telegram_bridge.conversation_scope import ConversationScope, build_telegram_scope_key, scope_from_message
 from telegram_bridge.engine_catalog import display_engine_name
 from telegram_bridge.handler_progress import ProgressReporter
-from telegram_bridge.runtime_profile import assistant_label
+from telegram_bridge.runtime_profile import assistant_label, build_codex_sandbox_guardrail_lines
 from telegram_bridge.state_store import State, get_chat_engine
 from telegram_bridge.engine_controls import selectable_engine_plugins
 
@@ -233,6 +233,7 @@ def build_status_text(
         f"Safe restart queued: {restart_requested}",
         f"Safe restart in progress: {restart_in_progress}",
     ]
+    lines.extend(build_codex_sandbox_guardrail_lines())
 
     if scope_key is not None:
         selected_engine = get_chat_engine(state, scope_key)

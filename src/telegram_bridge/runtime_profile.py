@@ -7,6 +7,7 @@ import re
 import sqlite3
 import time
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -56,6 +57,15 @@ _RECENT_CODEX_STATE_PATH_CACHE_TTL_SECONDS = 1.0
 _RECENT_CODEX_MODEL_CACHE_TTL_SECONDS = 1.0
 
 
+@dataclass(frozen=True)
+class CodexSandboxGuardrailStatus:
+    thread_id: str
+    source_label: str
+    sandbox_policy_type: str
+    drift_detected: bool
+    drift_reasons: Tuple[str, ...]
+
+
 def _remember_recent_cache_entry(cache: "OrderedDict[object, object]", key: object, value: object) -> None:
     cache[key] = value
     cache.move_to_end(key)
@@ -99,6 +109,138 @@ def _latest_codex_state_path(codex_home: Path) -> Optional[Path]:
         ),
     )
     return latest_path
+
+
+def _codex_home_path() -> Path:
+    codex_home_raw = str(os.getenv("CODEX_HOME", "") or "").strip()
+    if codex_home_raw:
+        return Path(codex_home_raw).expanduser()
+    return Path.home() / ".codex"
+
+
+def _runtime_root_value(runtime_root: Optional[str] = None) -> str:
+    if runtime_root is not None:
+        return str(runtime_root).strip()
+    return str(os.getenv("TELEGRAM_RUNTIME_ROOT", "") or "").strip()
+
+
+def _threads_table_columns(connection: sqlite3.Connection) -> set[str]:
+    try:
+        rows = connection.execute("pragma table_info(threads)").fetchall()
+    except sqlite3.Error:
+        return set()
+    columns = set()
+    for row in rows:
+        if len(row) > 1 and row[1]:
+            columns.add(str(row[1]).strip())
+    return columns
+
+
+def _parse_codex_sandbox_policy(raw_policy: object) -> Tuple[str, bool, Tuple[str, ...]]:
+    if not isinstance(raw_policy, str):
+        return "", False, ()
+    policy_text = raw_policy.strip()
+    if not policy_text:
+        return "", False, ()
+    try:
+        import json
+
+        payload = json.loads(policy_text)
+    except Exception:
+        return "", False, ()
+    if not isinstance(payload, dict):
+        return "", False, ()
+
+    policy_type = str(payload.get("type", "") or "").strip().lower()
+    reasons: List[str] = []
+    drift_detected = False
+    if policy_type and policy_type not in {"danger-full-access", "off"}:
+        drift_detected = True
+        reasons.append(f"policy={policy_type}")
+    if payload.get("network_access") is False:
+        drift_detected = True
+        reasons.append("network=restricted")
+    return policy_type, drift_detected, tuple(reasons)
+
+
+def recent_codex_sandbox_guardrail_status(
+    runtime_root: Optional[str] = None,
+) -> Optional[CodexSandboxGuardrailStatus]:
+    state_path = _latest_codex_state_path(_codex_home_path())
+    if state_path is None:
+        return None
+
+    try:
+        connection = sqlite3.connect(f"file:{state_path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+
+    try:
+        columns = _threads_table_columns(connection)
+        if not columns or "id" not in columns:
+            return None
+
+        select_fields = ["id"]
+        source_expr = "source" if "source" in columns else "''"
+        sandbox_expr = "sandbox_policy" if "sandbox_policy" in columns else "''"
+        cwd_expr = "cwd" if "cwd" in columns else "''"
+        select_fields.extend([source_expr, sandbox_expr, cwd_expr])
+        updated_at_ms_expr = "coalesce(updated_at_ms, updated_at * 1000)"
+        runtime_root_value = _runtime_root_value(runtime_root)
+        row = connection.execute(
+            f"""
+            select {", ".join(select_fields)}
+            from threads
+            order by
+                case
+                    when ? <> '' and {cwd_expr} = ? then 1
+                    else 0
+                end desc,
+                {updated_at_ms_expr} desc
+            limit 1
+            """,
+            (runtime_root_value, runtime_root_value),
+        ).fetchone()
+        if row is None:
+            return None
+        thread_id = str(row[0] or "").strip()
+        source_label = str(row[1] or "").strip().lower()
+        sandbox_policy_type, drift_detected, drift_reasons = _parse_codex_sandbox_policy(row[2])
+        return CodexSandboxGuardrailStatus(
+            thread_id=thread_id,
+            source_label=source_label,
+            sandbox_policy_type=sandbox_policy_type,
+            drift_detected=drift_detected,
+            drift_reasons=drift_reasons,
+        )
+    except sqlite3.Error:
+        return None
+    finally:
+        connection.close()
+
+
+def build_codex_sandbox_guardrail_lines(runtime_root: Optional[str] = None) -> List[str]:
+    status = recent_codex_sandbox_guardrail_status(runtime_root)
+    if status is None:
+        return ["Recent Codex sandbox drift: unavailable"]
+
+    lines = [
+        f"Recent Codex sandbox drift: {'yes' if status.drift_detected else 'no'}",
+    ]
+    if status.drift_detected:
+        detail_parts = []
+        if status.thread_id:
+            detail_parts.append(f"thread={status.thread_id[:12]}")
+        if status.sandbox_policy_type:
+            detail_parts.append(f"policy={status.sandbox_policy_type}")
+        detail_parts.extend(status.drift_reasons)
+        if detail_parts:
+            lines.append("Recent Codex sandbox detail: " + ", ".join(detail_parts))
+    elif status.source_label == "vscode":
+        lines.append("Recent Codex source label: vscode (known upstream app-server mislabel)")
+    elif status.source_label:
+        lines.append(f"Recent Codex source label: {status.source_label}")
+    return lines
 
 def build_repo_root() -> str:
     return build_shared_core_root()
@@ -144,8 +286,7 @@ def assistant_label(config) -> str:
     return value or "Architect"
 
 def _recent_codex_model_for_runtime(runtime_root: str) -> str:
-    codex_home_raw = str(os.getenv("CODEX_HOME", "") or "").strip()
-    codex_home = Path(codex_home_raw).expanduser() if codex_home_raw else Path.home() / ".codex"
+    codex_home = _codex_home_path()
     state_path = _latest_codex_state_path(codex_home)
     if state_path is None:
         return ""

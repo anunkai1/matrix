@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import sqlite3
 import sys
@@ -88,6 +89,116 @@ class RuntimeProfileTests(unittest.TestCase):
                     runtime_profile.build_engine_progress_context_label(config, "codex"),
                     "(codex | gpt-5.5)",
                 )
+
+    def test_recent_codex_sandbox_guardrail_detects_workspace_write_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            codex_home = Path(tmpdir) / ".codex"
+            codex_home.mkdir()
+            db_path = codex_home / "state_5.sqlite"
+            connection = sqlite3.connect(db_path)
+            try:
+                connection.execute(
+                    """
+                    create table threads (
+                        id text,
+                        cwd text,
+                        source text,
+                        sandbox_policy text,
+                        updated_at integer,
+                        updated_at_ms integer
+                    )
+                    """
+                )
+                connection.execute(
+                    "insert into threads (id, cwd, source, sandbox_policy, updated_at, updated_at_ms) values (?, ?, ?, ?, ?, ?)",
+                    (
+                        "thread-drift",
+                        "/runtime/architect",
+                        "vscode",
+                        json.dumps(
+                            {
+                                "type": "workspace-write",
+                                "writable_roots": ["/tmp"],
+                                "network_access": False,
+                            }
+                        ),
+                        1,
+                        1000,
+                    ),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            with mock.patch.dict(
+                os.environ,
+                {"CODEX_HOME": str(codex_home), "TELEGRAM_RUNTIME_ROOT": "/runtime/architect"},
+                clear=False,
+            ):
+                status = runtime_profile.recent_codex_sandbox_guardrail_status()
+                lines = runtime_profile.build_codex_sandbox_guardrail_lines()
+
+            self.assertIsNotNone(status)
+            assert status is not None
+            self.assertTrue(status.drift_detected)
+            self.assertEqual(status.sandbox_policy_type, "workspace-write")
+            self.assertIn("policy=workspace-write", status.drift_reasons)
+            self.assertIn("network=restricted", status.drift_reasons)
+            self.assertIn("Recent Codex sandbox drift: yes", lines)
+            self.assertTrue(any("workspace-write" in line for line in lines))
+
+    def test_recent_codex_sandbox_guardrail_treats_vscode_source_as_info_only_when_unrestricted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            codex_home = Path(tmpdir) / ".codex"
+            codex_home.mkdir()
+            db_path = codex_home / "state_5.sqlite"
+            connection = sqlite3.connect(db_path)
+            try:
+                connection.execute(
+                    """
+                    create table threads (
+                        id text,
+                        cwd text,
+                        source text,
+                        sandbox_policy text,
+                        updated_at integer,
+                        updated_at_ms integer
+                    )
+                    """
+                )
+                connection.execute(
+                    "insert into threads (id, cwd, source, sandbox_policy, updated_at, updated_at_ms) values (?, ?, ?, ?, ?, ?)",
+                    (
+                        "thread-clean",
+                        "/runtime/architect",
+                        "vscode",
+                        json.dumps({"type": "danger-full-access"}),
+                        1,
+                        1000,
+                    ),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            with mock.patch.dict(
+                os.environ,
+                {"CODEX_HOME": str(codex_home), "TELEGRAM_RUNTIME_ROOT": "/runtime/architect"},
+                clear=False,
+            ):
+                status = runtime_profile.recent_codex_sandbox_guardrail_status()
+                lines = runtime_profile.build_codex_sandbox_guardrail_lines()
+
+            self.assertIsNotNone(status)
+            assert status is not None
+            self.assertFalse(status.drift_detected)
+            self.assertEqual(status.source_label, "vscode")
+            self.assertEqual(status.sandbox_policy_type, "danger-full-access")
+            self.assertIn("Recent Codex sandbox drift: no", lines)
+            self.assertIn(
+                "Recent Codex source label: vscode (known upstream app-server mislabel)",
+                lines,
+            )
 
     def test_recent_codex_model_lookup_uses_cache_until_state_file_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

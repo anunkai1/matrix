@@ -56,6 +56,7 @@ from telegram_bridge.runtime_config import (
     load_config,
     parse_plugin_name_env,
 )
+from telegram_bridge.runtime_profile import recent_codex_sandbox_guardrail_status
 from telegram_bridge.session_manager import (
     clear_busy,
     compute_policy_fingerprint,
@@ -200,6 +201,7 @@ def run_bridge(config: Config) -> int:
             "canonical_sqlite_enabled": config.canonical_sqlite_enabled,
             "affective_runtime_enabled": config.affective_runtime_enabled,
             "codex_sandbox_mode": getattr(config, "codex_sandbox_mode", ""),
+            "codex_app_server_enabled": getattr(config, "codex_app_server_enabled", False),
         },
     )
     bootstrap: RuntimeBootstrap = build_runtime_bootstrap(config)
@@ -304,6 +306,11 @@ def run_bridge(config: Config) -> int:
         logging.info("Channel plugin active=%s", config.channel_plugin)
         logging.info("Engine plugin active=%s", config.engine_plugin)
         logging.info(
+            "Codex launch policy app_server_enabled=%s sandbox=%s",
+            getattr(config, "codex_app_server_enabled", False),
+            getattr(config, "codex_sandbox_mode", ""),
+        )
+        logging.info(
             "WhatsApp plugin enabled=%s api_base=%s poll_timeout_seconds=%s",
             config.whatsapp_plugin_enabled,
             config.whatsapp_bridge_api_base,
@@ -369,6 +376,23 @@ def run_bridge(config: Config) -> int:
             config.canonical_legacy_mirror_enabled,
             config.canonical_json_mirror_enabled,
         )
+        sandbox_guardrail = recent_codex_sandbox_guardrail_status()
+        if sandbox_guardrail is not None and sandbox_guardrail.drift_detected:
+            logging.warning(
+                "Codex sandbox drift guardrail detected thread=%s policy=%s reasons=%s",
+                sandbox_guardrail.thread_id,
+                sandbox_guardrail.sandbox_policy_type or "unknown",
+                list(sandbox_guardrail.drift_reasons),
+            )
+            emit_event(
+                "bridge.codex_sandbox_drift_detected",
+                level=logging.WARNING,
+                fields={
+                    "thread_id": sandbox_guardrail.thread_id,
+                    "sandbox_policy_type": sandbox_guardrail.sandbox_policy_type,
+                    "drift_reasons": list(sandbox_guardrail.drift_reasons),
+                },
+            )
         emit_event(
             "bridge.started",
             fields={

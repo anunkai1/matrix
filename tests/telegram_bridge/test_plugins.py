@@ -34,6 +34,7 @@ import telegram_bridge.engines.codex as bridge_codex_engine
 import telegram_bridge.engine_pi_catalog as bridge_engine_pi_catalog
 import telegram_bridge.executor as bridge_executor
 import telegram_bridge.handlers as bridge_handlers
+import telegram_bridge.handler_common as bridge_handler_common
 import telegram_bridge.http_channel as bridge_http_channel
 import telegram_bridge.main as bridge
 import telegram_bridge.plugin_registry as bridge_plugin_registry
@@ -1950,11 +1951,20 @@ class TestPlugins(unittest.TestCase):
         )
         config = make_config(persistent_workers_idle_timeout_seconds=18000)
 
-        status_text = bridge_handlers.build_status_text(state, config, chat_id=9)
+        with mock.patch.object(
+            bridge_handler_common,
+            "build_codex_sandbox_guardrail_lines",
+            return_value=[
+                "Recent Codex sandbox drift: no",
+                "Recent Codex source label: vscode (known upstream app-server mislabel)",
+            ],
+        ):
+            status_text = bridge_handlers.build_status_text(state, config, chat_id=9)
 
         self.assertIn("Saved Codex threads: 1", status_text)
         self.assertIn("Persistent workers: enabled=False active=1/2 idle_expiry=disabled", status_text)
         self.assertIn("This chat has Codex thread: True", status_text)
+        self.assertIn("Recent Codex sandbox drift: no", status_text)
         self.assertNotIn("Saved contexts", status_text)
         self.assertNotIn("legacy_idle_timeout", status_text)
 
