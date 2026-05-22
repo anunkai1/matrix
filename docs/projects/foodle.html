@@ -19,13 +19,14 @@
       --coffee: #8b5a2b;
       --overeating: #f59e0b;
       --meatfree: #ec4899;
+      --exercise: #14b8a6;
       --ok: #2f8f5b;
       --bad: #c64545;
       --shadow: 0 20px 60px rgba(70, 44, 11, 0.12);
       --radius: 24px;
       --cell-size: 18px;
       --cell-gap: 5px;
-      --cell-height: calc(var(--cell-size) + 12px);
+      --cell-height: calc(var(--cell-size) + 14px);
     }
 
     * {
@@ -306,6 +307,7 @@
     .coffee { background: var(--coffee); color: #fff8f0; }
     .overeating { background: var(--overeating); color: #fff4f4; }
     .meatfree { background: var(--meatfree); color: #fff4f4; }
+    .exercise { background: var(--exercise); color: #fff4f4; }
 
     .actions {
       display: flex;
@@ -551,7 +553,7 @@
 
     .combined-stack {
       display: grid;
-      grid-template-rows: repeat(5, minmax(0, 1fr));
+      grid-template-rows: repeat(6, minmax(0, 1fr));
       gap: 2px;
       height: 100%;
     }
@@ -570,6 +572,7 @@
     .combined-bar.good.track-dairy { background: var(--dairy); }
     .combined-bar.good.track-overeating { background: var(--overeating); }
     .combined-bar.good.track-meatfree { background: var(--meatfree); }
+    .combined-bar.good.track-exercise { background: var(--exercise); }
 
     .combined-marker {
       position: absolute;
@@ -589,6 +592,8 @@
     .combined-marker.miss.track-coffee { background: var(--bad); }
     .combined-marker.good.track-overeating { background: var(--overeating); }
     .combined-marker.miss.track-overeating { background: #8d2929; }
+    .combined-marker.good.track-exercise { background: var(--exercise); }
+    .combined-marker.miss.track-exercise { background: #8d2929; }
     .combined-marker.track-coffee {
       left: -3px;
       right: auto;
@@ -617,11 +622,11 @@
 
     .legend-stack {
       width: 16px;
-      height: 26px;
+      height: 30px;
       border-radius: 4px;
       padding: 2px;
       display: grid;
-      grid-template-rows: repeat(5, minmax(0, 1fr));
+      grid-template-rows: repeat(6, minmax(0, 1fr));
       gap: 2px;
       background: rgba(255, 255, 255, 0.18);
       border: 1px solid rgba(31, 27, 22, 0.05);
@@ -896,7 +901,7 @@
       </div>
       <h1>Foodle</h1>
       <p class="lead">
-        Tap once at the end of each day. Keep separate streaks for sugar, carbs, dairy, not overeating, and red meat free days.
+        Tap once at the end of each day. Keep separate streaks for sugar, carbs, dairy, not overeating, red meat free, and exercise days.
         Your data stays in your browser, and the share button turns your streaks into a clean message you can send to friends.
       </p>
       <div class="hero-grid">
@@ -958,6 +963,16 @@
             <strong class="mini-value" id="heroMeatfreeCurrent">0</strong>
           </div>
         </article>
+        <article class="mini-stat mini-stat-pair">
+          <div class="mini-metric">
+            <span class="mini-label">Longest exercise streak</span>
+            <strong class="mini-value" id="heroExercise">0</strong>
+          </div>
+          <div class="mini-metric">
+            <span class="mini-label">Current exercise streak</span>
+            <strong class="mini-value" id="heroExerciseCurrent">0</strong>
+          </div>
+        </article>
       </div>
     </section>
 
@@ -968,7 +983,7 @@
           Choose one result for the selected day for each category. That is enough to keep the streak going.
         </p>
         <div class="heatmap-shell">
-          <p class="calendar-intro">One shared calendar. Each day cell has five bands for sugar, did not over eat, red meat free, carbs, and dairy, plus dots for fasting and coffee.</p>
+          <p class="calendar-intro">One shared calendar. Each day cell has six bands for sugar, did not over eat, red meat free, exercise, carbs, and dairy, plus dots for fasting and coffee.</p>
           <div id="combinedCalendar"></div>
         </div>
         <div class="tracker-list" id="trackerList"></div>
@@ -1076,6 +1091,19 @@
         statusBadText: "Yesterday: no coffee",
         statusEmptyText: "Yesterday: not logged yet",
         lastSuccessEmptyText: "No coffee day logged yet"
+      },
+      {
+        id: "exercise",
+        label: "Exercise",
+        accent: "exercise",
+        mode: "streak",
+        copy: "Track clean days where you completed exercise.",
+        actionGoodText: "Exercised yesterday",
+        actionBadText: "Did not exercise yesterday",
+        statusGoodText: "Yesterday: exercised",
+        statusBadText: "Yesterday: no exercise",
+        statusEmptyText: "Yesterday: not logged yet",
+        lastSuccessEmptyText: "No exercise day logged yet"
       }
     ];
 
@@ -1466,6 +1494,8 @@
       document.getElementById("heroOvereatingCurrent").textContent = streakFor(data, "overeating");
       document.getElementById("heroMeatfree").textContent = bestStreakFor(data, "meatfree");
       document.getElementById("heroMeatfreeCurrent").textContent = streakFor(data, "meatfree");
+      document.getElementById("heroExercise").textContent = bestStreakFor(data, "exercise");
+      document.getElementById("heroExerciseCurrent").textContent = streakFor(data, "exercise");
 
       const combinedCalendar = combinedCalendarFor(data, targetDate);
       document.getElementById("combinedCalendar").innerHTML = `
@@ -1518,6 +1548,7 @@
                   <span class="combined-bar good track-sugar"></span>
                   <span class="combined-bar good track-overeating"></span>
                   <span class="combined-bar good track-meatfree"></span>
+                  <span class="combined-bar good track-exercise"></span>
                   <span class="combined-bar good track-carbs"></span>
                   <span class="combined-bar good track-dairy"></span>
                 </span> Clean streak stack
@@ -1531,7 +1562,7 @@
               <span class="legend-group">
                 <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some
               </span>
-              <span class="legend-group">Top sugar, second did not over eat, third red meat free, fourth carbs, fifth dairy</span>
+              <span class="legend-group">Top sugar, second did not over eat, third red meat free, fourth exercise, fifth carbs, sixth dairy</span>
             </div>
           </div>
         </div>
