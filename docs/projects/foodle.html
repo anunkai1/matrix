@@ -18,13 +18,14 @@
       --fasting: #52c7b8;
       --coffee: #8b5a2b;
       --overeating: #f59e0b;
+      --meatfree: #dc2626;
       --ok: #2f8f5b;
       --bad: #c64545;
       --shadow: 0 20px 60px rgba(70, 44, 11, 0.12);
       --radius: 24px;
       --cell-size: 18px;
       --cell-gap: 5px;
-      --cell-height: calc(var(--cell-size) + 8px);
+      --cell-height: calc(var(--cell-size) + 12px);
     }
 
     * {
@@ -304,6 +305,7 @@
     .fasting { background: var(--fasting); color: #10211d; }
     .coffee { background: var(--coffee); color: #fff8f0; }
     .overeating { background: var(--overeating); color: #fff4f4; }
+    .meatfree { background: var(--meatfree); color: #fff4f4; }
 
     .actions {
       display: flex;
@@ -549,7 +551,7 @@
 
     .combined-stack {
       display: grid;
-      grid-template-rows: repeat(4, minmax(0, 1fr));
+      grid-template-rows: repeat(5, minmax(0, 1fr));
       gap: 2px;
       height: 100%;
     }
@@ -567,6 +569,7 @@
     .combined-bar.good.track-carbs { background: var(--carbs); }
     .combined-bar.good.track-dairy { background: var(--dairy); }
     .combined-bar.good.track-overeating { background: var(--overeating); }
+    .combined-bar.good.track-meatfree { background: var(--meatfree); }
 
     .combined-marker {
       position: absolute;
@@ -614,11 +617,11 @@
 
     .legend-stack {
       width: 16px;
-      height: 22px;
+      height: 26px;
       border-radius: 4px;
       padding: 2px;
       display: grid;
-      grid-template-rows: repeat(4, minmax(0, 1fr));
+      grid-template-rows: repeat(5, minmax(0, 1fr));
       gap: 2px;
       background: rgba(255, 255, 255, 0.18);
       border: 1px solid rgba(31, 27, 22, 0.05);
@@ -893,7 +896,7 @@
       </div>
       <h1>Foodle</h1>
       <p class="lead">
-        Tap once at the end of each day. Keep separate streaks for sugar, carbs, dairy, and not overeating.
+        Tap once at the end of each day. Keep separate streaks for sugar, carbs, dairy, not overeating, and red meat free days.
         Your data stays in your browser, and the share button turns your streaks into a clean message you can send to friends.
       </p>
       <div class="hero-grid">
@@ -945,6 +948,16 @@
             <strong class="mini-value" id="heroOvereatingCurrent">0</strong>
           </div>
         </article>
+        <article class="mini-stat mini-stat-pair">
+          <div class="mini-metric">
+            <span class="mini-label">Longest red meat free streak</span>
+            <strong class="mini-value" id="heroMeatfree">0</strong>
+          </div>
+          <div class="mini-metric">
+            <span class="mini-label">Current red meat free streak</span>
+            <strong class="mini-value" id="heroMeatfreeCurrent">0</strong>
+          </div>
+        </article>
       </div>
     </section>
 
@@ -955,7 +968,7 @@
           Choose one result for the selected day for each category. That is enough to keep the streak going.
         </p>
         <div class="heatmap-shell">
-          <p class="calendar-intro">One shared calendar. Each day cell has four bands for sugar, carbs, dairy, and did not over eat, plus dots for fasting and coffee.</p>
+          <p class="calendar-intro">One shared calendar. Each day cell has five bands for sugar, did not over eat, red meat free, carbs, and dairy, plus dots for fasting and coffee.</p>
           <div id="combinedCalendar"></div>
         </div>
         <div class="tracker-list" id="trackerList"></div>
@@ -1008,6 +1021,19 @@
         statusBadText: "Yesterday: over ate",
         statusEmptyText: "Yesterday: not logged yet",
         lastSuccessEmptyText: "No did not over eat day logged yet"
+      },
+      {
+        id: "meatfree",
+        label: "Red meat-free",
+        accent: "meatfree",
+        mode: "streak",
+        copy: "Track clean days where you did not eat red meat.",
+        actionGoodText: "No red meat yesterday",
+        actionBadText: "Had red meat yesterday",
+        statusGoodText: "Yesterday: no red meat",
+        statusBadText: "Yesterday: had red meat",
+        statusEmptyText: "Yesterday: not logged yet",
+        lastSuccessEmptyText: "No red meat-free day logged yet"
       },
       {
         id: "carbs",
@@ -1438,6 +1464,8 @@
       document.getElementById("heroCoffee").textContent = successCountFor(data, "coffee");
       document.getElementById("heroOvereating").textContent = bestStreakFor(data, "overeating");
       document.getElementById("heroOvereatingCurrent").textContent = streakFor(data, "overeating");
+      document.getElementById("heroMeatfree").textContent = bestStreakFor(data, "meatfree");
+      document.getElementById("heroMeatfreeCurrent").textContent = streakFor(data, "meatfree");
 
       const combinedCalendar = combinedCalendarFor(data, targetDate);
       document.getElementById("combinedCalendar").innerHTML = `
@@ -1488,9 +1516,10 @@
               <span class="legend-group">
                 <span class="legend-stack">
                   <span class="combined-bar good track-sugar"></span>
+                  <span class="combined-bar good track-overeating"></span>
+                  <span class="combined-bar good track-meatfree"></span>
                   <span class="combined-bar good track-carbs"></span>
                   <span class="combined-bar good track-dairy"></span>
-                  <span class="combined-bar good track-overeating"></span>
                 </span> Clean streak stack
               </span>
               <span class="legend-group">
@@ -1502,7 +1531,7 @@
               <span class="legend-group">
                 <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some
               </span>
-              <span class="legend-group">Top sugar, second carbs, third dairy, fourth did not over eat</span>
+              <span class="legend-group">Top sugar, second did not over eat, third red meat free, fourth carbs, fifth dairy</span>
             </div>
           </div>
         </div>
