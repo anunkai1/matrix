@@ -549,7 +549,7 @@
 
     .combined-stack {
       display: grid;
-      grid-template-rows: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(4, minmax(0, 1fr));
       gap: 2px;
       height: 100%;
     }
@@ -566,6 +566,7 @@
     .combined-bar.good.track-sugar { background: var(--sugar); }
     .combined-bar.good.track-carbs { background: var(--carbs); }
     .combined-bar.good.track-dairy { background: var(--dairy); }
+    .combined-bar.good.track-overeating { background: var(--overeating); }
 
     .combined-marker {
       position: absolute;
@@ -613,10 +614,11 @@
 
     .legend-stack {
       width: 16px;
-      height: 18px;
+      height: 22px;
       border-radius: 4px;
       padding: 2px;
       display: grid;
+      grid-template-rows: repeat(4, minmax(0, 1fr));
       gap: 2px;
       background: rgba(255, 255, 255, 0.18);
       border: 1px solid rgba(31, 27, 22, 0.05);
@@ -891,7 +893,7 @@
       </div>
       <h1>Foodle</h1>
       <p class="lead">
-        Tap once at the end of each day. Keep separate streaks for sugar, carbs, and dairy.
+        Tap once at the end of each day. Keep separate streaks for sugar, carbs, dairy, and not overeating.
         Your data stays in your browser, and the share button turns your streaks into a clean message you can send to friends.
       </p>
       <div class="hero-grid">
@@ -933,9 +935,15 @@
           <span class="mini-label">Coffee days logged</span>
           <strong class="mini-value" id="heroCoffee">0</strong>
         </article>
-        <article class="mini-stat">
-          <span class="mini-label">Did not over eat days logged</span>
-          <strong class="mini-value" id="heroOvereating">0</strong>
+        <article class="mini-stat mini-stat-pair">
+          <div class="mini-metric">
+            <span class="mini-label">Longest did not over eat streak</span>
+            <strong class="mini-value" id="heroOvereating">0</strong>
+          </div>
+          <div class="mini-metric">
+            <span class="mini-label">Current did not over eat streak</span>
+            <strong class="mini-value" id="heroOvereatingCurrent">0</strong>
+          </div>
         </article>
       </div>
     </section>
@@ -947,7 +955,7 @@
           Choose one result for the selected day for each category. That is enough to keep the streak going.
         </p>
         <div class="heatmap-shell">
-          <p class="calendar-intro">One shared calendar. Each day cell has three bands for sugar, carbs, dairy, plus dots for fasting, coffee, and did not over eat.</p>
+          <p class="calendar-intro">One shared calendar. Each day cell has four bands for sugar, carbs, dairy, and did not over eat, plus dots for fasting and coffee.</p>
           <div id="combinedCalendar"></div>
         </div>
         <div class="tracker-list" id="trackerList"></div>
@@ -1034,10 +1042,8 @@
         id: "overeating",
         label: "Did not over eat",
         accent: "overeating",
-        mode: "count",
-        copy: "Optional green dot for days when you did not over eat.",
-        countLabel: "did not over eat days",
-        countNoun: "did not over eat day",
+        mode: "streak",
+        copy: "Track clean days where you did not over eat.",
         actionGoodText: "Did not over eat yesterday",
         actionBadText: "Over ate yesterday",
         statusGoodText: "Yesterday: did not over eat",
@@ -1354,7 +1360,7 @@
                 return `${tracker.label}: ${status === true ? "clean" : status === false ? "had some" : "not logged"}`;
               })
             ].join(" | "),
-            bands: trackers.filter((tracker) => tracker.id !== "fasting" && tracker.id !== "coffee" && tracker.id !== "overeating").map((tracker) => {
+            bands: trackers.filter((tracker) => tracker.id !== "fasting" && tracker.id !== "coffee").map((tracker) => {
               const status = readStatus(data, date, tracker.id);
               return {
                 id: tracker.id,
@@ -1367,10 +1373,6 @@
             })(),
             coffee: (() => {
               const status = readStatus(data, date, "coffee");
-              return status === true ? "good" : status === false ? "miss" : "empty";
-            })(),
-            overeating: (() => {
-              const status = readStatus(data, date, "overeating");
               return status === true ? "good" : status === false ? "miss" : "empty";
             })()
           });
@@ -1434,7 +1436,8 @@
       document.getElementById("heroDairyCurrent").textContent = streakFor(data, "dairy");
       document.getElementById("heroFasting").textContent = successCountFor(data, "fasting");
       document.getElementById("heroCoffee").textContent = successCountFor(data, "coffee");
-      document.getElementById("heroOvereating").textContent = successCountFor(data, "overeating");
+      document.getElementById("heroOvereating").textContent = bestStreakFor(data, "overeating");
+      document.getElementById("heroOvereatingCurrent").textContent = streakFor(data, "overeating");
 
       const combinedCalendar = combinedCalendarFor(data, targetDate);
       document.getElementById("combinedCalendar").innerHTML = `
@@ -1477,7 +1480,6 @@
                       </span>
                       ${cell.fasting === "empty" ? "" : `<span class="combined-marker ${cell.fasting} track-fasting"></span>`}
                       ${cell.coffee === "empty" ? "" : `<span class="combined-marker ${cell.coffee} track-coffee"></span>`}
-                      ${cell.overeating === "empty" ? "" : `<span class="combined-marker ${cell.overeating} track-overeating"></span>`}
                     </button>
                   `).join("")}
                 </div>
@@ -1488,7 +1490,8 @@
                   <span class="combined-bar good track-sugar"></span>
                   <span class="combined-bar good track-carbs"></span>
                   <span class="combined-bar good track-dairy"></span>
-                </span> Clean day stack
+                  <span class="combined-bar good track-overeating"></span>
+                </span> Clean streak stack
               </span>
               <span class="legend-group">
                 <span class="combined-marker good track-fasting" style="position: static;"></span> Fasting day
@@ -1497,12 +1500,9 @@
                 <span class="combined-marker good track-coffee" style="position: static;"></span> Coffee day
               </span>
               <span class="legend-group">
-                <span class="combined-marker good track-overeating" style="position: static;"></span> Did not over eat day
-              </span>
-              <span class="legend-group">
                 <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some
               </span>
-              <span class="legend-group">Top sugar, middle carbs, bottom dairy</span>
+              <span class="legend-group">Top sugar, second carbs, third dairy, fourth did not over eat</span>
             </div>
           </div>
         </div>
