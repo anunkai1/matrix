@@ -1003,10 +1003,17 @@
         copy: "No bread, pasta, rice, or other carb-heavy meals today."
       },
       {
-        id: "dairy",
-        label: "Dairy-free",
-        accent: "dairy",
-        copy: "No milk, cheese, yogurt, cream, or dairy-based foods today."
+        id: "overeating",
+        label: "Did not over eat",
+        accent: "overeating",
+        mode: "streak",
+        copy: "Track clean days where you did not over eat.",
+        actionGoodText: "Did not over eat yesterday",
+        actionBadText: "Over ate yesterday",
+        statusGoodText: "Yesterday: did not over eat",
+        statusBadText: "Yesterday: over ate",
+        statusEmptyText: "Yesterday: not logged yet",
+        lastSuccessEmptyText: "No did not over eat day logged yet"
       },
       {
         id: "fasting",
@@ -1039,17 +1046,10 @@
         lastSuccessEmptyText: "No coffee day logged yet"
       },
       {
-        id: "overeating",
-        label: "Did not over eat",
-        accent: "overeating",
-        mode: "streak",
-        copy: "Track clean days where you did not over eat.",
-        actionGoodText: "Did not over eat yesterday",
-        actionBadText: "Over ate yesterday",
-        statusGoodText: "Yesterday: did not over eat",
-        statusBadText: "Yesterday: over ate",
-        statusEmptyText: "Yesterday: not logged yet",
-        lastSuccessEmptyText: "No did not over eat day logged yet"
+        id: "dairy",
+        label: "Dairy-free",
+        accent: "dairy",
+        copy: "No milk, cheese, yogurt, cream, or dairy-based foods today."
       }
     ];
 
