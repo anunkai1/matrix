@@ -553,7 +553,7 @@
 
     .combined-stack {
       display: grid;
-      grid-template-rows: repeat(6, minmax(0, 1fr));
+      grid-template-rows: repeat(5, minmax(0, 1fr));
       gap: 2px;
       height: 100%;
     }
@@ -593,7 +593,12 @@
     .combined-marker.good.track-overeating { background: var(--overeating); }
     .combined-marker.miss.track-overeating { background: #8d2929; }
     .combined-marker.good.track-exercise { background: var(--exercise); }
-    .combined-marker.miss.track-exercise { background: #8d2929; }
+    .combined-marker.miss.track-exercise { background: var(--bad); }
+    .combined-marker.track-exercise {
+      bottom: -3px;
+      top: auto;
+      right: -3px;
+    }
     .combined-marker.track-coffee {
       left: -3px;
       right: auto;
@@ -622,11 +627,11 @@
 
     .legend-stack {
       width: 16px;
-      height: 30px;
+      height: 26px;
       border-radius: 4px;
       padding: 2px;
       display: grid;
-      grid-template-rows: repeat(6, minmax(0, 1fr));
+      grid-template-rows: repeat(5, minmax(0, 1fr));
       gap: 2px;
       background: rgba(255, 255, 255, 0.18);
       border: 1px solid rgba(31, 27, 22, 0.05);
@@ -963,15 +968,9 @@
             <strong class="mini-value" id="heroMeatfreeCurrent">0</strong>
           </div>
         </article>
-        <article class="mini-stat mini-stat-pair">
-          <div class="mini-metric">
-            <span class="mini-label">Longest exercise streak</span>
-            <strong class="mini-value" id="heroExercise">0</strong>
-          </div>
-          <div class="mini-metric">
-            <span class="mini-label">Current exercise streak</span>
-            <strong class="mini-value" id="heroExerciseCurrent">0</strong>
-          </div>
+        <article class="mini-stat">
+          <span class="mini-label">Exercise days logged</span>
+          <strong class="mini-value" id="heroExercise">0</strong>
         </article>
       </div>
     </section>
@@ -983,7 +982,7 @@
           Choose one result for the selected day for each category. That is enough to keep the streak going.
         </p>
         <div class="heatmap-shell">
-          <p class="calendar-intro">One shared calendar. Each day cell has six bands for sugar, did not over eat, red meat free, exercise, carbs, and dairy, plus dots for fasting and coffee.</p>
+          <p class="calendar-intro">One shared calendar. Each day cell has five bands for sugar, did not over eat, red meat free, carbs, and dairy, plus dots for fasting, coffee, and exercise.</p>
           <div id="combinedCalendar"></div>
         </div>
         <div class="tracker-list" id="trackerList"></div>
@@ -1096,8 +1095,10 @@
         id: "exercise",
         label: "Exercise",
         accent: "exercise",
-        mode: "streak",
-        copy: "Track clean days where you completed exercise.",
+        mode: "count",
+        copy: "Optional teal dot for days when you exercised.",
+        countLabel: "exercise days",
+        countNoun: "exercise day",
         actionGoodText: "Exercised yesterday",
         actionBadText: "Did not exercise yesterday",
         statusGoodText: "Yesterday: exercised",
@@ -1414,7 +1415,7 @@
                 return `${tracker.label}: ${status === true ? "clean" : status === false ? "had some" : "not logged"}`;
               })
             ].join(" | "),
-            bands: trackers.filter((tracker) => tracker.id !== "fasting" && tracker.id !== "coffee").map((tracker) => {
+            bands: trackers.filter((tracker) => tracker.id !== "fasting" && tracker.id !== "coffee" && tracker.id !== "exercise").map((tracker) => {
               const status = readStatus(data, date, tracker.id);
               return {
                 id: tracker.id,
@@ -1427,6 +1428,10 @@
             })(),
             coffee: (() => {
               const status = readStatus(data, date, "coffee");
+              return status === true ? "good" : status === false ? "miss" : "empty";
+            })(),
+            exercise: (() => {
+              const status = readStatus(data, date, "exercise");
               return status === true ? "good" : status === false ? "miss" : "empty";
             })()
           });
@@ -1494,8 +1499,7 @@
       document.getElementById("heroOvereatingCurrent").textContent = streakFor(data, "overeating");
       document.getElementById("heroMeatfree").textContent = bestStreakFor(data, "meatfree");
       document.getElementById("heroMeatfreeCurrent").textContent = streakFor(data, "meatfree");
-      document.getElementById("heroExercise").textContent = bestStreakFor(data, "exercise");
-      document.getElementById("heroExerciseCurrent").textContent = streakFor(data, "exercise");
+      document.getElementById("heroExercise").textContent = successCountFor(data, "exercise");
 
       const combinedCalendar = combinedCalendarFor(data, targetDate);
       document.getElementById("combinedCalendar").innerHTML = `
@@ -1538,6 +1542,7 @@
                       </span>
                       ${cell.fasting === "empty" ? "" : `<span class="combined-marker ${cell.fasting} track-fasting"></span>`}
                       ${cell.coffee === "empty" ? "" : `<span class="combined-marker ${cell.coffee} track-coffee"></span>`}
+                      ${cell.exercise === "empty" ? "" : `<span class="combined-marker ${cell.exercise} track-exercise"></span>`}
                     </button>
                   `).join("")}
                 </div>
@@ -1548,7 +1553,6 @@
                   <span class="combined-bar good track-sugar"></span>
                   <span class="combined-bar good track-overeating"></span>
                   <span class="combined-bar good track-meatfree"></span>
-                  <span class="combined-bar good track-exercise"></span>
                   <span class="combined-bar good track-carbs"></span>
                   <span class="combined-bar good track-dairy"></span>
                 </span> Clean streak stack
@@ -1560,9 +1564,12 @@
                 <span class="combined-marker good track-coffee" style="position: static;"></span> Coffee day
               </span>
               <span class="legend-group">
+                <span class="combined-marker good track-exercise" style="position: static;"></span> Exercise day
+              </span>
+              <span class="legend-group">
                 <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some
               </span>
-              <span class="legend-group">Top sugar, second did not over eat, third red meat free, fourth exercise, fifth carbs, sixth dairy</span>
+              <span class="legend-group">Top sugar, second did not over eat, third red meat free, fourth carbs, fifth dairy</span>
             </div>
           </div>
         </div>
