@@ -1,6 +1,6 @@
 # Server3 Dream Loop
 
-Status: proposed, partially implemented
+Status: active canonical spec, partially implemented
 
 ## Implementation Status
 
@@ -12,17 +12,21 @@ This document currently describes two layers:
 Current reality:
 
 - `v1` exists in `ops/dream_loop/dream_loop.py`
-- `v1` is the authoritative implementation target for the current runner
+- `v1` remains the base implementation contract for the runner
+- the live runner already includes some bounded `v2` and `v2.1` features beyond the original `v1` floor
 - the broader system-wide truth-alignment behaviors in this document are follow-on scope and should not be used to judge `v1` completeness
+- this file is the single canonical dream-loop spec and rollout-acceptance document
+- separate `v2` and `v2.1` goal briefs are intentionally folded into this file
 
 Reading rule:
 
 - treat `V1 Contract`, `Machine State Split`, and `V1 Scope` as the current implementation contract
+- treat `V2 Implementation Target` and `V2.1 Implementation Target` as the canonical acceptance boundary for post-`v1` features that are already partially present in the runner
 - treat the broader alignment design outside those sections as the intended `v2+` direction unless a section explicitly says otherwise
 
 ## Document Role
 
-This file is the planning and operator document for the Server3 nightly truth-alignment loop.
+This file is the planning, operator, and implementation-boundary document for the Server3 nightly truth-alignment loop.
 
 It explains:
 
@@ -34,6 +38,14 @@ It explains:
 - what it does not update
 - how it fits the current bridge, session, and runtime workflows
 - how stale-session warnings and `/reset` fit into the design
+- what counts as `v1`, `v2`, and `v2.1` completion
+
+Use this file as the only canonical source for:
+
+- design intent
+- version boundaries
+- rollout acceptance criteria
+- implementation guardrails
 
 ## Overall Purpose
 
@@ -424,6 +436,8 @@ It should not expand into:
 - generalized refactoring of session, bridge, or runtime systems
 
 Any later behavior that touches stale-session delivery, `/reset`, `/truth_status`, commit/push automation, or wider summary maintenance should be treated as follow-on scope unless it is strictly needed to support the three v1 artifacts above.
+
+The live runner may already include some of those follow-on behaviors; when it does, the `V2` and `V2.1` sections below define the intended boundary for them rather than treating them as part of `v1`.
 
 ## V2+ Follow-On Scope
 
@@ -1072,9 +1086,9 @@ Meaning:
 - `truth_area`
   - what kind of truth is being validated
 - `mode`
-  - `always` or `conditional`
+  - `fixed` or `conditional`
 - `trigger`
-  - when a conditional check should run
+  - the concrete execution condition such as `always`, `all_inputs_exist`, or `summary_target_exists`
 - `inputs`
   - files or commands used by the check
 - `mismatch_rule`
@@ -1113,7 +1127,9 @@ Examples:
 
 The loop should not improvise new scan targets outside the registry.
 
-For `v1`, the implemented check set is still hard-coded in the runner.
+The original `v1` floor was a bounded hard-coded slice.
+
+The current live runner already uses a declared registry for its implemented checks.
 
 For `v2+`, the registry should be narrow enough to support the primary machine truth and health outputs plus the conservative report layer without expanding into an uncontrolled repo-wide scan.
 
@@ -1201,17 +1217,19 @@ Examples:
 - `policy_watch_truth`
   - validates watched structured-truth-input behavior
   - input source: `src/telegram_bridge/runtime_config.py`
-- `observer_summary_truth`
-  - validates observer summary and alert behavior
-  - input source: `ops/runtime_observer/runtime_observer.py`
+- `server3_summary_truth`
+  - validates approved `SERVER3_SUMMARY.md` mappings against structured truth or approved live inputs
+  - input source: `SERVER3_SUMMARY.md`, `systemctl cat server3-runtime-observer.timer`, `systemctl is-enabled server3-dream-loop.timer`
 
 These are not “free scans.”
 
 They are predeclared named checks.
 
-### Initial v1 Check Registry
+### Historical Initial v1 Check Registry
 
 For the first affordable slice, the registry should stay small, high-signal, and explicitly bounded to structured truth inputs, runtime shape, observer truth, watched-input policy, and Telegram context routing.
+
+This section records the original `v1` minimum. The current live runner may include additional bounded checks, such as `server3_summary_truth`, that belong to the later `v2`/migration path described elsewhere in this spec.
 
 Initial fixed checks:
 
@@ -1684,7 +1702,7 @@ Suggested new files:
 - `ops/dream_loop/dream_loop.py`
 - `infra/systemd/server3-dream-loop.service`
 - `infra/systemd/server3-dream-loop.timer`
-- `docs/runbooks/server3-dream-loop.md`
+- `docs/specs/server3-dream-loop.md`
 
 Likely supporting changes:
 

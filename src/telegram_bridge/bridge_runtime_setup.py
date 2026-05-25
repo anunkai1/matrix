@@ -53,6 +53,10 @@ def _session_config(config: Config):
     return getattr(config, "session", config)
 
 
+def _engine_config(config: Config):
+    return getattr(config, "engines", config)
+
+
 def _voice_config(config: Config):
     return getattr(config, "voice", config)
 
@@ -120,6 +124,30 @@ def clear_thread_state_for_policy_change(
         loaded_worker_sessions,
         loaded_canonical_sessions,
     )
+
+
+def apply_app_server_startup_thread_reset(
+    *,
+    codex_app_server_enabled: bool,
+    loaded_threads: Dict[int, str],
+    loaded_worker_sessions: Dict[int, WorkerSession],
+    loaded_canonical_sessions: Dict[int, CanonicalSession],
+) -> Dict[str, object]:
+    if not codex_app_server_enabled:
+        return {
+            "applied": False,
+            "counts": {"threads": 0, "worker_sessions": 0, "canonical_sessions": 0},
+        }
+
+    reset_counts = clear_thread_state_for_policy_change(
+        loaded_threads,
+        loaded_worker_sessions,
+        loaded_canonical_sessions,
+    )
+    return {
+        "applied": any(reset_counts.values()),
+        "counts": reset_counts,
+    }
 
 
 def apply_policy_change_thread_reset(
@@ -207,6 +235,7 @@ def _log_thread_reset(
 def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
     core = _core_config(config)
     session = _session_config(config)
+    engines = _engine_config(config)
     ensure_state_dir(core.state_dir)
     attachment_store = AttachmentStore(
         os.path.join(core.state_dir, "attachments.sqlite3"),
@@ -233,6 +262,30 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
         loaded_worker_sessions,
         loaded_in_flight,
     )
+
+    app_server_reset_result = apply_app_server_startup_thread_reset(
+        codex_app_server_enabled=bool(getattr(engines, "codex_app_server_enabled", False)),
+        loaded_threads=loaded_threads,
+        loaded_worker_sessions=loaded_worker_sessions,
+        loaded_canonical_sessions=loaded_canonical_sessions,
+    )
+    if app_server_reset_result["applied"]:
+        logging.warning(
+            "Codex app-server startup cleared stored thread state to avoid cross-process "
+            "thread resume drift (threads=%s worker_sessions=%s canonical_sessions=%s).",
+            app_server_reset_result["counts"]["threads"],
+            app_server_reset_result["counts"]["worker_sessions"],
+            app_server_reset_result["counts"]["canonical_sessions"],
+        )
+        emit_event(
+            "bridge.thread_state_reset_for_app_server_startup",
+            level=logging.WARNING,
+            fields={
+                "thread_count": app_server_reset_result["counts"]["threads"],
+                "worker_session_count": app_server_reset_result["counts"]["worker_sessions"],
+                "canonical_session_count": app_server_reset_result["counts"]["canonical_sessions"],
+            },
+        )
 
     current_policy_fingerprint = ""
     if session.persistent_workers_policy_files:

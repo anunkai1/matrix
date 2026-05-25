@@ -30,6 +30,7 @@ from telegram_bridge.bridge_polling import (
 )
 from telegram_bridge.bridge_runtime_setup import (
     RuntimeBootstrap,
+    apply_app_server_startup_thread_reset,
     apply_policy_change_thread_reset,
     build_runtime_bootstrap,
     close_runtime_bootstrap,
@@ -93,6 +94,7 @@ __all__ = [
     "RuntimeBootstrap",
     "StateRepository",
     "WorkerSession",
+    "apply_app_server_startup_thread_reset",
     "apply_policy_change_thread_reset",
     "buffer_pending_media_group_updates",
     "build_policy_fingerprint_state_path",

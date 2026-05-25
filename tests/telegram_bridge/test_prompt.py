@@ -254,6 +254,34 @@ class TestPrompt(unittest.TestCase):
         call_mock.assert_called_once_with("thread/resume", {"threadId": "thread-stale"})
         self.assertEqual(session._thread_id, "thread-resumed")
 
+    def test_codex_app_server_fail_open_restart_forces_new_thread(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(),
+        )
+
+        with (
+            mock.patch.object(session, "_stop_process") as stop_process,
+            mock.patch.object(session, "_start_process") as start_process,
+        ):
+            self.assertTrue(session._maybe_fail_open_restart(RuntimeError("bwrap failed")))
+
+        stop_process.assert_called_once()
+        start_process.assert_called_once_with(fail_open_retry=True)
+        self.assertTrue(session._force_new_thread_once)
+
+        with mock.patch.object(
+            session,
+            "_call",
+            return_value={"thread": {"id": "thread-fresh"}},
+        ) as call_mock:
+            session._ensure_thread("thread-stale")
+
+        call_mock.assert_called_once()
+        self.assertEqual(call_mock.call_args[0][0], "thread/start")
+        self.assertEqual(session._thread_id, "thread-fresh")
+        self.assertFalse(session._force_new_thread_once)
+
     def test_codex_engine_adapter_does_not_fall_back_to_legacy_executor_when_live_path_fails(self):
         engine = bridge_engine_adapter.CodexEngineAdapter()
         config = make_config(codex_app_server_enabled=True)

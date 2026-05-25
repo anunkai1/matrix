@@ -219,6 +219,7 @@ class CodexAppServerSession:
         self._sandbox_mode = _sandbox_mode_value(config)
         self._stderr_buffer: List[str] = []
         self._fail_open_checked = False
+        self._force_new_thread_once = False
 
     def _sandbox_unrestricted(self) -> bool:
         return self._sandbox_mode in {"off", "danger-full-access"}
@@ -433,6 +434,15 @@ class CodexAppServerSession:
             current_thread_id = self._thread_id
         if current_thread_id:
             return
+        force_new_thread_once = self._force_new_thread_once
+        if force_new_thread_once:
+            logging.warning(
+                "Codex app-server skipping thread resume after fail-open restart scope=%s previous_thread_id=%s",
+                self.scope_key,
+                previous_thread_id,
+            )
+            previous_thread_id = None
+            self._force_new_thread_once = False
         if previous_thread_id:
             try:
                 response = self._call("thread/resume", {"threadId": previous_thread_id})
@@ -742,6 +752,7 @@ class CodexAppServerSession:
             exc,
         )
         self._stop_process()
+        self._force_new_thread_once = True
         self._start_process(fail_open_retry=True)
         return True
 
