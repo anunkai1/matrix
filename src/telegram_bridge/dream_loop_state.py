@@ -15,6 +15,7 @@ LATEST_TRUTH_STATE = "latest_truth_state.json"
 LATEST_HEALTH_STATE = "latest_health_state.json"
 LATEST_RUN_STATE = "latest_run_state.json"
 LATEST_REPORT = "latest_report.md"
+HISTORY_JSONL = "history.jsonl"
 STALE_CONTEXT_STATE = "dream_loop_stale_context.json"
 
 

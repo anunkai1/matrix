@@ -38,6 +38,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from telegram_bridge.dream_loop_state import (
+    HISTORY_JSONL,
     LATEST_HEALTH_STATE,
     LATEST_REPORT,
     LATEST_RUN_STATE,
@@ -1160,6 +1161,8 @@ def _verify_persisted_outputs(
     expected_run_state: Dict[str, Any],
     report_path: Path,
     expected_report_text: str,
+    history_path: Path,
+    expected_history_entry: Optional[Dict[str, Any]],
     summary_path: Path,
     expected_summary_text: Optional[str],
 ) -> List[str]:
@@ -1184,6 +1187,22 @@ def _verify_persisted_outputs(
     if persisted_report_text != expected_report_text:
         mismatches.append(f"persisted report mismatch: {report_path}")
 
+    if expected_history_entry is not None:
+        try:
+            history_lines = history_path.read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            history_lines = []
+        if not history_lines:
+            mismatches.append(f"missing history entry: {history_path}")
+        else:
+            try:
+                last_entry = json.loads(history_lines[-1])
+            except Exception:
+                mismatches.append(f"invalid history entry JSON: {history_path}")
+            else:
+                if last_entry != expected_history_entry:
+                    mismatches.append(f"persisted history entry mismatch: {history_path}")
+
     if expected_summary_text is not None:
         try:
             persisted_summary_text = summary_path.read_text(encoding="utf-8")
@@ -1193,6 +1212,50 @@ def _verify_persisted_outputs(
             mismatches.append(f"persisted summary mismatch: {summary_path}")
 
     return mismatches
+
+
+def _build_history_entry(
+    *,
+    truth_state: Dict[str, Any],
+    health_state: Dict[str, Any],
+    run_state: Dict[str, Any],
+) -> Dict[str, Any]:
+    stale = truth_state.get("stale_context_eligibility", {}) or {}
+    claim_summary = truth_state.get("claim_summary", {}) or {}
+    git_automation = run_state.get("git_automation", {}) or {}
+    return {
+        "generated_at": run_state.get("generated_at"),
+        "run_status": run_state.get("run_status"),
+        "dry_run": bool(run_state.get("dry_run")),
+        "machine_truth_changed": bool(stale.get("machine_truth_changed")),
+        "policy_inputs_changed": bool(stale.get("policy_inputs_changed")),
+        "changed_machine_inputs": list(stale.get("changed_machine_inputs", []) or []),
+        "changed_policy_inputs": list(stale.get("changed_policy_inputs", []) or []),
+        "health_status": health_state.get("health_status"),
+        "claim_verification_mode": run_state.get("claim_verification_mode"),
+        "claim_summary": {
+            "verified": int(claim_summary.get("verified", 0) or 0),
+            "stale": int(claim_summary.get("stale", 0) or 0),
+            "ambiguous": int(claim_summary.get("ambiguous", 0) or 0),
+            "unverifiable": int(claim_summary.get("unverifiable", 0) or 0),
+            "total": int(claim_summary.get("total", 0) or 0),
+        },
+        "stale_claims": list(truth_state.get("stale_claims", []) or []),
+        "eligible_scope_count": int(stale.get("eligible_scope_count", 0) or 0),
+        "files_updated": list(run_state.get("files_updated", []) or []),
+        "warnings_emitted": list(run_state.get("warnings_emitted", []) or []),
+        "unresolved_items": list(run_state.get("unresolved_items", []) or []),
+        "git_automation_status": git_automation.get("status"),
+        "git_committed_sha": git_automation.get("committed_sha") or "",
+    }
+
+
+def _append_history_entry(path: Path, entry: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def _build_execution_context(
@@ -1932,6 +1995,9 @@ def _build_report(
     ])
     for artifact in run_state.get("artifacts_written", []):
         lines.append(f"- {artifact}")
+    history_path = str(run_state.get("history_path") or "")
+    if history_path:
+        lines.append(f"- {history_path}")
     files_updated = run_state.get("files_updated", []) or []
     lines.extend(["", "## Files Updated", ""])
     if files_updated:
@@ -2079,6 +2145,7 @@ def execute_dream_loop(
         str(config.state_dir / LATEST_RUN_STATE),
         str(config.state_dir / LATEST_REPORT),
     ]
+    history_path = config.state_dir / HISTORY_JSONL
     if ctx.summary_changed_fields:
         ctx.files_updated.append(str(config.summary_path))
 
@@ -2104,6 +2171,7 @@ def execute_dream_loop(
         "skipped_checks": list(ctx.skipped_checks),
         "artifacts_written": [] if config.dry_run else artifact_paths,
         "planned_artifacts": artifact_paths,
+        "history_path": str(history_path),
         "files_updated": [] if config.dry_run else list(ctx.files_updated),
         "warnings_emitted": list(ctx.warnings_emitted),
         "unresolved_items": list(ctx.unresolved_items),
@@ -2144,6 +2212,8 @@ def execute_dream_loop(
             expected_run_state=run_state,
             report_path=config.state_dir / LATEST_REPORT,
             expected_report_text=report_text,
+            history_path=history_path,
+            expected_history_entry=None,
             summary_path=config.summary_path,
             expected_summary_text=ctx.aligned_summary_text if ctx.summary_changed_fields else None,
         )
@@ -2164,6 +2234,12 @@ def execute_dream_loop(
         elif git_automation["status"] == "push_failed":
             run_state["run_status"] = "succeeded_with_git_push_failure"
         report_text = _build_report(truth_state=ctx.truth_state, health_state=ctx.health_state, run_state=run_state)
+        history_entry = _build_history_entry(
+            truth_state=ctx.truth_state,
+            health_state=ctx.health_state,
+            run_state=run_state,
+        )
+        _append_history_entry(history_path, history_entry)
         _atomic_write_json(config.state_dir / LATEST_RUN_STATE, run_state)
         _atomic_write_text(config.state_dir / LATEST_REPORT, report_text)
         final_verification_mismatches = _verify_persisted_outputs(
@@ -2175,6 +2251,8 @@ def execute_dream_loop(
             expected_run_state=run_state,
             report_path=config.state_dir / LATEST_REPORT,
             expected_report_text=report_text,
+            history_path=history_path,
+            expected_history_entry=history_entry,
             summary_path=config.summary_path,
             expected_summary_text=ctx.aligned_summary_text if ctx.summary_changed_fields else None,
         )

@@ -16,6 +16,7 @@ Current reality:
 - the live runner already includes some bounded `v2` and `v2.1` features beyond the original `v1` floor
 - the live runner now includes a separate executable claim registry plus bounded claim-result persistence for first-wave claims from both `ARCHITECT_INSTRUCTION.md` and `SERVER3_SUMMARY.md`
 - `SERVER3_SUMMARY.md` verification/correction is now claim-backed rather than only transitional hard-coded field mapping
+- the live runner now also appends a bounded per-run `history.jsonl` audit trail alongside the latest-state artifacts
 - the broader system-wide truth-alignment behaviors in this document are follow-on scope and should not be used to judge `v1` completeness
 - this file is the single canonical dream-loop spec and rollout-acceptance document
 - separate `v2` and `v2.1` goal briefs are intentionally folded into this file

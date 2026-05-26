@@ -155,6 +155,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertEqual(result["run_state"]["run_status"], "dry_run_succeeded")
             self.assertIn("server3_summary_truth", result["run_state"]["checks_executed"])
             self.assertFalse((state_dir / dream_loop.LATEST_TRUTH_STATE).exists())
+            self.assertFalse((state_dir / dream_loop.HISTORY_JSONL).exists())
             self.assertIn("Server3 Dream Loop Report", result["report_text"])
             self.assertIn("summary_out_of_alignment", result["truth_state"]["secondary_doc_alignment"])
             self.assertEqual(result["truth_state"]["claim_summary"]["stale"], 0)
@@ -185,11 +186,14 @@ Last updated: 2026-05-17 (AEST, +10:00)
             health_state = json.loads((state_dir / dream_loop.LATEST_HEALTH_STATE).read_text(encoding="utf-8"))
             run_state = json.loads((state_dir / dream_loop.LATEST_RUN_STATE).read_text(encoding="utf-8"))
             report_text = (state_dir / dream_loop.LATEST_REPORT).read_text(encoding="utf-8")
+            history_lines = (state_dir / dream_loop.HISTORY_JSONL).read_text(encoding="utf-8").splitlines()
+            history_entry = json.loads(history_lines[-1])
 
             self.assertIn("machine_truth_fingerprint", truth_state)
             self.assertIn("health_status", health_state)
             self.assertEqual(run_state["run_status"], "succeeded")
             self.assertIn("Server3 Dream Loop Report", report_text)
+            self.assertEqual(run_state["history_path"], str(state_dir / dream_loop.HISTORY_JSONL))
             self.assertEqual(len(run_state["artifacts_written"]), 4)
             self.assertEqual(run_state["checks_executed"][0], "truth_files_fingerprint")
             self.assertIn("server3_summary_truth", run_state["checks_executed"])
@@ -250,6 +254,10 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertIn("## Claim Verification", report_text)
             self.assertIn("## Git Automation", report_text)
             self.assertEqual(run_state["git_automation"]["status"], "skipped_no_repo_managed_paths")
+            self.assertEqual(len(history_lines), 1)
+            self.assertEqual(history_entry["run_status"], "succeeded")
+            self.assertEqual(history_entry["claim_summary"]["verified"], 4)
+            self.assertEqual(history_entry["git_automation_status"], "skipped_no_repo_managed_paths")
 
     def test_summary_alignment_is_idempotent_when_already_aligned(self):
         registry = dream_loop._load_claim_registry(dream_loop.DEFAULT_CLAIM_REGISTRY_PATH)
@@ -549,6 +557,35 @@ Last updated: 2026-05-17 (AEST, +10:00)
                 result["truth_state"]["stale_claims"],
                 ["architect_instruction.primary_service"],
             )
+
+    def test_execute_dream_loop_appends_history_entries_once_per_run(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir) / "dream"
+            bridge_state_dir = Path(tmpdir) / "bridge"
+            summary_path = Path(tmpdir) / "SERVER3_SUMMARY.md"
+            bridge_state_dir.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(self._aligned_summary_fixture(), encoding="utf-8")
+            config = dream_loop.DreamLoopConfig(
+                state_dir=state_dir,
+                bridge_state_dir=bridge_state_dir,
+                timezone="Australia/Brisbane",
+                dry_run=False,
+                summary_path=summary_path,
+            )
+            dream_loop.execute_dream_loop(
+                config,
+                run_json_command=self._fake_run_json_command,
+                run_text_command=self._fake_run_text_command,
+            )
+            dream_loop.execute_dream_loop(
+                config,
+                run_json_command=self._fake_run_json_command,
+                run_text_command=self._fake_run_text_command,
+            )
+            history_lines = (state_dir / dream_loop.HISTORY_JSONL).read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(history_lines), 2)
+            self.assertEqual(json.loads(history_lines[0])["run_status"], "succeeded")
+            self.assertEqual(json.loads(history_lines[1])["run_status"], "succeeded")
 
     def test_execute_dream_loop_persists_stale_warning_state_for_eligible_scope(self):
         with tempfile.TemporaryDirectory() as tmpdir:
