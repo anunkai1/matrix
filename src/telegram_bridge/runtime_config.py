@@ -185,6 +185,20 @@ class MessageConfig:
     empty_output_message: str = "(No output from assistant)"
 
 
+@dataclass
+class GoalsConfig:
+    goal_max_turns: int = 20
+    goal_judge_engine_plugin: str = ""
+    goal_judge_codex_model: str = ""
+    goal_judge_codex_reasoning_effort: str = ""
+    goal_judge_gemma_model: str = ""
+    goal_judge_pi_provider: str = ""
+    goal_judge_pi_model: str = ""
+    goal_judge_venice_model: str = ""
+    goal_judge_timeout_seconds: int = 30
+    goal_judge_max_output_chars: int = 4096
+
+
 class Config:
     """Grouped bridge runtime configuration with flat-attribute compatibility."""
 
@@ -198,6 +212,7 @@ class Config:
         "diary": DiaryConfig,
         "affective": AffectiveConfig,
         "messages": MessageConfig,
+        "goals": GoalsConfig,
     }
     _FIELD_TO_GROUP = {
         field.name: group_name
@@ -797,6 +812,41 @@ def load_message_config_values(
         "empty_output_message": f"(No output from {assistant_name})",
     }
 
+
+def load_goals_config_values() -> Dict[str, object]:
+    return {
+        "goal_max_turns": parse_int_env(
+            "TELEGRAM_GOAL_MAX_TURNS",
+            20,
+            minimum=1,
+        ),
+        "goal_judge_engine_plugin": parse_plugin_name_env(
+            "TELEGRAM_GOAL_JUDGE_ENGINE_PLUGIN",
+            "",
+        ),
+        "goal_judge_codex_model": os.getenv("TELEGRAM_GOAL_JUDGE_CODEX_MODEL", "").strip(),
+        "goal_judge_codex_reasoning_effort": (
+            os.getenv("TELEGRAM_GOAL_JUDGE_CODEX_REASONING_EFFORT", "").strip().lower()
+        ),
+        "goal_judge_gemma_model": os.getenv("TELEGRAM_GOAL_JUDGE_GEMMA_MODEL", "").strip(),
+        "goal_judge_pi_provider": parse_plugin_name_env(
+            "TELEGRAM_GOAL_JUDGE_PI_PROVIDER",
+            "",
+        ),
+        "goal_judge_pi_model": os.getenv("TELEGRAM_GOAL_JUDGE_PI_MODEL", "").strip(),
+        "goal_judge_venice_model": os.getenv("TELEGRAM_GOAL_JUDGE_VENICE_MODEL", "").strip(),
+        "goal_judge_timeout_seconds": parse_int_env(
+            "TELEGRAM_GOAL_JUDGE_TIMEOUT_SECONDS",
+            30,
+            minimum=1,
+        ),
+        "goal_judge_max_output_chars": parse_int_env(
+            "TELEGRAM_GOAL_JUDGE_MAX_OUTPUT_CHARS",
+            4096,
+            minimum=64,
+        ),
+    }
+
 def load_config() -> Config:
     channel_plugin = parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram")
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -863,4 +913,5 @@ def load_config() -> Config:
             assistant_name=assistant_name,
             busy_message=busy_message,
         ),
+        goals=load_goals_config_values(),
     )

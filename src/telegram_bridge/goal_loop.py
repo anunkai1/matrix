@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import re
@@ -7,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from telegram_bridge.conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
+from telegram_bridge.engine_catalog import normalize_engine_name
 from telegram_bridge.executor import parse_executor_output
 from telegram_bridge.handler_common import trim_output
 from telegram_bridge.response_delivery import clear_cancel_event, register_cancel_event
@@ -15,6 +17,7 @@ from telegram_bridge.session_manager import clear_busy, mark_busy
 from telegram_bridge.state_models import ScopeKey, State, normalize_scope_key
 from telegram_bridge.state_store import clear_in_flight_request, mark_in_flight_request
 from telegram_bridge.engine_controls import build_engine_runtime_config
+from telegram_bridge.plugin_registry import build_default_plugin_registry
 
 
 DEFAULT_MAX_TURNS = 20
@@ -747,6 +750,78 @@ def _goal_judge_max_output_chars(config) -> int:
     return parsed if parsed > 0 else DEFAULT_JUDGE_MAX_OUTPUT_CHARS
 
 
+def _goal_max_turns(config) -> int:
+    value = getattr(config, "goal_max_turns", DEFAULT_MAX_TURNS)
+    try:
+        parsed = int(value)
+    except Exception:
+        return DEFAULT_MAX_TURNS
+    return parsed if parsed > 0 else DEFAULT_MAX_TURNS
+
+
+def _goal_judge_timeout_seconds(config) -> float:
+    value = getattr(config, "goal_judge_timeout_seconds", DEFAULT_JUDGE_TIMEOUT_SECONDS)
+    try:
+        parsed = float(value)
+    except Exception:
+        return DEFAULT_JUDGE_TIMEOUT_SECONDS
+    return parsed if parsed > 0 else DEFAULT_JUDGE_TIMEOUT_SECONDS
+
+
+def _goal_judge_engine_name(config, active_engine_name: str) -> str:
+    selected = normalize_engine_name(
+        str(getattr(config, "goal_judge_engine_plugin", "") or "").strip()
+    )
+    if selected:
+        return selected
+    return normalize_engine_name(active_engine_name)
+
+
+def _build_goal_judge_runtime(
+    *,
+    state: State,
+    config,
+    scope_key: ScopeKey,
+    active_engine,
+):
+    active_engine_name = normalize_engine_name(getattr(active_engine, "engine_name", ""))
+    judge_engine_name = _goal_judge_engine_name(config, active_engine_name)
+    if not judge_engine_name:
+        raise RuntimeError("goal judge engine is not configured")
+
+    if judge_engine_name == active_engine_name:
+        judge_engine = active_engine
+        judge_config = build_engine_runtime_config(state, config, scope_key, judge_engine_name)
+    else:
+        judge_engine = build_default_plugin_registry().build_engine(judge_engine_name)
+        judge_config = copy.deepcopy(config)
+
+    if judge_engine_name == "codex":
+        override_model = str(getattr(config, "goal_judge_codex_model", "") or "").strip()
+        override_effort = str(getattr(config, "goal_judge_codex_reasoning_effort", "") or "").strip().lower()
+        if override_model:
+            judge_config.codex_model = override_model
+        if override_effort:
+            judge_config.codex_reasoning_effort = override_effort
+    elif judge_engine_name == "gemma":
+        override_model = str(getattr(config, "goal_judge_gemma_model", "") or "").strip()
+        if override_model:
+            judge_config.gemma_model = override_model
+    elif judge_engine_name == "venice":
+        override_model = str(getattr(config, "goal_judge_venice_model", "") or "").strip()
+        if override_model:
+            judge_config.venice_model = override_model
+    elif judge_engine_name == "pi":
+        override_provider = str(getattr(config, "goal_judge_pi_provider", "") or "").strip().lower()
+        override_model = str(getattr(config, "goal_judge_pi_model", "") or "").strip()
+        if override_provider:
+            judge_config.pi_provider = override_provider
+        if override_model:
+            judge_config.pi_model = override_model
+
+    return judge_engine, judge_config
+
+
 def _truncate(text: str, limit: int) -> str:
     text = str(text or "").strip()
     if len(text) <= limit:
@@ -808,7 +883,13 @@ def _run_goal_judge(
     from telegram_bridge.request_starts import resolve_engine_for_scope
 
     try:
-        engine = resolve_engine_for_scope(state, config, scope_key, None)
+        active_engine = resolve_engine_for_scope(state, config, scope_key, None)
+        engine, engine_config = _build_goal_judge_runtime(
+            state=state,
+            config=config,
+            scope_key=scope_key,
+            active_engine=active_engine,
+        )
     except Exception as exc:
         logging.debug("Goal judge engine resolution failed for scope=%s: %s", scope_key, exc)
         return "continue", "judge engine unavailable", False
@@ -834,21 +915,12 @@ def _run_goal_judge(
         f"{judge_user_prompt}"
     )
     try:
-        engine_config = build_engine_runtime_config(
-            state,
-            config,
-            scope_key,
-            getattr(engine, "engine_name", ""),
-        )
         try:
             setattr(engine_config, "max_output_chars", _goal_judge_max_output_chars(config))
             setattr(
                 engine_config,
                 "exec_timeout_seconds",
-                float(
-                    getattr(config, "goal_judge_timeout_seconds", DEFAULT_JUDGE_TIMEOUT_SECONDS)
-                    or DEFAULT_JUDGE_TIMEOUT_SECONDS
-                ),
+                _goal_judge_timeout_seconds(config),
             )
         except Exception:
             logging.debug("Goal judge engine config does not accept runtime overrides", exc_info=True)
@@ -1046,6 +1118,7 @@ def handle_goal_command(
     new_state = manager.set(
         args.strip(),
         anchor_message_id=message_id if isinstance(message_id, int) else None,
+        max_turns=_goal_max_turns(config),
     )
     started = maybe_start_goal_continuation(
         state=state,

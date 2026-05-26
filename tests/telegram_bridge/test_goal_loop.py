@@ -83,6 +83,34 @@ class GoalLoopTests(unittest.TestCase):
             stored = state.chat_goals["tg:-1003894351534:topic:1853"]
             self.assertEqual(stored.anchor_message_id, 10)
 
+    def test_goal_command_uses_configured_goal_turn_budget(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+            config = make_config()
+            config.goal_max_turns = 33
+
+            with mock.patch.object(
+                goal_loop,
+                "maybe_start_goal_continuation",
+                return_value=True,
+            ):
+                handled = goal_loop.handle_goal_command(
+                    state=state,
+                    config=config,
+                    client=client,
+                    scope_key="tg:-1003894351534:topic:1853",
+                    chat_id=-1003894351534,
+                    message_thread_id=1853,
+                    message_id=10,
+                    raw_text="/goal build the thing",
+                )
+
+            self.assertTrue(handled)
+            stored = state.chat_goals["tg:-1003894351534:topic:1853"]
+            self.assertEqual(stored.max_turns, 33)
+            self.assertIn("⊙ Goal set (33 turns): build the thing", client.messages[-1][1])
+
     def test_goal_command_uses_canonical_scope_goal_storage_when_enabled(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             state = State(
@@ -616,6 +644,49 @@ class GoalLoopTests(unittest.TestCase):
             engine_config = fake_engine.run.call_args.kwargs["config"]
             self.assertEqual(engine_config.exec_timeout_seconds, 9.0)
             self.assertEqual(engine_config.max_output_chars, 2222)
+
+    def test_run_goal_judge_can_use_dedicated_judge_engine_and_overrides(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+            active_engine = mock.Mock()
+            active_engine.engine_name = "codex"
+            judge_engine = mock.Mock()
+            judge_engine.engine_name = "gemma"
+            judge_engine.run.return_value = mock.Mock(returncode=0, stdout='{"done": false, "reason": "keep going"}')
+            registry = mock.Mock()
+            registry.build_engine.return_value = judge_engine
+            config = make_config()
+            config.goal_judge_engine_plugin = "gemma"
+            config.goal_judge_gemma_model = "judge-gemma"
+            config.goal_judge_timeout_seconds = 12
+            config.goal_judge_max_output_chars = 1337
+
+            with mock.patch(
+                "telegram_bridge.request_starts.resolve_engine_for_scope",
+                return_value=active_engine,
+            ), mock.patch.object(
+                goal_loop,
+                "build_default_plugin_registry",
+                return_value=registry,
+            ):
+                verdict, reason, parse_failed = goal_loop._run_goal_judge(
+                    state=state,
+                    config=config,
+                    client=client,
+                    scope_key="tg:-1003894351534:topic:1853",
+                    chat_id=-1003894351534,
+                    message_thread_id=1853,
+                    goal_state=goal_loop.GoalState(goal="build the thing"),
+                    last_response="Still working on it.",
+                )
+
+            self.assertEqual((verdict, reason, parse_failed), ("continue", "keep going", False))
+            registry.build_engine.assert_called_once_with("gemma")
+            engine_config = judge_engine.run.call_args.kwargs["config"]
+            self.assertEqual(engine_config.gemma_model, "judge-gemma")
+            self.assertEqual(engine_config.exec_timeout_seconds, 12.0)
+            self.assertEqual(engine_config.max_output_chars, 1337)
 
     def test_load_chat_goals_prunes_legacy_chat_scope_when_topic_scope_exists(self):
         with tempfile.TemporaryDirectory() as tmpdir:

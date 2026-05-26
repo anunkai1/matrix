@@ -199,6 +199,29 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(config.pi_web_max_page_chars, 4200)
         self.assertEqual(config.pi_web_timeout_seconds, 25)
 
+    def test_load_config_reads_goal_judge_and_goal_budget_overrides(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_GOAL_MAX_TURNS": "33",
+                "TELEGRAM_GOAL_JUDGE_ENGINE_PLUGIN": "pi",
+                "TELEGRAM_GOAL_JUDGE_PI_PROVIDER": "deepseek",
+                "TELEGRAM_GOAL_JUDGE_PI_MODEL": "deepseek-chat",
+                "TELEGRAM_GOAL_JUDGE_TIMEOUT_SECONDS": "41",
+                "TELEGRAM_GOAL_JUDGE_MAX_OUTPUT_CHARS": "5000",
+            },
+            clear=True,
+        ):
+            config = runtime_config.load_config()
+        self.assertEqual(config.goal_max_turns, 33)
+        self.assertEqual(config.goal_judge_engine_plugin, "pi")
+        self.assertEqual(config.goal_judge_pi_provider, "deepseek")
+        self.assertEqual(config.goal_judge_pi_model, "deepseek-chat")
+        self.assertEqual(config.goal_judge_timeout_seconds, 41)
+        self.assertEqual(config.goal_judge_max_output_chars, 5000)
+
 
 if __name__ == "__main__":
     unittest.main()
