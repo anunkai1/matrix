@@ -202,6 +202,10 @@ def normalize_error_description(value: object) -> str:
     return " ".join(text.split())
 
 
+def is_benign_message_not_modified_description(value: object) -> bool:
+    return "message is not modified" in normalize_error_description(value).lower()
+
+
 def collect_error_descriptions(
     rows: Iterable[Dict[str, object]],
     *,
@@ -602,19 +606,25 @@ def build_snapshot(now_dt: datetime) -> Dict[str, object]:
         benign_edit_400_count += max(
             0, safe_int(row.get("edit_failures_400"), default=0)
         )
-    raw_edit_400_count = sum(
-        1
-        for row in telegram_events
-        if row.get("event") == "bridge.telegram_api_failed"
-        and row.get("method") == "editMessageText"
-        and safe_int(row.get("error_code"), default=-1) == 400
-    )
+    raw_edit_400_count = 0
+    benign_edit_400_from_failures = 0
+    for row in telegram_events:
+        if row.get("event") != "bridge.telegram_api_failed":
+            continue
+        if row.get("method") != "editMessageText":
+            continue
+        if safe_int(row.get("error_code"), default=-1) != 400:
+            continue
+        raw_edit_400_count += 1
+        if is_benign_message_not_modified_description(row.get("error_description")):
+            benign_edit_400_from_failures += 1
     edit_descriptions = collect_error_descriptions(
         telegram_events,
         event_name="bridge.telegram_api_failed",
         method="editMessageText",
         error_code=400,
     )
+    benign_edit_400_count = max(benign_edit_400_count, benign_edit_400_from_failures)
     edit_400_count = max(0, raw_edit_400_count - benign_edit_400_count)
     edit_rate: Optional[float]
     sample_size_suppressed = False

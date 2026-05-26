@@ -8,7 +8,6 @@ from typing import Dict, Optional, Set
 DEFAULT_SUPPRESSED_INFO_EVENTS = frozenset(
     {
         "bridge.poll_updates_received",
-        "bridge.progress_edit_stats",
         "bridge.request_phase_timing",
     }
 )

@@ -36,6 +36,15 @@ class StructuredLoggingTests(unittest.TestCase):
 
         self.assertEqual(stream.getvalue(), "")
 
+    def test_progress_edit_stats_is_logged_by_default(self) -> None:
+        module, stream = self._configure_with_stream()
+
+        module.emit_event("bridge.progress_edit_stats", fields={"edit_attempts": 2})
+
+        output = stream.getvalue()
+        self.assertIn('"event": "bridge.progress_edit_stats"', output)
+        self.assertIn('"level": "INFO"', output)
+
     def test_warning_for_suppressed_event_still_logs(self) -> None:
         module, stream = self._configure_with_stream()
 
