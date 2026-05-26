@@ -172,7 +172,98 @@ class GoalLoopTests(unittest.TestCase):
             cleared = manager.clear()
             self.assertTrue(cleared)
             self.assertFalse(manager.has_goal())
-            self.assertNotIn("tg:-1003894351534:topic:1853", state.chat_goals)
+            self.assertIn("tg:-1003894351534:topic:1853", state.chat_goals)
+            self.assertEqual(state.chat_goals["tg:-1003894351534:topic:1853"].status, "cleared")
+            self.assertEqual(manager.status_line(), "No active goal. Set one with /goal <text>.")
+
+    def test_clear_preserves_cleared_goal_state_in_canonical_session(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = State(
+                chat_goal_path=str(Path(tmpdir) / "chat_goals.json"),
+                chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
+                canonical_sessions_enabled=True,
+            )
+            manager = goal_loop.ScopeGoalManager(state, "tg:-1003894351534:topic:1853")
+            manager.set("build the thing", anchor_message_id=10)
+
+            cleared = manager.clear()
+
+            self.assertTrue(cleared)
+            session = state.chat_sessions["tg:-1003894351534:topic:1853"]
+            self.assertEqual(session.goal_state["status"], "cleared")
+            persisted = json.loads(Path(state.chat_sessions_path).read_text(encoding="utf-8"))
+            self.assertEqual(
+                persisted["tg:-1003894351534:topic:1853"]["goal_state"]["status"],
+                "cleared",
+            )
+
+    def test_goal_status_hides_cleared_goal_as_inactive(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+            state.chat_goals["tg:-1003894351534:topic:1853"] = goal_loop.GoalState(
+                goal="build the thing",
+                status="cleared",
+            )
+
+            handled = goal_loop.handle_goal_command(
+                state=state,
+                config=make_config(),
+                client=client,
+                scope_key="tg:-1003894351534",
+                chat_id=-1003894351534,
+                message_thread_id=1853,
+                message_id=11,
+                raw_text="/goal status",
+            )
+
+            self.assertTrue(handled)
+            self.assertEqual(client.messages[-1][1], "No active goal. Set one with /goal <text>.")
+
+    def test_goal_resume_rejects_cleared_goal(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+            state.chat_goals["tg:-1003894351534:topic:1853"] = goal_loop.GoalState(
+                goal="build the thing",
+                status="cleared",
+            )
+
+            handled = goal_loop.handle_goal_command(
+                state=state,
+                config=make_config(),
+                client=client,
+                scope_key="tg:-1003894351534",
+                chat_id=-1003894351534,
+                message_thread_id=1853,
+                message_id=11,
+                raw_text="/goal resume",
+            )
+
+            self.assertTrue(handled)
+            self.assertEqual(client.messages[-1][1], "No paused goal to resume.")
+
+    def test_subgoal_rejects_cleared_goal(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+            state.chat_goals["tg:-1003894351534:topic:1853"] = goal_loop.GoalState(
+                goal="build the thing",
+                status="cleared",
+            )
+
+            handled = goal_loop.handle_subgoal_command(
+                state=state,
+                client=client,
+                scope_key="tg:-1003894351534",
+                chat_id=-1003894351534,
+                message_thread_id=1853,
+                message_id=11,
+                raw_text="/subgoal include tests",
+            )
+
+            self.assertTrue(handled)
+            self.assertEqual(client.messages[-1][1], "No active goal. Set one with /goal <text>.")
 
     def test_goal_status_shows_canonical_thread_and_in_flight_details(self):
         with tempfile.TemporaryDirectory() as tmpdir:

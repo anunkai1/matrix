@@ -314,39 +314,55 @@ def _set_goal_state(state: State, scope_key: ScopeKey, goal_state: GoalState) ->
 
 def clear_goal_state(state: State, scope_key: ScopeKey) -> bool:
     scope_key = normalize_scope_key(scope_key)
-    removed = False
+    cleared = False
     if state.canonical_sessions_enabled:
         from telegram_bridge.canonical_runtime_state_store import persist_canonical_session_scope
-        from telegram_bridge.canonical_state_store import canonical_session_is_empty
+        from telegram_bridge.state_models import CanonicalSession
 
         with state.lock:
             session = state.chat_sessions.get(scope_key)
+            goal_state = None
             if session is not None and isinstance(session.goal_state, dict):
-                session.goal_state = None
-                removed = True
-                if canonical_session_is_empty(session):
-                    del state.chat_sessions[scope_key]
-            if scope_key in state.chat_goals:
-                del state.chat_goals[scope_key]
-            if removed:
+                try:
+                    goal_state = GoalState.from_dict(session.goal_state)
+                except Exception:
+                    goal_state = None
+            elif scope_key in state.chat_goals:
+                try:
+                    goal_state = GoalState.from_dict(state.chat_goals[scope_key].to_dict())
+                except Exception:
+                    goal_state = None
+            if goal_state is not None and goal_state.status != "cleared":
+                goal_state.status = "cleared"
+                goal_state.paused_reason = None
+                if session is None:
+                    session = CanonicalSession()
+                    state.chat_sessions[scope_key] = session
+                session.goal_state = goal_state.to_dict()
+                state.chat_goals[scope_key] = GoalState.from_dict(goal_state.to_dict())
+                cleared = True
                 _prune_shadowed_chat_goals(state.chat_goals)
-        if removed:
+        if cleared:
             persist_canonical_session_scope(state, scope_key)
             persist_chat_goals(state)
-        return removed
+        return cleared
     with state.lock:
         if scope_key in state.chat_goals:
-            del state.chat_goals[scope_key]
-            removed = True
-        if removed:
+            goal_state = GoalState.from_dict(state.chat_goals[scope_key].to_dict())
+            if goal_state.status != "cleared":
+                goal_state.status = "cleared"
+                goal_state.paused_reason = None
+                state.chat_goals[scope_key] = goal_state
+                cleared = True
+        if cleared:
             _prune_shadowed_chat_goals(state.chat_goals)
-    if removed:
+    if cleared:
         persist_chat_goals(state)
-    return removed
+    return cleared
 
 
 def status_line(goal_state: Optional[GoalState]) -> str:
-    if goal_state is None:
+    if goal_state is None or goal_state.status == "cleared":
         return "No active goal. Set one with /goal <text>."
     turns = f"{goal_state.turns_used}/{goal_state.max_turns} turns"
     sub = ""
@@ -406,7 +422,7 @@ def build_goal_status_text(
     scope_key: ScopeKey,
     goal_state: Optional[GoalState],
 ) -> str:
-    if goal_state is None:
+    if goal_state is None or goal_state.status == "cleared":
         return "No active goal. Set one with /goal <text>."
 
     normalized_scope_key = normalize_scope_key(scope_key)
@@ -546,7 +562,7 @@ class ScopeGoalManager:
 
     def pause(self, reason: str = "user-paused") -> Optional[GoalState]:
         goal_state = self.goal_state
-        if goal_state is None:
+        if goal_state is None or goal_state.status == "cleared":
             return None
         goal_state.status = "paused"
         goal_state.paused_reason = reason
@@ -560,7 +576,7 @@ class ScopeGoalManager:
         anchor_message_id: Optional[int] = None,
     ) -> Optional[GoalState]:
         goal_state = self.goal_state
-        if goal_state is None:
+        if goal_state is None or goal_state.status != "paused":
             return None
         goal_state.status = "active"
         goal_state.paused_reason = None
@@ -1159,7 +1175,7 @@ def handle_subgoal_command(
     manager = ScopeGoalManager(state, scope_key)
     args = _parse_goal_args(raw_text, "/subgoal")
     goal_state = manager.goal_state
-    if goal_state is None:
+    if goal_state is None or not manager.has_goal():
         client.send_message(
             chat_id,
             "No active goal. Set one with /goal <text>.",

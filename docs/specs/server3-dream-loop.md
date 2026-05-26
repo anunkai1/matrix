@@ -14,6 +14,8 @@ Current reality:
 - `v1` exists in `ops/dream_loop/dream_loop.py`
 - `v1` remains the base implementation contract for the runner
 - the live runner already includes some bounded `v2` and `v2.1` features beyond the original `v1` floor
+- the live runner now includes a separate executable claim registry plus bounded claim-result persistence for approved `SERVER3_SUMMARY.md` claims
+- `SERVER3_SUMMARY.md` verification/correction is now claim-backed rather than only transitional hard-coded field mapping
 - the broader system-wide truth-alignment behaviors in this document are follow-on scope and should not be used to judge `v1` completeness
 - this file is the single canonical dream-loop spec and rollout-acceptance document
 - separate `v2` and `v2.1` goal briefs are intentionally folded into this file

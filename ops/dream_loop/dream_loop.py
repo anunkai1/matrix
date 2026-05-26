@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Bounded v1 Server3 dream-loop runner.
+"""Server3 dream-loop runner.
 
-This runner keeps the first slice narrow:
+This runner keeps the bounded alignment slice conservative:
 - scan a fixed set of truth and health inputs
 - normalize them into machine-readable truth/health/run state
-- write the three v1 state artifacts plus a conservative report
+- evaluate approved claim-registry entries against bounded evidence
+- write the truth/health/run state artifacts plus a conservative report
 - support dry-run and manual invocation
 
-It does not send chat notifications, expose bridge commands, or push commits.
+The live runner now also:
+- exposes `/truth_status` and `/reset` through the bridge command layer
+- supports claim-backed `SERVER3_SUMMARY.md` verification/correction
+- supports bounded git commit/push automation for approved managed outputs
 """
 
 from __future__ import annotations
@@ -69,6 +73,8 @@ TELEGRAM_CONTEXT_ROUTING_INPUT_PATHS = (
 )
 
 DEFAULT_SUMMARY_PATH = ROOT / "SERVER3_SUMMARY.md"
+DEFAULT_CLAIM_REGISTRY_PATH = ROOT / "ops" / "dream_loop" / "claim_registry.json"
+CLAIM_VERIFICATION_MODES = {"audit_only", "corrective"}
 
 
 @dataclass(frozen=True)
@@ -78,6 +84,8 @@ class DreamLoopConfig:
     timezone: str = DEFAULT_TZ
     dry_run: bool = False
     summary_path: Path = DEFAULT_SUMMARY_PATH
+    claim_registry_path: Path = DEFAULT_CLAIM_REGISTRY_PATH
+    claim_verification_mode: str = "corrective"
 
 
 @dataclass(frozen=True)
@@ -91,6 +99,22 @@ class DreamLoopCheckSpec:
     mismatch_rule: str
     correction_target: str
     severity: str
+
+
+@dataclass(frozen=True)
+class DreamLoopClaimSpec:
+    claim_id: str
+    source_doc: str
+    source_anchor: str
+    claim_text: str
+    claim_kind: str
+    verifier: str
+    evidence_inputs: Tuple[str, ...]
+    correction_target: str
+    severity: str
+    render_key: str = ""
+    section_header: str = ""
+    line_prefix: str = ""
 
 
 @dataclass
@@ -128,6 +152,11 @@ class DreamLoopExecutionContext:
     summary_text: str = ""
     aligned_summary_text: str = ""
     summary_changed_fields: List[str] = field(default_factory=list)
+    summary_changed_claim_ids: List[str] = field(default_factory=list)
+    summary_stale_fields: List[str] = field(default_factory=list)
+    summary_stale_claim_ids: List[str] = field(default_factory=list)
+    claim_registry: List[DreamLoopClaimSpec] = field(default_factory=list)
+    claim_results: List[Dict[str, Any]] = field(default_factory=list)
 
 
 GitCommandRunner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
@@ -167,6 +196,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=Path,
         default=DEFAULT_SUMMARY_PATH,
         help="Secondary summary file that the loop may align conservatively.",
+    )
+    parser.add_argument(
+        "--claim-registry-path",
+        type=Path,
+        default=DEFAULT_CLAIM_REGISTRY_PATH,
+        help="Executable claim registry used for bounded claim verification.",
+    )
+    parser.add_argument(
+        "--claim-verification-mode",
+        choices=sorted(CLAIM_VERIFICATION_MODES),
+        default="corrective",
+        help="Whether claim evaluation is audit-only or may apply approved corrective edits.",
     )
     return parser.parse_args(argv)
 
@@ -243,11 +284,16 @@ def build_check_registry(config: DreamLoopConfig) -> List[DreamLoopCheckSpec]:
             trigger="summary_target_exists",
             inputs=(
                 str(config.summary_path.relative_to(ROOT) if config.summary_path.is_relative_to(ROOT) else config.summary_path),
+                str(
+                    config.claim_registry_path.relative_to(ROOT)
+                    if config.claim_registry_path.is_relative_to(ROOT)
+                    else config.claim_registry_path
+                ),
                 "systemctl cat server3-runtime-observer.timer",
                 "systemctl is-enabled server3-dream-loop.timer",
             ),
             executor="server3_summary_truth",
-            mismatch_rule="mapped_summary_fields_do_not_match_structured_truth_or_approved_live_inputs",
+            mismatch_rule="approved_summary_claims_do_not_match_structured_truth_or_approved_live_inputs",
             correction_target="SERVER3_SUMMARY.md",
             severity="warn",
         ),
@@ -265,6 +311,23 @@ def _serialize_registry_check(spec: DreamLoopCheckSpec) -> Dict[str, Any]:
         "mismatch_rule": spec.mismatch_rule,
         "correction_target": spec.correction_target,
         "severity": spec.severity,
+    }
+
+
+def _serialize_claim_spec(spec: DreamLoopClaimSpec) -> Dict[str, Any]:
+    return {
+        "claim_id": spec.claim_id,
+        "source_doc": spec.source_doc,
+        "source_anchor": spec.source_anchor,
+        "claim_text": spec.claim_text,
+        "claim_kind": spec.claim_kind,
+        "verifier": spec.verifier,
+        "evidence_inputs": list(spec.evidence_inputs),
+        "correction_target": spec.correction_target,
+        "severity": spec.severity,
+        "render_key": spec.render_key,
+        "section_header": spec.section_header,
+        "line_prefix": spec.line_prefix,
     }
 
 
@@ -597,6 +660,76 @@ def _collect_summary_live_facts(
     }
 
 
+def _load_claim_registry(path: Path) -> List[DreamLoopClaimSpec]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError(f"claim registry must be a JSON array: {path}")
+    claims: List[DreamLoopClaimSpec] = []
+    required = (
+        "claim_id",
+        "source_doc",
+        "source_anchor",
+        "claim_text",
+        "claim_kind",
+        "verifier",
+        "evidence_inputs",
+        "correction_target",
+        "severity",
+    )
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise ValueError(f"claim registry entry {index} is not an object")
+        missing = [field for field in required if field not in item]
+        if missing:
+            raise ValueError(f"claim registry entry {index} missing fields: {', '.join(missing)}")
+        evidence_inputs = item.get("evidence_inputs")
+        if not isinstance(evidence_inputs, list) or not all(isinstance(value, str) for value in evidence_inputs):
+            raise ValueError(f"claim registry entry {index} has invalid evidence_inputs")
+        claims.append(
+            DreamLoopClaimSpec(
+                claim_id=str(item["claim_id"]),
+                source_doc=str(item["source_doc"]),
+                source_anchor=str(item["source_anchor"]),
+                claim_text=str(item["claim_text"]),
+                claim_kind=str(item["claim_kind"]),
+                verifier=str(item["verifier"]),
+                evidence_inputs=tuple(evidence_inputs),
+                correction_target=str(item["correction_target"]),
+                severity=str(item["severity"]),
+                render_key=str(item.get("render_key") or ""),
+                section_header=str(item.get("section_header") or ""),
+                line_prefix=str(item.get("line_prefix") or ""),
+            )
+        )
+    return claims
+
+
+def _summary_claim_expected_line(claim: DreamLoopClaimSpec, summary_facts: Dict[str, Any]) -> str:
+    if claim.render_key == "runtime_observer_line":
+        observer_mode = summary_facts.get("observer_mode", "unknown")
+        observer_schedule = summary_facts.get("observer_schedule_text", "on its configured schedule")
+        return (
+            f"- Runtime observer runs from `server3-runtime-observer.timer` {observer_schedule}; "
+            f"live mode is currently `{observer_mode}`."
+        )
+    if claim.render_key == "dream_loop_operational_memory":
+        return (
+            "- Dream loop now runs from `server3-dream-loop.timer` around `02:15 AEST` and "
+            "writes the production truth/health baseline under `/var/lib/server3-dream-loop`."
+        )
+    raise KeyError(f"unsupported summary claim render_key: {claim.render_key}")
+
+
+def _claim_status_counts(results: Sequence[Dict[str, Any]]) -> Dict[str, int]:
+    counts = {"verified": 0, "stale": 0, "ambiguous": 0, "unverifiable": 0}
+    for result in results:
+        status = str(result.get("status") or "")
+        if status in counts:
+            counts[status] += 1
+    counts["total"] = len(results)
+    return counts
+
+
 def _replace_or_insert_bullet(
     section_text: str,
     *,
@@ -648,6 +781,25 @@ def _replace_or_insert_bullet_in_section(
     return document_text[:section_start] + updated_section + document_text[next_header:], True
 
 
+def _find_bullet_in_section(
+    document_text: str,
+    *,
+    section_header: str,
+    prefix: str,
+) -> Optional[str]:
+    start = document_text.find(section_header)
+    if start == -1:
+        return None
+    section_start = start + len(section_header)
+    next_header = document_text.find("\n## ", section_start)
+    if next_header == -1:
+        next_header = len(document_text)
+    for line in document_text[section_start:next_header].splitlines():
+        if line.startswith(prefix):
+            return line
+    return None
+
+
 def _ensure_recent_change_entry(
     summary_text: str,
     *,
@@ -688,47 +840,86 @@ def _ensure_recent_change_entry(
     return summary_text[:after_header] + rebuilt_section + summary_text[next_header:], True
 
 
-def _align_server3_summary(
+def _evaluate_summary_claim(
+    claim: DreamLoopClaimSpec,
+    *,
+    summary_text: str,
+    summary_facts: Dict[str, Any],
+) -> Dict[str, Any]:
+    base = {
+        "claim_id": claim.claim_id,
+        "source_doc": claim.source_doc,
+        "source_anchor": claim.source_anchor,
+        "claim_text": claim.claim_text,
+        "claim_kind": claim.claim_kind,
+        "verifier": claim.verifier,
+        "evidence_inputs": list(claim.evidence_inputs),
+        "correction_target": claim.correction_target,
+        "severity": claim.severity,
+    }
+    if claim.verifier != "summary_line_matches_live_fact":
+        return {
+            **base,
+            "status": "unverifiable",
+            "status_reason": f"unsupported verifier: {claim.verifier}",
+        }
+    if not claim.section_header or not claim.line_prefix or not claim.render_key:
+        return {
+            **base,
+            "status": "ambiguous",
+            "status_reason": "summary claim is missing section_header, line_prefix, or render_key",
+        }
+    try:
+        expected_line = _summary_claim_expected_line(claim, summary_facts)
+    except Exception as exc:
+        return {
+            **base,
+            "status": "unverifiable",
+            "status_reason": str(exc),
+        }
+    observed_line = _find_bullet_in_section(
+        summary_text,
+        section_header=claim.section_header,
+        prefix=claim.line_prefix,
+    )
+    return {
+        **base,
+        "status": "verified" if observed_line == expected_line else "stale",
+        "status_reason": "summary line matches bounded evidence" if observed_line == expected_line else "summary line differs from bounded evidence",
+        "observed_value": observed_line or "",
+        "expected_value": expected_line,
+        "render_key": claim.render_key,
+    }
+
+
+def _apply_summary_claim_corrections(
     summary_text: str,
     *,
-    generated_at: datetime,
+    claims: Sequence[DreamLoopClaimSpec],
     summary_facts: Dict[str, Any],
-) -> Tuple[str, List[str]]:
-    del generated_at
-    original_text = summary_text
+    claim_verification_mode: str,
+) -> Tuple[str, List[str], List[str]]:
+    if claim_verification_mode != "corrective":
+        return summary_text, [], []
     changed_fields: List[str] = []
-    observer_mode = summary_facts.get("observer_mode", "unknown")
-    observer_schedule = summary_facts.get("observer_schedule_text", "on its configured schedule")
-    observer_line = (
-        f"- Runtime observer runs from `server3-runtime-observer.timer` {observer_schedule}; "
-        f"live mode is currently `{observer_mode}`."
-    )
-    summary_text, changed = _replace_or_insert_bullet_in_section(
-        summary_text,
-        section_header="## Operational Memory (Pinned)",
-        prefix="- Runtime observer runs from `server3-runtime-observer.timer`",
-        new_line=observer_line,
-    )
-    if changed:
-        changed_fields.append("runtime_observer_line")
-
-    if summary_facts.get("dream_loop_timer_enabled"):
-        dream_loop_line = (
-            "- Dream loop now runs from `server3-dream-loop.timer` around `02:15 AEST` and "
-            "writes the production truth/health baseline under `/var/lib/server3-dream-loop`."
-        )
+    changed_claim_ids: List[str] = []
+    for claim in claims:
+        if claim.correction_target != "SERVER3_SUMMARY.md":
+            continue
+        try:
+            expected_line = _summary_claim_expected_line(claim, summary_facts)
+        except Exception:
+            continue
         summary_text, changed = _replace_or_insert_bullet_in_section(
             summary_text,
-            section_header="## Operational Memory (Pinned)",
-            prefix="- Dream loop now runs from `server3-dream-loop.timer`",
-            new_line=dream_loop_line,
+            section_header=claim.section_header,
+            prefix=claim.line_prefix,
+            new_line=expected_line,
         )
         if changed:
-            changed_fields.append("dream_loop_operational_memory")
-
-    if summary_text == original_text:
-        return summary_text, []
-    return summary_text, changed_fields
+            changed_fields.append(claim.render_key or claim.claim_id)
+            changed_claim_ids.append(claim.claim_id)
+    return summary_text, changed_fields, changed_claim_ids
 
 
 def _build_runtime_state_mismatches(runtime_status_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -752,6 +943,7 @@ def _render_secondary_doc_alignment(
     *,
     summary_path: Path,
     summary_changed_fields: Sequence[str],
+    summary_changed_claim_ids: Sequence[str],
 ) -> Dict[str, Any]:
     documents = [
         {
@@ -760,11 +952,13 @@ def _render_secondary_doc_alignment(
             "managed_by_loop": True,
             "out_of_alignment": bool(summary_changed_fields),
             "changed_fields": list(summary_changed_fields),
+            "changed_claim_ids": list(summary_changed_claim_ids),
         },
     ]
     return {
         "summary_path": str(summary_path),
         "summary_changed_fields": list(summary_changed_fields),
+        "summary_changed_claim_ids": list(summary_changed_claim_ids),
         "summary_out_of_alignment": bool(summary_changed_fields),
         "documents": documents,
         "any_secondary_doc_out_of_alignment": any(
@@ -857,6 +1051,9 @@ def _build_execution_context(
 
     changed_machine_inputs = _compare_entries(truth_entries, previous_truth_entries)
     changed_policy_inputs = _compare_entries(policy_entries, previous_policy_entries)
+    claim_registry = _load_claim_registry(config.claim_registry_path)
+    if config.claim_verification_mode not in CLAIM_VERIFICATION_MODES:
+        raise ValueError(f"unsupported claim verification mode: {config.claim_verification_mode}")
 
     return DreamLoopExecutionContext(
         config=config,
@@ -870,6 +1067,11 @@ def _build_execution_context(
             "timezone": config.timezone,
             "machine_truth_fingerprint": machine_truth_fingerprint,
             "policy_truth_fingerprint": policy_truth_fingerprint,
+            "claim_verification": {
+                "mode": config.claim_verification_mode,
+                "registry_path": str(config.claim_registry_path),
+                "claims_declared": len(claim_registry),
+            },
             "watched_inputs": {
                 "machine_truth_inputs": truth_entries,
                 "policy_inputs": policy_entries,
@@ -879,6 +1081,15 @@ def _build_execution_context(
                 "approved_secondary_truth_surfaces": ["SERVER3_SUMMARY.md"],
                 "checks": [],
             },
+            "claim_results": [],
+            "claim_summary": {
+                "verified": 0,
+                "stale": 0,
+                "ambiguous": 0,
+                "unverifiable": 0,
+                "total": 0,
+            },
+            "stale_claims": [],
             "runtime_shape": {},
             "live_runtime_alignment": {
                 "machine_truth_fingerprint_uses_structured_inputs_only": True,
@@ -932,6 +1143,7 @@ def _build_execution_context(
         policy_truth_fingerprint=policy_truth_fingerprint,
         changed_machine_inputs=changed_machine_inputs,
         changed_policy_inputs=changed_policy_inputs,
+        claim_registry=claim_registry,
     )
 
 
@@ -1069,16 +1281,55 @@ def _check_telegram_context_routing_truth(spec: DreamLoopCheckSpec, ctx: DreamLo
 
 def _check_server3_summary_truth(spec: DreamLoopCheckSpec, ctx: DreamLoopExecutionContext) -> Dict[str, Any]:
     ctx.summary_text = ctx.config.summary_path.read_text(encoding="utf-8")
-    ctx.aligned_summary_text, ctx.summary_changed_fields = _align_server3_summary(
+    summary_claims = [claim for claim in ctx.claim_registry if claim.source_doc == "SERVER3_SUMMARY.md"]
+    pre_correction_results = [
+        _evaluate_summary_claim(
+            claim,
+            summary_text=ctx.summary_text,
+            summary_facts=ctx.summary_live_facts,
+        )
+        for claim in summary_claims
+    ]
+    ctx.summary_stale_claim_ids = [
+        result["claim_id"]
+        for result in pre_correction_results
+        if result.get("status") == "stale"
+    ]
+    ctx.summary_stale_fields = [
+        str(result.get("render_key") or result.get("claim_id"))
+        for result in pre_correction_results
+        if result.get("status") == "stale"
+    ]
+    ctx.aligned_summary_text, ctx.summary_changed_fields, ctx.summary_changed_claim_ids = _apply_summary_claim_corrections(
         ctx.summary_text,
-        generated_at=ctx.run_started_at,
+        claims=summary_claims,
         summary_facts=ctx.summary_live_facts,
+        claim_verification_mode=ctx.config.claim_verification_mode,
     )
+    final_summary_text = ctx.aligned_summary_text if ctx.summary_changed_fields else ctx.summary_text
+    ctx.claim_results = [
+        _evaluate_summary_claim(
+            claim,
+            summary_text=final_summary_text,
+            summary_facts=ctx.summary_live_facts,
+        )
+        for claim in summary_claims
+    ]
+    ctx.truth_state["claim_results"] = list(ctx.claim_results)
+    ctx.truth_state["claim_summary"] = _claim_status_counts(ctx.claim_results)
+    ctx.truth_state["stale_claims"] = [
+        result["claim_id"]
+        for result in ctx.claim_results
+        if result.get("status") == "stale"
+    ]
     return {
         **_serialize_registry_check(spec),
-        "status": "mismatch" if ctx.summary_changed_fields else "ok",
+        "status": "mismatch" if ctx.summary_stale_claim_ids else "ok",
         "approved_secondary_truth_surface": "SERVER3_SUMMARY.md",
-        "mapped_fields": ["runtime_observer_line", "dream_loop_operational_memory"],
+        "claim_verification_mode": ctx.config.claim_verification_mode,
+        "claims_evaluated": [result["claim_id"] for result in ctx.claim_results],
+        "stale_claim_ids_before_correction": list(ctx.summary_stale_claim_ids),
+        "corrected_claim_ids": list(ctx.summary_changed_claim_ids),
         "changed_fields": list(ctx.summary_changed_fields),
     }
 
@@ -1107,6 +1358,8 @@ def _should_execute_check(spec: DreamLoopCheckSpec, config: DreamLoopConfig) -> 
     if spec.trigger == "summary_target_exists":
         if not config.summary_path.exists():
             return False, f"missing input: {config.summary_path}"
+        if not config.claim_registry_path.exists():
+            return False, f"missing input: {config.claim_registry_path}"
         return True, ""
     return False, f"unsupported trigger: {spec.trigger}"
 
@@ -1443,6 +1696,8 @@ def _build_report(
     doc_alignment = truth_state.get("secondary_doc_alignment", {}) or {}
     generated_outputs = truth_state.get("generated_output_status", {}) or {}
     live_runtime_alignment = truth_state.get("live_runtime_alignment", {}) or {}
+    claim_summary = truth_state.get("claim_summary", {}) or {}
+    claim_verification = truth_state.get("claim_verification", {}) or {}
     git_automation = run_state.get("git_automation", {}) or {}
     lines = [
         "# Server3 Dream Loop Report",
@@ -1453,6 +1708,14 @@ def _build_report(
         f"- Machine truth changed: {'yes' if stale.get('machine_truth_changed') else 'no'}",
         f"- Policy eligibility changed: {'yes' if stale.get('policy_inputs_changed') else 'no'}",
         "- Machine truth fingerprint excludes live runtime/log health by design; those are tracked separately below.",
+        f"- Claim verification mode: {claim_verification.get('mode', 'unknown')}",
+        (
+            "- Claim summary: "
+            f"{claim_summary.get('verified', 0)} verified, "
+            f"{claim_summary.get('stale', 0)} stale, "
+            f"{claim_summary.get('ambiguous', 0)} ambiguous, "
+            f"{claim_summary.get('unverifiable', 0)} unverifiable"
+        ),
         f"- Health status: {health_state['health_status']}",
     ]
     if git_automation:
@@ -1500,6 +1763,19 @@ def _build_report(
     for document in doc_alignment.get("documents", []) or []:
         status = "out_of_alignment" if document.get("out_of_alignment") else "aligned"
         lines.append(f"- [{status}] {document.get('path', 'unknown')}")
+        changed_claim_ids = document.get("changed_claim_ids", []) or []
+        if changed_claim_ids:
+            lines.append("- Corrected claims: " + ", ".join(changed_claim_ids))
+    lines.extend(["", "## Claim Verification", ""])
+    lines.append(f"- Mode: {claim_verification.get('mode', 'unknown')}")
+    lines.append(f"- Registry path: {claim_verification.get('registry_path', 'unknown')}")
+    lines.append(f"- Claims declared: {claim_verification.get('claims_declared', 0)}")
+    lines.append(f"- Verified: {claim_summary.get('verified', 0)}")
+    lines.append(f"- Stale: {claim_summary.get('stale', 0)}")
+    lines.append(f"- Ambiguous: {claim_summary.get('ambiguous', 0)}")
+    lines.append(f"- Unverifiable: {claim_summary.get('unverifiable', 0)}")
+    stale_claims = truth_state.get("stale_claims", []) or []
+    lines.append("- Stale claim IDs: " + (", ".join(stale_claims) if stale_claims else "none"))
     lines.extend(["", "## Generated Outputs", ""])
     for output in generated_outputs.get("outputs", []) or []:
         lines.append(f"- [rendered] {output.get('path', 'unknown')}")
@@ -1633,12 +1909,20 @@ def execute_dream_loop(
         "files_updated": [] if config.dry_run else list(ctx.files_updated),
         "warnings_emitted": list(ctx.warnings_emitted),
         "unresolved_items": list(ctx.unresolved_items),
+        "claim_verification_mode": config.claim_verification_mode,
+        "claim_corrections_applied": list(ctx.summary_changed_claim_ids) if not config.dry_run else [],
         "git_automation": git_automation,
     }
-    effective_summary_changed_fields = list(ctx.summary_changed_fields) if config.dry_run else []
+    if config.dry_run or config.claim_verification_mode == "audit_only":
+        effective_summary_changed_fields = list(ctx.summary_stale_fields)
+        effective_summary_changed_claim_ids = list(ctx.summary_stale_claim_ids)
+    else:
+        effective_summary_changed_fields = []
+        effective_summary_changed_claim_ids = []
     ctx.truth_state["secondary_doc_alignment"] = _render_secondary_doc_alignment(
         summary_path=config.summary_path,
         summary_changed_fields=effective_summary_changed_fields,
+        summary_changed_claim_ids=effective_summary_changed_claim_ids,
     )
     ctx.truth_state["generated_output_status"] = _render_generated_output_status(
         report_path=config.state_dir / LATEST_REPORT,
@@ -1729,6 +2013,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         timezone=args.timezone,
         dry_run=bool(args.dry_run),
         summary_path=args.summary_path,
+        claim_registry_path=args.claim_registry_path,
+        claim_verification_mode=args.claim_verification_mode,
     )
     result = execute_dream_loop(config)
     if args.json:

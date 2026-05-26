@@ -1,0 +1,37 @@
+[
+  {
+    "claim_id": "server3_summary.runtime_observer_line",
+    "source_doc": "SERVER3_SUMMARY.md",
+    "source_anchor": "## Operational Memory (Pinned)",
+    "claim_text": "The runtime observer bullet in SERVER3_SUMMARY.md must match the live timer schedule and current runtime observer mode.",
+    "claim_kind": "summary_line",
+    "verifier": "summary_line_matches_live_fact",
+    "evidence_inputs": [
+      "SERVER3_SUMMARY.md",
+      "python3 ops/runtime_observer/runtime_observer.py --json status",
+      "systemctl cat server3-runtime-observer.timer"
+    ],
+    "correction_target": "SERVER3_SUMMARY.md",
+    "severity": "warn",
+    "render_key": "runtime_observer_line",
+    "section_header": "## Operational Memory (Pinned)",
+    "line_prefix": "- Runtime observer runs from `server3-runtime-observer.timer`"
+  },
+  {
+    "claim_id": "server3_summary.dream_loop_operational_memory",
+    "source_doc": "SERVER3_SUMMARY.md",
+    "source_anchor": "## Operational Memory (Pinned)",
+    "claim_text": "The dream-loop operational-memory bullet in SERVER3_SUMMARY.md must state that the production timer writes the truth and health baseline under /var/lib/server3-dream-loop.",
+    "claim_kind": "summary_line",
+    "verifier": "summary_line_matches_live_fact",
+    "evidence_inputs": [
+      "SERVER3_SUMMARY.md",
+      "systemctl is-enabled server3-dream-loop.timer"
+    ],
+    "correction_target": "SERVER3_SUMMARY.md",
+    "severity": "warn",
+    "render_key": "dream_loop_operational_memory",
+    "section_header": "## Operational Memory (Pinned)",
+    "line_prefix": "- Dream loop now runs from `server3-dream-loop.timer`"
+  }
+]

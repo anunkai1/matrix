@@ -137,6 +137,14 @@ class TestControlCommands(unittest.TestCase):
             (dream_dir / "latest_truth_state.json").write_text(
                 json.dumps(
                     {
+                        "claim_verification": {"mode": "corrective"},
+                        "claim_summary": {
+                            "verified": 2,
+                            "stale": 1,
+                            "ambiguous": 0,
+                            "unverifiable": 0,
+                        },
+                        "stale_claims": ["server3_summary.runtime_observer_line"],
                         "stale_context_eligibility": {
                             "eligible_scope_keys": ["tg:1"],
                             "changed_machine_inputs": ["ARCHITECT_INSTRUCTION.md"],
@@ -151,6 +159,7 @@ class TestControlCommands(unittest.TestCase):
                     {
                         "generated_at": "2026-05-20T12:00:00+10:00",
                         "run_status": "succeeded",
+                        "claim_verification_mode": "corrective",
                         "skipped_checks": [],
                     }
                 ),
@@ -188,6 +197,9 @@ class TestControlCommands(unittest.TestCase):
         self.assertIn("Outstanding stale warning: yes", text)
         self.assertIn("Scope currently eligible for stale warning: yes", text)
         self.assertIn("ARCHITECT_INSTRUCTION.md", text)
+        self.assertIn("Claim verification mode: corrective", text)
+        self.assertIn("Claim summary: 2 verified, 1 stale, 0 ambiguous, 0 unverifiable", text)
+        self.assertIn("server3_summary.runtime_observer_line", text)
 
 
 if __name__ == "__main__":

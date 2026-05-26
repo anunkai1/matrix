@@ -157,6 +157,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertFalse((state_dir / dream_loop.LATEST_TRUTH_STATE).exists())
             self.assertIn("Server3 Dream Loop Report", result["report_text"])
             self.assertIn("summary_out_of_alignment", result["truth_state"]["secondary_doc_alignment"])
+            self.assertEqual(result["truth_state"]["claim_summary"]["stale"], 0)
             self.assertEqual(summary_path.read_text(encoding="utf-8"), self._summary_fixture())
 
     def test_execute_dream_loop_writes_outputs(self):
@@ -192,6 +193,14 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertEqual(run_state["checks_executed"][0], "truth_files_fingerprint")
             self.assertIn("server3_summary_truth", run_state["checks_executed"])
             self.assertIn(str(summary_path), run_state["files_updated"])
+            self.assertEqual(run_state["claim_verification_mode"], "corrective")
+            self.assertEqual(
+                sorted(run_state["claim_corrections_applied"]),
+                [
+                    "server3_summary.dream_loop_operational_memory",
+                    "server3_summary.runtime_observer_line",
+                ],
+            )
             self.assertEqual(len(truth_state["secondary_doc_alignment"]["documents"]), 1)
             self.assertEqual(
                 truth_state["secondary_doc_alignment"]["documents"][0]["doc_role"],
@@ -212,33 +221,50 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertIn("server3-dream-loop.timer", updated_summary)
             self.assertFalse(truth_state["secondary_doc_alignment"]["summary_out_of_alignment"])
             self.assertEqual(truth_state["secondary_doc_alignment"]["summary_changed_fields"], [])
+            self.assertEqual(truth_state["claim_summary"]["verified"], 2)
+            self.assertEqual(truth_state["claim_summary"]["stale"], 0)
+            self.assertEqual(truth_state["stale_claims"], [])
             summary_check = next(
                 check for check in truth_state["registry_checks"]["checks"]
                 if check["check_id"] == "server3_summary_truth"
             )
             self.assertEqual(
-                summary_check["mapped_fields"],
-                ["runtime_observer_line", "dream_loop_operational_memory"],
+                sorted(summary_check["claims_evaluated"]),
+                [
+                    "server3_summary.dream_loop_operational_memory",
+                    "server3_summary.runtime_observer_line",
+                ],
+            )
+            self.assertEqual(summary_check["claim_verification_mode"], "corrective")
+            self.assertEqual(
+                sorted(summary_check["corrected_claim_ids"]),
+                [
+                    "server3_summary.dream_loop_operational_memory",
+                    "server3_summary.runtime_observer_line",
+                ],
             )
             self.assertIn("Structured machine-truth inputs only: yes", report_text)
             self.assertIn("[rendered]", report_text)
             self.assertIn("[aligned]", report_text)
+            self.assertIn("## Claim Verification", report_text)
             self.assertIn("## Git Automation", report_text)
             self.assertEqual(run_state["git_automation"]["status"], "skipped_no_repo_managed_paths")
 
     def test_summary_alignment_is_idempotent_when_already_aligned(self):
-        now = datetime(2026, 5, 17, 15, 30, tzinfo=timezone(timedelta(hours=10)))
-        aligned_text, changed_fields = dream_loop._align_server3_summary(
+        registry = dream_loop._load_claim_registry(dream_loop.DEFAULT_CLAIM_REGISTRY_PATH)
+        aligned_text, changed_fields, changed_claim_ids = dream_loop._apply_summary_claim_corrections(
             self._aligned_summary_fixture(),
-            generated_at=now,
+            claims=registry,
             summary_facts={
                 "observer_mode": "collect_only",
                 "observer_schedule_text": "every 5 minutes",
                 "dream_loop_timer_enabled": True,
             },
+            claim_verification_mode="corrective",
         )
         self.assertEqual(aligned_text, self._aligned_summary_fixture())
         self.assertEqual(changed_fields, [])
+        self.assertEqual(changed_claim_ids, [])
 
     def test_execute_dream_loop_does_not_report_false_summary_drift(self):
         fixed_now = datetime(2026, 5, 17, 15, 30, tzinfo=timezone(timedelta(hours=10)))
@@ -265,6 +291,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             alignment = result["truth_state"]["secondary_doc_alignment"]
             self.assertFalse(alignment["summary_out_of_alignment"])
             self.assertEqual(alignment["summary_changed_fields"], [])
+            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 2)
 
     def test_runtime_state_drift_is_visible_without_counting_as_machine_truth_change(self):
         fixed_now = datetime(2026, 5, 17, 15, 30, tzinfo=timezone(timedelta(hours=10)))
@@ -450,6 +477,41 @@ Last updated: 2026-05-17 (AEST, +10:00)
                     "truth_area",
                 ],
             )
+
+    def test_execute_dream_loop_audit_only_records_stale_claims_without_editing_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir) / "dream"
+            bridge_state_dir = Path(tmpdir) / "bridge"
+            summary_path = Path(tmpdir) / "SERVER3_SUMMARY.md"
+            bridge_state_dir.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(self._summary_fixture(), encoding="utf-8")
+            config = dream_loop.DreamLoopConfig(
+                state_dir=state_dir,
+                bridge_state_dir=bridge_state_dir,
+                timezone="Australia/Brisbane",
+                dry_run=False,
+                summary_path=summary_path,
+                claim_verification_mode="audit_only",
+            )
+            result = dream_loop.execute_dream_loop(
+                config,
+                run_json_command=self._fake_run_json_command,
+                run_text_command=self._fake_run_text_command,
+            )
+            truth_state = json.loads((state_dir / dream_loop.LATEST_TRUTH_STATE).read_text(encoding="utf-8"))
+            run_state = json.loads((state_dir / dream_loop.LATEST_RUN_STATE).read_text(encoding="utf-8"))
+            self.assertEqual(run_state["claim_verification_mode"], "audit_only")
+            self.assertEqual(run_state["claim_corrections_applied"], [])
+            self.assertEqual(truth_state["claim_summary"]["stale"], 2)
+            self.assertEqual(
+                sorted(truth_state["stale_claims"]),
+                [
+                    "server3_summary.dream_loop_operational_memory",
+                    "server3_summary.runtime_observer_line",
+                ],
+            )
+            self.assertTrue(truth_state["secondary_doc_alignment"]["summary_out_of_alignment"])
+            self.assertEqual(summary_path.read_text(encoding="utf-8"), self._summary_fixture())
 
     def test_execute_dream_loop_persists_stale_warning_state_for_eligible_scope(self):
         with tempfile.TemporaryDirectory() as tmpdir:

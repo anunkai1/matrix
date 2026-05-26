@@ -136,15 +136,26 @@ def handle_truth_status_command(
         )
         return
     stale = truth_state.get("stale_context_eligibility", {}) or {}
+    claim_summary = truth_state.get("claim_summary", {}) or {}
+    stale_claims = truth_state.get("stale_claims", []) or []
     eligible_scope_keys = stale.get("eligible_scope_keys", []) or []
     lines = [
         "Dream-loop truth status:",
         f"- Generated at: {run_state.get('generated_at', 'unknown')}",
         f"- Run status: {run_state.get('run_status', 'unknown')}",
+        f"- Claim verification mode: {run_state.get('claim_verification_mode', truth_state.get('claim_verification', {}).get('mode', 'unknown'))}",
+        (
+            "- Claim summary: "
+            f"{claim_summary.get('verified', 0)} verified, "
+            f"{claim_summary.get('stale', 0)} stale, "
+            f"{claim_summary.get('ambiguous', 0)} ambiguous, "
+            f"{claim_summary.get('unverifiable', 0)} unverifiable"
+        ),
         f"- Current scope: {scope_key}",
         f"- Scope currently eligible for stale warning: {'yes' if scope_key in eligible_scope_keys else 'no'}",
         f"- Outstanding stale warning: {'yes' if stale_status.get('warning_outstanding') else 'no'}",
     ]
+    lines.append("- Stale claim IDs: " + (", ".join(str(item) for item in stale_claims) if stale_claims else "none"))
     warning_fingerprint = str(stale_status.get("warning_fingerprint") or "")
     if warning_fingerprint:
         lines.append(f"- Warning fingerprint tracked: `{warning_fingerprint[:12]}`")
