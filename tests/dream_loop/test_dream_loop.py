@@ -159,7 +159,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertIn("Server3 Dream Loop Report", result["report_text"])
             self.assertIn("summary_out_of_alignment", result["truth_state"]["secondary_doc_alignment"])
             self.assertEqual(result["truth_state"]["claim_summary"]["stale"], 0)
-            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 4)
+            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 8)
             self.assertEqual(summary_path.read_text(encoding="utf-8"), self._summary_fixture())
 
     def test_execute_dream_loop_writes_outputs(self):
@@ -226,7 +226,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertIn("server3-dream-loop.timer", updated_summary)
             self.assertFalse(truth_state["secondary_doc_alignment"]["summary_out_of_alignment"])
             self.assertEqual(truth_state["secondary_doc_alignment"]["summary_changed_fields"], [])
-            self.assertEqual(truth_state["claim_summary"]["verified"], 4)
+            self.assertEqual(truth_state["claim_summary"]["verified"], 8)
             self.assertEqual(truth_state["claim_summary"]["stale"], 0)
             self.assertEqual(truth_state["stale_claims"], [])
             summary_check = next(
@@ -256,7 +256,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertEqual(run_state["git_automation"]["status"], "skipped_no_repo_managed_paths")
             self.assertEqual(len(history_lines), 1)
             self.assertEqual(history_entry["run_status"], "succeeded")
-            self.assertEqual(history_entry["claim_summary"]["verified"], 4)
+            self.assertEqual(history_entry["claim_summary"]["verified"], 8)
             self.assertEqual(history_entry["git_automation_status"], "skipped_no_repo_managed_paths")
 
     def test_summary_alignment_is_idempotent_when_already_aligned(self):
@@ -300,7 +300,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             alignment = result["truth_state"]["secondary_doc_alignment"]
             self.assertFalse(alignment["summary_out_of_alignment"])
             self.assertEqual(alignment["summary_changed_fields"], [])
-            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 4)
+            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 8)
 
     def test_runtime_state_drift_is_visible_without_counting_as_machine_truth_change(self):
         fixed_now = datetime(2026, 5, 17, 15, 30, tzinfo=timezone(timedelta(hours=10)))
@@ -512,7 +512,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             run_state = json.loads((state_dir / dream_loop.LATEST_RUN_STATE).read_text(encoding="utf-8"))
             self.assertEqual(run_state["claim_verification_mode"], "audit_only")
             self.assertEqual(run_state["claim_corrections_applied"], [])
-            self.assertEqual(truth_state["claim_summary"]["verified"], 2)
+            self.assertEqual(truth_state["claim_summary"]["verified"], 6)
             self.assertEqual(truth_state["claim_summary"]["stale"], 2)
             self.assertEqual(
                 sorted(truth_state["stale_claims"]),
@@ -551,12 +551,52 @@ Last updated: 2026-05-17 (AEST, +10:00)
                 run_json_command=self._fake_run_json_command,
                 run_text_command=self._fake_run_text_command,
             )
-            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 3)
+            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 7)
             self.assertEqual(result["truth_state"]["claim_summary"]["stale"], 1)
             self.assertEqual(
                 result["truth_state"]["stale_claims"],
                 ["architect_instruction.primary_service"],
             )
+
+    def test_all_paths_exist_claim_reports_verified_when_every_path_exists(self):
+        claim = dream_loop.DreamLoopClaimSpec(
+            claim_id="architect_instruction.session_start_checklist",
+            source_doc="ARCHITECT_INSTRUCTION.md",
+            source_anchor="## 6) Session Start Checklist",
+            claim_text="Checklist files exist.",
+            claim_kind="path_existence",
+            verifier="all_paths_exist",
+            evidence_inputs=["SERVER3_SUMMARY.md", "LESSONS.md"],
+            correction_target="truth_state",
+            severity="warn",
+        )
+
+        result = dream_loop._evaluate_general_claim(claim)
+
+        self.assertEqual(result["status"], "verified")
+
+    def test_all_files_contain_literal_claim_supports_multiple_literals(self):
+        claim = dream_loop.DreamLoopClaimSpec(
+            claim_id="architect_instruction.no_sandbox_override_guardrail",
+            source_doc="ARCHITECT_INSTRUCTION.md",
+            source_anchor="## 3) Architect Execution Policy",
+            claim_text="Sandbox guardrail literals exist.",
+            claim_kind="policy_literal",
+            verifier="all_files_contain_literal",
+            evidence_inputs=["src/telegram_bridge/runtime_config.py"],
+            correction_target="truth_state",
+            severity="warn",
+            verifier_config={
+                "literals": [
+                    "Ignore env overrides so sandboxing cannot drift",
+                    "codex_sandbox_mode = default_codex_sandbox_mode",
+                ]
+            },
+        )
+
+        result = dream_loop._evaluate_general_claim(claim)
+
+        self.assertEqual(result["status"], "verified")
 
     def test_execute_dream_loop_appends_history_entries_once_per_run(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -37,6 +37,78 @@
     }
   },
   {
+    "claim_id": "architect_instruction.primary_runtime_identity",
+    "source_doc": "ARCHITECT_INSTRUCTION.md",
+    "source_anchor": "## 9) Current Scope Identity",
+    "claim_text": "Architect is the primary Server3 operator runtime rooted at /home/architect/matrix under the architect-owned workspace boundary.",
+    "claim_kind": "runtime_manifest",
+    "verifier": "manifest_runtime_matches",
+    "evidence_inputs": [
+      "infra/server3-runtime-manifest.json"
+    ],
+    "correction_target": "truth_state",
+    "severity": "warn",
+    "verifier_config": {
+      "runtime_name": "Architect",
+      "owner_user": "architect",
+      "workspace_root": "/home/architect/matrix"
+    }
+  },
+  {
+    "claim_id": "architect_instruction.codex_unrestricted_policy",
+    "source_doc": "ARCHITECT_INSTRUCTION.md",
+    "source_anchor": "## 3) Architect Execution Policy",
+    "claim_text": "Architect's Server3 Codex runtime keeps unrestricted danger-full-access policy across the shared runtime config and execution launch paths.",
+    "claim_kind": "policy_literal",
+    "verifier": "all_files_contain_literal",
+    "evidence_inputs": [
+      "src/telegram_bridge/runtime_config.py",
+      "src/telegram_bridge/executor.sh",
+      "src/telegram_bridge/codex_app_server.py"
+    ],
+    "correction_target": "truth_state",
+    "severity": "warn",
+    "verifier_config": {
+      "literal": "danger-full-access"
+    }
+  },
+  {
+    "claim_id": "architect_instruction.no_sandbox_override_guardrail",
+    "source_doc": "ARCHITECT_INSTRUCTION.md",
+    "source_anchor": "## 3) Architect Execution Policy",
+    "claim_text": "Architect's Telegram runtime ignores sandbox env override drift and keeps one explicit runtime-config sandbox source of truth.",
+    "claim_kind": "policy_literal",
+    "verifier": "all_files_contain_literal",
+    "evidence_inputs": [
+      "src/telegram_bridge/runtime_config.py"
+    ],
+    "correction_target": "truth_state",
+    "severity": "warn",
+    "verifier_config": {
+      "literals": [
+        "Ignore env overrides so sandboxing cannot drift",
+        "codex_sandbox_mode = default_codex_sandbox_mode"
+      ]
+    }
+  },
+  {
+    "claim_id": "architect_instruction.session_start_checklist",
+    "source_doc": "ARCHITECT_INSTRUCTION.md",
+    "source_anchor": "## 6) Session Start Checklist",
+    "claim_text": "The Server3 session-start checklist files exist in the workspace: SERVER3_SUMMARY.md, LESSONS.md, remember.md, and private/SOUL.md.",
+    "claim_kind": "path_existence",
+    "verifier": "all_paths_exist",
+    "evidence_inputs": [
+      "SERVER3_SUMMARY.md",
+      "LESSONS.md",
+      "remember.md",
+      "private/SOUL.md"
+    ],
+    "correction_target": "truth_state",
+    "severity": "warn",
+    "verifier_config": {}
+  },
+  {
     "claim_id": "server3_summary.runtime_observer_line",
     "source_doc": "SERVER3_SUMMARY.md",
     "source_anchor": "## Operational Memory (Pinned)",

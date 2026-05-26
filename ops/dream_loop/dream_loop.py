@@ -815,11 +815,18 @@ def _evaluate_manifest_runtime_matches_claim(claim: DreamLoopClaimSpec) -> Dict[
 
 
 def _evaluate_all_files_contain_literal_claim(claim: DreamLoopClaimSpec) -> Dict[str, Any]:
-    literal = str(claim.verifier_config.get("literal") or "")
-    if not literal:
+    literals: List[str] = []
+    configured_literals = claim.verifier_config.get("literals")
+    if isinstance(configured_literals, list):
+        literals = [str(item).strip() for item in configured_literals if str(item).strip()]
+    literal = str(claim.verifier_config.get("literal") or "").strip()
+    if literal:
+        literals.insert(0, literal)
+    literals = list(dict.fromkeys(literals))
+    if not literals:
         return {
             "status": "ambiguous",
-            "status_reason": "verifier_config.literal is required",
+            "status_reason": "verifier_config.literal or verifier_config.literals is required",
             "observed_value": "",
             "expected_value": "",
         }
@@ -831,7 +838,7 @@ def _evaluate_all_files_contain_literal_claim(claim: DreamLoopClaimSpec) -> Dict
                 "status": "unverifiable",
                 "status_reason": "all_files_contain_literal only supports file evidence inputs",
                 "observed_value": checked_inputs,
-                "expected_value": literal,
+                "expected_value": literals,
             }
         path = ROOT / evidence_input
         checked_inputs.append(evidence_input)
@@ -840,21 +847,53 @@ def _evaluate_all_files_contain_literal_claim(claim: DreamLoopClaimSpec) -> Dict
         except FileNotFoundError:
             missing_inputs.append(f"{evidence_input} (missing file)")
             continue
-        if literal not in text:
-            missing_inputs.append(evidence_input)
+        missing_literals = [configured for configured in literals if configured not in text]
+        if missing_literals:
+            missing_inputs.append(f"{evidence_input} missing {missing_literals!r}")
     if missing_inputs:
         return {
             "status": "stale",
             "status_reason": "literal missing from one or more bounded evidence files",
             "observed_value": checked_inputs,
-            "expected_value": literal,
+            "expected_value": literals,
             "mismatches": missing_inputs,
         }
     return {
         "status": "verified",
         "status_reason": "literal present in all bounded evidence files",
         "observed_value": checked_inputs,
-        "expected_value": literal,
+        "expected_value": literals,
+    }
+
+
+def _evaluate_all_paths_exist_claim(claim: DreamLoopClaimSpec) -> Dict[str, Any]:
+    missing_inputs: List[str] = []
+    checked_inputs: List[str] = []
+    for evidence_input in claim.evidence_inputs:
+        if evidence_input.startswith("python3 ") or evidence_input.startswith("systemctl "):
+            return {
+                "status": "unverifiable",
+                "status_reason": "all_paths_exist only supports file evidence inputs",
+                "observed_value": checked_inputs,
+                "expected_value": list(claim.evidence_inputs),
+            }
+        path = ROOT / evidence_input
+        checked_inputs.append(evidence_input)
+        if not path.exists():
+            missing_inputs.append(evidence_input)
+    if missing_inputs:
+        return {
+            "status": "stale",
+            "status_reason": "one or more bounded evidence paths do not exist",
+            "observed_value": checked_inputs,
+            "expected_value": list(claim.evidence_inputs),
+            "mismatches": missing_inputs,
+        }
+    return {
+        "status": "verified",
+        "status_reason": "all bounded evidence paths exist",
+        "observed_value": checked_inputs,
+        "expected_value": list(claim.evidence_inputs),
     }
 
 
@@ -879,6 +918,11 @@ def _evaluate_general_claim(claim: DreamLoopClaimSpec) -> Dict[str, Any]:
         return {
             **base,
             **_evaluate_all_files_contain_literal_claim(claim),
+        }
+    if claim.verifier == "all_paths_exist":
+        return {
+            **base,
+            **_evaluate_all_paths_exist_claim(claim),
         }
     return {
         **base,

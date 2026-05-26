@@ -15,6 +15,7 @@ Current reality:
 - `v1` remains the base implementation contract for the runner
 - the live runner already includes some bounded `v2` and `v2.1` features beyond the original `v1` floor
 - the live runner now includes a separate executable claim registry plus bounded claim-result persistence for first-wave claims from both `ARCHITECT_INSTRUCTION.md` and `SERVER3_SUMMARY.md`
+- first-wave `ARCHITECT_INSTRUCTION.md` claim coverage now extends beyond time/service identity to include bounded execution-policy and session-start-checklist claims
 - `SERVER3_SUMMARY.md` verification/correction is now claim-backed rather than only transitional hard-coded field mapping
 - the live runner now also appends a bounded per-run `history.jsonl` audit trail alongside the latest-state artifacts
 - the live runner now also performs bounded `v2.1` git automation for safe current-run repo-managed outputs, with explicit skips for pre-existing staged or dirty work
