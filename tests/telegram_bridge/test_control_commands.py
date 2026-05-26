@@ -147,6 +147,8 @@ class TestControlCommands(unittest.TestCase):
                         "stale_claims": ["server3_summary.runtime_observer_line"],
                         "stale_context_eligibility": {
                             "eligible_scope_keys": ["tg:1"],
+                            "machine_truth_changed": True,
+                            "policy_inputs_changed": False,
                             "changed_machine_inputs": ["ARCHITECT_INSTRUCTION.md"],
                             "changed_policy_inputs": ["src/telegram_bridge/runtime_config.py"],
                         }
@@ -161,6 +163,15 @@ class TestControlCommands(unittest.TestCase):
                         "run_status": "succeeded",
                         "claim_verification_mode": "corrective",
                         "skipped_checks": [],
+                        "unresolved_items": ["manual review required"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (dream_dir / "latest_health_state.json").write_text(
+                json.dumps(
+                    {
+                        "health_status": "warn",
                     }
                 ),
                 encoding="utf-8",
@@ -173,6 +184,8 @@ class TestControlCommands(unittest.TestCase):
                             "warning_fingerprint": "abcdef1234567890",
                             "warning_generated_at": "2026-05-20T11:00:00+10:00",
                             "warning_outstanding": True,
+                            "notified_fingerprint": "abcdef1234567890",
+                            "notified_at": "2026-05-20T11:05:00+10:00",
                             "handled_fingerprint": "",
                             "handled_at": "",
                             "last_reset_at": "",
@@ -194,12 +207,106 @@ class TestControlCommands(unittest.TestCase):
 
         text = client.messages[-1][1]
         self.assertIn("Dream-loop truth status:", text)
+        self.assertIn("Truth changed on last run: yes", text)
         self.assertIn("Outstanding stale warning: yes", text)
+        self.assertIn("Warning already delivered for current fingerprint: yes", text)
+        self.assertIn("/reset already used for current warning: no", text)
         self.assertIn("Scope currently eligible for stale warning: yes", text)
         self.assertIn("ARCHITECT_INSTRUCTION.md", text)
         self.assertIn("Claim verification mode: corrective", text)
         self.assertIn("Claim summary: 2 verified, 1 stale, 0 ambiguous, 0 unverifiable", text)
         self.assertIn("server3_summary.runtime_observer_line", text)
+        self.assertIn("Global system: health warn, runtime manifest state unknown", text)
+        self.assertIn("Warning delivered at: 2026-05-20T11:05:00+10:00", text)
+        self.assertIn("Unresolved items: manual review required", text)
+
+    def test_handle_truth_status_command_reports_reset_used_for_current_warning(self):
+        client = FakeTelegramClient()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir) / "bridge"
+            dream_dir = Path(tmpdir) / "dream"
+            state_dir.mkdir(parents=True, exist_ok=True)
+            dream_dir.mkdir(parents=True, exist_ok=True)
+            (dream_dir / "latest_truth_state.json").write_text(
+                json.dumps(
+                    {
+                        "claim_verification": {"mode": "corrective"},
+                        "claim_summary": {
+                            "verified": 2,
+                            "stale": 0,
+                            "ambiguous": 0,
+                            "unverifiable": 0,
+                        },
+                        "stale_claims": [],
+                        "live_runtime_alignment": {
+                            "runtime_shape_matches_manifest": True,
+                        },
+                        "stale_context_eligibility": {
+                            "eligible_scope_keys": ["tg:1"],
+                            "machine_truth_changed": False,
+                            "policy_inputs_changed": True,
+                            "changed_machine_inputs": [],
+                            "changed_policy_inputs": ["src/telegram_bridge/runtime_config.py"],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (dream_dir / "latest_run_state.json").write_text(
+                json.dumps(
+                    {
+                        "generated_at": "2026-05-20T12:00:00+10:00",
+                        "run_status": "succeeded",
+                        "claim_verification_mode": "corrective",
+                        "skipped_checks": [],
+                        "unresolved_items": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (dream_dir / "latest_health_state.json").write_text(
+                json.dumps(
+                    {
+                        "health_status": "ok",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (state_dir / "dream_loop_stale_context.json").write_text(
+                json.dumps(
+                    {
+                        "tg:1": {
+                            "scope_key": "tg:1",
+                            "warning_fingerprint": "fp-2",
+                            "warning_generated_at": "2026-05-20T11:00:00+10:00",
+                            "warning_outstanding": False,
+                            "notified_fingerprint": "fp-2",
+                            "notified_at": "2026-05-20T11:02:00+10:00",
+                            "handled_fingerprint": "fp-2",
+                            "handled_at": "2026-05-20T11:03:00+10:00",
+                            "last_reset_at": "2026-05-20T11:03:00+10:00",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.dict("os.environ", {"DREAM_LOOP_STATE_DIR": str(dream_dir)}):
+                bridge_control_commands.handle_truth_status_command(
+                    State(),
+                    make_config(state_dir=str(state_dir)),
+                    client,
+                    "tg:1",
+                    1,
+                    77,
+                    88,
+                )
+
+        text = client.messages[-1][1]
+        self.assertIn("Truth changed on last run: yes", text)
+        self.assertIn("Outstanding stale warning: no", text)
+        self.assertIn("Warning already delivered for current fingerprint: yes", text)
+        self.assertIn("/reset already used for current warning: yes", text)
+        self.assertIn("Global system: health ok, runtime matches manifest", text)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ Current reality:
 - the live runner now also appends a bounded per-run `history.jsonl` audit trail alongside the latest-state artifacts
 - the live runner now also performs bounded `v2.1` git automation for safe current-run repo-managed outputs, with explicit skips for pre-existing staged or dirty work
 - the bridge now also delivers bounded one-shot stale-context warnings on the next eligible scope message after a recorded truth/policy change, and suppresses repeats until `/reset` or a later warning fingerprint replaces the current one
+- `/truth_status` now also reports whether truth changed on the last run, whether the current warning fingerprint was already delivered or cleared with `/reset`, unresolved items, and one short global system line
 - the broader system-wide truth-alignment behaviors in this document are follow-on scope and should not be used to judge `v1` completeness
 - this file is the single canonical dream-loop spec and rollout-acceptance document
 - separate `v2` and `v2.1` goal briefs are intentionally folded into this file

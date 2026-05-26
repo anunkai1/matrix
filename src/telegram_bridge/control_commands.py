@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from telegram_bridge.channel_adapter import ChannelAdapter
 from telegram_bridge.dream_loop_state import (
+    LATEST_HEALTH_STATE,
     LATEST_RUN_STATE,
     LATEST_TRUTH_STATE,
     build_dream_loop_artifact_path,
@@ -121,6 +122,7 @@ def handle_truth_status_command(
 ) -> None:
     del state
     truth_state = _read_json_artifact(build_dream_loop_artifact_path(LATEST_TRUTH_STATE))
+    health_state = _read_json_artifact(build_dream_loop_artifact_path(LATEST_HEALTH_STATE))
     run_state = _read_json_artifact(build_dream_loop_artifact_path(LATEST_RUN_STATE))
     stale_status = get_scope_stale_context_status(
         build_stale_context_state_path(config.state_dir),
@@ -139,10 +141,29 @@ def handle_truth_status_command(
     claim_summary = truth_state.get("claim_summary", {}) or {}
     stale_claims = truth_state.get("stale_claims", []) or []
     eligible_scope_keys = stale.get("eligible_scope_keys", []) or []
+    truth_changed = bool(stale.get("machine_truth_changed") or stale.get("policy_inputs_changed"))
+    warning_fingerprint = str(stale_status.get("warning_fingerprint") or "")
+    notified_fingerprint = str(stale_status.get("notified_fingerprint") or "")
+    handled_fingerprint = str(stale_status.get("handled_fingerprint") or "")
+    warning_delivered = bool(warning_fingerprint and notified_fingerprint == warning_fingerprint)
+    reset_used_for_current_warning = bool(warning_fingerprint and handled_fingerprint == warning_fingerprint)
+    runtime_alignment = truth_state.get("live_runtime_alignment", {}) or {}
+    runtime_shape_matches_manifest = runtime_alignment.get("runtime_shape_matches_manifest")
+    runtime_shape_text = (
+        "matches manifest"
+        if runtime_shape_matches_manifest is True
+        else "drifted from manifest" if runtime_shape_matches_manifest is False else "manifest state unknown"
+    )
+    global_health_text = (
+        f"health {health_state.get('health_status', 'unknown')}, runtime {runtime_shape_text}"
+        if health_state is not None
+        else f"runtime {runtime_shape_text}"
+    )
     lines = [
         "Dream-loop truth status:",
         f"- Generated at: {run_state.get('generated_at', 'unknown')}",
         f"- Run status: {run_state.get('run_status', 'unknown')}",
+        f"- Truth changed on last run: {'yes' if truth_changed else 'no'}",
         f"- Claim verification mode: {run_state.get('claim_verification_mode', truth_state.get('claim_verification', {}).get('mode', 'unknown'))}",
         (
             "- Claim summary: "
@@ -154,11 +175,16 @@ def handle_truth_status_command(
         f"- Current scope: {scope_key}",
         f"- Scope currently eligible for stale warning: {'yes' if scope_key in eligible_scope_keys else 'no'}",
         f"- Outstanding stale warning: {'yes' if stale_status.get('warning_outstanding') else 'no'}",
+        f"- Warning already delivered for current fingerprint: {'yes' if warning_delivered else 'no'}",
+        f"- /reset already used for current warning: {'yes' if reset_used_for_current_warning else 'no'}",
+        f"- Global system: {global_health_text}",
     ]
     lines.append("- Stale claim IDs: " + (", ".join(str(item) for item in stale_claims) if stale_claims else "none"))
-    warning_fingerprint = str(stale_status.get("warning_fingerprint") or "")
     if warning_fingerprint:
         lines.append(f"- Warning fingerprint tracked: `{warning_fingerprint[:12]}`")
+    notified_at = str(stale_status.get("notified_at") or "")
+    if notified_at:
+        lines.append(f"- Warning delivered at: {notified_at}")
     handled_at = str(stale_status.get("handled_at") or "")
     if handled_at:
         lines.append(f"- Last handled at: {handled_at}")
@@ -177,6 +203,10 @@ def handle_truth_status_command(
             if isinstance(item, dict):
                 labels.append(f"{item.get('check_id', 'unknown')} ({item.get('reason', 'skipped')})")
         lines.append("- Skipped checks: " + (", ".join(labels) if labels else "none"))
+    unresolved_items = run_state.get("unresolved_items", []) or []
+    lines.append(
+        "- Unresolved items: " + (", ".join(str(item) for item in unresolved_items) if unresolved_items else "none")
+    )
     _send_command_reply(
         client,
         chat_id,
