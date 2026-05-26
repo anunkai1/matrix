@@ -288,6 +288,9 @@ class ScopeGoalManager:
     def clear(self) -> bool:
         return clear_goal_state(self._state, self.scope_key)
 
+    def pause_for_user_preemption(self) -> Optional[GoalState]:
+        return self.pause(reason="user-follow-up preempted the active goal turn")
+
     def build_continuation_prompt(self) -> Optional[str]:
         goal_state = self.goal_state
         if goal_state is None or goal_state.status != "active":
@@ -818,6 +821,8 @@ def maybe_handle_goal_post_turn(
     chat_id: int,
     message_thread_id: Optional[int],
     delivered_output: str,
+    sender_name: str = "Telegram User",
+    steered_follow_up_count: int = 0,
 ) -> None:
     scope_key = _canonical_goal_scope_key(
         scope_key=scope_key,
@@ -825,6 +830,22 @@ def maybe_handle_goal_post_turn(
         message_thread_id=message_thread_id,
     )
     if not str(delivered_output or "").strip():
+        return
+    manager = ScopeGoalManager(state, scope_key)
+    if (
+        sender_name == "Goal Continuation"
+        and steered_follow_up_count > 0
+        and manager.is_active()
+    ):
+        paused = manager.pause_for_user_preemption()
+        if paused is not None:
+            client.send_message(
+                chat_id,
+                "⏸ Goal paused - a real user follow-up arrived during the active goal turn. "
+                "Use /goal resume to continue, or /goal clear to stop.",
+                reply_to_message_id=manager.anchor_message_id(),
+                message_thread_id=message_thread_id,
+            )
         return
     decision = evaluate_goal_after_turn(
         state=state,
@@ -836,7 +857,6 @@ def maybe_handle_goal_post_turn(
         last_response=delivered_output,
     )
     message = str(decision.get("message") or "").strip()
-    manager = ScopeGoalManager(state, scope_key)
     if message:
         client.send_message(
             chat_id,

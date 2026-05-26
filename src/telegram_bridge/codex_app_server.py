@@ -293,7 +293,12 @@ class CodexAppServerSession:
                 stdout="",
                 stderr="",
             )
-            return attach_cached_executor_result(result, self._thread_id, output)
+            return attach_cached_executor_result(
+                result,
+                self._thread_id,
+                output,
+                steered_follow_up_count=pending_turn.steered_follow_up_count,
+            )
         finally:
             with self._state_lock:
                 if self._pending_turn is pending_turn:

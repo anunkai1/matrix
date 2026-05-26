@@ -27,6 +27,7 @@ class ExecutorCancelledError(Exception):
 _EXECUTOR_ENV_CACHE_ATTR = "_cached_executor_env"
 _EXECUTOR_RESULT_THREAD_ID_ATTR = "_executor_thread_id"
 _EXECUTOR_RESULT_OUTPUT_ATTR = "_executor_output"
+_EXECUTOR_RESULT_STEERED_FOLLOW_UP_COUNT_ATTR = "_executor_steered_follow_up_count"
 _EDITOR_HOST_ENV_PREFIXES = (
     "VSCODE_",
     "ELECTRON_",
@@ -401,16 +402,30 @@ def cached_executor_result_output(
     return cached_thread_id, cached_output
 
 
+def cached_executor_result_steered_follow_up_count(
+    result: subprocess.CompletedProcess[str],
+) -> int:
+    count = getattr(result, _EXECUTOR_RESULT_STEERED_FOLLOW_UP_COUNT_ATTR, 0)
+    return count if isinstance(count, int) and count > 0 else 0
+
+
 def attach_cached_executor_result(
     result: subprocess.CompletedProcess[str],
     thread_id: Optional[str],
     output: str,
+    *,
+    steered_follow_up_count: int = 0,
 ) -> subprocess.CompletedProcess[str]:
     normalized_thread_id = thread_id.strip() if isinstance(thread_id, str) else None
     if not normalized_thread_id:
         normalized_thread_id = None
     setattr(result, _EXECUTOR_RESULT_THREAD_ID_ATTR, normalized_thread_id)
     setattr(result, _EXECUTOR_RESULT_OUTPUT_ATTR, (output or "").strip())
+    setattr(
+        result,
+        _EXECUTOR_RESULT_STEERED_FOLLOW_UP_COUNT_ATTR,
+        steered_follow_up_count if isinstance(steered_follow_up_count, int) and steered_follow_up_count > 0 else 0,
+    )
     return result
 
 

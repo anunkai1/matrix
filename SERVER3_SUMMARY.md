@@ -38,6 +38,7 @@ Last updated: 2026-05-21 (AEST, +10:00)
 - Dream loop now runs from `server3-dream-loop.timer` around `02:15 AEST` and writes the production truth/health baseline under `/var/lib/server3-dream-loop`.
 
 ## Recent Changes (Rolling Max 20)
+- 2026-05-26: `/goal` continuation handling now follows Hermes-style user preemption more closely; if a live goal continuation absorbs a real same-scope follow-up, the bridge pauses the goal instead of auto-chaining another autonomous turn.
 - 2026-05-20: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
 - 2026-05-21: voice notes now archive their raw audio into the attachment store before temp cleanup, matching the photo/document reuse pattern and preserving the source clip for later analysis.
 - 2026-05-21: the shared Telegram bridge core now hardwires Codex `danger-full-access` for all Server3 Telegram bridge runtimes, ignores `TELEGRAM_CODEX_SANDBOX_MODE` drift, and logs the active Codex launch policy at startup and per turn.

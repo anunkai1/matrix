@@ -327,6 +327,35 @@ class GoalLoopTests(unittest.TestCase):
             self.assertEqual(client.messages[-1][1], "✓ Goal achieved: done")
             self.assertEqual(client.messages[-1][2], 6248)
 
+    def test_post_turn_goal_hook_pauses_preempted_goal_continuation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+            state.chat_goals["tg:-1003894351534:topic:1853"] = goal_loop.GoalState(
+                goal="build the thing",
+                anchor_message_id=6248,
+            )
+
+            with mock.patch.object(goal_loop, "evaluate_goal_after_turn") as evaluate_after_turn:
+                goal_loop.maybe_handle_goal_post_turn(
+                    state=state,
+                    config=make_config(),
+                    client=client,
+                    scope_key="tg:-1003894351534",
+                    chat_id=-1003894351534,
+                    message_thread_id=1853,
+                    delivered_output="completed",
+                    sender_name="Goal Continuation",
+                    steered_follow_up_count=1,
+                )
+
+            evaluate_after_turn.assert_not_called()
+            stored = state.chat_goals["tg:-1003894351534:topic:1853"]
+            self.assertEqual(stored.status, "paused")
+            self.assertEqual(stored.paused_reason, "user-follow-up preempted the active goal turn")
+            self.assertIn("Goal paused - a real user follow-up arrived", client.messages[-1][1])
+            self.assertEqual(client.messages[-1][2], 6248)
+
     def test_load_chat_goals_prunes_legacy_chat_scope_when_topic_scope_exists(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "chat_goals.json"

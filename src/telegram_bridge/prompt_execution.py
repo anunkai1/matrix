@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
+from telegram_bridge.executor import cached_executor_result_steered_follow_up_count
 from telegram_bridge import goal_loop
 from telegram_bridge import web_context
 from telegram_bridge.engines.mavali_eth import MavaliEthEngineAdapter
@@ -320,6 +321,7 @@ def process_prompt_request(
     affective_turn_started = False
     affective_turn_finished = False
     delivered_output: Optional[str] = None
+    steered_follow_up_count = 0
     should_run_goal_post_turn = False
     progress = build_prompt_progress_reporter(
         request,
@@ -511,6 +513,7 @@ def process_prompt_request(
         )
         if result is None:
             return
+        steered_follow_up_count = cached_executor_result_steered_follow_up_count(result)
         finalize_started_at = time.monotonic()
         new_thread_id, output = finalize_prompt_success_fn(
             state_repo=state_repo,
@@ -596,6 +599,8 @@ def process_prompt_request(
                 chat_id=chat_id,
                 message_thread_id=message_thread_id,
                 delivered_output=delivered_output,
+                sender_name=request.sender_name,
+                steered_follow_up_count=steered_follow_up_count,
             )
         except Exception:
             logging.exception("Goal continuation hook failed for scope=%s", scope_key)
