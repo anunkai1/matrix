@@ -13,6 +13,7 @@ if str(SRC_ROOT) not in sys.path:
 from tests.telegram_bridge.helpers import FakeTelegramClient, make_config
 
 import telegram_bridge.goal_loop as goal_loop
+from telegram_bridge.state_models import CanonicalSession, WorkerSession
 from telegram_bridge.state_store import State
 
 
@@ -144,6 +145,136 @@ class GoalLoopTests(unittest.TestCase):
             self.assertTrue(cleared)
             self.assertFalse(manager.has_goal())
             self.assertNotIn("tg:-1003894351534:topic:1853", state.chat_goals)
+
+    def test_goal_status_shows_canonical_thread_and_in_flight_details(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = State(
+                chat_goal_path=str(Path(tmpdir) / "chat_goals.json"),
+                chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
+                canonical_sessions_enabled=True,
+            )
+            client = FakeTelegramClient()
+            created_at = 1760000000.0
+            last_turn_at = created_at + 60
+            state.chat_sessions["tg:-1003894351534:topic:1853"] = CanonicalSession(
+                thread_id="thread-xyz",
+                in_flight_started_at=created_at + 30,
+                in_flight_message_id=77,
+                goal_state=goal_loop.GoalState(
+                    goal="build the thing",
+                    anchor_message_id=10,
+                    turns_used=2,
+                    created_at=created_at,
+                    last_turn_at=last_turn_at,
+                    last_verdict="continue",
+                    last_reason="more work needed",
+                    subgoals=["include tests"],
+                ).to_dict(),
+            )
+            state.worker_sessions["tg:-1003894351534:topic:1853"] = WorkerSession(
+                created_at=created_at,
+                last_used_at=last_turn_at,
+                thread_id="thread-xyz",
+                policy_fingerprint="policy-1",
+            )
+            state.in_flight_requests["tg:-1003894351534:topic:1853"] = {
+                "started_at": created_at + 30,
+                "message_id": 77,
+            }
+            state.busy_chats.add("tg:-1003894351534:topic:1853")
+
+            handled = goal_loop.handle_goal_command(
+                state=state,
+                config=make_config(),
+                client=client,
+                scope_key="tg:-1003894351534",
+                chat_id=-1003894351534,
+                message_thread_id=1853,
+                message_id=11,
+                raw_text="/goal status",
+            )
+
+            self.assertTrue(handled)
+            text = client.messages[-1][1]
+            self.assertIn("Goal: build the thing", text)
+            self.assertIn("Lifecycle: active", text)
+            self.assertIn("Canonical session: linked", text)
+            self.assertIn("Worker thread: thread-xyz", text)
+            self.assertIn("In-flight: running since", text)
+            self.assertIn("(message 77)", text)
+            self.assertIn("Last judge verdict: continue", text)
+            self.assertIn("Last judge reason: more work needed", text)
+
+    def test_goal_status_reports_waiting_when_goal_active_without_running_request(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+            state.chat_goals["tg:-1003894351534:topic:1853"] = goal_loop.GoalState(
+                goal="build the thing",
+                anchor_message_id=10,
+            )
+
+            handled = goal_loop.handle_goal_command(
+                state=state,
+                config=make_config(),
+                client=client,
+                scope_key="tg:-1003894351534",
+                chat_id=-1003894351534,
+                message_thread_id=1853,
+                message_id=11,
+                raw_text="/goal status",
+            )
+
+            self.assertTrue(handled)
+            text = client.messages[-1][1]
+            self.assertIn("Lifecycle: waiting", text)
+            self.assertIn("In-flight: idle", text)
+            self.assertIn("Worker thread: none", text)
+
+    def test_goal_status_classifies_preempted_and_canceled_pause_reasons(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+            state.chat_goals["tg:-1003894351534:topic:1853"] = goal_loop.GoalState(
+                goal="build the thing",
+                status="paused",
+                paused_reason="user-follow-up preempted the active goal turn",
+            )
+
+            handled = goal_loop.handle_goal_command(
+                state=state,
+                config=make_config(),
+                client=client,
+                scope_key="tg:-1003894351534",
+                chat_id=-1003894351534,
+                message_thread_id=1853,
+                message_id=11,
+                raw_text="/goal status",
+            )
+
+            self.assertTrue(handled)
+            self.assertIn("Lifecycle: preempted", client.messages[-1][1])
+            self.assertIn("Pause reason: user-follow-up preempted the active goal turn", client.messages[-1][1])
+
+            state.chat_goals["tg:-1003894351534:topic:1853"] = goal_loop.GoalState(
+                goal="build the thing",
+                status="paused",
+                paused_reason="active goal turn was canceled or interrupted by the user",
+            )
+
+            handled = goal_loop.handle_goal_command(
+                state=state,
+                config=make_config(),
+                client=client,
+                scope_key="tg:-1003894351534",
+                chat_id=-1003894351534,
+                message_thread_id=1853,
+                message_id=12,
+                raw_text="/goal status",
+            )
+
+            self.assertTrue(handled)
+            self.assertIn("Lifecycle: canceled", client.messages[-1][1])
 
     def test_reconcile_goal_state_imports_legacy_goals_into_canonical_sessions(self):
         with tempfile.TemporaryDirectory() as tmpdir:

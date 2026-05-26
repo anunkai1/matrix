@@ -360,6 +360,124 @@ def status_line(goal_state: Optional[GoalState]) -> str:
     return f"Goal ({goal_state.status}, {turns}{sub}): {goal_state.goal}"
 
 
+def _format_status_timestamp(value: Optional[float]) -> str:
+    if not isinstance(value, (int, float)) or value <= 0:
+        return "n/a"
+    return datetime.fromtimestamp(float(value), tz=timezone.utc).astimezone().strftime(
+        "%Y-%m-%d %H:%M:%S %Z"
+    )
+
+
+def _paused_reason_lifecycle(goal_state: GoalState) -> Optional[str]:
+    reason = str(goal_state.paused_reason or "").strip().lower()
+    if not reason:
+        return None
+    if "preempted" in reason:
+        return "preempted"
+    if "canceled" in reason or "cancelled" in reason or "interrupted" in reason:
+        return "canceled"
+    if "waiting" in reason or "need input" in reason or "need your input" in reason:
+        return "waiting"
+    return "paused"
+
+
+def _goal_lifecycle_label(
+    goal_state: GoalState,
+    *,
+    is_busy: bool,
+    has_in_flight: bool,
+) -> str:
+    if goal_state.status == "done":
+        return "done"
+    if goal_state.status == "paused":
+        return _paused_reason_lifecycle(goal_state) or "paused"
+    if goal_state.status == "active":
+        if is_busy or has_in_flight:
+            return "active"
+        return "waiting"
+    return goal_state.status
+
+
+def build_goal_status_text(
+    state: State,
+    scope_key: ScopeKey,
+    goal_state: Optional[GoalState],
+) -> str:
+    if goal_state is None:
+        return "No active goal. Set one with /goal <text>."
+
+    normalized_scope_key = normalize_scope_key(scope_key)
+    with state.lock:
+        canonical_enabled = bool(state.canonical_sessions_enabled)
+        canonical_session = state.chat_sessions.get(normalized_scope_key)
+        worker_session = state.worker_sessions.get(normalized_scope_key)
+        in_flight = dict(state.in_flight_requests.get(normalized_scope_key, {}))
+        is_busy = normalized_scope_key in state.busy_chats
+
+    lifecycle = _goal_lifecycle_label(
+        goal_state,
+        is_busy=is_busy,
+        has_in_flight=bool(in_flight),
+    )
+    scope = parse_telegram_scope_key(normalized_scope_key)
+    scope_label = f"chat {scope.chat_id}"
+    if scope.message_thread_id is not None:
+        scope_label += f", topic {scope.message_thread_id}"
+    turns = f"{goal_state.turns_used}/{goal_state.max_turns}"
+    subgoals = str(len(goal_state.subgoals))
+    worker_thread_id = ""
+    if worker_session is not None and worker_session.thread_id:
+        worker_thread_id = worker_session.thread_id
+    elif canonical_session is not None and canonical_session.thread_id:
+        worker_thread_id = canonical_session.thread_id
+
+    in_flight_message_id = in_flight.get("message_id")
+    if not isinstance(in_flight_message_id, int) and canonical_session is not None:
+        if isinstance(canonical_session.in_flight_message_id, int):
+            in_flight_message_id = canonical_session.in_flight_message_id
+    in_flight_started_at = in_flight.get("started_at")
+    if not isinstance(in_flight_started_at, (int, float)) and canonical_session is not None:
+        if isinstance(canonical_session.in_flight_started_at, (int, float)):
+            in_flight_started_at = canonical_session.in_flight_started_at
+
+    lines = [
+        f"Goal: {goal_state.goal}",
+        f"Lifecycle: {lifecycle}",
+        f"Scope: {normalized_scope_key} ({scope_label})",
+        (
+            f"Canonical session: {'linked' if canonical_enabled and canonical_session is not None else 'not linked'}"
+            if canonical_enabled
+            else "Canonical session: disabled"
+        ),
+        f"Turns: {turns}",
+        f"Subgoals: {subgoals}",
+        f"Worker thread: {worker_thread_id or 'none'}",
+        (
+            "In-flight: "
+            f"running since {_format_status_timestamp(in_flight_started_at)}"
+            + (
+                f" (message {in_flight_message_id})"
+                if isinstance(in_flight_message_id, int)
+                else ""
+            )
+            if is_busy or in_flight
+            else "In-flight: idle"
+        ),
+    ]
+    if goal_state.anchor_message_id is not None:
+        lines.append(f"Anchor message: {goal_state.anchor_message_id}")
+    if goal_state.paused_reason:
+        lines.append(f"Pause reason: {goal_state.paused_reason}")
+    if goal_state.last_reason:
+        lines.append(f"Last judge reason: {goal_state.last_reason}")
+    if goal_state.last_verdict:
+        lines.append(f"Last judge verdict: {goal_state.last_verdict}")
+    if goal_state.last_turn_at:
+        lines.append(f"Last goal turn: {_format_status_timestamp(goal_state.last_turn_at)}")
+    lines.append(f"Created: {_format_status_timestamp(goal_state.created_at)}")
+    return "\n".join(lines)
+
+
 def build_continuation_prompt(goal_state: GoalState) -> str:
     if goal_state.subgoals:
         return CONTINUATION_PROMPT_WITH_SUBGOALS_TEMPLATE.format(
@@ -395,6 +513,9 @@ class ScopeGoalManager:
 
     def status_line(self) -> str:
         return status_line(self.goal_state)
+
+    def detailed_status_text(self) -> str:
+        return build_goal_status_text(self._state, self.scope_key, self.goal_state)
 
     def anchor_message_id(self) -> Optional[int]:
         goal_state = self.goal_state
@@ -860,7 +981,7 @@ def handle_goal_command(
     if not args or lower == "status":
         client.send_message(
             chat_id,
-            manager.status_line(),
+            manager.detailed_status_text(),
             reply_to_message_id=message_id,
             message_thread_id=message_thread_id,
         )

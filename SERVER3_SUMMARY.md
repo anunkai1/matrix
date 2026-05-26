@@ -1,6 +1,6 @@
 # Server3 Summary
 
-Last updated: 2026-05-21 (AEST, +10:00)
+Last updated: 2026-05-26 (AEST, +10:00)
 
 ## Current Snapshot
 - Primary active component: `telegram-architect-bridge.service`
@@ -22,6 +22,7 @@ Last updated: 2026-05-21 (AEST, +10:00)
 - Outbound delivery: Architect can send Telegram file/photo attachments and outbound voice-note replies through the shared transport path.
 - Voice runtime: voice-note handling uses a warm transcription service with confidence gating plus learned alias correction for recurring transcript mistakes.
 - Engine/runtime selection: Architect can switch per chat/topic between `codex`, `gemma` (`ollama(s4)`), and `pi`; `/engine status` is the live truth source for engine health and overrides.
+- Goal operator visibility: `/goal status` now reports the goal lifecycle for the current scope together with canonical-session linkage, worker thread attachment, and in-flight request state.
 - Follow-up steering: active Codex app-server turns support same-scope plain-text follow-up steering across direct chats, groups, and forum topics, with short coalescing to fold nearby follow-up messages together.
 - Safe restart: operator-triggered `/restart` is queueable and generally drain-aware, so active work usually clears before the bridge restart proceeds.
 - Deterministic side corridors: Server3 exposes bounded operator routes for Home Assistant (`HA ...`), TV/Desktop (`Server3 TV ...`), Nextcloud file/calendar ops (`Nextcloud ...`), Server3 Runtime Observer (`SRO ...`), and transcript-first YouTube link handling.
@@ -39,6 +40,7 @@ Last updated: 2026-05-21 (AEST, +10:00)
 
 ## Recent Changes (Rolling Max 20)
 - 2026-05-26: `/goal` now uses a cleaner manager/bridge decision split, a stronger Hermes-style judge prompt path, and pauses autonomous goal continuations when same-scope user follow-ups or explicit cancels interrupt the loop.
+- 2026-05-26: `/goal status` now exposes richer operator state, including canonical-session linkage, worker thread id, in-flight visibility, and lifecycle labels like waiting, preempted, and canceled.
 - 2026-05-20: enabled the bounded Server3 dream loop with a live systemd timer/service and production truth/health state under `/var/lib/server3-dream-loop`.
 - 2026-05-21: voice notes now archive their raw audio into the attachment store before temp cleanup, matching the photo/document reuse pattern and preserving the source clip for later analysis.
 - 2026-05-21: the shared Telegram bridge core now hardwires Codex `danger-full-access` for all Server3 Telegram bridge runtimes, ignores `TELEGRAM_CODEX_SANDBOX_MODE` drift, and logs the active Codex launch policy at startup and per turn.
