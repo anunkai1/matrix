@@ -733,6 +733,32 @@ Last updated: 2026-05-17 (AEST, +10:00)
         self.assertEqual(result["status"], "skipped_preexisting_staged_changes")
         self.assertFalse(result["commit_attempted"])
 
+    def test_run_git_automation_skips_when_no_candidate_paths_changed(self):
+        candidate_paths = ["SERVER3_SUMMARY.md", "tmp/dream/latest_truth_state.json"]
+
+        def fake_run_capture_command(args):
+            command = tuple(args)
+            if command == ("git", "status", "--porcelain", "--", *candidate_paths):
+                return self._completed(args, stdout="")
+            raise AssertionError(f"Unexpected git command: {command}")
+
+        result = dream_loop._run_git_automation(
+            config=dream_loop.DreamLoopConfig(),
+            run_capture_command=fake_run_capture_command,
+            generated_at="2026-05-20T12:00:00+10:00",
+            candidate_paths=candidate_paths,
+            preexisting_staged_changes=False,
+            pre_run_dirty_entries={},
+        )
+
+        self.assertEqual(result["status"], "skipped_no_repo_changes")
+        self.assertEqual(result["candidate_repo_paths"], candidate_paths)
+        self.assertFalse(result["commit_attempted"])
+        self.assertEqual(
+            result["skip_reason"],
+            "no repo-managed candidate files changed in this run",
+        )
+
     def test_run_git_automation_skips_preexisting_dirty_candidate_paths(self):
         candidate_paths = ["SERVER3_SUMMARY.md"]
 
@@ -840,6 +866,56 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertEqual(result["run_state"]["run_status"], "succeeded_with_git_push_failure")
             self.assertEqual(result["run_state"]["git_automation"]["status"], "push_failed")
             self.assertIn("Push outcome: failed", result["report_text"])
+
+    def test_execute_dream_loop_records_no_repo_changes_git_skip(self):
+        repo_tmp_root = dream_loop.ROOT / "tmp" / "dream-loop-test-git"
+        repo_tmp_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=repo_tmp_root) as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            state_dir = tmpdir_path / "dream"
+            bridge_state_dir = tmpdir_path / "bridge"
+            summary_path = tmpdir_path / "SERVER3_SUMMARY.md"
+            bridge_state_dir.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(self._aligned_summary_fixture(), encoding="utf-8")
+            config = dream_loop.DreamLoopConfig(
+                state_dir=state_dir,
+                bridge_state_dir=bridge_state_dir,
+                timezone="Australia/Brisbane",
+                dry_run=False,
+                summary_path=summary_path,
+            )
+            candidate_paths = dream_loop._commit_candidate_repo_paths(config)
+            status_calls = {"count": 0}
+
+            def fake_run_capture_command(args):
+                command = tuple(args)
+                if command == ("git", "diff", "--cached", "--name-only"):
+                    return self._completed(args, stdout="")
+                if command == ("git", "status", "--porcelain", "--", *candidate_paths):
+                    status_calls["count"] += 1
+                    return self._completed(args, stdout="")
+                raise AssertionError(f"Unexpected git command: {command}")
+
+            result = dream_loop.execute_dream_loop(
+                config,
+                run_json_command=self._fake_run_json_command,
+                run_text_command=self._fake_run_text_command,
+                run_capture_command=fake_run_capture_command,
+            )
+
+            self.assertEqual(status_calls["count"], 2)
+            self.assertEqual(result["run_state"]["run_status"], "succeeded")
+            self.assertEqual(result["run_state"]["git_automation"]["status"], "skipped_no_repo_changes")
+            self.assertEqual(
+                result["run_state"]["git_automation"]["candidate_repo_paths"],
+                candidate_paths,
+            )
+            self.assertEqual(result["run_state"]["git_automation"]["safe_repo_paths"], [])
+            self.assertIn("Status: skipped_no_repo_changes", result["report_text"])
+            self.assertIn(
+                "Skip/failure reason: no repo-managed candidate files changed in this run",
+                result["report_text"],
+            )
 
 
 if __name__ == "__main__":
