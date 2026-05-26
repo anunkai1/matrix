@@ -115,6 +115,7 @@ class DreamLoopClaimSpec:
     render_key: str = ""
     section_header: str = ""
     line_prefix: str = ""
+    verifier_config: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -278,6 +279,22 @@ def build_check_registry(config: DreamLoopConfig) -> List[DreamLoopCheckSpec]:
             severity="warn",
         ),
         DreamLoopCheckSpec(
+            check_id="architect_instruction_claim_truth",
+            truth_area="claim_surface",
+            mode="conditional",
+            trigger="claim_surface_inputs_exist",
+            inputs=(
+                "ARCHITECT_INSTRUCTION.md",
+                "infra/server3-runtime-manifest.json",
+                "ops/dream_loop/dream_loop.py",
+                "ops/server3_control_plane/serve.py",
+            ),
+            executor="architect_instruction_claim_truth",
+            mismatch_rule="approved_architect_instruction_claims_do_not_match_bounded_evidence",
+            correction_target="truth_state",
+            severity="warn",
+        ),
+        DreamLoopCheckSpec(
             check_id="server3_summary_truth",
             truth_area="secondary_truth_surface",
             mode="conditional",
@@ -328,6 +345,7 @@ def _serialize_claim_spec(spec: DreamLoopClaimSpec) -> Dict[str, Any]:
         "render_key": spec.render_key,
         "section_header": spec.section_header,
         "line_prefix": spec.line_prefix,
+        "verifier_config": dict(spec.verifier_config),
     }
 
 
@@ -699,6 +717,7 @@ def _load_claim_registry(path: Path) -> List[DreamLoopClaimSpec]:
                 render_key=str(item.get("render_key") or ""),
                 section_header=str(item.get("section_header") or ""),
                 line_prefix=str(item.get("line_prefix") or ""),
+                verifier_config=dict(item.get("verifier_config") or {}),
             )
         )
     return claims
@@ -718,6 +737,153 @@ def _summary_claim_expected_line(claim: DreamLoopClaimSpec, summary_facts: Dict[
             "writes the production truth/health baseline under `/var/lib/server3-dream-loop`."
         )
     raise KeyError(f"unsupported summary claim render_key: {claim.render_key}")
+
+
+def _read_json_any(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _evaluate_manifest_runtime_matches_claim(claim: DreamLoopClaimSpec) -> Dict[str, Any]:
+    manifest_path = ROOT / "infra" / "server3-runtime-manifest.json"
+    payload = _read_json_any(manifest_path)
+    runtimes = payload.get("runtimes", []) if isinstance(payload, dict) else []
+    runtime_name = str(claim.verifier_config.get("runtime_name") or "")
+    expected_owner_user = str(claim.verifier_config.get("owner_user") or "")
+    expected_workspace_root = str(claim.verifier_config.get("workspace_root") or "")
+    expected_unit_name = str(claim.verifier_config.get("unit_name") or "")
+    expected_unit_state = str(claim.verifier_config.get("unit_expected_state") or "")
+    runtime = next(
+        (
+            item for item in runtimes
+            if isinstance(item, dict) and str(item.get("name") or "") == runtime_name
+        ),
+        None,
+    )
+    if runtime is None:
+        return {
+            "status": "stale",
+            "status_reason": f"runtime `{runtime_name}` not found in manifest",
+            "observed_value": "",
+            "expected_value": runtime_name,
+        }
+    mismatches: List[str] = []
+    if expected_owner_user and str(runtime.get("owner_user") or "") != expected_owner_user:
+        mismatches.append(f"owner_user={runtime.get('owner_user')!r}")
+    if expected_workspace_root and str(runtime.get("workspace_root") or "") != expected_workspace_root:
+        mismatches.append(f"workspace_root={runtime.get('workspace_root')!r}")
+    if expected_unit_name:
+        units = runtime.get("units", []) if isinstance(runtime.get("units"), list) else []
+        unit = next(
+            (
+                item for item in units
+                if isinstance(item, dict) and str(item.get("name") or "") == expected_unit_name
+            ),
+            None,
+        )
+        if unit is None:
+            mismatches.append(f"unit_name missing: {expected_unit_name}")
+        elif expected_unit_state and str(unit.get("expected_state") or "") != expected_unit_state:
+            mismatches.append(f"unit_expected_state={unit.get('expected_state')!r}")
+    observed = {
+        "runtime_name": runtime_name,
+        "owner_user": runtime.get("owner_user"),
+        "workspace_root": runtime.get("workspace_root"),
+        "units": runtime.get("units"),
+    }
+    expected = {
+        "runtime_name": runtime_name,
+        "owner_user": expected_owner_user,
+        "workspace_root": expected_workspace_root,
+        "unit_name": expected_unit_name,
+        "unit_expected_state": expected_unit_state,
+    }
+    if mismatches:
+        return {
+            "status": "stale",
+            "status_reason": "manifest runtime fields differ from declared claim",
+            "observed_value": observed,
+            "expected_value": expected,
+            "mismatches": mismatches,
+        }
+    return {
+        "status": "verified",
+        "status_reason": "manifest runtime fields match declared claim",
+        "observed_value": observed,
+        "expected_value": expected,
+    }
+
+
+def _evaluate_all_files_contain_literal_claim(claim: DreamLoopClaimSpec) -> Dict[str, Any]:
+    literal = str(claim.verifier_config.get("literal") or "")
+    if not literal:
+        return {
+            "status": "ambiguous",
+            "status_reason": "verifier_config.literal is required",
+            "observed_value": "",
+            "expected_value": "",
+        }
+    missing_inputs: List[str] = []
+    checked_inputs: List[str] = []
+    for evidence_input in claim.evidence_inputs:
+        if evidence_input.startswith("python3 ") or evidence_input.startswith("systemctl "):
+            return {
+                "status": "unverifiable",
+                "status_reason": "all_files_contain_literal only supports file evidence inputs",
+                "observed_value": checked_inputs,
+                "expected_value": literal,
+            }
+        path = ROOT / evidence_input
+        checked_inputs.append(evidence_input)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            missing_inputs.append(f"{evidence_input} (missing file)")
+            continue
+        if literal not in text:
+            missing_inputs.append(evidence_input)
+    if missing_inputs:
+        return {
+            "status": "stale",
+            "status_reason": "literal missing from one or more bounded evidence files",
+            "observed_value": checked_inputs,
+            "expected_value": literal,
+            "mismatches": missing_inputs,
+        }
+    return {
+        "status": "verified",
+        "status_reason": "literal present in all bounded evidence files",
+        "observed_value": checked_inputs,
+        "expected_value": literal,
+    }
+
+
+def _evaluate_general_claim(claim: DreamLoopClaimSpec) -> Dict[str, Any]:
+    base = {
+        "claim_id": claim.claim_id,
+        "source_doc": claim.source_doc,
+        "source_anchor": claim.source_anchor,
+        "claim_text": claim.claim_text,
+        "claim_kind": claim.claim_kind,
+        "verifier": claim.verifier,
+        "evidence_inputs": list(claim.evidence_inputs),
+        "correction_target": claim.correction_target,
+        "severity": claim.severity,
+    }
+    if claim.verifier == "manifest_runtime_matches":
+        return {
+            **base,
+            **_evaluate_manifest_runtime_matches_claim(claim),
+        }
+    if claim.verifier == "all_files_contain_literal":
+        return {
+            **base,
+            **_evaluate_all_files_contain_literal_claim(claim),
+        }
+    return {
+        **base,
+        "status": "unverifiable",
+        "status_reason": f"unsupported verifier: {claim.verifier}",
+    }
 
 
 def _claim_status_counts(results: Sequence[Dict[str, Any]]) -> Dict[str, int]:
@@ -1279,6 +1445,22 @@ def _check_telegram_context_routing_truth(spec: DreamLoopCheckSpec, ctx: DreamLo
     }
 
 
+def _check_architect_instruction_claim_truth(
+    spec: DreamLoopCheckSpec,
+    ctx: DreamLoopExecutionContext,
+) -> Dict[str, Any]:
+    claims = [claim for claim in ctx.claim_registry if claim.source_doc == "ARCHITECT_INSTRUCTION.md"]
+    results = [_evaluate_general_claim(claim) for claim in claims]
+    ctx.claim_results.extend(results)
+    return {
+        **_serialize_registry_check(spec),
+        "status": "mismatch" if any(result.get("status") == "stale" for result in results) else "ok",
+        "claim_verification_mode": ctx.config.claim_verification_mode,
+        "claims_evaluated": [result["claim_id"] for result in results],
+        "stale_claim_ids": [result["claim_id"] for result in results if result.get("status") == "stale"],
+    }
+
+
 def _check_server3_summary_truth(spec: DreamLoopCheckSpec, ctx: DreamLoopExecutionContext) -> Dict[str, Any]:
     ctx.summary_text = ctx.config.summary_path.read_text(encoding="utf-8")
     summary_claims = [claim for claim in ctx.claim_registry if claim.source_doc == "SERVER3_SUMMARY.md"]
@@ -1307,7 +1489,7 @@ def _check_server3_summary_truth(spec: DreamLoopCheckSpec, ctx: DreamLoopExecuti
         claim_verification_mode=ctx.config.claim_verification_mode,
     )
     final_summary_text = ctx.aligned_summary_text if ctx.summary_changed_fields else ctx.summary_text
-    ctx.claim_results = [
+    summary_results = [
         _evaluate_summary_claim(
             claim,
             summary_text=final_summary_text,
@@ -1315,19 +1497,13 @@ def _check_server3_summary_truth(spec: DreamLoopCheckSpec, ctx: DreamLoopExecuti
         )
         for claim in summary_claims
     ]
-    ctx.truth_state["claim_results"] = list(ctx.claim_results)
-    ctx.truth_state["claim_summary"] = _claim_status_counts(ctx.claim_results)
-    ctx.truth_state["stale_claims"] = [
-        result["claim_id"]
-        for result in ctx.claim_results
-        if result.get("status") == "stale"
-    ]
+    ctx.claim_results.extend(summary_results)
     return {
         **_serialize_registry_check(spec),
         "status": "mismatch" if ctx.summary_stale_claim_ids else "ok",
         "approved_secondary_truth_surface": "SERVER3_SUMMARY.md",
         "claim_verification_mode": ctx.config.claim_verification_mode,
-        "claims_evaluated": [result["claim_id"] for result in ctx.claim_results],
+        "claims_evaluated": [result["claim_id"] for result in summary_results],
         "stale_claim_ids_before_correction": list(ctx.summary_stale_claim_ids),
         "corrected_claim_ids": list(ctx.summary_changed_claim_ids),
         "changed_fields": list(ctx.summary_changed_fields),
@@ -1340,6 +1516,7 @@ CHECK_EXECUTORS: Dict[str, Callable[[DreamLoopCheckSpec, DreamLoopExecutionConte
     "runtime_manifest_vs_status": _check_runtime_manifest_vs_status,
     "runtime_observer_truth": _check_runtime_observer_truth,
     "telegram_context_routing_truth": _check_telegram_context_routing_truth,
+    "architect_instruction_claim_truth": _check_architect_instruction_claim_truth,
     "server3_summary_truth": _check_server3_summary_truth,
 }
 
@@ -1361,7 +1538,27 @@ def _should_execute_check(spec: DreamLoopCheckSpec, config: DreamLoopConfig) -> 
         if not config.claim_registry_path.exists():
             return False, f"missing input: {config.claim_registry_path}"
         return True, ""
+    if spec.trigger == "claim_surface_inputs_exist":
+        if not config.claim_registry_path.exists():
+            return False, f"missing input: {config.claim_registry_path}"
+        for relative in spec.inputs:
+            if relative.startswith("python3 ") or relative.startswith("systemctl "):
+                continue
+            path = ROOT / relative
+            if not path.exists():
+                return False, f"missing input: {relative}"
+        return True, ""
     return False, f"unsupported trigger: {spec.trigger}"
+
+
+def _finalize_claim_state(ctx: DreamLoopExecutionContext) -> None:
+    ctx.truth_state["claim_results"] = list(ctx.claim_results)
+    ctx.truth_state["claim_summary"] = _claim_status_counts(ctx.claim_results)
+    ctx.truth_state["stale_claims"] = [
+        result["claim_id"]
+        for result in ctx.claim_results
+        if result.get("status") == "stale"
+    ]
 
 
 def _run_registry_checks(
@@ -1377,6 +1574,7 @@ def _run_registry_checks(
         result = executor(spec, ctx)
         ctx.checks_executed.append(spec.check_id)
         ctx.registry_check_results.append(result)
+    _finalize_claim_state(ctx)
     ctx.truth_state["registry_checks"]["checks"] = list(ctx.registry_check_results)
     ctx.health_state["registry_checks"] = [
         result

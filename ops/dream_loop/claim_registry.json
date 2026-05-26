@@ -1,5 +1,42 @@
 [
   {
+    "claim_id": "architect_instruction.time_standard",
+    "source_doc": "ARCHITECT_INSTRUCTION.md",
+    "source_anchor": "## 2) Time Standard",
+    "claim_text": "Server3 defaults to Australia/Brisbane time for operator-facing runtime reporting.",
+    "claim_kind": "policy_literal",
+    "verifier": "all_files_contain_literal",
+    "evidence_inputs": [
+      "ops/dream_loop/dream_loop.py",
+      "ops/server3_control_plane/serve.py"
+    ],
+    "correction_target": "truth_state",
+    "severity": "warn",
+    "verifier_config": {
+      "literal": "Australia/Brisbane"
+    }
+  },
+  {
+    "claim_id": "architect_instruction.primary_service",
+    "source_doc": "ARCHITECT_INSTRUCTION.md",
+    "source_anchor": "## 9) Current Scope Identity",
+    "claim_text": "Architect's primary Telegram service is telegram-architect-bridge.service under the architect-owned matrix workspace runtime.",
+    "claim_kind": "runtime_manifest",
+    "verifier": "manifest_runtime_matches",
+    "evidence_inputs": [
+      "infra/server3-runtime-manifest.json"
+    ],
+    "correction_target": "truth_state",
+    "severity": "warn",
+    "verifier_config": {
+      "runtime_name": "Architect",
+      "owner_user": "architect",
+      "workspace_root": "/home/architect/matrix",
+      "unit_name": "telegram-architect-bridge.service",
+      "unit_expected_state": "active"
+    }
+  },
+  {
     "claim_id": "server3_summary.runtime_observer_line",
     "source_doc": "SERVER3_SUMMARY.md",
     "source_anchor": "## Operational Memory (Pinned)",

@@ -158,6 +158,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertIn("Server3 Dream Loop Report", result["report_text"])
             self.assertIn("summary_out_of_alignment", result["truth_state"]["secondary_doc_alignment"])
             self.assertEqual(result["truth_state"]["claim_summary"]["stale"], 0)
+            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 4)
             self.assertEqual(summary_path.read_text(encoding="utf-8"), self._summary_fixture())
 
     def test_execute_dream_loop_writes_outputs(self):
@@ -221,7 +222,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             self.assertIn("server3-dream-loop.timer", updated_summary)
             self.assertFalse(truth_state["secondary_doc_alignment"]["summary_out_of_alignment"])
             self.assertEqual(truth_state["secondary_doc_alignment"]["summary_changed_fields"], [])
-            self.assertEqual(truth_state["claim_summary"]["verified"], 2)
+            self.assertEqual(truth_state["claim_summary"]["verified"], 4)
             self.assertEqual(truth_state["claim_summary"]["stale"], 0)
             self.assertEqual(truth_state["stale_claims"], [])
             summary_check = next(
@@ -291,7 +292,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             alignment = result["truth_state"]["secondary_doc_alignment"]
             self.assertFalse(alignment["summary_out_of_alignment"])
             self.assertEqual(alignment["summary_changed_fields"], [])
-            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 2)
+            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 4)
 
     def test_runtime_state_drift_is_visible_without_counting_as_machine_truth_change(self):
         fixed_now = datetime(2026, 5, 17, 15, 30, tzinfo=timezone(timedelta(hours=10)))
@@ -458,6 +459,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
                 "runtime_observer_truth",
                 "policy_watch_truth",
                 "telegram_context_routing_truth",
+                "architect_instruction_claim_truth",
                 "server3_summary_truth",
             ],
         )
@@ -502,6 +504,7 @@ Last updated: 2026-05-17 (AEST, +10:00)
             run_state = json.loads((state_dir / dream_loop.LATEST_RUN_STATE).read_text(encoding="utf-8"))
             self.assertEqual(run_state["claim_verification_mode"], "audit_only")
             self.assertEqual(run_state["claim_corrections_applied"], [])
+            self.assertEqual(truth_state["claim_summary"]["verified"], 2)
             self.assertEqual(truth_state["claim_summary"]["stale"], 2)
             self.assertEqual(
                 sorted(truth_state["stale_claims"]),
@@ -512,6 +515,40 @@ Last updated: 2026-05-17 (AEST, +10:00)
             )
             self.assertTrue(truth_state["secondary_doc_alignment"]["summary_out_of_alignment"])
             self.assertEqual(summary_path.read_text(encoding="utf-8"), self._summary_fixture())
+
+    def test_execute_dream_loop_records_stale_architect_instruction_claims(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            state_dir = tmpdir_path / "dream"
+            bridge_state_dir = tmpdir_path / "bridge"
+            summary_path = tmpdir_path / "SERVER3_SUMMARY.md"
+            claim_registry_path = tmpdir_path / "claim_registry.json"
+            bridge_state_dir.mkdir(parents=True, exist_ok=True)
+            summary_path.write_text(self._aligned_summary_fixture(), encoding="utf-8")
+            claim_registry = json.loads(dream_loop.DEFAULT_CLAIM_REGISTRY_PATH.read_text(encoding="utf-8"))
+            for claim in claim_registry:
+                if claim["claim_id"] == "architect_instruction.primary_service":
+                    claim["verifier_config"]["unit_name"] = "telegram-wrong-bridge.service"
+            claim_registry_path.write_text(json.dumps(claim_registry), encoding="utf-8")
+            config = dream_loop.DreamLoopConfig(
+                state_dir=state_dir,
+                bridge_state_dir=bridge_state_dir,
+                timezone="Australia/Brisbane",
+                dry_run=True,
+                summary_path=summary_path,
+                claim_registry_path=claim_registry_path,
+            )
+            result = dream_loop.execute_dream_loop(
+                config,
+                run_json_command=self._fake_run_json_command,
+                run_text_command=self._fake_run_text_command,
+            )
+            self.assertEqual(result["truth_state"]["claim_summary"]["verified"], 3)
+            self.assertEqual(result["truth_state"]["claim_summary"]["stale"], 1)
+            self.assertEqual(
+                result["truth_state"]["stale_claims"],
+                ["architect_instruction.primary_service"],
+            )
 
     def test_execute_dream_loop_persists_stale_warning_state_for_eligible_scope(self):
         with tempfile.TemporaryDirectory() as tmpdir:
