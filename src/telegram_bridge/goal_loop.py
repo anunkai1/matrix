@@ -3,6 +3,7 @@ import logging
 import re
 import time
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from telegram_bridge.conversation_scope import build_telegram_scope_key, parse_telegram_scope_key
@@ -18,6 +19,8 @@ from telegram_bridge.engine_controls import build_engine_runtime_config
 
 DEFAULT_MAX_TURNS = 20
 DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES = 3
+DEFAULT_JUDGE_TIMEOUT_SECONDS = 30.0
+DEFAULT_JUDGE_MAX_OUTPUT_CHARS = 4096
 JUDGE_MAX_OUTPUT_CHARS = 1200
 JUDGE_RESPONSE_SNIPPET_CHARS = 4000
 EXPLICIT_GOAL_DONE_PATTERNS = (
@@ -56,25 +59,67 @@ CONTINUATION_PROMPT_WITH_SUBGOALS_TEMPLATE = (
     "If you are blocked and need input from the user, say so clearly and stop."
 )
 
-JUDGE_PROMPT_TEMPLATE = """You are a strict judge evaluating whether an autonomous agent has achieved a user's stated goal.
+JUDGE_SYSTEM_PROMPT = """You are a strict judge evaluating whether an autonomous agent has achieved a user's stated goal.
+
+You receive the goal text and the agent's most recent response. Your only job is to decide whether the goal is fully satisfied based on that response.
+
+A goal is DONE only when:
+- The response explicitly confirms the goal was completed, OR
+- The response clearly shows the final deliverable was produced, OR
+- The response explains the goal is unachievable / blocked / needs user input
+
+Otherwise the goal is NOT done.
 
 Reply ONLY with one line of JSON:
-{{"done": true|false, "reason": "one short sentence"}}
+{"done": true|false, "reason": "one short sentence"}
 
-Rules:
-- done=true if the latest assistant response explicitly confirms the goal was completed
-- done=true if the latest assistant response clearly shows the final deliverable was produced
-- done=true if the latest assistant response clearly says it is blocked and needs user input
-- otherwise done=false
-- do not use tools
-- do not add any text outside the JSON
+Do not use tools. Do not add any text outside the JSON."""
 
-Goal:
+JUDGE_USER_PROMPT_TEMPLATE = """Goal:
 {goal}
 
-{subgoals_section}Latest assistant response:
+Latest assistant response:
 {response}
-"""
+
+Current time: {current_time}
+
+Is the goal satisfied?"""
+
+JUDGE_USER_PROMPT_WITH_SUBGOALS_TEMPLATE = """Goal:
+{goal}
+
+Additional criteria the user added mid-loop (all must also be satisfied for done=true):
+{subgoals_block}
+
+Latest assistant response:
+{response}
+
+Current time: {current_time}
+
+Decision rule:
+For each numbered criterion above, require specific evidence from the response.
+Do not accept generic phrases like "all requirements met" without concrete support.
+If any criterion lacks specific evidence, return done=false.
+
+Is the goal and every additional criterion satisfied?"""
+
+
+@dataclass(frozen=True)
+class GoalPostTurnDecision:
+    status: Optional[str]
+    should_continue: bool
+    message: str = ""
+    continuation_prompt: Optional[str] = None
+    pause_reason: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class GoalContinuationRequest:
+    scope_key: ScopeKey
+    chat_id: int
+    message_thread_id: Optional[int]
+    anchor_message_id: Optional[int]
+    prompt: str
 
 
 @dataclass
@@ -291,11 +336,33 @@ class ScopeGoalManager:
     def pause_for_user_preemption(self) -> Optional[GoalState]:
         return self.pause(reason="user-follow-up preempted the active goal turn")
 
+    def pause_for_interrupt(self) -> Optional[GoalState]:
+        return self.pause(reason="active goal turn was canceled or interrupted by the user")
+
     def build_continuation_prompt(self) -> Optional[str]:
         goal_state = self.goal_state
         if goal_state is None or goal_state.status != "active":
             return None
         return build_continuation_prompt(goal_state)
+
+    def build_continuation_request(
+        self,
+        *,
+        chat_id: int,
+        message_thread_id: Optional[int],
+        continuation_prompt: Optional[str] = None,
+    ) -> Optional[GoalContinuationRequest]:
+        goal_state = self.goal_state
+        prompt = str(continuation_prompt or self.build_continuation_prompt() or "").strip()
+        if goal_state is None or goal_state.status != "active" or not prompt:
+            return None
+        return GoalContinuationRequest(
+            scope_key=self.scope_key,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            anchor_message_id=goal_state.anchor_message_id,
+            prompt=prompt,
+        )
 
     def add_subgoal(self, text: str) -> str:
         goal_state = self.goal_state
@@ -336,15 +403,13 @@ class ScopeGoalManager:
         chat_id: int,
         message_thread_id: Optional[int],
         last_response: str,
-    ) -> Dict[str, object]:
+    ) -> GoalPostTurnDecision:
         goal_state = self.goal_state
         if goal_state is None or goal_state.status != "active":
-            return {
-                "should_continue": False,
-                "message": "",
-                "continuation_prompt": None,
-                "status": goal_state.status if goal_state is not None else None,
-            }
+            return GoalPostTurnDecision(
+                status=goal_state.status if goal_state is not None else None,
+                should_continue=False,
+            )
 
         goal_state.turns_used += 1
         goal_state.last_turn_at = time.time()
@@ -367,12 +432,11 @@ class ScopeGoalManager:
         if verdict == "done":
             goal_state.status = "done"
             _set_goal_state(self._state, self.scope_key, goal_state)
-            return {
-                "should_continue": False,
-                "message": f"✓ Goal achieved: {reason}",
-                "continuation_prompt": None,
-                "status": "done",
-            }
+            return GoalPostTurnDecision(
+                status="done",
+                should_continue=False,
+                message=f"✓ Goal achieved: {reason}",
+            )
 
         if goal_state.consecutive_parse_failures >= DEFAULT_MAX_CONSECUTIVE_PARSE_FAILURES:
             goal_state.status = "paused"
@@ -380,15 +444,15 @@ class ScopeGoalManager:
                 f"judge model returned unparseable output {goal_state.consecutive_parse_failures} turns in a row"
             )
             _set_goal_state(self._state, self.scope_key, goal_state)
-            return {
-                "should_continue": False,
-                "message": (
+            return GoalPostTurnDecision(
+                status="paused",
+                should_continue=False,
+                pause_reason=goal_state.paused_reason,
+                message=(
                     "⏸ Goal paused - judge output was unparseable for "
                     f"{goal_state.consecutive_parse_failures} turns. Use /goal resume to continue."
                 ),
-                "continuation_prompt": None,
-                "status": "paused",
-            }
+            )
 
         if goal_state.turns_used >= goal_state.max_turns:
             goal_state.status = "paused"
@@ -396,25 +460,25 @@ class ScopeGoalManager:
                 f"turn budget exhausted ({goal_state.turns_used}/{goal_state.max_turns})"
             )
             _set_goal_state(self._state, self.scope_key, goal_state)
-            return {
-                "should_continue": False,
-                "message": (
+            return GoalPostTurnDecision(
+                status="paused",
+                should_continue=False,
+                pause_reason=goal_state.paused_reason,
+                message=(
                     f"⏸ Goal paused - {goal_state.turns_used}/{goal_state.max_turns} turns used. "
                     "Use /goal resume to keep going, or /goal clear to stop."
                 ),
-                "continuation_prompt": None,
-                "status": "paused",
-            }
+            )
 
         goal_state.status = "active"
         goal_state.paused_reason = None
         _set_goal_state(self._state, self.scope_key, goal_state)
-        return {
-            "should_continue": True,
-            "message": f"↻ Continuing toward goal ({goal_state.turns_used}/{goal_state.max_turns}): {reason}",
-            "continuation_prompt": self.build_continuation_prompt(),
-            "status": "active",
-        }
+        return GoalPostTurnDecision(
+            status="active",
+            should_continue=True,
+            message=f"↻ Continuing toward goal ({goal_state.turns_used}/{goal_state.max_turns}): {reason}",
+            continuation_prompt=self.build_continuation_prompt(),
+        )
 
 
 def _parse_goal_args(raw_text: str, command: str) -> str:
@@ -434,6 +498,15 @@ def _is_scope_busy(state: State, scope_key: ScopeKey) -> bool:
     scope_key = normalize_scope_key(scope_key)
     with state.lock:
         return scope_key in state.busy_chats
+
+
+def _goal_judge_max_output_chars(config) -> int:
+    value = getattr(config, "goal_judge_max_output_chars", DEFAULT_JUDGE_MAX_OUTPUT_CHARS)
+    try:
+        parsed = int(value)
+    except Exception:
+        return DEFAULT_JUDGE_MAX_OUTPUT_CHARS
+    return parsed if parsed > 0 else DEFAULT_JUDGE_MAX_OUTPUT_CHARS
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -502,16 +575,25 @@ def _run_goal_judge(
         logging.debug("Goal judge engine resolution failed for scope=%s: %s", scope_key, exc)
         return "continue", "judge engine unavailable", False
 
-    subgoals_section = ""
+    current_time = datetime.now(tz=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     if goal_state.subgoals:
-        subgoals_section = (
-            "Additional criteria the user added mid-loop (all must also be satisfied for done=true):\n"
-            f"{goal_state.render_subgoals_block()}\n\n"
+        judge_user_prompt = JUDGE_USER_PROMPT_WITH_SUBGOALS_TEMPLATE.format(
+            goal=_truncate(goal_state.goal, 2000),
+            subgoals_block=_truncate(goal_state.render_subgoals_block(), 2000),
+            response=_truncate(last_response, JUDGE_RESPONSE_SNIPPET_CHARS),
+            current_time=current_time,
         )
-    judge_prompt = JUDGE_PROMPT_TEMPLATE.format(
-        goal=_truncate(goal_state.goal, 2000),
-        subgoals_section=subgoals_section,
-        response=_truncate(last_response, JUDGE_RESPONSE_SNIPPET_CHARS),
+    else:
+        judge_user_prompt = JUDGE_USER_PROMPT_TEMPLATE.format(
+            goal=_truncate(goal_state.goal, 2000),
+            response=_truncate(last_response, JUDGE_RESPONSE_SNIPPET_CHARS),
+            current_time=current_time,
+        )
+    judge_prompt = (
+        "[System Instructions]\n"
+        f"{JUDGE_SYSTEM_PROMPT}\n\n"
+        "[User Input]\n"
+        f"{judge_user_prompt}"
     )
     try:
         engine_config = build_engine_runtime_config(
@@ -520,6 +602,18 @@ def _run_goal_judge(
             scope_key,
             getattr(engine, "engine_name", ""),
         )
+        try:
+            setattr(engine_config, "max_output_chars", _goal_judge_max_output_chars(config))
+            setattr(
+                engine_config,
+                "exec_timeout_seconds",
+                float(
+                    getattr(config, "goal_judge_timeout_seconds", DEFAULT_JUDGE_TIMEOUT_SECONDS)
+                    or DEFAULT_JUDGE_TIMEOUT_SECONDS
+                ),
+            )
+        except Exception:
+            logging.debug("Goal judge engine config does not accept runtime overrides", exc_info=True)
         result = engine.run(
             config=engine_config,
             prompt=judge_prompt,
@@ -558,13 +652,14 @@ def evaluate_goal_after_turn(
     last_response: str,
 ) -> Dict[str, object]:
     manager = ScopeGoalManager(state, scope_key)
-    return manager.evaluate_after_turn(
+    decision = manager.evaluate_after_turn(
         config=config,
         client=client,
         chat_id=chat_id,
         message_thread_id=message_thread_id,
         last_response=last_response,
     )
+    return asdict(decision)
 
 
 def maybe_start_goal_continuation(
@@ -580,8 +675,12 @@ def maybe_start_goal_continuation(
     from telegram_bridge.request_starts import resolve_engine_for_scope, start_message_worker
 
     manager = ScopeGoalManager(state, scope_key)
-    prompt = str(continuation_prompt or manager.build_continuation_prompt() or "").strip()
-    if not prompt:
+    continuation_request = manager.build_continuation_request(
+        chat_id=chat_id,
+        message_thread_id=message_thread_id,
+        continuation_prompt=continuation_prompt,
+    )
+    if continuation_request is None:
         return False
     goal_state = manager.goal_state
     if goal_state is None or goal_state.status != "active":
@@ -597,11 +696,11 @@ def maybe_start_goal_continuation(
             config=config,
             client=client,
             engine=active_engine,
-            scope_key=scope_key,
-            chat_id=chat_id,
-            message_thread_id=message_thread_id,
-            message_id=goal_state.anchor_message_id,
-            prompt=prompt,
+            scope_key=continuation_request.scope_key,
+            chat_id=continuation_request.chat_id,
+            message_thread_id=continuation_request.message_thread_id,
+            message_id=continuation_request.anchor_message_id,
+            prompt=continuation_request.prompt,
             photo_file_id=None,
             photo_file_ids=None,
             voice_file_id=None,
@@ -847,16 +946,14 @@ def maybe_handle_goal_post_turn(
                 message_thread_id=message_thread_id,
             )
         return
-    decision = evaluate_goal_after_turn(
-        state=state,
+    decision = manager.evaluate_after_turn(
         config=config,
         client=client,
-        scope_key=scope_key,
         chat_id=chat_id,
         message_thread_id=message_thread_id,
         last_response=delivered_output,
     )
-    message = str(decision.get("message") or "").strip()
+    message = str(decision.message or "").strip()
     if message:
         client.send_message(
             chat_id,
@@ -864,7 +961,7 @@ def maybe_handle_goal_post_turn(
             reply_to_message_id=manager.anchor_message_id(),
             message_thread_id=message_thread_id,
         )
-    if decision.get("should_continue"):
+    if decision.should_continue:
         maybe_start_goal_continuation(
             state=state,
             config=config,
@@ -872,8 +969,39 @@ def maybe_handle_goal_post_turn(
             scope_key=scope_key,
             chat_id=chat_id,
             message_thread_id=message_thread_id,
-            continuation_prompt=decision.get("continuation_prompt"),
+            continuation_prompt=decision.continuation_prompt,
         )
+
+
+def maybe_handle_goal_turn_cancelled(
+    *,
+    state: State,
+    client,
+    scope_key: ScopeKey,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    sender_name: str = "Telegram User",
+) -> None:
+    scope_key = _canonical_goal_scope_key(
+        scope_key=scope_key,
+        chat_id=chat_id,
+        message_thread_id=message_thread_id,
+    )
+    if sender_name != "Goal Continuation":
+        return
+    manager = ScopeGoalManager(state, scope_key)
+    if not manager.is_active():
+        return
+    paused = manager.pause_for_interrupt()
+    if paused is None:
+        return
+    client.send_message(
+        chat_id,
+        "⏸ Goal paused - the active goal turn was canceled or interrupted. "
+        "Use /goal resume to continue, or /goal clear to stop.",
+        reply_to_message_id=manager.anchor_message_id(),
+        message_thread_id=message_thread_id,
+    )
 
 
 __all__ = [

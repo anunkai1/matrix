@@ -512,6 +512,15 @@ def process_prompt_request(
             success=result is not None,
         )
         if result is None:
+            if cancel_event is not None and cancel_event.is_set() and not stateless:
+                goal_loop.maybe_handle_goal_turn_cancelled(
+                    state=state,
+                    client=client,
+                    scope_key=scope_key,
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    sender_name=request.sender_name,
+                )
             return
         steered_follow_up_count = cached_executor_result_steered_follow_up_count(result)
         finalize_started_at = time.monotonic()

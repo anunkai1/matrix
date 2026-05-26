@@ -449,6 +449,53 @@ class TestPrompt(unittest.TestCase):
         self.assertEqual(goal_hook.call_args.kwargs["sender_name"], "Goal Continuation")
         self.assertEqual(goal_hook.call_args.kwargs["steered_follow_up_count"], 2)
 
+    def test_process_prompt_request_pauses_goal_continuation_on_cancel(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        cancel_event = threading.Event()
+        cancel_event.set()
+        request = bridge_handlers.build_prompt_request(
+            state=state,
+            config=config,
+            client=client,
+            engine=None,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=77,
+            message_id=55,
+            prompt="continue",
+            raw_prompt="continue",
+            photo_file_id=None,
+            voice_file_id=None,
+            document=None,
+            sender_name="Goal Continuation",
+            cancel_event=cancel_event,
+        )
+
+        runtime = bridge_prompt_execution.build_prompt_execution_runtime(
+            progress_reporter_cls=bridge_handlers.ProgressReporter,
+            state_repository_cls=bridge_handlers.StateRepository,
+            codex_engine_adapter_factory=bridge_handlers.CodexEngineAdapter,
+            assistant_label_fn=bridge_handlers.assistant_label,
+            build_engine_runtime_config_fn=bridge_handlers.build_engine_runtime_config,
+            build_engine_progress_context_label_fn=bridge_handlers.build_engine_progress_context_label,
+            refresh_runtime_auth_fingerprint_fn=lambda _state: {"applied": False, "counts": {}},
+            prepare_prompt_input_request_fn=lambda _request, _progress: bridge_handlers.PreparedPromptInput(
+                prompt_text="continue"
+            ),
+            execute_prompt_with_retry_fn=lambda **_kwargs: None,
+            finalize_prompt_success_fn=lambda **_kwargs: ("thread-1", "hello"),
+            finalize_request_progress_fn=lambda **_kwargs: None,
+            emit_event_fn=lambda *args, **kwargs: None,
+        )
+
+        with mock.patch.object(bridge_prompt_execution.goal_loop, "maybe_handle_goal_turn_cancelled") as paused_hook:
+            bridge_prompt_execution.process_prompt_request(request, runtime=runtime)
+
+        self.assertEqual(paused_hook.call_args.kwargs["sender_name"], "Goal Continuation")
+        self.assertEqual(paused_hook.call_args.kwargs["chat_id"], 1)
+
     def test_build_telegram_context_prompt_includes_current_message_id(self):
         prompt = bridge_handlers.build_telegram_context_prompt(
             chat_id=-1003706836145,

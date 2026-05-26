@@ -126,8 +126,8 @@ class GoalLoopTests(unittest.TestCase):
                     last_response="Goal complete. Done.",
                 )
 
-            self.assertFalse(decision["should_continue"])
-            self.assertEqual(decision["status"], "done")
+            self.assertFalse(decision.should_continue)
+            self.assertEqual(decision.status, "done")
             self.assertEqual(manager.goal_state.status, "done")
 
     def test_scope_goal_manager_evaluate_after_turn_returns_continuation(self):
@@ -149,10 +149,26 @@ class GoalLoopTests(unittest.TestCase):
                     last_response="I started the work.",
                 )
 
-            self.assertTrue(decision["should_continue"])
-            self.assertEqual(decision["status"], "active")
-            self.assertIn("[Continuing toward your standing goal]", decision["continuation_prompt"])
+            self.assertTrue(decision.should_continue)
+            self.assertEqual(decision.status, "active")
+            self.assertIn("[Continuing toward your standing goal]", decision.continuation_prompt)
             self.assertEqual(manager.goal_state.turns_used, 1)
+
+    def test_scope_goal_manager_builds_continuation_request(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            manager = goal_loop.ScopeGoalManager(state, "tg:-1003894351534:topic:1853")
+            manager.set("build the thing", anchor_message_id=10)
+
+            request = manager.build_continuation_request(
+                chat_id=-1003894351534,
+                message_thread_id=1853,
+            )
+
+            self.assertIsNotNone(request)
+            self.assertEqual(request.anchor_message_id, 10)
+            self.assertEqual(request.scope_key, "tg:-1003894351534:topic:1853")
+            self.assertIn("[Continuing toward your standing goal]", request.prompt)
 
     def test_subgoal_command_reads_topic_scoped_goal(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -301,14 +317,13 @@ class GoalLoopTests(unittest.TestCase):
             )
 
             with mock.patch.object(
-                goal_loop,
-                "evaluate_goal_after_turn",
-                return_value={
-                    "should_continue": False,
-                    "message": "✓ Goal achieved: done",
-                    "continuation_prompt": None,
-                    "status": "done",
-                },
+                goal_loop.ScopeGoalManager,
+                "evaluate_after_turn",
+                return_value=goal_loop.GoalPostTurnDecision(
+                    status="done",
+                    should_continue=False,
+                    message="✓ Goal achieved: done",
+                ),
             ) as evaluate_after_turn:
                 goal_loop.maybe_handle_goal_post_turn(
                     state=state,
@@ -321,8 +336,8 @@ class GoalLoopTests(unittest.TestCase):
                 )
 
             self.assertEqual(
-                evaluate_after_turn.call_args.kwargs["scope_key"],
-                "tg:-1003894351534:topic:1853",
+                evaluate_after_turn.call_args.kwargs["chat_id"],
+                -1003894351534,
             )
             self.assertEqual(client.messages[-1][1], "✓ Goal achieved: done")
             self.assertEqual(client.messages[-1][2], 6248)
@@ -355,6 +370,65 @@ class GoalLoopTests(unittest.TestCase):
             self.assertEqual(stored.paused_reason, "user-follow-up preempted the active goal turn")
             self.assertIn("Goal paused - a real user follow-up arrived", client.messages[-1][1])
             self.assertEqual(client.messages[-1][2], 6248)
+
+    def test_cancelled_goal_continuation_pauses_goal(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+            state.chat_goals["tg:-1003894351534:topic:1853"] = goal_loop.GoalState(
+                goal="build the thing",
+                anchor_message_id=6248,
+            )
+
+            goal_loop.maybe_handle_goal_turn_cancelled(
+                state=state,
+                client=client,
+                scope_key="tg:-1003894351534",
+                chat_id=-1003894351534,
+                message_thread_id=1853,
+                sender_name="Goal Continuation",
+            )
+
+            stored = state.chat_goals["tg:-1003894351534:topic:1853"]
+            self.assertEqual(stored.status, "paused")
+            self.assertEqual(stored.paused_reason, "active goal turn was canceled or interrupted by the user")
+            self.assertIn("active goal turn was canceled or interrupted", client.messages[-1][1])
+            self.assertEqual(client.messages[-1][2], 6248)
+
+    def test_run_goal_judge_uses_hermes_style_prompt_sections(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            client = FakeTelegramClient()
+            fake_engine = mock.Mock()
+            fake_engine.engine_name = "codex"
+            fake_engine.run.return_value = mock.Mock(returncode=0, stdout='{"done": false, "reason": "keep going"}')
+
+            with mock.patch(
+                "telegram_bridge.request_starts.resolve_engine_for_scope",
+                return_value=fake_engine,
+            ):
+                config = make_config()
+                config.goal_judge_timeout_seconds = 9
+                config.goal_judge_max_output_chars = 2222
+                verdict, reason, parse_failed = goal_loop._run_goal_judge(
+                    state=state,
+                    config=config,
+                    client=client,
+                    scope_key="tg:-1003894351534:topic:1853",
+                    chat_id=-1003894351534,
+                    message_thread_id=1853,
+                    goal_state=goal_loop.GoalState(goal="build the thing", subgoals=["include tests"]),
+                    last_response="Still working on it.",
+                )
+
+            self.assertEqual((verdict, reason, parse_failed), ("continue", "keep going", False))
+            judge_prompt = fake_engine.run.call_args.kwargs["prompt"]
+            self.assertIn("[System Instructions]", judge_prompt)
+            self.assertIn("[User Input]", judge_prompt)
+            self.assertIn("Decision rule:", judge_prompt)
+            engine_config = fake_engine.run.call_args.kwargs["config"]
+            self.assertEqual(engine_config.exec_timeout_seconds, 9.0)
+            self.assertEqual(engine_config.max_output_chars, 2222)
 
     def test_load_chat_goals_prunes_legacy_chat_scope_when_topic_scope_exists(self):
         with tempfile.TemporaryDirectory() as tmpdir:
