@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -81,6 +82,43 @@ class GoalLoopTests(unittest.TestCase):
             stored = state.chat_goals["tg:-1003894351534:topic:1853"]
             self.assertEqual(stored.anchor_message_id, 10)
 
+    def test_goal_command_uses_canonical_scope_goal_storage_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = State(
+                chat_goal_path=str(Path(tmpdir) / "chat_goals.json"),
+                chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
+                canonical_sessions_enabled=True,
+            )
+            client = FakeTelegramClient()
+
+            with mock.patch.object(
+                goal_loop,
+                "maybe_start_goal_continuation",
+                return_value=True,
+            ):
+                handled = goal_loop.handle_goal_command(
+                    state=state,
+                    config=make_config(),
+                    client=client,
+                    scope_key="tg:-1003894351534:topic:1853",
+                    chat_id=-1003894351534,
+                    message_thread_id=1853,
+                    message_id=10,
+                    raw_text="/goal build the thing",
+                )
+
+            self.assertTrue(handled)
+            self.assertIn("tg:-1003894351534:topic:1853", state.chat_sessions)
+            self.assertEqual(
+                state.chat_sessions["tg:-1003894351534:topic:1853"].goal_state["goal"],
+                "build the thing",
+            )
+            persisted = json.loads(Path(state.chat_sessions_path).read_text(encoding="utf-8"))
+            self.assertEqual(
+                persisted["tg:-1003894351534:topic:1853"]["goal_state"]["goal"],
+                "build the thing",
+            )
+
     def test_scope_goal_manager_lifecycle(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             state = self._make_state(tmpdir)
@@ -106,6 +144,24 @@ class GoalLoopTests(unittest.TestCase):
             self.assertTrue(cleared)
             self.assertFalse(manager.has_goal())
             self.assertNotIn("tg:-1003894351534:topic:1853", state.chat_goals)
+
+    def test_reconcile_goal_state_imports_legacy_goals_into_canonical_sessions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = State(
+                chat_goal_path=str(Path(tmpdir) / "chat_goals.json"),
+                chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
+                canonical_sessions_enabled=True,
+            )
+            state.chat_goals["tg:-1003894351534:topic:1853"] = goal_loop.GoalState(goal="build the thing")
+
+            changed = goal_loop.reconcile_goal_state_with_canonical_sessions(state)
+
+            self.assertTrue(changed)
+            self.assertEqual(
+                state.chat_sessions["tg:-1003894351534:topic:1853"].goal_state["goal"],
+                "build the thing",
+            )
+            self.assertIn("tg:-1003894351534:topic:1853", state.chat_goals)
 
     def test_scope_goal_manager_evaluate_after_turn_marks_done(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -1,5 +1,6 @@
 import sqlite3
 import threading
+import json
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -78,6 +79,10 @@ def load_canonical_sessions_from_json_object(
         if not isinstance(in_flight_message_id, int):
             in_flight_message_id = None
 
+        goal_state = value.get("goal_state")
+        if not isinstance(goal_state, dict):
+            goal_state = None
+
         parsed[scope_key] = CanonicalSession(
             thread_id=thread_id.strip(),
             worker_created_at=float(worker_created_at) if worker_created_at is not None else None,
@@ -87,6 +92,7 @@ def load_canonical_sessions_from_json_object(
                 float(in_flight_started_at) if in_flight_started_at is not None else None
             ),
             in_flight_message_id=in_flight_message_id,
+            goal_state=dict(goal_state) if goal_state is not None else None,
         )
     return parsed
 
@@ -129,7 +135,8 @@ def ensure_canonical_sessions_sqlite(path: str) -> None:
                         worker_last_used_at REAL,
                         worker_policy_fingerprint TEXT NOT NULL DEFAULT '',
                         in_flight_started_at REAL,
-                        in_flight_message_id INTEGER
+                        in_flight_message_id INTEGER,
+                        goal_state_json TEXT
                     )
                     """
                 )
@@ -144,7 +151,8 @@ def ensure_canonical_sessions_sqlite(path: str) -> None:
                         worker_last_used_at,
                         worker_policy_fingerprint,
                         in_flight_started_at,
-                        in_flight_message_id
+                        in_flight_message_id,
+                        goal_state_json
                     )
                     SELECT
                         'tg:' || chat_id,
@@ -155,11 +163,18 @@ def ensure_canonical_sessions_sqlite(path: str) -> None:
                         worker_last_used_at,
                         worker_policy_fingerprint,
                         in_flight_started_at,
-                        in_flight_message_id
+                        in_flight_message_id,
+                        NULL
                     FROM canonical_sessions_legacy
                     """
                 )
                 conn.execute("DROP TABLE canonical_sessions_legacy")
+                columns = {
+                    str(row[1])
+                    for row in conn.execute("PRAGMA table_info(canonical_sessions)").fetchall()
+                }
+            if "goal_state_json" not in columns:
+                conn.execute("ALTER TABLE canonical_sessions ADD COLUMN goal_state_json TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS canonical_sessions (
@@ -171,7 +186,8 @@ def ensure_canonical_sessions_sqlite(path: str) -> None:
                 worker_last_used_at REAL,
                 worker_policy_fingerprint TEXT NOT NULL DEFAULT '',
                 in_flight_started_at REAL,
-                in_flight_message_id INTEGER
+                in_flight_message_id INTEGER,
+                goal_state_json TEXT
             )
             """
         )
@@ -197,7 +213,8 @@ def _load_canonical_sessions_rows(
             worker_last_used_at,
             worker_policy_fingerprint,
             in_flight_started_at,
-            in_flight_message_id
+            in_flight_message_id,
+            goal_state_json
         FROM canonical_sessions
         ORDER BY scope_key
         """
@@ -218,6 +235,15 @@ def _parse_canonical_sessions_rows(
         worker_policy_fingerprint = str(row[4] or "").strip()
         in_flight_started_at = float(row[5]) if row[5] is not None else None
         in_flight_message_id = int(row[6]) if row[6] is not None else None
+        goal_state_json = row[7]
+        goal_state = None
+        if isinstance(goal_state_json, str) and goal_state_json.strip():
+            try:
+                parsed_goal_state = json.loads(goal_state_json)
+                if isinstance(parsed_goal_state, dict):
+                    goal_state = parsed_goal_state
+            except Exception:
+                goal_state = None
         parsed[scope_key] = CanonicalSession(
             thread_id=thread_id,
             worker_created_at=worker_created_at,
@@ -225,6 +251,7 @@ def _parse_canonical_sessions_rows(
             worker_policy_fingerprint=worker_policy_fingerprint,
             in_flight_started_at=in_flight_started_at,
             in_flight_message_id=in_flight_message_id,
+            goal_state=goal_state,
         )
     return parsed
 
@@ -241,7 +268,7 @@ def load_canonical_sessions_sqlite(path: str) -> Dict[ScopeKey, CanonicalSession
 def _canonical_session_sqlite_row(
     scope_key: ScopeKey,
     session: CanonicalSession,
-) -> tuple[str, Optional[int], Optional[int], str, Optional[float], Optional[float], str, Optional[float], Optional[int]]:
+) -> tuple[str, Optional[int], Optional[int], str, Optional[float], Optional[float], str, Optional[float], Optional[int], Optional[str]]:
     normalized_scope_key = normalize_scope_key(scope_key)
     chat_id: Optional[int] = None
     message_thread_id: Optional[int] = None
@@ -263,6 +290,9 @@ def _canonical_session_sqlite_row(
         session.worker_policy_fingerprint,
         session.in_flight_started_at,
         session.in_flight_message_id,
+        json.dumps(session.goal_state, ensure_ascii=False, sort_keys=True)
+        if session.goal_state is not None
+        else None,
     )
 
 
@@ -288,8 +318,9 @@ def persist_canonical_sessions_sqlite(
                     worker_last_used_at,
                     worker_policy_fingerprint,
                     in_flight_started_at,
-                    in_flight_message_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    in_flight_message_id,
+                    goal_state_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     _canonical_session_sqlite_row(scope_key, session)
@@ -327,8 +358,9 @@ def persist_canonical_session_sqlite(
                     worker_last_used_at,
                     worker_policy_fingerprint,
                     in_flight_started_at,
-                    in_flight_message_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    in_flight_message_id,
+                    goal_state_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(scope_key) DO UPDATE SET
                     chat_id = excluded.chat_id,
                     message_thread_id = excluded.message_thread_id,
@@ -337,7 +369,8 @@ def persist_canonical_session_sqlite(
                     worker_last_used_at = excluded.worker_last_used_at,
                     worker_policy_fingerprint = excluded.worker_policy_fingerprint,
                     in_flight_started_at = excluded.in_flight_started_at,
-                    in_flight_message_id = excluded.in_flight_message_id
+                    in_flight_message_id = excluded.in_flight_message_id,
+                    goal_state_json = excluded.goal_state_json
                 """,
                 _canonical_session_sqlite_row(normalized_scope_key, session),
             )
@@ -371,8 +404,9 @@ def load_or_import_canonical_sessions_sqlite(
                 worker_last_used_at,
                 worker_policy_fingerprint,
                 in_flight_started_at,
-                in_flight_message_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                in_flight_message_id,
+                goal_state_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 _canonical_session_sqlite_row(scope_key, session)
@@ -388,6 +422,7 @@ def load_or_import_canonical_sessions_sqlite(
             worker_policy_fingerprint=session.worker_policy_fingerprint,
             in_flight_started_at=session.in_flight_started_at,
             in_flight_message_id=session.in_flight_message_id,
+            goal_state=dict(session.goal_state) if session.goal_state is not None else None,
         )
         for scope_key, session in import_sessions.items()
     }, True
@@ -494,6 +529,7 @@ def canonical_session_is_empty(session: CanonicalSession) -> bool:
         and not session.worker_policy_fingerprint.strip()
         and session.in_flight_started_at is None
         and session.in_flight_message_id is None
+        and not session.goal_state
     )
 
 
@@ -505,6 +541,7 @@ def copy_canonical_session(session: CanonicalSession) -> CanonicalSession:
         worker_policy_fingerprint=session.worker_policy_fingerprint,
         in_flight_started_at=session.in_flight_started_at,
         in_flight_message_id=session.in_flight_message_id,
+        goal_state=dict(session.goal_state) if session.goal_state is not None else None,
     )
 
 
@@ -519,6 +556,7 @@ def serialize_canonical_sessions(
             "worker_policy_fingerprint": session.worker_policy_fingerprint,
             "in_flight_started_at": session.in_flight_started_at,
             "in_flight_message_id": session.in_flight_message_id,
+            "goal_state": dict(session.goal_state) if session.goal_state is not None else None,
         }
         for scope_key, session in sessions.items()
     }

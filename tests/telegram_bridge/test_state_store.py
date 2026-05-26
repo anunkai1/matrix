@@ -13,6 +13,7 @@ if str(BRIDGE_DIR) not in sys.path:
 
 import state_store
 import canonical_state_store
+import canonical_runtime_state_store
 import request_runtime_state_store
 import scope_state_store
 
@@ -181,6 +182,61 @@ class StateStoreUnitTests(unittest.TestCase):
 
             self.assertEqual(str(journal_mode).lower(), "wal")
             self.assertEqual(int(synchronous), 2)
+
+    def test_persist_canonical_sessions_sqlite_preserves_goal_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sqlite_path = str(Path(tmpdir) / "chat_sessions.sqlite3")
+
+            state_store.persist_canonical_sessions_sqlite(
+                sqlite_path,
+                {
+                    "tg:1": state_store.CanonicalSession(
+                        thread_id="thread-1",
+                        goal_state={"goal": "build the thing", "status": "active"},
+                    )
+                },
+            )
+
+            loaded = state_store.load_canonical_sessions_sqlite(sqlite_path)
+
+            self.assertEqual(
+                loaded["tg:1"].goal_state,
+                {"goal": "build the thing", "status": "active"},
+            )
+
+    def test_canonical_session_is_not_empty_when_goal_state_exists(self):
+        self.assertFalse(
+            state_store.canonical_session_is_empty(
+                state_store.CanonicalSession(goal_state={"goal": "build the thing"})
+            )
+        )
+
+    def test_sync_canonical_session_preserves_goal_state(self):
+        state = state_store.State(
+            canonical_sessions_enabled=True,
+            chat_threads={"tg:1": "thread-2"},
+            worker_sessions={},
+            in_flight_requests={},
+            chat_sessions={
+                "tg:1": state_store.CanonicalSession(
+                    thread_id="thread-1",
+                    goal_state={"goal": "build the thing", "status": "active"},
+                )
+            },
+            chat_sessions_path="/tmp/chat_sessions.json",
+        )
+
+        with mock.patch.object(
+            canonical_runtime_state_store,
+            "persist_canonical_scope_and_mirror_legacy",
+        ):
+            canonical_runtime_state_store.sync_canonical_session(state, "tg:1")
+
+        self.assertEqual(state.chat_sessions["tg:1"].thread_id, "thread-2")
+        self.assertEqual(
+            state.chat_sessions["tg:1"].goal_state,
+            {"goal": "build the thing", "status": "active"},
+        )
 
     def test_ensure_canonical_sqlite_skips_reinitializing_unchanged_db(self):
         real_connect = state_store.sqlite3.connect

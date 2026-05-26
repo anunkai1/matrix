@@ -108,18 +108,31 @@ def sync_canonical_session(state: State, scope_key: ScopeKey) -> None:
     scope_key = normalize_scope_key(scope_key)
     changed = False
     with state.lock:
+        existing = state.chat_sessions.get(scope_key)
         session = _build_canonical_session_for_scope(
             scope_key,
             state.chat_threads,
             state.worker_sessions,
             state.in_flight_requests,
         )
-        existing = state.chat_sessions.get(scope_key)
         if session is None:
             if existing is not None:
-                del state.chat_sessions[scope_key]
-                changed = True
+                if existing.goal_state:
+                    session = copy_canonical_session(existing)
+                    session.thread_id = ""
+                    session.worker_created_at = None
+                    session.worker_last_used_at = None
+                    session.worker_policy_fingerprint = ""
+                    session.in_flight_started_at = None
+                    session.in_flight_message_id = None
+                    state.chat_sessions[scope_key] = session
+                    changed = existing != session
+                else:
+                    del state.chat_sessions[scope_key]
+                    changed = True
         elif existing != session:
+            if existing is not None and existing.goal_state:
+                session.goal_state = dict(existing.goal_state)
             state.chat_sessions[scope_key] = session
             changed = True
     if changed:
@@ -130,9 +143,22 @@ def sync_all_canonical_sessions(state: State) -> None:
     if not state.canonical_sessions_enabled:
         return
     with state.lock:
+        existing_goal_states = {
+            normalize_scope_key(scope_key): dict(session.goal_state)
+            for scope_key, session in state.chat_sessions.items()
+            if session.goal_state
+        }
         state.chat_sessions = build_canonical_sessions_from_legacy(
             state.chat_threads,
             state.worker_sessions,
             state.in_flight_requests,
         )
+        for scope_key, goal_state in existing_goal_states.items():
+            session = state.chat_sessions.get(scope_key)
+            if session is None:
+                from telegram_bridge.state_models import CanonicalSession
+
+                session = CanonicalSession()
+            session.goal_state = goal_state
+            state.chat_sessions[scope_key] = session
     persist_canonical_sessions(state)

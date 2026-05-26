@@ -21,6 +21,7 @@ class CanonicalSession:
     worker_policy_fingerprint: str = ""
     in_flight_started_at: Optional[float] = None
     in_flight_message_id: Optional[int] = None
+    goal_state: Optional[Dict[str, object]] = None
 
 @dataclass
 class WorkerSession:

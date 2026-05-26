@@ -188,14 +188,97 @@ def load_chat_goals(path: str) -> Dict[ScopeKey, GoalState]:
     return parsed
 
 
-def persist_chat_goals(state: State) -> None:
+def reconcile_goal_state_with_canonical_sessions(state: State) -> bool:
+    if not state.canonical_sessions_enabled:
+        with state.lock:
+            _prune_shadowed_chat_goals(state.chat_goals)
+        return False
+
+    from telegram_bridge.state_models import CanonicalSession
+
+    changed = False
     with state.lock:
-        values = {scope_key: goal_state.to_dict() for scope_key, goal_state in state.chat_goals.items()}
+        _prune_shadowed_chat_goals(state.chat_goals)
+        legacy_goals = {
+            normalize_scope_key(scope_key): goal_state
+            for scope_key, goal_state in state.chat_goals.items()
+            if isinstance(goal_state, GoalState)
+        }
+        for scope_key, legacy_goal_state in legacy_goals.items():
+            session = state.chat_sessions.get(scope_key)
+            if session is None:
+                session = CanonicalSession()
+                state.chat_sessions[scope_key] = session
+            if not isinstance(session.goal_state, dict) and legacy_goal_state.goal:
+                session.goal_state = legacy_goal_state.to_dict()
+                changed = True
+        sessions_snapshot = {
+            normalize_scope_key(scope_key): session
+            for scope_key, session in state.chat_sessions.items()
+        }
+    canonical_goals: Dict[ScopeKey, GoalState] = {}
+    for scope_key, session in sessions_snapshot.items():
+        raw_goal_state = getattr(session, "goal_state", None)
+        if not isinstance(raw_goal_state, dict):
+            continue
+        try:
+            goal_state = GoalState.from_dict(raw_goal_state)
+        except Exception:
+            continue
+        if goal_state.goal:
+            canonical_goals[scope_key] = goal_state
+    _prune_shadowed_chat_goals(canonical_goals)
+    with state.lock:
+        if state.chat_goals != canonical_goals:
+            state.chat_goals = canonical_goals
+    return changed
+
+
+def _goal_states_from_canonical_sessions(state: State) -> Dict[ScopeKey, GoalState]:
+    out: Dict[ScopeKey, GoalState] = {}
+    with state.lock:
+        sessions_snapshot = {
+            normalize_scope_key(scope_key): session
+            for scope_key, session in state.chat_sessions.items()
+        }
+    for scope_key, session in sessions_snapshot.items():
+        raw_goal_state = getattr(session, "goal_state", None)
+        if not isinstance(raw_goal_state, dict):
+            continue
+        try:
+            goal_state = GoalState.from_dict(raw_goal_state)
+        except Exception:
+            continue
+        if goal_state.goal:
+            out[scope_key] = goal_state
+    _prune_shadowed_chat_goals(out)
+    return out
+
+
+def persist_chat_goals(state: State) -> None:
+    if state.canonical_sessions_enabled:
+        values = {
+            scope_key: goal_state.to_dict()
+            for scope_key, goal_state in _goal_states_from_canonical_sessions(state).items()
+        }
+    else:
+        with state.lock:
+            values = {scope_key: goal_state.to_dict() for scope_key, goal_state in state.chat_goals.items()}
     persist_json_state_file(state.chat_goal_path, values)
 
 
 def get_goal_state(state: State, scope_key: ScopeKey) -> Optional[GoalState]:
     scope_key = normalize_scope_key(scope_key)
+    if state.canonical_sessions_enabled:
+        with state.lock:
+            session = state.chat_sessions.get(scope_key)
+            raw_goal_state = session.goal_state if session is not None else None
+        if isinstance(raw_goal_state, dict):
+            try:
+                return GoalState.from_dict(raw_goal_state)
+            except Exception:
+                return None
+        return None
     with state.lock:
         goal = state.chat_goals.get(scope_key)
         if goal is None:
@@ -205,6 +288,21 @@ def get_goal_state(state: State, scope_key: ScopeKey) -> Optional[GoalState]:
 
 def _set_goal_state(state: State, scope_key: ScopeKey, goal_state: GoalState) -> None:
     scope_key = normalize_scope_key(scope_key)
+    if state.canonical_sessions_enabled:
+        from telegram_bridge.canonical_runtime_state_store import persist_canonical_session_scope
+        from telegram_bridge.state_models import CanonicalSession
+
+        with state.lock:
+            session = state.chat_sessions.get(scope_key)
+            if session is None:
+                session = CanonicalSession()
+                state.chat_sessions[scope_key] = session
+            session.goal_state = goal_state.to_dict()
+            state.chat_goals[scope_key] = GoalState.from_dict(goal_state.to_dict())
+            _prune_shadowed_chat_goals(state.chat_goals)
+        persist_canonical_session_scope(state, scope_key)
+        persist_chat_goals(state)
+        return
     with state.lock:
         state.chat_goals[scope_key] = goal_state
         _prune_shadowed_chat_goals(state.chat_goals)
@@ -214,6 +312,25 @@ def _set_goal_state(state: State, scope_key: ScopeKey, goal_state: GoalState) ->
 def clear_goal_state(state: State, scope_key: ScopeKey) -> bool:
     scope_key = normalize_scope_key(scope_key)
     removed = False
+    if state.canonical_sessions_enabled:
+        from telegram_bridge.canonical_runtime_state_store import persist_canonical_session_scope
+        from telegram_bridge.canonical_state_store import canonical_session_is_empty
+
+        with state.lock:
+            session = state.chat_sessions.get(scope_key)
+            if session is not None and isinstance(session.goal_state, dict):
+                session.goal_state = None
+                removed = True
+                if canonical_session_is_empty(session):
+                    del state.chat_sessions[scope_key]
+            if scope_key in state.chat_goals:
+                del state.chat_goals[scope_key]
+            if removed:
+                _prune_shadowed_chat_goals(state.chat_goals)
+        if removed:
+            persist_canonical_session_scope(state, scope_key)
+            persist_chat_goals(state)
+        return removed
     with state.lock:
         if scope_key in state.chat_goals:
             del state.chat_goals[scope_key]

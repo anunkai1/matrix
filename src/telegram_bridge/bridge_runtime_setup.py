@@ -20,6 +20,7 @@ from telegram_bridge.bridge_state_bootstrap import (
     load_saved_policy_fingerprint,
     persist_saved_policy_fingerprint,
 )
+from telegram_bridge.goal_loop import reconcile_goal_state_with_canonical_sessions, persist_chat_goals
 from telegram_bridge.codex_app_server import live_codex_turn_is_active, try_steer_live_codex_turn
 from telegram_bridge.command_routing import handle_known_command
 from telegram_bridge.diary_processing import queue_diary_capture
@@ -376,6 +377,10 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
         auth_fingerprint_path=build_auth_fingerprint_state_path(core.state_dir),
         auth_fingerprint=current_auth_fingerprint,
     )
+    canonical_goal_state_changed = reconcile_goal_state_with_canonical_sessions(state)
+    if canonical_goal_state_changed and state.canonical_sessions_enabled:
+        persist_canonical_sessions(state)
+        persist_chat_goals(state)
     return RuntimeBootstrap(
         state=state,
         state_paths=state_paths,
