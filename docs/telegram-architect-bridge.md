@@ -227,6 +227,7 @@ sudo journalctl -u telegram-architect-bridge.service -n 200 --no-pager
 - `/restart` safe bridge restart (queues until current work finishes)
 - `/truth_status` show this chat/topic's current dream-loop truth, claim-drift summary, and stale-warning status
 - `/reset` clear this chat's saved context/thread and Pi session files, and mark any outstanding stale-context warning handled for this scope
+- When a nightly dream-loop truth or policy change marks this scope stale, the bridge now sends one warning on the next eligible inbound message and then suppresses repeats until `/reset` or a later warning fingerprint replaces it
 - `/voice-alias list` show pending learned voice corrections
 - `/voice-alias approve <id>` approve one learned correction
 - `/voice-alias reject <id>` reject one learned correction

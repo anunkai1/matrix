@@ -1,7 +1,15 @@
 import logging
+import json
 from typing import Dict, Optional
 
 from telegram_bridge.channel_adapter import ChannelAdapter
+from telegram_bridge.dream_loop_state import (
+    LATEST_TRUTH_STATE,
+    build_dream_loop_artifact_path,
+    build_stale_context_state_path,
+    get_scope_stale_context_status,
+    mark_scope_stale_context_notified,
+)
 from telegram_bridge.engine_adapter import EngineAdapter
 from telegram_bridge.handler_common import RATE_LIMIT_MESSAGE, extract_chat_context, normalize_command, strip_required_prefix
 from telegram_bridge.handler_models import (
@@ -49,6 +57,93 @@ def _session_config(config):
 
 def _identity_config(config):
     return getattr(config, "identity", config)
+
+
+def _read_dream_loop_truth_state() -> Dict[str, object]:
+    path = build_dream_loop_artifact_path(LATEST_TRUTH_STATE)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        logging.exception("Failed to read dream-loop truth state from %s", path)
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _build_stale_context_warning_message(truth_state: Dict[str, object]) -> str:
+    stale = truth_state.get("stale_context_eligibility", {}) or {}
+    changed_machine_inputs = stale.get("changed_machine_inputs", []) or []
+    changed_policy_inputs = stale.get("changed_policy_inputs", []) or []
+    if stale.get("machine_truth_changed"):
+        changed_inputs_text = ", ".join(str(item) for item in changed_machine_inputs) or "unknown"
+        return (
+            "Truth inputs changed and this session may now carry stale context. "
+            f"Changed inputs: {changed_inputs_text}. "
+            "Send /reset if you want a fresh session aligned to the new truth."
+        )
+    if stale.get("policy_inputs_changed"):
+        changed_inputs_text = ", ".join(str(item) for item in changed_policy_inputs) or "unknown"
+        return (
+            "Stale-context policy changed and this session may now be stale under the new policy. "
+            f"Changed policy sources: {changed_inputs_text}. "
+            "Send /reset if you want a fresh session aligned to current truth."
+        )
+    return (
+        "This session may now carry stale context after a dream-loop truth update. "
+        "Send /reset if you want a fresh session aligned to current truth."
+    )
+
+
+def maybe_send_stale_context_warning(
+    *,
+    config,
+    client: ChannelAdapter,
+    scope_key: str,
+    chat_id: int,
+    message_thread_id: Optional[int],
+    message_id: Optional[int],
+    command: Optional[str],
+) -> bool:
+    if command in {"/reset", "/truth_status"}:
+        return False
+    stale_state_path = build_stale_context_state_path(config.state_dir)
+    stale_status = get_scope_stale_context_status(stale_state_path, scope_key)
+    warning_fingerprint = str(stale_status.get("warning_fingerprint") or "")
+    if not stale_status.get("warning_outstanding") or not warning_fingerprint:
+        return False
+    if str(stale_status.get("notified_fingerprint") or "") == warning_fingerprint:
+        return False
+    truth_state = _read_dream_loop_truth_state()
+    if not truth_state:
+        return False
+    warning_text = _build_stale_context_warning_message(truth_state)
+    try:
+        client.send_message(
+            chat_id,
+            warning_text,
+            reply_to_message_id=message_id,
+            message_thread_id=message_thread_id,
+        )
+    except Exception:
+        logging.exception("Failed to deliver stale-context warning for scope=%s", scope_key)
+        return False
+    mark_scope_stale_context_notified(
+        stale_state_path,
+        scope_key,
+        notified_at=str(stale_status.get("warning_generated_at") or ""),
+    )
+    emit_event(
+        "bridge.stale_context_warning_sent",
+        fields={
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "scope_key": scope_key,
+            "warning_fingerprint": warning_fingerprint,
+        },
+    )
+    return True
 
 
 def _build_current_sender_prompt(sender_name: str) -> str:
@@ -493,6 +588,16 @@ def prepare_update_dispatch_request(
             voice_file_id=flow.voice_file_id,
             document=flow.document,
         )
+
+    maybe_send_stale_context_warning(
+        config=flow.config,
+        client=flow.client,
+        scope_key=flow.ctx.scope_key,
+        chat_id=flow.ctx.chat_id,
+        message_thread_id=flow.ctx.message_thread_id,
+        message_id=flow.ctx.message_id,
+        command=flow.command,
+    )
 
     if handle_known_command(
         flow.state,

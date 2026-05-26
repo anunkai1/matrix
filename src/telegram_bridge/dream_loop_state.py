@@ -38,6 +38,8 @@ def _normalize_status_entry(scope_key: ScopeKey, raw: object) -> Dict[str, objec
         "warning_fingerprint": str(parsed.get("warning_fingerprint") or "").strip(),
         "warning_generated_at": str(parsed.get("warning_generated_at") or "").strip(),
         "warning_outstanding": bool(parsed.get("warning_outstanding", False)),
+        "notified_fingerprint": str(parsed.get("notified_fingerprint") or "").strip(),
+        "notified_at": str(parsed.get("notified_at") or "").strip(),
         "handled_fingerprint": str(parsed.get("handled_fingerprint") or "").strip(),
         "handled_at": str(parsed.get("handled_at") or "").strip(),
         "last_reset_at": str(parsed.get("last_reset_at") or "").strip(),
@@ -129,6 +131,24 @@ def mark_scope_stale_context_handled(
         entry["handled_at"] = handled_at
         entry["warning_outstanding"] = False
     entry["last_reset_at"] = handled_at
+    statuses[normalized_scope_key] = entry
+    persist_stale_context_statuses(path, statuses)
+    return entry
+
+
+def mark_scope_stale_context_notified(
+    path: str,
+    scope_key: ScopeKey,
+    *,
+    notified_at: str,
+) -> Dict[str, object]:
+    normalized_scope_key = normalize_scope_key(scope_key)
+    statuses = load_stale_context_statuses(path)
+    entry = _normalize_status_entry(normalized_scope_key, statuses.get(normalized_scope_key, {}))
+    warning_fingerprint = str(entry.get("warning_fingerprint") or "")
+    if warning_fingerprint:
+        entry["notified_fingerprint"] = warning_fingerprint
+        entry["notified_at"] = notified_at
     statuses[normalized_scope_key] = entry
     persist_stale_context_statuses(path, statuses)
     return entry

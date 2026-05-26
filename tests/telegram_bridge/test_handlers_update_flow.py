@@ -1,6 +1,9 @@
 import tempfile
 import unittest
+import json
+import os
 from unittest import mock
+from pathlib import Path
 
 from tests.telegram_bridge.helpers import (
     FakeTelegramClient,
@@ -536,6 +539,131 @@ class HandleUpdateHelperTests(unittest.TestCase):
             len("Current User Message:\n") + 8,
         )
         self.assertFalse(details["trimmed"])
+
+    def test_prepare_update_dispatch_request_sends_stale_context_warning_once(self):
+        flow = self._make_flow()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            bridge_state_dir = tmpdir_path / "bridge"
+            dream_dir = tmpdir_path / "dream"
+            bridge_state_dir.mkdir(parents=True, exist_ok=True)
+            dream_dir.mkdir(parents=True, exist_ok=True)
+            flow.config = make_config(state_dir=str(bridge_state_dir))
+            stale_path = bridge_state_dir / "dream_loop_stale_context.json"
+            stale_path.write_text(
+                json.dumps(
+                    {
+                        "tg:1": {
+                            "scope_key": "tg:1",
+                            "warning_fingerprint": "fp-1",
+                            "warning_generated_at": "2026-05-26T02:15:00+10:00",
+                            "warning_outstanding": True,
+                            "notified_fingerprint": "",
+                            "notified_at": "",
+                            "handled_fingerprint": "",
+                            "handled_at": "",
+                            "last_reset_at": "",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (dream_dir / "latest_truth_state.json").write_text(
+                json.dumps(
+                    {
+                        "stale_context_eligibility": {
+                            "machine_truth_changed": True,
+                            "policy_inputs_changed": False,
+                            "changed_machine_inputs": [
+                                "ARCHITECT_INSTRUCTION.md",
+                                "infra/server3-runtime-manifest.json",
+                            ],
+                            "changed_policy_inputs": [],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.dict("os.environ", {"DREAM_LOOP_STATE_DIR": str(dream_dir)}):
+                dispatch = bridge_handlers.prepare_update_dispatch_request(flow, 13.0)
+                second_dispatch = bridge_handlers.prepare_update_dispatch_request(flow, 14.0)
+                persisted = json.loads(stale_path.read_text(encoding="utf-8"))
+
+        self.assertIsNotNone(dispatch)
+        self.assertIsNotNone(second_dispatch)
+        self.assertEqual(len(flow.client.messages), 1)
+        self.assertIn("Truth inputs changed and this session may now carry stale context.", flow.client.messages[0][1])
+        self.assertIn("ARCHITECT_INSTRUCTION.md, infra/server3-runtime-manifest.json", flow.client.messages[0][1])
+        self.assertEqual(persisted["tg:1"]["notified_fingerprint"], "fp-1")
+        self.assertEqual(persisted["tg:1"]["notified_at"], "2026-05-26T02:15:00+10:00")
+
+    def test_prepare_update_dispatch_request_skips_stale_warning_for_reset_command(self):
+        flow = self._make_flow(prompt_input="/reset", command="/reset")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            bridge_state_dir = tmpdir_path / "bridge"
+            dream_dir = tmpdir_path / "dream"
+            bridge_state_dir.mkdir(parents=True, exist_ok=True)
+            dream_dir.mkdir(parents=True, exist_ok=True)
+            flow.config = make_config(state_dir=str(bridge_state_dir))
+            (bridge_state_dir / "dream_loop_stale_context.json").write_text(
+                json.dumps(
+                    {
+                        "tg:1": {
+                            "scope_key": "tg:1",
+                            "warning_fingerprint": "fp-2",
+                            "warning_generated_at": "2026-05-26T02:15:00+10:00",
+                            "warning_outstanding": True,
+                            "notified_fingerprint": "",
+                            "notified_at": "",
+                            "handled_fingerprint": "",
+                            "handled_at": "",
+                            "last_reset_at": "",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (dream_dir / "latest_truth_state.json").write_text(
+                json.dumps(
+                    {
+                        "stale_context_eligibility": {
+                            "machine_truth_changed": False,
+                            "policy_inputs_changed": True,
+                            "changed_machine_inputs": [],
+                            "changed_policy_inputs": ["src/telegram_bridge/runtime_config.py"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.dict("os.environ", {"DREAM_LOOP_STATE_DIR": str(dream_dir)}):
+                with mock.patch.object(update_preparation, "handle_known_command", return_value=True):
+                    dispatch = bridge_handlers.prepare_update_dispatch_request(flow, 15.0)
+
+        self.assertIsNone(dispatch)
+        self.assertEqual(flow.client.messages, [])
+
+    def test_build_stale_context_warning_message_uses_policy_variant(self):
+        message = update_preparation._build_stale_context_warning_message(
+            {
+                "stale_context_eligibility": {
+                    "machine_truth_changed": False,
+                    "policy_inputs_changed": True,
+                    "changed_machine_inputs": [],
+                    "changed_policy_inputs": [
+                        "src/telegram_bridge/runtime_config.py",
+                        "src/telegram_bridge/session_manager.py",
+                    ],
+                }
+            }
+        )
+
+        self.assertIn("Stale-context policy changed and this session may now be stale under the new policy.", message)
+        self.assertIn(
+            "Changed policy sources: src/telegram_bridge/runtime_config.py, src/telegram_bridge/session_manager.py.",
+            message,
+        )
 
     def test_prepare_update_dispatch_request_rejects_rate_limited_request(self):
         flow = self._make_flow()
