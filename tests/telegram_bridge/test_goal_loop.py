@@ -81,6 +81,79 @@ class GoalLoopTests(unittest.TestCase):
             stored = state.chat_goals["tg:-1003894351534:topic:1853"]
             self.assertEqual(stored.anchor_message_id, 10)
 
+    def test_scope_goal_manager_lifecycle(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            manager = goal_loop.ScopeGoalManager(state, "tg:-1003894351534:topic:1853")
+
+            created = manager.set("build the thing", anchor_message_id=10)
+            self.assertEqual(created.goal, "build the thing")
+            self.assertTrue(manager.is_active())
+            self.assertTrue(manager.has_goal())
+
+            paused = manager.pause()
+            self.assertIsNotNone(paused)
+            self.assertEqual(paused.status, "paused")
+            self.assertFalse(manager.is_active())
+
+            resumed = manager.resume(anchor_message_id=11)
+            self.assertIsNotNone(resumed)
+            self.assertEqual(resumed.status, "active")
+            self.assertEqual(resumed.anchor_message_id, 11)
+            self.assertEqual(resumed.turns_used, 0)
+
+            cleared = manager.clear()
+            self.assertTrue(cleared)
+            self.assertFalse(manager.has_goal())
+            self.assertNotIn("tg:-1003894351534:topic:1853", state.chat_goals)
+
+    def test_scope_goal_manager_evaluate_after_turn_marks_done(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            manager = goal_loop.ScopeGoalManager(state, "tg:-1003894351534:topic:1853")
+            manager.set("build the thing", anchor_message_id=10)
+
+            with mock.patch.object(
+                goal_loop,
+                "_run_goal_judge",
+                return_value=("done", "explicit completion", False),
+            ):
+                decision = manager.evaluate_after_turn(
+                    config=make_config(),
+                    client=FakeTelegramClient(),
+                    chat_id=-1003894351534,
+                    message_thread_id=1853,
+                    last_response="Goal complete. Done.",
+                )
+
+            self.assertFalse(decision["should_continue"])
+            self.assertEqual(decision["status"], "done")
+            self.assertEqual(manager.goal_state.status, "done")
+
+    def test_scope_goal_manager_evaluate_after_turn_returns_continuation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = self._make_state(tmpdir)
+            manager = goal_loop.ScopeGoalManager(state, "tg:-1003894351534:topic:1853")
+            manager.set("build the thing", anchor_message_id=10)
+
+            with mock.patch.object(
+                goal_loop,
+                "_run_goal_judge",
+                return_value=("continue", "more work needed", False),
+            ):
+                decision = manager.evaluate_after_turn(
+                    config=make_config(),
+                    client=FakeTelegramClient(),
+                    chat_id=-1003894351534,
+                    message_thread_id=1853,
+                    last_response="I started the work.",
+                )
+
+            self.assertTrue(decision["should_continue"])
+            self.assertEqual(decision["status"], "active")
+            self.assertIn("[Continuing toward your standing goal]", decision["continuation_prompt"])
+            self.assertEqual(manager.goal_state.turns_used, 1)
+
     def test_subgoal_command_reads_topic_scoped_goal(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             state = self._make_state(tmpdir)
