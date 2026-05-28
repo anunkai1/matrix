@@ -25,14 +25,17 @@ def _engines_config(config):
     return getattr(config, "engines", config)
 
 
-def _enabled(config) -> bool:
+def _engine_value(config, name: str, default):
     engines = _engines_config(config)
-    return bool(getattr(engines, "pi_live_rpc_enabled", False))
+    return getattr(engines, name, default)
+
+
+def _enabled(config) -> bool:
+    return bool(_engine_value(config, "pi_live_rpc_enabled", False))
 
 
 def _idle_timeout_seconds_value(config) -> int:
-    engines = _engines_config(config)
-    raw = getattr(engines, "pi_live_rpc_idle_timeout_seconds", 15 * 60)
+    raw = _engine_value(config, "pi_live_rpc_idle_timeout_seconds", 15 * 60)
     try:
         return max(0, int(raw or 0))
     except (TypeError, ValueError):
@@ -40,15 +43,18 @@ def _idle_timeout_seconds_value(config) -> int:
 
 
 def _provider_value(config) -> str:
-    return str(getattr(config, "pi_provider", "ollama") or "ollama").strip().lower() or "ollama"
+    return str(_engine_value(config, "pi_provider", "ollama") or "ollama").strip().lower() or "ollama"
 
 
 def _model_value(config) -> str:
-    return str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip() or "qwen3-coder:30b"
+    return (
+        str(_engine_value(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip()
+        or "qwen3-coder:30b"
+    )
 
 
 def _runner_value(config) -> str:
-    return str(getattr(config, "pi_runner", "ssh") or "ssh").strip().lower() or "ssh"
+    return str(_engine_value(config, "pi_runner", "ssh") or "ssh").strip().lower() or "ssh"
 
 
 def _session_signature(config) -> tuple[str, str, str]:
@@ -206,21 +212,8 @@ def expire_idle_pi_rpc_sessions(config) -> int:
 
 
 def try_steer_live_pi_turn(config, scope_key: Optional[str], prompt: str) -> bool:
-    if not _enabled(config):
-        return False
-    normalized_scope_key = str(scope_key or "").strip()
-    normalized_prompt = str(prompt or "").strip()
-    if not normalized_scope_key or not normalized_prompt:
-        return False
-    with _SESSION_REGISTRY_LOCK:
-        session = _SESSION_REGISTRY.get(normalized_scope_key)
-    if session is None:
-        return False
-    try:
-        return session.try_steer(normalized_prompt)
-    except Exception:
-        logging.exception("Failed to steer live Pi turn for scope=%s", normalized_scope_key)
-        return False
+    del config, scope_key, prompt
+    return False
 
 
 def live_pi_turn_is_active(config, scope_key: Optional[str]) -> Optional[bool]:
@@ -244,7 +237,6 @@ def run_live_pi_turn(
     config,
     prompt: str,
     *,
-    original_prompt: Optional[str],
     scope_key: Optional[str],
     image_paths: Optional[List[str]],
     cancel_event: Optional[threading.Event],
@@ -266,7 +258,6 @@ def run_live_pi_turn(
             _SESSION_REGISTRY[normalized_scope_key] = session
     return session.run_turn(
         prompt=str(prompt or "").strip(),
-        original_prompt=str(original_prompt or "").strip(),
         image_paths=list(image_paths or []),
         cancel_event=cancel_event,
     )
@@ -275,49 +266,9 @@ def run_live_pi_turn(
 @dataclass
 class _PendingTurn:
     done: threading.Event = field(default_factory=threading.Event)
-    original_prompt: str = ""
-    follow_up_prompts: List[str] = field(default_factory=list)
     last_output: str = ""
     final_output: str = ""
-    steered_follow_up_count: int = 0
     session_reset_note: str = ""
-
-
-def _build_accumulated_follow_up_prompt(*, original_prompt: str, follow_up_prompts: List[str]) -> str:
-    normalized_original = str(original_prompt or "").strip()
-    normalized_follow_ups = [str(item or "").strip() for item in follow_up_prompts if str(item or "").strip()]
-    if not normalized_follow_ups:
-        return ""
-    if len(normalized_follow_ups) == 1 and not normalized_original:
-        return normalized_follow_ups[0]
-    if len(normalized_follow_ups) == 1:
-        return "\n".join(
-            [
-                "Continue the same in-progress request.",
-                "Do not drop the original request.",
-                "Answer the original request and the follow-up below in one coherent reply.",
-                "",
-                "Original request:",
-                normalized_original,
-                "",
-                "Follow-up message:",
-                normalized_follow_ups[0],
-            ]
-        ).strip()
-
-    lines = [
-        "Continue the same in-progress request.",
-        "Do not drop the original request or any earlier follow-up messages.",
-        "Answer every unresolved item below in one coherent reply.",
-        "",
-        "Original request:",
-        normalized_original or "(not available)",
-        "",
-        "Follow-up messages (oldest first):",
-    ]
-    for index, item in enumerate(normalized_follow_ups, start=1):
-        lines.append(f"{index}. {item}")
-    return "\n".join(lines).strip()
 
 
 class PiLiveRpcSession:
@@ -341,12 +292,11 @@ class PiLiveRpcSession:
         self,
         *,
         prompt: str,
-        original_prompt: str,
         image_paths: List[str],
         cancel_event: Optional[threading.Event],
     ) -> subprocess.CompletedProcess[str]:
         self._mark_used()
-        pending_turn = _PendingTurn(original_prompt=original_prompt)
+        pending_turn = _PendingTurn()
         with self._state_lock:
             if self._pending_turn is not None and not self._pending_turn.done.is_set():
                 raise RuntimeError(f"Live Pi turn is already active for scope={self.scope_key}")
@@ -358,7 +308,6 @@ class PiLiveRpcSession:
         try:
             current_prompt = str(prompt or "").strip()
             current_images = list(image_paths)
-            followed_up_count = 0
             reset_attempted = False
             while True:
                 if cancel_event is not None and cancel_event.is_set():
@@ -400,18 +349,8 @@ class PiLiveRpcSession:
                     else:
                         raise
                 pending_turn.last_output = output.strip()
-                with self._state_lock:
-                    queued_follow_ups = pending_turn.follow_up_prompts[:]
-                if len(queued_follow_ups) <= followed_up_count:
-                    pending_turn.final_output = pending_turn.last_output
-                    break
-                followed_up_count = len(queued_follow_ups)
-                pending_turn.steered_follow_up_count = followed_up_count
-                current_prompt = _build_accumulated_follow_up_prompt(
-                    original_prompt=pending_turn.original_prompt,
-                    follow_up_prompts=queued_follow_ups,
-                )
-                current_images = []
+                pending_turn.final_output = pending_turn.last_output
+                break
 
             final_output = pending_turn.final_output.strip() or pending_turn.last_output.strip()
             if pending_turn.session_reset_note:
@@ -426,7 +365,7 @@ class PiLiveRpcSession:
                 result,
                 None,
                 final_output,
-                steered_follow_up_count=pending_turn.steered_follow_up_count,
+                steered_follow_up_count=0,
             )
         finally:
             pending_turn.done.set()
@@ -435,16 +374,8 @@ class PiLiveRpcSession:
                     self._pending_turn = None
 
     def try_steer(self, prompt: str) -> bool:
-        normalized_prompt = str(prompt or "").strip()
-        if not normalized_prompt:
-            return False
-        self._mark_used()
-        with self._state_lock:
-            pending_turn = self._pending_turn
-            if pending_turn is None or pending_turn.done.is_set():
-                return False
-            pending_turn.follow_up_prompts.append(normalized_prompt)
-        return True
+        del prompt
+        return False
 
     def has_active_turn(self) -> bool:
         with self._state_lock:
@@ -531,7 +462,7 @@ class PiLiveRpcSession:
             stdout_lines = _pi_transport().read_rpc_stdout(
                 process,
                 cancel_event,
-                int(getattr(self.config, "pi_request_timeout_seconds", 180)),
+                int(_engine_value(self.config, "pi_request_timeout_seconds", 180)),
                 time_module=time,
                 executor_cancelled_error_cls=ExecutorCancelledError,
             )
@@ -559,19 +490,19 @@ class PiLiveRpcSession:
                 subprocess_module=subprocess,
             )
 
-        timeout = int(getattr(self.config, "pi_request_timeout_seconds", 180))
+        timeout = int(_engine_value(self.config, "pi_request_timeout_seconds", 180))
         quoted = " ".join(
             shlex.quote(part)
             for part in (["timeout", str(timeout)] + self._build_text_args(include_no_context_files=True) + [prompt])
         )
-        remote_cwd = str(getattr(self.config, "pi_remote_cwd", "/tmp") or "/tmp").strip()
+        remote_cwd = str(_engine_value(self.config, "pi_remote_cwd", "/tmp") or "/tmp").strip()
         remote_command = f"cd {shlex.quote(remote_cwd)} && {quoted}" if remote_cwd else quoted
         completed = subprocess.run(
             [
                 "ssh",
                 "-o",
                 "BatchMode=yes",
-                str(getattr(self.config, "pi_ssh_host", "server4-beast") or "server4-beast").strip(),
+                str(_engine_value(self.config, "pi_ssh_host", "server4-beast") or "server4-beast").strip(),
                 remote_command,
             ],
             capture_output=True,
@@ -608,10 +539,10 @@ class PiLiveRpcSession:
                     time_module=time,
                 )
             env = os.environ.copy()
-            env["OLLAMA_HOST"] = f"http://127.0.0.1:{int(getattr(self.config, 'pi_ollama_tunnel_local_port', 11435))}"
+            env["OLLAMA_HOST"] = f"http://127.0.0.1:{int(_engine_value(self.config, 'pi_ollama_tunnel_local_port', 11435))}"
             self.process = subprocess.Popen(
                 self._build_rpc_args(include_no_context_files=False),
-                cwd=str(getattr(self.config, "pi_local_cwd", "") or "").strip() or None,
+                cwd=str(_engine_value(self.config, "pi_local_cwd", "") or "").strip() or None,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -620,14 +551,14 @@ class PiLiveRpcSession:
             )
         elif runner in {"ssh", "server4"}:
             quoted = " ".join(shlex.quote(part) for part in self._build_rpc_args(include_no_context_files=True))
-            remote_cwd = str(getattr(self.config, "pi_remote_cwd", "/tmp") or "/tmp").strip()
+            remote_cwd = str(_engine_value(self.config, "pi_remote_cwd", "/tmp") or "/tmp").strip()
             remote_command = f"cd {shlex.quote(remote_cwd)} && {quoted}" if remote_cwd else quoted
             self.process = subprocess.Popen(
                 [
                     "ssh",
                     "-o",
                     "BatchMode=yes",
-                    str(getattr(self.config, "pi_ssh_host", "server4-beast") or "server4-beast").strip(),
+                    str(_engine_value(self.config, "pi_ssh_host", "server4-beast") or "server4-beast").strip(),
                     remote_command,
                 ],
                 stdin=subprocess.PIPE,

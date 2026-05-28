@@ -883,7 +883,7 @@ class HandleUpdateHelperTests(unittest.TestCase):
             expect_thread_id=77,
         )
 
-    def test_start_standard_dispatch_steers_active_live_pi_turn(self):
+    def test_start_standard_dispatch_rejects_busy_live_pi_turn(self):
         flow = self._make_flow(prompt_input="follow up")
         flow.state.busy_chats.add(flow.ctx.scope_key)
         dispatch = bridge_handlers.UpdateDispatchRequest(
@@ -916,10 +916,20 @@ class HandleUpdateHelperTests(unittest.TestCase):
                 with mock.patch.object(bridge_runtime_setup, "start_message_worker") as start_message_worker:
                     started = bridge_handlers.start_standard_dispatch(dispatch)
 
-        self.assertTrue(started)
-        try_steer.assert_called_once_with(flow.config, flow.ctx.scope_key, "follow up")
+        self.assertFalse(started)
+        try_steer.assert_not_called()
         start_message_worker.assert_not_called()
-        self.assertEqual(flow.client.messages, [])
+        self.assertEqual(
+            flow.client.messages,
+            [
+                (
+                    flow.ctx.chat_id,
+                    flow.config.busy_message,
+                    flow.ctx.message_id,
+                    flow.ctx.message_thread_id,
+                )
+            ],
+        )
 
     def test_start_standard_dispatch_rejects_non_text_follow_up_during_active_live_codex_turn(self):
         flow = self._make_flow(

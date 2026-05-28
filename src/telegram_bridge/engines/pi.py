@@ -275,7 +275,6 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
                 return run_live_pi_turn(
                     config=config,
                     prompt=prompt,
-                    original_prompt=original_prompt,
                     scope_key=session_key,
                     image_paths=image_paths or ([image_path] if image_path else []),
                     cancel_event=cancel_event,

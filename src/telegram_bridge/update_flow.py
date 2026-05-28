@@ -61,17 +61,6 @@ LIVE_CODEX_STEER_UNSUPPORTED_MESSAGE = (
     "follow-up steering only accepts plain-text messages. Use /cancel or wait for the "
     "current turn to finish."
 )
-LIVE_PI_STEER_FAILED_MESSAGE = (
-    "A live Pi turn is already running for this chat/topic, but this follow-up "
-    "could not be merged into it. Use /cancel or wait for the current turn to finish."
-)
-LIVE_PI_STEER_UNSUPPORTED_MESSAGE = (
-    "A live Pi turn is already running for this chat/topic. During an active turn, "
-    "follow-up steering only accepts plain-text messages. Use /cancel or wait for the "
-    "current turn to finish."
-)
-
-
 def _scope_is_busy(state: Any, scope_key: str) -> bool:
     try:
         parsed_scope = parse_telegram_scope_key(scope_key)
@@ -180,18 +169,10 @@ def _try_steer_live_turn(
             request.scope_key,
             request.raw_prompt,
         )
-    if engine_name == "pi":
-        return dependencies.try_steer_live_pi_turn(
-            request.config,
-            request.scope_key,
-            request.raw_prompt,
-        )
     return False
 
 
 def _live_turn_messages(engine_name: str) -> tuple[str, str]:
-    if engine_name == "pi":
-        return LIVE_PI_STEER_FAILED_MESSAGE, LIVE_PI_STEER_UNSUPPORTED_MESSAGE
     return LIVE_CODEX_STEER_FAILED_MESSAGE, LIVE_CODEX_STEER_UNSUPPORTED_MESSAGE
 
 
@@ -201,7 +182,7 @@ def _maybe_handle_busy_live_codex_turn(
 ) -> bool:
     dependencies = _resolve_dependencies(request.dependencies)
     engine_name = getattr(plan.active_engine, "engine_name", "")
-    if engine_name not in {"codex", "pi"}:
+    if engine_name != "codex":
         return False
     failed_message, unsupported_message = _live_turn_messages(engine_name)
     follow_up_reason = _busy_live_codex_turn_follow_up_reason(request)

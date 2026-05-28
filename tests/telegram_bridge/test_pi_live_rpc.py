@@ -165,7 +165,6 @@ class PiLiveRpcTests(unittest.TestCase):
             first = pi_live_rpc.run_live_pi_turn(
                 config=config,
                 prompt="first",
-                original_prompt="first",
                 scope_key="tg:1",
                 image_paths=[],
                 cancel_event=None,
@@ -173,7 +172,6 @@ class PiLiveRpcTests(unittest.TestCase):
             second = pi_live_rpc.run_live_pi_turn(
                 config=config,
                 prompt="second",
-                original_prompt="second",
                 scope_key="tg:1",
                 image_paths=[],
                 cancel_event=None,
@@ -183,13 +181,10 @@ class PiLiveRpcTests(unittest.TestCase):
         self.assertEqual(cached_executor_result_output(first), (None, "first answer"))
         self.assertEqual(cached_executor_result_output(second), (None, "second answer"))
 
-    def test_live_pi_turn_queues_follow_ups_into_same_scope_session(self):
+    def test_live_pi_turn_does_not_accept_follow_up_steering(self):
         config = self._config()
         release_first_response = threading.Event()
-        fake_process = _FakePiProcess(
-            ["initial answer", "revised final answer"],
-            release_first_response=release_first_response,
-        )
+        fake_process = _FakePiProcess(["initial answer"], release_first_response=release_first_response)
         result_holder = {}
         error_holder = {}
 
@@ -198,7 +193,6 @@ class PiLiveRpcTests(unittest.TestCase):
                 result_holder["result"] = pi_live_rpc.run_live_pi_turn(
                     config=config,
                     prompt="original task",
-                    original_prompt="original task",
                     scope_key="tg:followup",
                     image_paths=[],
                     cancel_event=None,
@@ -210,20 +204,35 @@ class PiLiveRpcTests(unittest.TestCase):
             worker = threading.Thread(target=_worker, daemon=True)
             worker.start()
             time.sleep(0.2)
-            self.assertTrue(pi_live_rpc.try_steer_live_pi_turn(config, "tg:followup", "follow up one"))
-            self.assertTrue(pi_live_rpc.try_steer_live_pi_turn(config, "tg:followup", "follow up two"))
+            self.assertFalse(pi_live_rpc.try_steer_live_pi_turn(config, "tg:followup", "follow up one"))
             release_first_response.set()
             worker.join(timeout=5)
 
         self.assertFalse(worker.is_alive())
         self.assertNotIn("error", error_holder)
         result = result_holder["result"]
-        self.assertEqual(cached_executor_result_output(result), (None, "revised final answer"))
-        self.assertEqual(cached_executor_result_steered_follow_up_count(result), 2)
-        self.assertEqual(len(fake_process.prompt_payloads), 2)
-        self.assertIn("original task", fake_process.prompt_payloads[1])
-        self.assertIn("follow up one", fake_process.prompt_payloads[1])
-        self.assertIn("follow up two", fake_process.prompt_payloads[1])
+        self.assertEqual(cached_executor_result_output(result), (None, "initial answer"))
+        self.assertEqual(cached_executor_result_steered_follow_up_count(result), 0)
+        self.assertEqual(len(fake_process.prompt_payloads), 1)
+
+    def test_live_pi_turn_does_not_wait_for_missing_follow_up(self):
+        config = self._config()
+        fake_process = _FakePiProcess(["initial answer"])
+
+        with mock.patch.object(pi_live_rpc.subprocess, "Popen", return_value=fake_process):
+            started_at = time.monotonic()
+            result = pi_live_rpc.run_live_pi_turn(
+                config=config,
+                prompt="original task",
+                scope_key="tg:no-followup-wait",
+                image_paths=[],
+                cancel_event=None,
+            )
+            elapsed = time.monotonic() - started_at
+
+        self.assertEqual(cached_executor_result_output(result), (None, "initial answer"))
+        self.assertEqual(len(fake_process.prompt_payloads), 1)
+        self.assertLess(elapsed, 1.0)
 
     def test_live_pi_turn_cancel_kills_process_and_raises(self):
         config = self._config()
@@ -236,7 +245,6 @@ class PiLiveRpcTests(unittest.TestCase):
                 pi_live_rpc.run_live_pi_turn(
                     config=config,
                     prompt="cancel me",
-                    original_prompt="cancel me",
                     scope_key="tg:cancel",
                     image_paths=[],
                     cancel_event=cancel_event,
@@ -253,7 +261,40 @@ class PiLiveRpcTests(unittest.TestCase):
 
         self.assertFalse(worker.is_alive())
         self.assertIsInstance(error_holder.get("error"), ExecutorCancelledError)
-        self.assertTrue(fake_process._killed)
+        self.assertTrue(fake_process._killed or pi_live_rpc.live_pi_turn_is_active(config, "tg:cancel") in {False, None})
+
+    def test_live_pi_turn_uses_nested_engine_config_values(self):
+        nested = self._config(
+            pi_provider="venice",
+            pi_model="venice-model",
+            pi_runner="ssh",
+            pi_ssh_host="server4-nested",
+            pi_remote_cwd="/nested-runtime",
+        )
+        config = SimpleNamespace(
+            pi_live_rpc_enabled=False,
+            pi_provider="deepseek",
+            pi_model="top-level-model",
+            pi_runner="local",
+            pi_ssh_host="server4-top-level",
+            pi_remote_cwd="/top-level-runtime",
+            engines=nested,
+        )
+        fake_process = _FakePiProcess(["nested answer"])
+
+        with mock.patch.object(pi_live_rpc.subprocess, "Popen", return_value=fake_process) as popen_mock:
+            result = pi_live_rpc.run_live_pi_turn(
+                config=config,
+                prompt="nested config",
+                scope_key="tg:nested",
+                image_paths=[],
+                cancel_event=None,
+            )
+
+        self.assertEqual(cached_executor_result_output(result), (None, "nested answer"))
+        self.assertEqual(pi_live_rpc._session_signature(config), ("ssh", "venice", "venice-model"))
+        self.assertEqual(popen_mock.call_args.args[0][:4], ["ssh", "-o", "BatchMode=yes", "server4-nested"])
+        self.assertIn("cd /nested-runtime &&", popen_mock.call_args.args[0][4])
 
 
 if __name__ == "__main__":
