@@ -139,25 +139,6 @@ class _PendingTurn:
     steered_follow_up_count: int = 0
     steer_in_flight: bool = False
 
-
-def _build_follow_up_steer_prompt(follow_up_prompts: List[str]) -> str:
-    normalized_prompts = [str(prompt or "").strip() for prompt in follow_up_prompts if str(prompt or "").strip()]
-    if not normalized_prompts:
-        return ""
-    if len(normalized_prompts) == 1:
-        return normalized_prompts[0]
-    lines = [
-        "Additional follow-up messages arrived while you were already working on this request.",
-        "Keep the original request active and incorporate all follow-up messages below in chronological order.",
-        "Do not ignore earlier follow-up messages when a later one arrives.",
-        "",
-        "Follow-up messages (oldest first):",
-    ]
-    for index, prompt in enumerate(normalized_prompts, start=1):
-        lines.append(f"{index}. {prompt}")
-    return "\n".join(lines).strip()
-
-
 def _build_accumulated_steer_prompt(
     *,
     original_prompt: str,

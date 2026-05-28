@@ -23,7 +23,6 @@ class UpdateFlowDependencies:
     register_cancel_event: Callable[[Any, str], Any]
     try_steer_live_codex_turn: Callable[..., bool]
     live_codex_turn_is_active: Callable[..., Optional[bool]]
-    try_steer_live_pi_turn: Callable[..., bool]
     live_pi_turn_is_active: Callable[..., Optional[bool]]
     resolve_engine_for_scope: Callable[[Any, Any, str, Any], Any]
     ensure_chat_worker_session: Callable[..., bool]
@@ -61,6 +60,7 @@ LIVE_CODEX_STEER_UNSUPPORTED_MESSAGE = (
     "follow-up steering only accepts plain-text messages. Use /cancel or wait for the "
     "current turn to finish."
 )
+
 def _scope_is_busy(state: Any, scope_key: str) -> bool:
     try:
         parsed_scope = parse_telegram_scope_key(scope_key)

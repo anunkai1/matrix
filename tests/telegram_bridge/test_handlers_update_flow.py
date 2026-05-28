@@ -912,12 +912,10 @@ class HandleUpdateHelperTests(unittest.TestCase):
         active_engine.engine_name = "pi"
 
         with mock.patch.object(bridge_runtime_setup, "resolve_engine_for_scope", return_value=active_engine):
-            with mock.patch.object(bridge_runtime_setup, "try_steer_live_pi_turn", return_value=True) as try_steer:
-                with mock.patch.object(bridge_runtime_setup, "start_message_worker") as start_message_worker:
-                    started = bridge_handlers.start_standard_dispatch(dispatch)
+            with mock.patch.object(bridge_runtime_setup, "start_message_worker") as start_message_worker:
+                started = bridge_handlers.start_standard_dispatch(dispatch)
 
         self.assertFalse(started)
-        try_steer.assert_not_called()
         start_message_worker.assert_not_called()
         self.assertEqual(
             flow.client.messages,
