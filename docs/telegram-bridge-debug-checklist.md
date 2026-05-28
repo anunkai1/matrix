@@ -122,6 +122,18 @@ sudo journalctl -u telegram-architect-bridge.service -n 1000 --no-pager | \
 Denied non-allowlisted chats use:
 - `bridge.request_denied` with reason `chat_not_allowlisted`
 
+Live same-scope follow-up steering emits:
+- `bridge.request_steered`
+- `bridge.request_steer_failed`
+- `bridge.request_steer_rejected`
+
+Query:
+
+```bash
+sudo journalctl -u telegram-architect-bridge.service -n 1000 --no-pager | \
+  jq -r 'select(.event? == "bridge.request_steered" or .event? == "bridge.request_steer_failed" or .event? == "bridge.request_steer_rejected") | {ts, chat_id, message_id, scope_key, event, reason}'
+```
+
 ## 7) Debug executor behavior
 
 Executor subprocess events:

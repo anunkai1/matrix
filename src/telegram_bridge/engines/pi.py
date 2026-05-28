@@ -38,6 +38,7 @@ from telegram_bridge.engines.pi_rpc import (
     extract_rpc_response,
     should_retry_pi_text_mode,
 )
+from telegram_bridge.pi_live_rpc import run_live_pi_turn
 from telegram_bridge.engines import pi_transport
 
 class PiEngineAdapter(CompletedProcessOutputMixin):
@@ -255,7 +256,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
-        del thread_id, channel_name, actor_chat_id, actor_user_id, original_prompt, progress_callback
+        del thread_id, channel_name, actor_chat_id, actor_user_id, progress_callback
         if not self._model_supports_images(config):
             if image_path or image_paths:
                 model = str(getattr(config, "pi_model", "") or "").strip()
@@ -270,6 +271,15 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         try:
             if cancel_event is not None and cancel_event.is_set():
                 raise ExecutorCancelledError("Pi request canceled by user.")
+            if bool(getattr(config, "pi_live_rpc_enabled", False)) and session_key:
+                return run_live_pi_turn(
+                    config=config,
+                    prompt=prompt,
+                    original_prompt=original_prompt,
+                    scope_key=session_key,
+                    image_paths=image_paths or ([image_path] if image_path else []),
+                    cancel_event=cancel_event,
+                )
             runner = str(getattr(config, "pi_runner", "ssh") or "ssh").strip().lower()
             if runner in {"local", "server3"}:
                 output = self._run_pi_local(

@@ -76,6 +76,7 @@ from telegram_bridge.diary_store import (
 )
 from telegram_bridge.engine_adapter import CodexEngineAdapter, EngineAdapter
 from telegram_bridge.codex_app_server import live_codex_turn_is_active, try_steer_live_codex_turn
+from telegram_bridge.pi_live_rpc import live_pi_turn_is_active, try_steer_live_pi_turn
 from telegram_bridge.handler_models import (
     CallbackActionContext,
     CallbackActionResult,
@@ -314,6 +315,8 @@ def build_update_flow_dependencies() -> UpdateFlowDependencies:
         register_cancel_event=register_cancel_event,
         try_steer_live_codex_turn=try_steer_live_codex_turn,
         live_codex_turn_is_active=live_codex_turn_is_active,
+        try_steer_live_pi_turn=try_steer_live_pi_turn,
+        live_pi_turn_is_active=live_pi_turn_is_active,
         resolve_engine_for_scope=resolve_engine_for_scope,
         ensure_chat_worker_session=ensure_chat_worker_session,
         start_youtube_worker=start_youtube_worker,

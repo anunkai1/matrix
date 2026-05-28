@@ -23,6 +23,8 @@ class UpdateFlowDependencies:
     register_cancel_event: Callable[[Any, str], Any]
     try_steer_live_codex_turn: Callable[..., bool]
     live_codex_turn_is_active: Callable[..., Optional[bool]]
+    try_steer_live_pi_turn: Callable[..., bool]
+    live_pi_turn_is_active: Callable[..., Optional[bool]]
     resolve_engine_for_scope: Callable[[Any, Any, str, Any], Any]
     ensure_chat_worker_session: Callable[..., bool]
     start_youtube_worker: Callable[..., None]
@@ -56,6 +58,15 @@ LIVE_CODEX_STEER_FAILED_MESSAGE = (
 )
 LIVE_CODEX_STEER_UNSUPPORTED_MESSAGE = (
     "A live Codex turn is already running for this chat/topic. During an active turn, "
+    "follow-up steering only accepts plain-text messages. Use /cancel or wait for the "
+    "current turn to finish."
+)
+LIVE_PI_STEER_FAILED_MESSAGE = (
+    "A live Pi turn is already running for this chat/topic, but this follow-up "
+    "could not be merged into it. Use /cancel or wait for the current turn to finish."
+)
+LIVE_PI_STEER_UNSUPPORTED_MESSAGE = (
+    "A live Pi turn is already running for this chat/topic. During an active turn, "
     "follow-up steering only accepts plain-text messages. Use /cancel or wait for the "
     "current turn to finish."
 )
@@ -146,20 +157,56 @@ def _busy_live_codex_turn_follow_up_reason(
     return None
 
 
+def _live_turn_is_active(
+    request: UpdateDispatchRequest,
+    dependencies: UpdateFlowDependencies,
+    engine_name: str,
+) -> Optional[bool]:
+    if engine_name == "codex":
+        return dependencies.live_codex_turn_is_active(request.config, request.scope_key)
+    if engine_name == "pi":
+        return dependencies.live_pi_turn_is_active(request.config, request.scope_key)
+    return None
+
+
+def _try_steer_live_turn(
+    request: UpdateDispatchRequest,
+    dependencies: UpdateFlowDependencies,
+    engine_name: str,
+) -> bool:
+    if engine_name == "codex":
+        return dependencies.try_steer_live_codex_turn(
+            request.config,
+            request.scope_key,
+            request.raw_prompt,
+        )
+    if engine_name == "pi":
+        return dependencies.try_steer_live_pi_turn(
+            request.config,
+            request.scope_key,
+            request.raw_prompt,
+        )
+    return False
+
+
+def _live_turn_messages(engine_name: str) -> tuple[str, str]:
+    if engine_name == "pi":
+        return LIVE_PI_STEER_FAILED_MESSAGE, LIVE_PI_STEER_UNSUPPORTED_MESSAGE
+    return LIVE_CODEX_STEER_FAILED_MESSAGE, LIVE_CODEX_STEER_UNSUPPORTED_MESSAGE
+
+
 def _maybe_handle_busy_live_codex_turn(
     request: UpdateDispatchRequest,
     plan: StandardDispatchPlan,
 ) -> bool:
     dependencies = _resolve_dependencies(request.dependencies)
-    if getattr(plan.active_engine, "engine_name", "") != "codex":
+    engine_name = getattr(plan.active_engine, "engine_name", "")
+    if engine_name not in {"codex", "pi"}:
         return False
+    failed_message, unsupported_message = _live_turn_messages(engine_name)
     follow_up_reason = _busy_live_codex_turn_follow_up_reason(request)
     if follow_up_reason is None:
-        if dependencies.try_steer_live_codex_turn(
-            request.config,
-            request.scope_key,
-            request.raw_prompt,
-        ):
+        if _try_steer_live_turn(request, dependencies, engine_name):
             dependencies.emit_event(
                 "bridge.request_steered",
                 fields={
@@ -169,10 +216,7 @@ def _maybe_handle_busy_live_codex_turn(
                 },
             )
             return True
-        if dependencies.live_codex_turn_is_active(
-            request.config,
-            request.scope_key,
-        ) is not True:
+        if _live_turn_is_active(request, dependencies, engine_name) is not True:
             return False
         dependencies.emit_event(
             "bridge.request_steer_failed",
@@ -186,15 +230,12 @@ def _maybe_handle_busy_live_codex_turn(
         )
         request.client.send_message(
             request.chat_id,
-            LIVE_CODEX_STEER_FAILED_MESSAGE,
+            failed_message,
             reply_to_message_id=request.message_id,
             message_thread_id=request.message_thread_id,
         )
         return True
-    if dependencies.live_codex_turn_is_active(
-        request.config,
-        request.scope_key,
-    ) is not True:
+    if _live_turn_is_active(request, dependencies, engine_name) is not True:
         return False
     dependencies.emit_event(
         "bridge.request_steer_rejected",
@@ -208,7 +249,7 @@ def _maybe_handle_busy_live_codex_turn(
     )
     request.client.send_message(
         request.chat_id,
-        LIVE_CODEX_STEER_UNSUPPORTED_MESSAGE,
+        unsupported_message,
         reply_to_message_id=request.message_id,
         message_thread_id=request.message_thread_id,
     )
@@ -220,16 +261,14 @@ def _wait_for_post_turn_busy_clear(
     plan: StandardDispatchPlan,
 ) -> bool:
     dependencies = _resolve_dependencies(request.dependencies)
-    if getattr(plan.active_engine, "engine_name", "") != "codex":
+    engine_name = getattr(plan.active_engine, "engine_name", "")
+    if engine_name not in {"codex", "pi"}:
         return False
     if request.stateless:
         return False
     if not _scope_is_busy(request.state, request.scope_key):
         return False
-    live_turn_active = dependencies.live_codex_turn_is_active(
-        request.config,
-        request.scope_key,
-    )
+    live_turn_active = _live_turn_is_active(request, dependencies, engine_name)
     if live_turn_active is not False:
         return False
     return _wait_for_scope_busy_clear(
@@ -250,10 +289,7 @@ def _maybe_recover_stale_busy_scope(
     request_age_seconds = max(0.0, time.time() - in_flight_started_at)
     if request_age_seconds < STALE_BUSY_CANCEL_AFTER_SECONDS:
         return False
-    live_turn_active = dependencies.live_codex_turn_is_active(
-        request.config,
-        request.scope_key,
-    )
+    live_turn_active = _live_turn_is_active(request, dependencies, getattr(plan.active_engine, "engine_name", ""))
     if live_turn_active is True:
         return False
     cancel_status = dependencies.request_chat_cancel(request.state, request.scope_key)

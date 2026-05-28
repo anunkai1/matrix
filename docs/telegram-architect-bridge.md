@@ -267,9 +267,13 @@ The bridge can also select the `pi` coding agent as an engine through the same `
 - When `PI_PROVIDER=ollama`, `/model list` now merges Pi's own `pi --list-models` output with raw Ollama tags fetched from Server4 over SSH, so newly pulled Ollama models can still be selected even if Pi's provider catalog has not been refreshed yet.
 - Use `/pi` to inspect Pi status for the current chat/topic.
 - Live Server3 Pi bridges now run with `PI_SESSION_MODE=telegram_scope`; that maps native Pi sessions to Telegram scope keys instead of the shared working directory.
+- `PI_LIVE_RPC_ENABLED=true` now keeps one live Pi RPC process per Telegram scope while `/engine pi` is active. Plain-text follow-up messages arriving during a busy Pi turn are queued onto that same scope session instead of spawning a fresh Pi process.
+- `PI_LIVE_RPC_IDLE_TIMEOUT_SECONDS` bounds idle live Pi RPC session lifetime; expiry closes the per-scope Pi process and the next Pi turn recreates it on demand.
 - Pi session retention: rotate a scope file when it crosses the configured size or age threshold; conversation continuity is handled entirely by engine-native session files (Pi JSONL per chat/topic, Codex JSONL per exec session).
 - Per chat/topic, use `/engine pi`, `/engine codex`, `/engine reset`, or `/engine status`.
 - When Pi is the effective engine, `/engine status` reports Pi runner/config details and checks model availability.
+- During an active Pi turn, same-scope plain-text follow-ups are accepted and merged into the final Pi reply. Non-text follow-ups still require waiting for the turn to finish or using `/cancel`.
+- `/cancel` now interrupts active live Pi turns by terminating the current Pi RPC process for that scope; the next Pi request recreates the scope session and resumes from the persisted Pi session file where possible.
 - Pi bridge requests are text-only for now; use Codex for image/file-heavy turns.
 
 See [`docs/runbooks/server4-pi-engine.md`](runbooks/server4-pi-engine.md).
@@ -367,6 +371,8 @@ Message handling:
 - Architect on Server3 now defaults `TELEGRAM_CODEX_APP_SERVER_ENABLED` to enabled so same-scope plain-text follow-ups can steer into an active live Codex turn across direct chats, group chats, and forum topics.
 - Architect also defaults `TELEGRAM_CODEX_SANDBOX_MODE=off`. Do not set sandbox-related overrides in `ARCHITECT_EXEC_ARGS` or app-server config for this runtime.
 - Active plain-text follow-ups are coalesced briefly before steering so nearby follow-up messages are folded into one chronological addendum instead of interrupting the live turn once per message.
+- Architect now also defaults `PI_LIVE_RPC_ENABLED=true`, so `/engine pi` keeps one live Pi RPC session per Telegram scope with bounded idle expiry instead of respawning Pi per request.
+- Codex still has the richer live-turn API: it can steer and interrupt the active turn directly. Pi currently queues follow-up text onto the same scope session and merges it through a follow-up Pi turn before the bridge sends the final reply.
 - Set `TELEGRAM_CODEX_APP_SERVER_ENABLED=false` only as an explicit rollback if the live app-server path itself is the incident.
 - Keep `TELEGRAM_ALLOWED_CHAT_IDS` strict. Any allowed chat can request operations with `architect` user privileges, including sudo-capable commands.
 

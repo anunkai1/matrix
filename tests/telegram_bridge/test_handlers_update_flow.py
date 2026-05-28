@@ -883,6 +883,44 @@ class HandleUpdateHelperTests(unittest.TestCase):
             expect_thread_id=77,
         )
 
+    def test_start_standard_dispatch_steers_active_live_pi_turn(self):
+        flow = self._make_flow(prompt_input="follow up")
+        flow.state.busy_chats.add(flow.ctx.scope_key)
+        dispatch = bridge_handlers.UpdateDispatchRequest(
+            state=flow.state,
+            config=flow.config,
+            client=flow.client,
+            engine=None,
+            scope_key=flow.ctx.scope_key,
+            chat_id=flow.ctx.chat_id,
+            message_thread_id=flow.ctx.message_thread_id,
+            message_id=flow.ctx.message_id,
+            prompt="follow up",
+            raw_prompt="follow up",
+            photo_file_ids=[],
+            voice_file_id=None,
+            document=None,
+            actor_user_id=flow.ctx.actor_user_id,
+            sender_name=flow.sender_name,
+            stateless=False,
+            enforce_voice_prefix_from_transcript=False,
+            youtube_route_url=None,
+            handle_update_started_at=19.05,
+        )
+
+        active_engine = mock.Mock()
+        active_engine.engine_name = "pi"
+
+        with mock.patch.object(bridge_runtime_setup, "resolve_engine_for_scope", return_value=active_engine):
+            with mock.patch.object(bridge_runtime_setup, "try_steer_live_pi_turn", return_value=True) as try_steer:
+                with mock.patch.object(bridge_runtime_setup, "start_message_worker") as start_message_worker:
+                    started = bridge_handlers.start_standard_dispatch(dispatch)
+
+        self.assertTrue(started)
+        try_steer.assert_called_once_with(flow.config, flow.ctx.scope_key, "follow up")
+        start_message_worker.assert_not_called()
+        self.assertEqual(flow.client.messages, [])
+
     def test_start_standard_dispatch_rejects_non_text_follow_up_during_active_live_codex_turn(self):
         flow = self._make_flow(
             prompt_input="",

@@ -38,12 +38,14 @@ from telegram_bridge.bridge_runtime_setup import (
     persist_bootstrap_state,
 )
 from telegram_bridge.conversation_scope import parse_telegram_scope_key
+from telegram_bridge.codex_app_server import expire_idle_codex_app_server_sessions
 from telegram_bridge.executor import (
     ExecutorProgressEvent,
     extract_executor_progress_event,
     parse_executor_output,
 )
 from telegram_bridge.engine_adapter import EngineAdapter
+from telegram_bridge.pi_live_rpc import expire_idle_pi_rpc_sessions
 from telegram_bridge.handlers import (
     DocumentPayload,
     extract_prompt_and_media,
@@ -421,6 +423,8 @@ def run_bridge(config: Config) -> int:
         while True:
             try:
                 expire_idle_worker_sessions(state, config, client)
+                expire_idle_codex_app_server_sessions(config)
+                expire_idle_pi_rpc_sessions(config)
                 ready_updates = flush_ready_media_group_updates(state)
                 if ready_updates:
                     for update in ready_updates:

@@ -122,6 +122,9 @@ class EngineConfig:
     pi_ollama_tunnel_remote_host: str
     pi_ollama_tunnel_remote_port: int
     pi_request_timeout_seconds: int
+    pi_live_rpc_enabled: bool = False
+    pi_live_rpc_idle_timeout_seconds: int = 15 * 60
+    codex_app_server_idle_timeout_seconds: int = 15 * 60
     codex_sandbox_mode: str = "danger-full-access"
     pi_web_context_enabled: bool = True
     pi_web_max_search_results: int = 5
@@ -608,6 +611,11 @@ def load_engine_config_values(*, assistant_name: str) -> Dict[str, object]:
             "TELEGRAM_CODEX_APP_SERVER_ENABLED",
             default_codex_app_server_enabled,
         ),
+        "codex_app_server_idle_timeout_seconds": parse_int_env(
+            "TELEGRAM_CODEX_APP_SERVER_IDLE_TIMEOUT_SECONDS",
+            15 * 60,
+            minimum=0,
+        ),
         "codex_model": load_codex_model(),
         "codex_reasoning_effort": load_codex_reasoning_effort(),
         "gemma_provider": parse_plugin_name_env("GEMMA_PROVIDER", "ollama_ssh"),
@@ -684,6 +692,15 @@ def load_engine_config_values(*, assistant_name: str) -> Dict[str, object]:
             "PI_REQUEST_TIMEOUT_SECONDS",
             1800,
             minimum=1,
+        ),
+        "pi_live_rpc_enabled": parse_bool_env(
+            "PI_LIVE_RPC_ENABLED",
+            normalized_assistant_name == "architect",
+        ),
+        "pi_live_rpc_idle_timeout_seconds": parse_int_env(
+            "PI_LIVE_RPC_IDLE_TIMEOUT_SECONDS",
+            15 * 60,
+            minimum=0,
         ),
         "pi_web_context_enabled": parse_bool_env("PI_WEB_CONTEXT_ENABLED", True),
         "pi_web_max_search_results": parse_int_env(
