@@ -551,6 +551,69 @@ class TestPrompt(unittest.TestCase):
         self.assertEqual(paused_hook.call_args.kwargs["sender_name"], "Goal Continuation")
         self.assertEqual(paused_hook.call_args.kwargs["chat_id"], 1)
 
+    def test_process_prompt_request_tolerates_partial_auth_reset_counts(self):
+        state = bridge.State()
+        client = FakeTelegramClient()
+        config = make_config()
+        request = bridge_handlers.build_prompt_request(
+            state=state,
+            config=config,
+            client=client,
+            engine=None,
+            scope_key="tg:1",
+            chat_id=1,
+            message_thread_id=77,
+            message_id=55,
+            prompt="hello",
+            raw_prompt="hello",
+            photo_file_id=None,
+            voice_file_id=None,
+            document=None,
+        )
+        emitted = []
+
+        runtime = bridge_prompt_execution.build_prompt_execution_runtime(
+            progress_reporter_cls=bridge_handlers.ProgressReporter,
+            state_repository_cls=bridge_handlers.StateRepository,
+            codex_engine_adapter_factory=bridge_handlers.CodexEngineAdapter,
+            assistant_label_fn=bridge_handlers.assistant_label,
+            build_engine_runtime_config_fn=bridge_handlers.build_engine_runtime_config,
+            build_engine_progress_context_label_fn=bridge_handlers.build_engine_progress_context_label,
+            refresh_runtime_auth_fingerprint_fn=lambda _state: {"applied": True, "counts": {"threads": 2}},
+            prepare_prompt_input_request_fn=lambda _request, _progress: bridge_handlers.PreparedPromptInput(
+                prompt_text="hello"
+            ),
+            execute_prompt_with_retry_fn=lambda **_kwargs: bridge_handlers.subprocess.CompletedProcess(
+                args=["/bin/echo"],
+                returncode=0,
+                stdout="hello",
+                stderr="",
+            ),
+            finalize_prompt_success_fn=lambda **_kwargs: (None, "hello"),
+            finalize_request_progress_fn=lambda **_kwargs: None,
+            emit_event_fn=lambda *args, **kwargs: emitted.append((args, kwargs)),
+        )
+
+        bridge_prompt_execution.process_prompt_request(request, runtime=runtime)
+
+        self.assertIn(
+            (
+                ("bridge.thread_state_reset_for_auth_change",),
+                {
+                    "level": mock.ANY,
+                    "fields": {
+                        "chat_id": 1,
+                        "message_id": 55,
+                        "thread_count": 2,
+                        "worker_session_count": 0,
+                        "in_flight_request_count": 0,
+                        "canonical_session_count": 0,
+                    },
+                },
+            ),
+            emitted,
+        )
+
     def test_build_telegram_context_prompt_includes_current_message_id(self):
         prompt = bridge_handlers.build_telegram_context_prompt(
             chat_id=-1003706836145,

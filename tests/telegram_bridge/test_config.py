@@ -839,6 +839,7 @@ class TestConfig(unittest.TestCase):
                     policy_fingerprint="old-fingerprint",
                 )
             }
+            loaded_in_flight = {"tg:3": {"started_at": 30.0, "message_id": 300}}
             loaded_canonical_sessions = {
                 1: bridge.CanonicalSession(thread_id="thread-1"),
                 2: bridge.CanonicalSession(
@@ -855,18 +856,21 @@ class TestConfig(unittest.TestCase):
                 current_policy_fingerprint="new-fingerprint",
                 loaded_threads=loaded_threads,
                 loaded_worker_sessions=loaded_worker_sessions,
+                loaded_in_flight=loaded_in_flight,
                 loaded_canonical_sessions=loaded_canonical_sessions,
             )
 
             self.assertTrue(result["applied"])
             self.assertEqual(result["counts"]["threads"], 2)
             self.assertEqual(result["counts"]["worker_sessions"], 1)
-            self.assertEqual(result["counts"]["canonical_sessions"], 2)
+            self.assertEqual(result["counts"]["in_flight_requests"], 1)
+            self.assertEqual(result["counts"]["canonical_sessions"], 3)
             self.assertEqual(loaded_threads, {})
             self.assertEqual(loaded_worker_sessions, {})
+            self.assertEqual(loaded_in_flight, {})
             self.assertNotIn(1, loaded_canonical_sessions)
             self.assertNotIn(2, loaded_canonical_sessions)
-            self.assertIn(3, loaded_canonical_sessions)
+            self.assertNotIn(3, loaded_canonical_sessions)
             self.assertEqual(
                 fingerprint_path.read_text(encoding="utf-8").strip(),
                 "new-fingerprint",
@@ -882,28 +886,31 @@ class TestConfig(unittest.TestCase):
                 policy_fingerprint="policy-fp",
             )
         }
+        loaded_in_flight = {"tg:1": {"started_at": 3.0, "message_id": 55}}
         loaded_canonical_sessions = {"tg:1": bridge.CanonicalSession(thread_id="thread-1")}
 
         with mock.patch.object(
             bridge_runtime_setup,
             "clear_thread_state_for_policy_change",
-            return_value={"threads": 1, "worker_sessions": 1, "canonical_sessions": 1},
+            return_value={"threads": 1, "worker_sessions": 1, "in_flight_requests": 1, "canonical_sessions": 1},
         ) as clear_state:
             result = bridge.apply_app_server_startup_thread_reset(
                 codex_app_server_enabled=True,
                 loaded_threads=loaded_threads,
                 loaded_worker_sessions=loaded_worker_sessions,
+                loaded_in_flight=loaded_in_flight,
                 loaded_canonical_sessions=loaded_canonical_sessions,
             )
 
         self.assertTrue(result["applied"])
         self.assertEqual(
             result["counts"],
-            {"threads": 1, "worker_sessions": 1, "canonical_sessions": 1},
+            {"threads": 1, "worker_sessions": 1, "in_flight_requests": 1, "canonical_sessions": 1},
         )
         clear_state.assert_called_once_with(
             loaded_threads,
             loaded_worker_sessions,
+            loaded_in_flight,
             loaded_canonical_sessions,
         )
 
@@ -917,6 +924,7 @@ class TestConfig(unittest.TestCase):
                 policy_fingerprint="policy-fp",
             )
         }
+        loaded_in_flight = {"tg:1": {"started_at": 3.0, "message_id": 55}}
         loaded_canonical_sessions = {"tg:1": bridge.CanonicalSession(thread_id="thread-1")}
 
         with mock.patch.object(
@@ -927,13 +935,14 @@ class TestConfig(unittest.TestCase):
                 codex_app_server_enabled=False,
                 loaded_threads=loaded_threads,
                 loaded_worker_sessions=loaded_worker_sessions,
+                loaded_in_flight=loaded_in_flight,
                 loaded_canonical_sessions=loaded_canonical_sessions,
             )
 
         self.assertFalse(result["applied"])
         self.assertEqual(
             result["counts"],
-            {"threads": 0, "worker_sessions": 0, "canonical_sessions": 0},
+            {"threads": 0, "worker_sessions": 0, "in_flight_requests": 0, "canonical_sessions": 0},
         )
         clear_state.assert_not_called()
 
@@ -1135,6 +1144,78 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(bootstrap.state.worker_sessions[1].created_at, 123.0)
         self.assertEqual(bootstrap.state.worker_sessions[1].last_used_at, 123.0)
 
+    def test_persist_bootstrap_state_persists_noncanonical_inflight_resets(self):
+        config = make_config(
+            canonical_sessions_enabled=False,
+            persistent_workers_enabled=True,
+        )
+        bootstrap = bridge_runtime_setup.RuntimeBootstrap(
+            state=bridge.State(
+                chat_threads={"tg:1": "thread-1"},
+                worker_sessions={
+                    "tg:1": bridge.WorkerSession(
+                        created_at=1.0,
+                        last_used_at=2.0,
+                        thread_id="thread-1",
+                        policy_fingerprint="policy-fp",
+                    )
+                },
+                in_flight_requests={},
+            ),
+            state_paths={},
+            loaded_threads={"tg:1": "thread-1"},
+            loaded_worker_sessions={
+                "tg:1": bridge.WorkerSession(
+                    created_at=1.0,
+                    last_used_at=2.0,
+                    thread_id="thread-1",
+                    policy_fingerprint="policy-fp",
+                )
+            },
+            loaded_in_flight={},
+            canonical_bootstrap_source="legacy",
+            affective_runtime=None,
+            voice_alias_learning_store=None,
+        )
+
+        with (
+            mock.patch.object(bridge_runtime_setup, "persist_chat_threads") as persist_threads,
+            mock.patch.object(bridge_runtime_setup, "persist_worker_sessions") as persist_workers,
+            mock.patch.object(bridge_runtime_setup, "persist_in_flight_requests") as persist_in_flight,
+        ):
+            bridge.persist_bootstrap_state(config, bootstrap)
+
+        persist_threads.assert_called_once_with(bootstrap.state)
+        persist_workers.assert_called_once_with(bootstrap.state)
+        persist_in_flight.assert_called_once_with(bootstrap.state)
+
+    def test_persist_bootstrap_state_persists_noncanonical_inflight_without_workers(self):
+        config = make_config(
+            canonical_sessions_enabled=False,
+            persistent_workers_enabled=False,
+        )
+        bootstrap = bridge_runtime_setup.RuntimeBootstrap(
+            state=bridge.State(in_flight_requests={}),
+            state_paths={},
+            loaded_threads={},
+            loaded_worker_sessions={},
+            loaded_in_flight={},
+            canonical_bootstrap_source="legacy",
+            affective_runtime=None,
+            voice_alias_learning_store=None,
+        )
+
+        with (
+            mock.patch.object(bridge_runtime_setup, "persist_chat_threads") as persist_threads,
+            mock.patch.object(bridge_runtime_setup, "persist_worker_sessions") as persist_workers,
+            mock.patch.object(bridge_runtime_setup, "persist_in_flight_requests") as persist_in_flight,
+        ):
+            bridge.persist_bootstrap_state(config, bootstrap)
+
+        persist_threads.assert_not_called()
+        persist_workers.assert_not_called()
+        persist_in_flight.assert_called_once_with(bootstrap.state)
+
     def test_build_runtime_bootstrap_clears_loaded_thread_state_for_app_server_startup(self):
         config = make_config(
             canonical_sessions_enabled=True,
@@ -1206,6 +1287,7 @@ class TestConfig(unittest.TestCase):
             fields={
                 "thread_count": 1,
                 "worker_session_count": 1,
+                "in_flight_request_count": 0,
                 "canonical_session_count": 1,
             },
         )
@@ -1220,6 +1302,7 @@ class TestConfig(unittest.TestCase):
                 policy_fingerprint="old-fp",
             )
         }
+        loaded_in_flight = {"tg:1": {"started_at": 3.0, "message_id": 55}}
         loaded_canonical_sessions = {"tg:1": bridge.CanonicalSession(thread_id="thread-1")}
 
         with (
@@ -1231,7 +1314,7 @@ class TestConfig(unittest.TestCase):
             mock.patch.object(
                 bridge_runtime_setup,
                 "clear_thread_state_for_policy_change",
-                return_value={"threads": 1, "worker_sessions": 1, "canonical_sessions": 1},
+                return_value={"threads": 1, "worker_sessions": 1, "in_flight_requests": 1, "canonical_sessions": 1},
             ) as clear_state,
             mock.patch.object(bridge_runtime_setup, "persist_saved_policy_fingerprint") as persist_fp,
         ):
@@ -1240,6 +1323,7 @@ class TestConfig(unittest.TestCase):
                 current_policy_fingerprint="new-fp",
                 loaded_threads=loaded_threads,
                 loaded_worker_sessions=loaded_worker_sessions,
+                loaded_in_flight=loaded_in_flight,
                 loaded_canonical_sessions=loaded_canonical_sessions,
             )
 
@@ -1247,14 +1331,86 @@ class TestConfig(unittest.TestCase):
         self.assertTrue(result["applied"])
         self.assertEqual(
             result["counts"],
-            {"threads": 1, "worker_sessions": 1, "canonical_sessions": 1},
+            {"threads": 1, "worker_sessions": 1, "in_flight_requests": 1, "canonical_sessions": 1},
         )
         clear_state.assert_called_once_with(
             loaded_threads,
             loaded_worker_sessions,
+            loaded_in_flight,
             loaded_canonical_sessions,
         )
         persist_fp.assert_called_once()
+
+    def test_build_runtime_bootstrap_tolerates_partial_app_server_reset_counts(self):
+        config = make_config(
+            canonical_sessions_enabled=True,
+            canonical_sqlite_enabled=False,
+            codex_app_server_enabled=True,
+        )
+        state_paths = {
+            "chat_threads": "/tmp/chat_threads.json",
+            "chat_engines": "/tmp/chat_engines.json",
+            "chat_codex_models": "/tmp/chat_codex_models.json",
+            "chat_codex_efforts": "/tmp/chat_codex_efforts.json",
+            "chat_pi_models": "/tmp/chat_pi_models.json",
+            "chat_pi_providers": "/tmp/chat_pi_providers.json",
+            "worker_sessions": "/tmp/worker_sessions.json",
+            "in_flight_requests": "/tmp/in_flight_requests.json",
+            "chat_sessions": "/tmp/chat_sessions.json",
+        }
+        loaded_state = {
+            "threads": {1: "thread-1"},
+            "engines": {},
+            "codex_models": {},
+            "codex_efforts": {},
+            "pi_models": {},
+            "pi_providers": {},
+            "worker_sessions": {},
+            "in_flight": {},
+            "goals": {},
+        }
+
+        with (
+            mock.patch.object(bridge_runtime_setup, "ensure_state_dir"),
+            mock.patch.object(bridge_runtime_setup, "AttachmentStore", return_value=mock.sentinel.attachment_store),
+            mock.patch.object(bridge_runtime_setup, "build_affective_runtime", return_value=mock.sentinel.affective_runtime),
+            mock.patch.object(bridge_runtime_setup, "build_bridge_state_paths", return_value=state_paths),
+            mock.patch.object(bridge_runtime_setup, "load_bridge_state_mappings", return_value=loaded_state),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "load_canonical_session_bootstrap",
+                return_value=({}, "canonical-json"),
+            ),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "apply_app_server_startup_thread_reset",
+                return_value={"applied": True, "counts": {"threads": 1}},
+            ),
+            mock.patch.object(bridge_runtime_setup, "compute_current_auth_fingerprint", return_value="auth-fp"),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "apply_auth_change_thread_reset",
+                return_value={"applied": False, "counts": {}},
+            ),
+            mock.patch.object(
+                bridge_runtime_setup,
+                "initialize_voice_alias_learning_store",
+                return_value=None,
+            ),
+            mock.patch.object(bridge_runtime_setup, "emit_event") as emit_event,
+        ):
+            bridge.build_runtime_bootstrap(config)
+
+        emit_event.assert_any_call(
+            "bridge.thread_state_reset_for_app_server_startup",
+            level=mock.ANY,
+            fields={
+                "thread_count": 1,
+                "worker_session_count": 0,
+                "in_flight_request_count": 0,
+                "canonical_session_count": 0,
+            },
+        )
 
     def test_initialize_voice_alias_learning_store_returns_none_on_failure(self):
         config = make_config(

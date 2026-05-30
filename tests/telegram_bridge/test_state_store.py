@@ -381,6 +381,36 @@ class StateStoreUnitTests(unittest.TestCase):
             self.assertEqual(canonical_cleared, {})
             self.assertFalse(Path(state.in_flight_path).exists())
 
+    def test_legacy_mark_inflight_replaces_raw_chat_id_alias(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = state_store.State(
+                in_flight_path=str(Path(tmpdir) / "in_flight_requests.json"),
+                in_flight_requests={9: {"started_at": 12.0, "message_id": 88}},
+            )
+
+            with mock.patch.object(state_store.time, "time", return_value=123.0):
+                state_store.mark_in_flight_request(state, 9, 90)
+
+            self.assertEqual(
+                state.in_flight_requests,
+                {"tg:9": {"started_at": 123.0, "message_id": 90}},
+            )
+            payload = json.loads(Path(state.in_flight_path).read_text(encoding="utf-8"))
+            self.assertEqual(payload, {"tg:9": {"started_at": 123.0, "message_id": 90}})
+
+    def test_legacy_clear_inflight_removes_raw_chat_id_alias(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = state_store.State(
+                in_flight_path=str(Path(tmpdir) / "in_flight_requests.json"),
+                in_flight_requests={9: {"started_at": 12.0, "message_id": 88}},
+            )
+            state_store.persist_in_flight_requests(state)
+
+            state_store.clear_in_flight_request(state, 9)
+
+            self.assertEqual(state.in_flight_requests, {})
+            self.assertFalse(Path(state.in_flight_path).exists())
+
     def test_pop_interrupted_requests_canonical_preserves_thread_without_legacy_mirror(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             state = state_store.State(

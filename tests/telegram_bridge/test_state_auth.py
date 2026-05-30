@@ -141,12 +141,15 @@ class TestStateAuth(unittest.TestCase):
                 policy_fingerprint="fp",
             )
         }
+        loaded_in_flight = {"tg:1": {"started_at": 3.0, "message_id": 55}}
         loaded_canonical_sessions = {
             "tg:1": bridge.CanonicalSession(
                 thread_id="thread-1",
                 worker_created_at=1.0,
                 worker_last_used_at=2.0,
                 worker_policy_fingerprint="fp",
+                in_flight_started_at=3.0,
+                in_flight_message_id=55,
             )
         }
 
@@ -156,14 +159,19 @@ class TestStateAuth(unittest.TestCase):
                 current_auth_fingerprint="auth-fp",
                 loaded_threads=loaded_threads,
                 loaded_worker_sessions=loaded_worker_sessions,
+                loaded_in_flight=loaded_in_flight,
                 loaded_canonical_sessions=loaded_canonical_sessions,
             )
 
             self.assertFalse(result["applied"])
             self.assertEqual(result["previous_auth_fingerprint"], "")
-            self.assertEqual(result["counts"], {"threads": 0, "worker_sessions": 0, "canonical_sessions": 0})
+            self.assertEqual(
+                result["counts"],
+                {"threads": 0, "worker_sessions": 0, "in_flight_requests": 0, "canonical_sessions": 0},
+            )
             self.assertEqual(loaded_threads, {1: "thread-1"})
             self.assertIn("tg:1", loaded_worker_sessions)
+            self.assertIn("tg:1", loaded_in_flight)
             self.assertIn("tg:1", loaded_canonical_sessions)
             saved = bridge_auth_state.load_saved_auth_fingerprint(
                 str(Path(tmpdir) / "auth_fingerprint.txt")
@@ -180,12 +188,15 @@ class TestStateAuth(unittest.TestCase):
                 policy_fingerprint="fp",
             )
         }
+        loaded_in_flight = {"tg:1": {"started_at": 3.0, "message_id": 55}}
         loaded_canonical_sessions = {
             "tg:1": bridge.CanonicalSession(
                 thread_id="thread-1",
                 worker_created_at=1.0,
                 worker_last_used_at=2.0,
                 worker_policy_fingerprint="fp",
+                in_flight_started_at=3.0,
+                in_flight_message_id=55,
             )
         }
 
@@ -198,14 +209,19 @@ class TestStateAuth(unittest.TestCase):
                 current_auth_fingerprint="new-auth-fp",
                 loaded_threads=loaded_threads,
                 loaded_worker_sessions=loaded_worker_sessions,
+                loaded_in_flight=loaded_in_flight,
                 loaded_canonical_sessions=loaded_canonical_sessions,
             )
 
             self.assertTrue(result["applied"])
             self.assertEqual(result["previous_auth_fingerprint"], "old-auth-fp")
-            self.assertEqual(result["counts"], {"threads": 1, "worker_sessions": 1, "canonical_sessions": 1})
+            self.assertEqual(
+                result["counts"],
+                {"threads": 1, "worker_sessions": 1, "in_flight_requests": 1, "canonical_sessions": 1},
+            )
             self.assertEqual(loaded_threads, {})
             self.assertEqual(loaded_worker_sessions, {})
+            self.assertEqual(loaded_in_flight, {})
             self.assertEqual(loaded_canonical_sessions, {})
             self.assertEqual(
                 bridge_auth_state.load_saved_auth_fingerprint(str(fingerprint_path)),

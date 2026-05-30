@@ -40,6 +40,7 @@ from telegram_bridge.state_store import (
     ensure_state_dir,
     persist_canonical_sessions,
     persist_chat_threads,
+    persist_in_flight_requests,
     persist_worker_sessions,
 )
 from telegram_bridge.structured_logging import emit_event
@@ -74,6 +75,15 @@ class RuntimeBootstrap:
     affective_runtime: object
     voice_alias_learning_store: Optional[VoiceAliasLearningStore]
     update_flow_dependencies: Optional[UpdateFlowDependencies] = None
+
+
+def _normalized_reset_counts(counts: object) -> Dict[str, int]:
+    raw_counts = counts if isinstance(counts, dict) else {}
+    normalized: Dict[str, int] = {}
+    for key in ("threads", "worker_sessions", "in_flight_requests", "canonical_sessions"):
+        value = raw_counts.get(key)
+        normalized[key] = value if isinstance(value, int) and value >= 0 else 0
+    return normalized
 
 
 def build_update_flow_dependencies() -> UpdateFlowDependencies:
@@ -120,11 +130,13 @@ def close_runtime_bootstrap(bootstrap: RuntimeBootstrap) -> None:
 def clear_thread_state_for_policy_change(
     loaded_threads: Dict[int, str],
     loaded_worker_sessions: Dict[int, WorkerSession],
+    loaded_in_flight: Dict[int, Dict[str, object]],
     loaded_canonical_sessions: Dict[int, CanonicalSession],
 ) -> Dict[str, int]:
     return clear_loaded_thread_state(
         loaded_threads,
         loaded_worker_sessions,
+        loaded_in_flight,
         loaded_canonical_sessions,
     )
 
@@ -134,17 +146,19 @@ def apply_app_server_startup_thread_reset(
     codex_app_server_enabled: bool,
     loaded_threads: Dict[int, str],
     loaded_worker_sessions: Dict[int, WorkerSession],
+    loaded_in_flight: Dict[int, Dict[str, object]],
     loaded_canonical_sessions: Dict[int, CanonicalSession],
 ) -> Dict[str, object]:
     if not codex_app_server_enabled:
         return {
             "applied": False,
-            "counts": {"threads": 0, "worker_sessions": 0, "canonical_sessions": 0},
+            "counts": {"threads": 0, "worker_sessions": 0, "in_flight_requests": 0, "canonical_sessions": 0},
         }
 
     reset_counts = clear_thread_state_for_policy_change(
         loaded_threads,
         loaded_worker_sessions,
+        loaded_in_flight,
         loaded_canonical_sessions,
     )
     return {
@@ -158,18 +172,19 @@ def apply_policy_change_thread_reset(
     current_policy_fingerprint: str,
     loaded_threads: Dict[int, str],
     loaded_worker_sessions: Dict[int, WorkerSession],
+    loaded_in_flight: Dict[int, Dict[str, object]],
     loaded_canonical_sessions: Dict[int, CanonicalSession],
 ) -> Dict[str, object]:
     if not current_policy_fingerprint.strip():
         return {
             "applied": False,
             "previous_policy_fingerprint": "",
-            "counts": {"threads": 0, "worker_sessions": 0, "canonical_sessions": 0},
+            "counts": {"threads": 0, "worker_sessions": 0, "in_flight_requests": 0, "canonical_sessions": 0},
         }
 
     state_path = build_policy_fingerprint_state_path(state_dir)
     previous_policy_fingerprint = load_saved_policy_fingerprint(state_path)
-    reset_counts = {"threads": 0, "worker_sessions": 0, "canonical_sessions": 0}
+    reset_counts = {"threads": 0, "worker_sessions": 0, "in_flight_requests": 0, "canonical_sessions": 0}
     applied = False
 
     if (
@@ -179,6 +194,7 @@ def apply_policy_change_thread_reset(
         reset_counts = clear_thread_state_for_policy_change(
             loaded_threads,
             loaded_worker_sessions,
+            loaded_in_flight,
             loaded_canonical_sessions,
         )
         applied = any(reset_counts.values())
@@ -216,12 +232,14 @@ def _log_thread_reset(
     reason: str,
     counts: Dict[str, int],
 ) -> None:
+    counts = _normalized_reset_counts(counts)
     logging.warning(
         "%s fingerprint changed; cleared stored thread state "
-        "(threads=%s worker_sessions=%s canonical_sessions=%s).",
+        "(threads=%s worker_sessions=%s in_flight_requests=%s canonical_sessions=%s).",
         reason,
         counts["threads"],
         counts["worker_sessions"],
+        counts["in_flight_requests"],
         counts["canonical_sessions"],
     )
     emit_event(
@@ -230,6 +248,7 @@ def _log_thread_reset(
         fields={
             "thread_count": counts["threads"],
             "worker_session_count": counts["worker_sessions"],
+            "in_flight_request_count": counts["in_flight_requests"],
             "canonical_session_count": counts["canonical_sessions"],
         },
     )
@@ -270,23 +289,27 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
         codex_app_server_enabled=bool(getattr(engines, "codex_app_server_enabled", False)),
         loaded_threads=loaded_threads,
         loaded_worker_sessions=loaded_worker_sessions,
+        loaded_in_flight=loaded_in_flight,
         loaded_canonical_sessions=loaded_canonical_sessions,
     )
     if app_server_reset_result["applied"]:
+        counts = _normalized_reset_counts(app_server_reset_result.get("counts"))
         logging.warning(
             "Codex app-server startup cleared stored thread state to avoid cross-process "
-            "thread resume drift (threads=%s worker_sessions=%s canonical_sessions=%s).",
-            app_server_reset_result["counts"]["threads"],
-            app_server_reset_result["counts"]["worker_sessions"],
-            app_server_reset_result["counts"]["canonical_sessions"],
+            "thread resume drift (threads=%s worker_sessions=%s in_flight_requests=%s canonical_sessions=%s).",
+            counts["threads"],
+            counts["worker_sessions"],
+            counts["in_flight_requests"],
+            counts["canonical_sessions"],
         )
         emit_event(
             "bridge.thread_state_reset_for_app_server_startup",
             level=logging.WARNING,
             fields={
-                "thread_count": app_server_reset_result["counts"]["threads"],
-                "worker_session_count": app_server_reset_result["counts"]["worker_sessions"],
-                "canonical_session_count": app_server_reset_result["counts"]["canonical_sessions"],
+                "thread_count": counts["threads"],
+                "worker_session_count": counts["worker_sessions"],
+                "in_flight_request_count": counts["in_flight_requests"],
+                "canonical_session_count": counts["canonical_sessions"],
             },
         )
 
@@ -300,6 +323,7 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
             current_policy_fingerprint=current_policy_fingerprint,
             loaded_threads=loaded_threads,
             loaded_worker_sessions=loaded_worker_sessions,
+            loaded_in_flight=loaded_in_flight,
             loaded_canonical_sessions=loaded_canonical_sessions,
         )
         if policy_reset_result["applied"]:
@@ -314,6 +338,7 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
         current_auth_fingerprint=current_auth_fingerprint,
         loaded_threads=loaded_threads,
         loaded_worker_sessions=loaded_worker_sessions,
+        loaded_in_flight=loaded_in_flight,
         loaded_canonical_sessions=loaded_canonical_sessions,
     )
     if auth_reset_result["applied"]:
@@ -401,6 +426,8 @@ def persist_bootstrap_state(config: Config, bootstrap: RuntimeBootstrap) -> None
     if session.persistent_workers_enabled and not session.canonical_sessions_enabled:
         persist_chat_threads(bootstrap.state)
         persist_worker_sessions(bootstrap.state)
+    if not session.canonical_sessions_enabled:
+        persist_in_flight_requests(bootstrap.state)
     if session.canonical_sessions_enabled:
         if not bootstrap.state.chat_sessions:
             bootstrap.state.chat_sessions = build_canonical_sessions_from_legacy(

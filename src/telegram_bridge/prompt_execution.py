@@ -28,6 +28,17 @@ class PromptExecutionRuntime:
     emit_event_fn: object
 
 
+def _normalized_reset_counts(result: object) -> Dict[str, int]:
+    raw_counts = result.get("counts") if isinstance(result, dict) else {}
+    if not isinstance(raw_counts, dict):
+        raw_counts = {}
+    normalized: Dict[str, int] = {}
+    for key in ("threads", "worker_sessions", "in_flight_requests", "canonical_sessions"):
+        value = raw_counts.get(key)
+        normalized[key] = value if isinstance(value, int) and value >= 0 else 0
+    return normalized
+
+
 def build_prompt_execution_runtime(
     *,
     progress_reporter_cls,
@@ -335,13 +346,14 @@ def process_prompt_request(
         progress.start()
         auth_reset_result = refresh_runtime_auth_fingerprint_fn(state)
         if auth_reset_result["applied"]:
-            counts = auth_reset_result["counts"]
+            counts = _normalized_reset_counts(auth_reset_result)
             logging.warning(
                 "Auth fingerprint changed mid-runtime; cleared stored thread state for %s "
-                "(threads=%s worker_sessions=%s canonical_sessions=%s).",
+                "(threads=%s worker_sessions=%s in_flight_requests=%s canonical_sessions=%s).",
                 assistant_name_label,
                 counts["threads"],
                 counts["worker_sessions"],
+                counts["in_flight_requests"],
                 counts["canonical_sessions"],
             )
             emit_event_fn(
@@ -352,6 +364,7 @@ def process_prompt_request(
                     "message_id": message_id,
                     "thread_count": counts["threads"],
                     "worker_session_count": counts["worker_sessions"],
+                    "in_flight_request_count": counts["in_flight_requests"],
                     "canonical_session_count": counts["canonical_sessions"],
                 },
             )

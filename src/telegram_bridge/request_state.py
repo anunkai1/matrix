@@ -1,7 +1,19 @@
 import time
 from typing import Dict, Optional
 
+from telegram_bridge.conversation_scope import parse_telegram_scope_key
 from telegram_bridge.state_models import ScopeKey, State
+
+
+def _legacy_scope_alias(scope_key: ScopeKey) -> Optional[int]:
+    try:
+        parsed_scope = parse_telegram_scope_key(str(scope_key))
+    except ValueError:
+        return None
+    if parsed_scope.message_thread_id is not None:
+        return None
+    return parsed_scope.chat_id
+
 
 def _build_in_flight_payload(
     *,
@@ -37,8 +49,11 @@ def mark_in_flight_request(
         return
 
     payload = _build_in_flight_payload(started_at=time.time(), message_id=message_id)
+    legacy_alias = _legacy_scope_alias(scope_key)
     with state.lock:
         state.in_flight_requests[scope_key] = payload
+        if legacy_alias is not None:
+            state.in_flight_requests.pop(legacy_alias, None)
     persist_in_flight_requests_fn(state)
     sync_canonical_session_fn(state, scope_key)
 
@@ -71,9 +86,13 @@ def clear_in_flight_request(
         return
 
     removed = False
+    legacy_alias = _legacy_scope_alias(scope_key)
     with state.lock:
         if scope_key in state.in_flight_requests:
             del state.in_flight_requests[scope_key]
+            removed = True
+        if legacy_alias is not None and legacy_alias in state.in_flight_requests:
+            del state.in_flight_requests[legacy_alias]
             removed = True
     if removed:
         persist_in_flight_requests_fn(state)
