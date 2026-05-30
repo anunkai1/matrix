@@ -303,6 +303,34 @@ class TestSessions(unittest.TestCase):
         self.assertIn("tg:1", state.chat_sessions)
         self.assertEqual(state.chat_sessions["tg:1"].thread_id, "")
 
+    def test_ensure_chat_worker_session_canonical_resets_stale_thread_without_active_worker(self):
+        state = bridge.State(
+            canonical_sessions_enabled=True,
+            chat_sessions={
+                "tg:1": bridge.CanonicalSession(
+                    thread_id="thread-old",
+                    worker_created_at=None,
+                    worker_last_used_at=None,
+                    worker_policy_fingerprint="stale-fingerprint",
+                )
+            },
+        )
+        client = FakeTelegramClient()
+        config = make_config(
+            persistent_workers_enabled=True,
+            persistent_workers_max=2,
+            canonical_sessions_enabled=True,
+        )
+
+        allowed = bridge.ensure_chat_worker_session(state, config, client, chat_id=1, message_id=89)
+        self.assertTrue(allowed)
+        self.assertTrue(client.messages)
+        self.assertIn("Policy/context files changed", client.messages[-1][1])
+        self.assertIn("tg:1", state.chat_sessions)
+        self.assertEqual(state.chat_sessions["tg:1"].thread_id, "")
+        self.assertIsNotNone(state.chat_sessions["tg:1"].worker_created_at)
+        self.assertIsNotNone(state.chat_sessions["tg:1"].worker_last_used_at)
+
     def test_expire_idle_worker_sessions_reclaims_legacy_capacity_without_clearing_thread(self):
         state = bridge.State(
             chat_threads={"tg:2": "thread-2"},

@@ -197,6 +197,45 @@ class GoalLoopTests(unittest.TestCase):
                 "cleared",
             )
 
+    def test_get_goal_state_falls_back_to_legacy_when_canonical_goal_is_malformed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = State(
+                chat_goal_path=str(Path(tmpdir) / "chat_goals.json"),
+                chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
+                canonical_sessions_enabled=True,
+            )
+            scope_key = "tg:-1003894351534:topic:1853"
+            state.chat_sessions[scope_key] = CanonicalSession(goal_state="broken")
+            state.chat_goals[scope_key] = goal_loop.GoalState(goal="build the thing", status="paused")
+
+            goal_state = goal_loop.get_goal_state(state, scope_key)
+
+            self.assertIsNotNone(goal_state)
+            self.assertEqual(goal_state.goal, "build the thing")
+            self.assertEqual(goal_state.status, "paused")
+
+    def test_clear_goal_state_falls_back_to_legacy_when_canonical_goal_is_malformed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = State(
+                chat_goal_path=str(Path(tmpdir) / "chat_goals.json"),
+                chat_sessions_path=str(Path(tmpdir) / "chat_sessions.json"),
+                canonical_sessions_enabled=True,
+            )
+            scope_key = "tg:-1003894351534:topic:1853"
+            state.chat_sessions[scope_key] = CanonicalSession(goal_state="broken")
+            state.chat_goals[scope_key] = goal_loop.GoalState(goal="build the thing", status="paused")
+
+            cleared = goal_loop.clear_goal_state(state, scope_key)
+
+            self.assertTrue(cleared)
+            self.assertEqual(state.chat_sessions[scope_key].goal_state["status"], "cleared")
+            self.assertEqual(state.chat_goals[scope_key].status, "cleared")
+            persisted = json.loads(Path(state.chat_sessions_path).read_text(encoding="utf-8"))
+            self.assertEqual(
+                persisted[scope_key]["goal_state"]["status"],
+                "cleared",
+            )
+
     def test_goal_status_hides_cleared_goal_as_inactive(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             state = self._make_state(tmpdir)

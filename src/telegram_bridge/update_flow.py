@@ -78,11 +78,22 @@ def _scope_is_busy(state: Any, scope_key: str) -> bool:
 
 
 def _scope_in_flight_started_at(state: Any, scope_key: str) -> Optional[float]:
+    try:
+        parsed_scope = parse_telegram_scope_key(scope_key)
+    except ValueError:
+        parsed_scope = None
+    legacy_alias = (
+        parsed_scope.chat_id
+        if parsed_scope is not None and parsed_scope.message_thread_id is None
+        else None
+    )
     with state.lock:
         session = state.chat_sessions.get(scope_key)
         if session is not None and session.in_flight_started_at is not None:
             return float(session.in_flight_started_at)
         payload = state.in_flight_requests.get(scope_key)
+        if payload is None and legacy_alias is not None:
+            payload = state.in_flight_requests.get(legacy_alias)
         if isinstance(payload, dict):
             started_at = payload.get("started_at")
             if isinstance(started_at, (int, float)):

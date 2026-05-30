@@ -246,8 +246,7 @@ def _ensure_chat_worker_session_canonical(
         session = state.chat_sessions.get(scope_key)
 
         if (
-            _has_active_worker(session)
-            and session is not None
+            session is not None
             and session.worker_policy_fingerprint
             and session.worker_policy_fingerprint != current_policy_fingerprint
         ):

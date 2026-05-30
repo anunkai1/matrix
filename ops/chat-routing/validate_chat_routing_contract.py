@@ -110,6 +110,14 @@ def compare_equals(
         mismatches.append(Mismatch(field=field, expected=expected, actual=actual))
 
 
+def first_nonempty(*values: str) -> str:
+    for value in values:
+        cleaned = value.strip()
+        if cleaned:
+            return cleaned
+    return ""
+
+
 def validate_contract(contract: Dict[str, str], telegram_env: Dict[str, str], whatsapp_env: Dict[str, str]) -> None:
     mismatches: List[Mismatch] = []
 
@@ -227,17 +235,17 @@ def resolve_alert_targets(
     observer_env = observer_env or {}
     architect_env = architect_env or {}
 
-    token = (
-        os.getenv("RUNTIME_OBSERVER_TELEGRAM_BOT_TOKEN", "").strip()
-        or observer_env.get("RUNTIME_OBSERVER_TELEGRAM_BOT_TOKEN", "").strip()
-        or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-        or architect_env.get("TELEGRAM_BOT_TOKEN", "").strip()
+    token = first_nonempty(
+        observer_env.get("RUNTIME_OBSERVER_TELEGRAM_BOT_TOKEN", ""),
+        architect_env.get("TELEGRAM_BOT_TOKEN", ""),
+        os.getenv("RUNTIME_OBSERVER_TELEGRAM_BOT_TOKEN", ""),
+        os.getenv("TELEGRAM_BOT_TOKEN", ""),
     )
-    chat_csv = (
-        os.getenv("RUNTIME_OBSERVER_TELEGRAM_CHAT_IDS", "").strip()
-        or observer_env.get("RUNTIME_OBSERVER_TELEGRAM_CHAT_IDS", "").strip()
-        or os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "").strip()
-        or architect_env.get("TELEGRAM_ALLOWED_CHAT_IDS", "").strip()
+    chat_csv = first_nonempty(
+        observer_env.get("RUNTIME_OBSERVER_TELEGRAM_CHAT_IDS", ""),
+        architect_env.get("TELEGRAM_ALLOWED_CHAT_IDS", ""),
+        os.getenv("RUNTIME_OBSERVER_TELEGRAM_CHAT_IDS", ""),
+        os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", ""),
     )
     chat_ids = split_csv(chat_csv)
     return token, chat_ids
