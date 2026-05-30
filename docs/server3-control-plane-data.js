@@ -1,5 +1,5 @@
 window.SERVER3_CONTROL_PLANE_DATA = {
-  "generatedAt": "2026-05-25T17:56:34.550892+10:00",
+  "generatedAt": "2026-05-30T19:09:51.938622+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
@@ -9,10 +9,10 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     "approvalCopy": "explicit human gates from live Server3 state",
     "jobValue": "12 tracked",
     "jobCopy": "timers, approvals, and operator playback in one surface",
-    "hostValue": "load 8.61 / ram 5%",
+    "hostValue": "load 9.93 / ram 5%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "25 May 2026 17:56 AEST",
+      "30 May 2026 19:09 AEST",
       "snapshot file server3-control-plane-data.js",
       "0 approval item(s)"
     ],
@@ -86,52 +86,52 @@ window.SERVER3_CONTROL_PLANE_DATA = {
   },
   "activity": [
     {
-      "time": "17:58:33",
-      "title": "Diary recent service activity",
-      "channel": "capture runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "Loaded 0 chat thread mappings from /home/diary/.local/state/telegram-diary-bridge/chat_threads.json"
-    },
-    {
-      "time": "17:56:31",
-      "title": "Govorun recent service activity",
-      "channel": "whatsapp runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
-    },
-    {
-      "time": "17:56:31",
-      "title": "Tank recent service activity",
-      "channel": "telegram sibling",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "Started telegram-tank-bridge.service - Telegram Tank Bridge."
-    },
-    {
-      "time": "17:56:30",
-      "title": "Mavali ETH recent service activity",
-      "channel": "venue operations runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "Started telegram-mavali-eth-bridge.service - Telegram Mavali ETH Bridge."
-    },
-    {
-      "time": "17:56:30",
-      "title": "Architect recent service activity",
-      "channel": "telegram primary",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "Started telegram-architect-bridge.service - Telegram Architect Bridge."
-    },
-    {
-      "time": "17:56:30",
+      "time": "19:11:56",
       "title": "Oracle recent service activity",
       "channel": "signal runtime",
       "statusClass": "danger",
       "statusText": "degraded",
       "copy": "Started signal-oracle-bridge.service - Signal Oracle Transport Bridge."
+    },
+    {
+      "time": "19:11:56",
+      "title": "Diary recent service activity",
+      "channel": "capture runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "19:11:56",
+      "title": "Mavali ETH recent service activity",
+      "channel": "venue operations runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "19:11:56",
+      "title": "Tank recent service activity",
+      "channel": "telegram sibling",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "19:11:56",
+      "title": "Architect recent service activity",
+      "channel": "telegram primary",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "19:09:44",
+      "title": "Govorun recent service activity",
+      "channel": "whatsapp runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
     }
   ],
   "playback": {
@@ -231,14 +231,14 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     {
       "title": "Observer summary",
       "tagClass": "busy",
-      "tagText": "25 May 18:00",
-      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 25 May 17:56."
+      "tagText": "30 May 19:15",
+      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 30 May 19:11."
     },
     {
       "title": "Routing drift check",
       "tagClass": "busy",
-      "tagText": "26 May 06:15",
-      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 25 May 06:15."
+      "tagText": "31 May 06:15",
+      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 30 May 06:15."
     },
     {
       "title": "State backup",
@@ -259,22 +259,22 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "stateClass": "ok",
       "stateText": "nominal",
       "value": "14% used",
-      "body": "/ | 389 GiB free of 480 GiB",
+      "body": "/ | 387 GiB free of 480 GiB",
       "statusLine": "system root filesystem"
     },
     {
       "title": "External disk",
       "stateClass": "warn",
       "stateText": "watch",
-      "value": "14% used",
-      "body": "/srv/external/server3-arr | 389 GiB free of 480 GiB",
+      "value": "60% used",
+      "body": "/srv/external/server3-arr | 632 GiB free of 1833 GiB",
       "statusLine": "backup disk: 7% used"
     },
     {
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 8.61 / ram 5%",
+      "value": "load 9.93 / ram 5%",
       "body": "primary route nordlynx / 10.5.0.2",
       "statusLine": "host: server3"
     },
@@ -283,7 +283,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "stateClass": "busy",
       "stateText": "live",
       "value": "/data/downloads",
-      "body": "14% used | 389 GiB free of 480 GiB",
+      "body": "14% used | 387 GiB free of 480 GiB",
       "statusLine": "canonical media namespace is /data/downloads and /data/media/..."
     },
     {
@@ -292,7 +292,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "stateText": "queued",
       "value": "Observer summary, Routing drift check, State backup",
       "body": "Visible timers stay on the floor so continuity work is never hidden behind another tool.",
-      "statusLine": "next: 25 May 18:00"
+      "statusLine": "next: 30 May 19:15"
     }
   ],
   "runtimes": [
@@ -330,7 +330,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-architect-bridge.service",
-          "value": "17:56:30 Started telegram-architect-bridge.service - Telegram Architect Bridge."
+          "value": "19:09:43 Started telegram-architect-bridge.service - Telegram Architect Bridge."
         }
       ],
       "watchouts": [
@@ -413,7 +413,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-tank-bridge.service",
-          "value": "17:56:31 Started telegram-tank-bridge.service - Telegram Tank Bridge."
+          "value": "19:09:44 Started telegram-tank-bridge.service - Telegram Tank Bridge."
         }
       ],
       "watchouts": [
@@ -483,7 +483,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-diary-bridge.service",
-          "value": "17:56:30 Started telegram-diary-bridge.service - Telegram Diary Bridge."
+          "value": "19:09:43 Started telegram-diary-bridge.service - Telegram Diary Bridge."
         }
       ],
       "watchouts": [
@@ -553,11 +553,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "whatsapp-govorun-bridge.service",
-          "value": "17:56:31 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
+          "value": "19:09:44 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
         },
         {
           "label": "govorun-whatsapp-bridge.service",
-          "value": "17:56:31 Started govorun-whatsapp-bridge.service - Govorun WhatsApp Bridge."
+          "value": "19:09:44 Started govorun-whatsapp-bridge.service - Govorun WhatsApp Bridge."
         }
       ],
       "watchouts": [
@@ -628,11 +628,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "17:56:30 Started signal-oracle-bridge.service - Signal Oracle Transport Bridge."
+          "value": "19:09:42 Started signal-oracle-bridge.service - Signal Oracle Transport Bridge."
         },
         {
           "label": "oracle-signal-bridge.service",
-          "value": "17:56:30 Starting oracle-signal-bridge.service - Oracle Signal Bridge..."
+          "value": "19:09:43 Starting oracle-signal-bridge.service - Oracle Signal Bridge..."
         }
       ],
       "watchouts": [
@@ -703,11 +703,11 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-mavali-eth-bridge.service",
-          "value": "17:56:30 Started telegram-mavali-eth-bridge.service - Telegram Mavali ETH Bridge."
+          "value": "19:09:43 Started telegram-mavali-eth-bridge.service - Telegram Mavali ETH Bridge."
         },
         {
           "label": "mavali-eth-receipt-monitor.timer",
-          "value": "17:56:24 Started mavali-eth-receipt-monitor.timer - Poll for confirmed inbound ETH for mavali_eth."
+          "value": "19:09:35 Started mavali-eth-receipt-monitor.timer - Poll for confirmed inbound ETH for mavali_eth."
         }
       ],
       "watchouts": [
