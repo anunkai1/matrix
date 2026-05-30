@@ -126,6 +126,36 @@ __all__ = [
     "sync_all_canonical_sessions",
 ]
 
+
+def _runtime_state_counts(state: State) -> dict[str, int]:
+    if state.canonical_sessions_enabled:
+        with state.lock:
+            sessions = list(state.chat_sessions.values())
+        return {
+            "chat_thread_count": sum(1 for session in sessions if session.thread_id.strip()),
+            "worker_session_count": sum(
+                1
+                for session in sessions
+                if (
+                    session.worker_created_at is not None
+                    or session.worker_last_used_at is not None
+                    or session.worker_policy_fingerprint.strip()
+                )
+            ),
+            "in_flight_count": sum(
+                1 for session in sessions if session.in_flight_started_at is not None
+            ),
+            "canonical_session_count": len(sessions),
+        }
+
+    with state.lock:
+        return {
+            "chat_thread_count": len(state.chat_threads),
+            "worker_session_count": len(state.worker_sessions),
+            "in_flight_count": len(state.in_flight_requests),
+            "canonical_session_count": len(state.chat_sessions),
+        }
+
 def run_self_test() -> int:
     sample = "x" * (TELEGRAM_LIMIT + 50)
     chunks = to_telegram_chunks(sample)
@@ -397,14 +427,15 @@ def run_bridge(config: Config) -> int:
                     "drift_reasons": list(sandbox_guardrail.drift_reasons),
                 },
             )
+        runtime_counts = _runtime_state_counts(state)
         emit_event(
             "bridge.started",
             fields={
                 "offset": offset,
-                "chat_thread_count": len(bootstrap.loaded_threads),
-                "worker_session_count": len(bootstrap.loaded_worker_sessions),
-                "in_flight_count": len(bootstrap.loaded_in_flight),
-                "canonical_session_count": len(state.chat_sessions),
+                "chat_thread_count": runtime_counts["chat_thread_count"],
+                "worker_session_count": runtime_counts["worker_session_count"],
+                "in_flight_count": runtime_counts["in_flight_count"],
+                "canonical_session_count": runtime_counts["canonical_session_count"],
                 "canonical_state_backend": (
                     "sqlite"
                     if config.canonical_sessions_enabled and config.canonical_sqlite_enabled

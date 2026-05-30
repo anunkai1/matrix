@@ -3,7 +3,6 @@ from __future__ import annotations
 import html
 import ipaddress
 import re
-import socket
 import ssl
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -165,29 +164,33 @@ def _decode_duckduckgo_redirect(url: str) -> str:
     return url
 
 
+_LOCAL_HOST_SUFFIXES = (
+    ".home",
+    ".internal",
+    ".lan",
+    ".local",
+    ".localdomain",
+)
+
+
 def _is_safe_public_hostname(hostname: str) -> bool:
     normalized = (hostname or "").strip().lower()
     if not normalized or normalized in {"localhost", "localhost.localdomain"}:
         return False
     try:
-        infos = socket.getaddrinfo(normalized, None, proto=socket.IPPROTO_TCP)
-    except OSError:
-        return False
-    for info in infos:
-        try:
-            ip = ipaddress.ip_address(info[4][0])
-        except ValueError:
+        ip = ipaddress.ip_address(normalized)
+    except ValueError:
+        if normalized.endswith(_LOCAL_HOST_SUFFIXES):
             return False
-        if (
-            ip.is_private
-            or ip.is_loopback
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
-            return False
-    return True
+        return True
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
 
 
 def is_safe_public_http_url(url: str) -> bool:

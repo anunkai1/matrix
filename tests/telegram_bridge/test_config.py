@@ -533,6 +533,83 @@ class TestConfig(unittest.TestCase):
         attachment_store.close.assert_called_once_with()
         affective_runtime.close.assert_called_once_with()
 
+    def test_run_bridge_started_event_reports_canonical_runtime_counts(self):
+        attachment_store = mock.Mock()
+        affective_runtime = mock.Mock()
+        bootstrap = bridge.RuntimeBootstrap(
+            state=bridge.State(
+                canonical_sessions_enabled=True,
+                attachment_store=attachment_store,
+                affective_runtime=affective_runtime,
+                chat_sessions={
+                    "tg:1": bridge.CanonicalSession(
+                        thread_id="thread-1",
+                        worker_created_at=1.0,
+                        worker_last_used_at=2.0,
+                        worker_policy_fingerprint="fp",
+                        in_flight_started_at=3.0,
+                        in_flight_message_id=55,
+                    )
+                },
+            ),
+            state_paths={
+                "chat_threads": "/tmp/chat_threads.json",
+                "in_flight_requests": "/tmp/in_flight_requests.json",
+                "chat_sessions": "/tmp/chat_sessions.json",
+            },
+            loaded_threads={},
+            loaded_worker_sessions={},
+            loaded_in_flight={},
+            canonical_bootstrap_source="canonical_json",
+            affective_runtime=affective_runtime,
+            voice_alias_learning_store=None,
+        )
+        client = mock.Mock()
+        client.get_updates.side_effect = KeyboardInterrupt()
+        registry = mock.Mock()
+        registry.build_channel.return_value = client
+        registry.build_engine.return_value = mock.Mock()
+        config = make_config(
+            canonical_sessions_enabled=True,
+            canonical_sqlite_enabled=False,
+        )
+
+        with (
+            mock.patch.object(bridge, "build_runtime_bootstrap", return_value=bootstrap),
+            mock.patch.object(bridge, "build_default_plugin_registry", return_value=registry),
+            mock.patch.object(bridge, "persist_bootstrap_state"),
+            mock.patch.object(bridge, "pop_interrupted_requests", return_value=[]),
+            mock.patch.object(bridge, "should_discard_startup_backlog", return_value=False),
+            mock.patch.object(bridge, "compute_initial_update_offset", return_value=(0, "/tmp/update_offset.json")),
+            mock.patch.object(bridge, "persist_saved_update_offset"),
+            mock.patch.object(bridge, "expire_idle_worker_sessions"),
+            mock.patch.object(bridge, "flush_ready_media_group_updates", return_value=[]),
+            mock.patch.object(bridge, "flush_ready_text_batch_updates", return_value=[]),
+            mock.patch.object(bridge, "compute_poll_timeout_seconds", return_value=1),
+            mock.patch.object(bridge, "emit_event") as emit_event,
+        ):
+            with self.assertRaises(KeyboardInterrupt):
+                bridge.run_bridge(config)
+
+        emit_event.assert_any_call(
+            "bridge.started",
+            fields={
+                "offset": 0,
+                "chat_thread_count": 1,
+                "worker_session_count": 1,
+                "in_flight_count": 1,
+                "canonical_session_count": 1,
+                "canonical_state_backend": "json",
+                "canonical_bootstrap_source": "canonical_json",
+                "attachment_retention_seconds": config.attachment_retention_seconds,
+                "attachment_max_total_bytes": config.attachment_max_total_bytes,
+                "channel_plugin": config.channel_plugin,
+                "engine_plugin": config.engine_plugin,
+                "whatsapp_plugin_enabled": config.whatsapp_plugin_enabled,
+                "affective_runtime_enabled": True,
+            },
+        )
+
     def test_load_config_reads_allow_private_chats_unlisted_override(self):
         with mock.patch.dict(
             os.environ,
