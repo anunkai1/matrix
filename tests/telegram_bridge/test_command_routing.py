@@ -89,6 +89,48 @@ class TestCommandRouting(unittest.TestCase):
             (1, bridge_remember_commands.USAGE_MESSAGE, 88, None),
         )
 
+    def test_handle_remember_known_command_list_shows_numbered_entries(self):
+        ctx = self._ctx(raw_text="/remember list")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            remember_path = Path(tmpdir) / "remember.md"
+            remember_path.write_text("1. First item.\n2. Second item.\n", encoding="utf-8")
+            with mock.patch.object(
+                bridge_remember_commands,
+                "remember_file_path",
+                return_value=remember_path,
+            ):
+                handled = bridge_command_routing._handle_remember_known_command(ctx)
+
+        self.assertTrue(handled)
+        self.assertEqual(
+            ctx.client.messages[-1],
+            (
+                1,
+                "Current `remember.md` contents:\n\n```text\n1. First item.\n2. Second item.\n```",
+                88,
+                None,
+            ),
+        )
+
+    def test_handle_remember_known_command_list_reports_empty_file(self):
+        ctx = self._ctx(raw_text="/remember list")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            remember_path = Path(tmpdir) / "remember.md"
+            with mock.patch.object(
+                bridge_remember_commands,
+                "remember_file_path",
+                return_value=remember_path,
+            ):
+                handled = bridge_command_routing._handle_remember_known_command(ctx)
+
+        self.assertTrue(handled)
+        self.assertEqual(
+            ctx.client.messages[-1],
+            (1, "`remember.md` is empty.", 88, None),
+        )
+
     def test_handle_remember_known_command_forget_removes_numbered_item(self):
         ctx = self._ctx(raw_text="/remember forget 2")
 

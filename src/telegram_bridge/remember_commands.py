@@ -8,7 +8,7 @@ from telegram_bridge.handler_models import CallbackActionResult
 from telegram_bridge.state_models import PendingRememberProposal, State
 
 
-USAGE_MESSAGE = "Usage: /remember <text> | /remember forget <number>"
+USAGE_MESSAGE = "Usage: /remember <text> | /remember list | /remember forget <number>"
 SAVE_SUCCESS_TOAST = "Saved to remember.md."
 CANCEL_SUCCESS_TOAST = "Remember proposal dismissed."
 UNKNOWN_PROPOSAL_TOAST = "Remember proposal not found."
@@ -80,6 +80,11 @@ def _parse_forget_number(raw_text: str) -> Optional[int]:
     if number < 1:
         return -1
     return number
+
+
+def _is_list_command(raw_text: str) -> bool:
+    args = _parse_remember_args(raw_text)
+    return args.lower() == "list"
 
 
 def remember_callback_data(action: str, token: str) -> str:
@@ -203,6 +208,13 @@ def _invalid_forget_number_response_text() -> str:
     return "Usage: /remember forget <number>"
 
 
+def _list_response_text(entries: list[str]) -> str:
+    if not entries:
+        return "`remember.md` is empty."
+    body = "\n".join(f"{index}. {entry}" for index, entry in enumerate(entries, start=1))
+    return f"Current `remember.md` contents:\n\n```text\n{body}\n```"
+
+
 def _saved_response_text(number: int, proposal: str) -> str:
     return (
         f"Saved to `remember.md` as item {number}:\n\n"
@@ -256,6 +268,13 @@ def handle_remember_command(
         raw_text=raw_text,
     ):
         return True
+    if _is_list_command(raw_text):
+        return _reply(
+            client,
+            chat_id,
+            message_id,
+            _list_response_text(_load_remember_entries()),
+        )
     proposal = build_remember_proposal(raw_text)
     if not proposal:
         return _reply(client, chat_id, message_id, USAGE_MESSAGE)

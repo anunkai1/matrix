@@ -136,6 +136,7 @@ def build_help_text(config) -> str:
         "/subgoal <text> - add extra criteria to the active goal\n"
         "/subgoal remove <n> | clear - manage active goal criteria\n"
         "/remember <text> - propose exact text to save in remember.md\n"
+        "/remember list - show numbered contents of remember.md\n"
         "/remember forget <number> - remove a numbered item from remember.md\n"
         "/truth_status - show dream-loop truth status for this chat\n"
         "/reset - clear saved context for this chat and handle stale warning\n"

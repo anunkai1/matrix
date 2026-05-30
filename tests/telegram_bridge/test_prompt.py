@@ -282,6 +282,61 @@ class TestPrompt(unittest.TestCase):
         self.assertEqual(session._thread_id, "thread-fresh")
         self.assertFalse(session._force_new_thread_once)
 
+    def test_codex_app_server_close_if_idle_stops_idle_process(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(),
+        )
+        session.process = mock.Mock()
+        session.process.poll.return_value = None
+        with session._state_lock:
+            session._last_used_at = 10.0
+
+        with mock.patch.object(session, "_stop_process") as stop_process:
+            expired = session.close_if_idle(timeout_seconds=60, now_monotonic=80.0)
+
+        self.assertTrue(expired)
+        stop_process.assert_called_once()
+
+    def test_codex_app_server_close_if_idle_keeps_active_turn_alive(self):
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=make_config(),
+        )
+        session.process = mock.Mock()
+        session.process.poll.return_value = None
+        session._pending_turn = bridge_codex_app_server._PendingTurn()
+        with session._state_lock:
+            session._last_used_at = 10.0
+
+        with mock.patch.object(session, "_stop_process") as stop_process:
+            expired = session.close_if_idle(timeout_seconds=60, now_monotonic=80.0)
+
+        self.assertFalse(expired)
+        stop_process.assert_not_called()
+
+    def test_expire_idle_codex_app_server_sessions_reaps_registry_entry(self):
+        config = make_config(codex_app_server_enabled=True, codex_app_server_idle_timeout_seconds=60)
+        session = bridge_codex_app_server.CodexAppServerSession(
+            scope_key="tg:1",
+            config=config,
+        )
+        session.process = mock.Mock()
+        session.process.poll.return_value = None
+        with session._state_lock:
+            session._last_used_at = 10.0
+
+        with bridge_codex_app_server._SESSION_REGISTRY_LOCK:
+            bridge_codex_app_server._SESSION_REGISTRY.clear()
+            bridge_codex_app_server._SESSION_REGISTRY["tg:1"] = session
+        try:
+            expired = bridge_codex_app_server.expire_idle_codex_app_server_sessions(config)
+        finally:
+            with bridge_codex_app_server._SESSION_REGISTRY_LOCK:
+                bridge_codex_app_server._SESSION_REGISTRY.clear()
+
+        self.assertEqual(expired, 1)
+
     def test_codex_engine_adapter_does_not_fall_back_to_legacy_executor_when_live_path_fails(self):
         engine = bridge_engine_adapter.CodexEngineAdapter()
         config = make_config(codex_app_server_enabled=True)

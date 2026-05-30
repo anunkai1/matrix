@@ -239,6 +239,7 @@ def make_config(**overrides):
         "codex_sandbox_mode": "off",
         "telegram_context_injection_policy": "",
         "codex_app_server_enabled": False,
+        "codex_app_server_idle_timeout_seconds": 15 * 60,
         "codex_model": "gpt-5.4-mini",
         "codex_reasoning_effort": "medium",
         "gemma_provider": "ollama_ssh",

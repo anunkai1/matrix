@@ -640,6 +640,31 @@ class TestConfig(unittest.TestCase):
             config = bridge.load_config()
         self.assertTrue(config.codex_app_server_enabled)
 
+    def test_load_config_defaults_codex_app_server_idle_timeout_to_fifteen_minutes(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertEqual(config.codex_app_server_idle_timeout_seconds, 15 * 60)
+
+    def test_load_config_reads_codex_app_server_idle_timeout_override(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TELEGRAM_BOT_TOKEN": "token",
+                "TELEGRAM_ALLOWED_CHAT_IDS": "1",
+                "TELEGRAM_CODEX_APP_SERVER_IDLE_TIMEOUT_SECONDS": "120",
+            },
+            clear=True,
+        ):
+            config = bridge.load_config()
+        self.assertEqual(config.codex_app_server_idle_timeout_seconds, 120)
+
     def test_load_config_ignores_codex_sandbox_mode_override(self):
         with mock.patch.dict(
             os.environ,

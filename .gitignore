@@ -44,3 +44,6 @@ infra/system/sudoers/mavali-eth*
 infra/env/telegram-mavali-eth*
 logs/changes/*mavali*
 tmp/
+
+# Runtime state databases (empty bootstrap artifacts)
+.state/*.db

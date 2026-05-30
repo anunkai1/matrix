@@ -49,6 +49,55 @@ def _enabled(config) -> bool:
     return bool(getattr(engines, "codex_app_server_enabled", False))
 
 
+def _idle_timeout_seconds_value(config) -> int:
+    engines = _engines_config(config)
+    raw = getattr(engines, "codex_app_server_idle_timeout_seconds", 15 * 60)
+    try:
+        return max(0, int(raw or 0))
+    except (TypeError, ValueError):
+        return 15 * 60
+
+
+def expire_idle_codex_app_server_sessions(config) -> int:
+    timeout_seconds = _idle_timeout_seconds_value(config)
+    if timeout_seconds <= 0:
+        return 0
+
+    now = time.monotonic()
+    expired_scope_keys: List[str] = []
+    with _SESSION_REGISTRY_LOCK:
+        registry_snapshot = list(_SESSION_REGISTRY.items())
+    for scope_key, session in registry_snapshot:
+        try:
+            expired = session.close_if_idle(timeout_seconds=timeout_seconds, now_monotonic=now)
+        except Exception:
+            logging.exception("Failed to expire idle Codex app-server session scope=%s", scope_key)
+            continue
+        if expired:
+            expired_scope_keys.append(scope_key)
+
+    if not expired_scope_keys:
+        return 0
+
+    expired_count = 0
+    with _SESSION_REGISTRY_LOCK:
+        for scope_key in expired_scope_keys:
+            session = _SESSION_REGISTRY.get(scope_key)
+            if session is None or session.has_active_turn():
+                continue
+            if session.process is not None and session.process.poll() is None:
+                continue
+            del _SESSION_REGISTRY[scope_key]
+            expired_count += 1
+    if expired_count:
+        logging.info(
+            "Expired %s idle Codex app-server session(s) after %ss timeout.",
+            expired_count,
+            timeout_seconds,
+        )
+    return expired_count
+
+
 def try_steer_live_codex_turn(
     config,
     scope_key: Optional[str],
@@ -197,6 +246,7 @@ class CodexAppServerSession:
         self._thread_id: Optional[str] = None
         self._pending_turn: Optional[_PendingTurn] = None
         self._last_activity_at: float = 0.0
+        self._last_used_at: float = time.monotonic()
         self._sandbox_mode = _sandbox_mode_value(config)
         self._stderr_buffer: List[str] = []
         self._fail_open_checked = False
@@ -224,6 +274,7 @@ class CodexAppServerSession:
         progress_callback: Optional[Callable[[ExecutorProgressEvent], None]],
         cancel_event: Optional[threading.Event],
     ) -> subprocess.CompletedProcess[str]:
+        self._mark_used()
         self._ensure_process()
         self._ensure_thread(previous_thread_id)
         pending_turn = _PendingTurn(
@@ -289,6 +340,7 @@ class CodexAppServerSession:
         normalized_prompt = (prompt or "").strip()
         if not normalized_prompt:
             return False
+        self._mark_used()
         self._ensure_process()
         deadline = time.monotonic() + 0.75
         pending_turn: Optional[_PendingTurn]
@@ -376,6 +428,32 @@ class CodexAppServerSession:
         with self._state_lock:
             pending_turn = self._pending_turn
             return pending_turn is not None and not pending_turn.done.is_set()
+
+    def close_if_idle(self, *, timeout_seconds: int, now_monotonic: Optional[float] = None) -> bool:
+        if timeout_seconds <= 0:
+            return False
+        now = time.monotonic() if now_monotonic is None else now_monotonic
+        with self._state_lock:
+            pending_turn = self._pending_turn
+            last_used_at = self._last_used_at
+        if pending_turn is not None and not pending_turn.done.is_set():
+            return False
+        process = self.process
+        if process is None:
+            return True
+        if process.poll() is not None:
+            self._stop_process()
+            return True
+        if now - last_used_at < timeout_seconds:
+            return False
+        logging.info(
+            "Stopping idle Codex app-server scope=%s idle_for=%.1fs timeout=%ss",
+            self.scope_key,
+            max(0.0, now - last_used_at),
+            timeout_seconds,
+        )
+        self._stop_process()
+        return True
 
     def _interrupt_pending_turn(self, pending_turn: _PendingTurn) -> None:
         with self._state_lock:
@@ -798,6 +876,11 @@ class CodexAppServerSession:
     def _mark_activity(self) -> None:
         with self._state_lock:
             self._last_activity_at = time.monotonic()
+            self._last_used_at = self._last_activity_at
+
+    def _mark_used(self) -> None:
+        with self._state_lock:
+            self._last_used_at = time.monotonic()
 
     def _fail_inflight_requests(self, reason: str) -> None:
         message = f"Codex app-server became unavailable for scope={self.scope_key}: {reason}"
