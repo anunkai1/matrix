@@ -19,6 +19,20 @@ HISTORY_JSONL = "history.jsonl"
 STALE_CONTEXT_STATE = "dream_loop_stale_context.json"
 
 
+def _coerce_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", ""}:
+            return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
+
+
 def build_dream_loop_state_dir() -> Path:
     return Path(os.getenv("DREAM_LOOP_STATE_DIR", str(DEFAULT_DREAM_LOOP_STATE_DIR)))
 
@@ -37,7 +51,7 @@ def _normalize_status_entry(scope_key: ScopeKey, raw: object) -> Dict[str, objec
         "scope_key": scope_key,
         "warning_fingerprint": str(parsed.get("warning_fingerprint") or "").strip(),
         "warning_generated_at": str(parsed.get("warning_generated_at") or "").strip(),
-        "warning_outstanding": bool(parsed.get("warning_outstanding", False)),
+        "warning_outstanding": _coerce_bool(parsed.get("warning_outstanding", False)),
         "notified_fingerprint": str(parsed.get("notified_fingerprint") or "").strip(),
         "notified_at": str(parsed.get("notified_at") or "").strip(),
         "handled_fingerprint": str(parsed.get("handled_fingerprint") or "").strip(),
@@ -54,7 +68,7 @@ def load_stale_context_statuses(path: str) -> Dict[ScopeKey, Dict[str, object]]:
     for key, value in raw.items():
         try:
             scope_key = normalize_scope_key(key)
-        except Exception:
+        except ValueError:
             continue
         parsed[scope_key] = _normalize_status_entry(scope_key, value)
     return parsed
