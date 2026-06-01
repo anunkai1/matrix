@@ -6,32 +6,22 @@
   <title>Foodle</title>
   <style>
     :root {
-      --bg: #f4efe4;
-      --paper: rgba(255, 251, 244, 0.92);
-      --panel: rgba(255, 246, 232, 0.96);
-      --ink: #1f1b16;
-      --muted: #716657;
-      --line: rgba(63, 50, 33, 0.13);
-      --sugar: #3aa76d;
-      --carbs: #8b5cf6;
-      --dairy: #4d8dc7;
-      --fasting: #52c7b8;
-      --coffee: #8b5a2b;
-      --overeating: #f59e0b;
-      --meatfree: #14b8a6;
-      --exercise: #f97316;
-      --ok: #2f8f5b;
-      --bad: #c64545;
-      --shadow: 0 20px 60px rgba(70, 44, 11, 0.12);
-      --radius: 24px;
-      --cell-size: 18px;
-      --cell-gap: 5px;
-      --cell-height: calc(var(--cell-size) + 14px);
+      --bg: #0d1218;
+      --paper: rgba(18, 25, 33, 0.94);
+      --panel: rgba(24, 33, 44, 0.98);
+      --line: rgba(172, 188, 206, 0.14);
+      --ink: #eff5fb;
+      --muted: #9eaabb;
+      --accent: #14b8a6;
+      --accent-soft: rgba(20, 184, 166, 0.16);
+      --good: #62d49c;
+      --warn: #ef7d57;
+      --bad: #ef4444;
+      --shadow: 0 28px 80px rgba(0, 0, 0, 0.35);
+      --radius: 28px;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -39,1646 +29,1109 @@
       font-family: "Avenir Next", "Segoe UI", sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at top left, rgba(234, 109, 90, 0.22), transparent 28%),
-        radial-gradient(circle at top right, rgba(77, 141, 199, 0.18), transparent 24%),
-        linear-gradient(180deg, #f8f2e8 0%, var(--bg) 100%);
+        radial-gradient(circle at top left, rgba(239, 125, 87, 0.16), transparent 24%),
+        radial-gradient(circle at top right, rgba(20, 184, 166, 0.16), transparent 22%),
+        linear-gradient(180deg, #101720 0%, var(--bg) 100%);
     }
 
-    body[data-theme="dark"] {
-      --bg: #10151b;
-      --paper: rgba(21, 28, 36, 0.92);
-      --panel: rgba(27, 36, 46, 0.96);
-      --ink: #edf2f7;
-      --muted: #99a6b5;
-      --line: rgba(173, 190, 210, 0.14);
-      --shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
-      background:
-        radial-gradient(circle at top left, rgba(234, 109, 90, 0.16), transparent 28%),
-        radial-gradient(circle at top right, rgba(77, 141, 199, 0.18), transparent 24%),
-        linear-gradient(180deg, #111720 0%, #0b1016 100%);
-    }
-
-    body[data-theme="dark"] .heatmap-shell {
-      background: rgba(8, 13, 19, 0.82);
-      border-color: rgba(173, 190, 210, 0.18);
-    }
-
-    body[data-theme="dark"] .weekday-rail,
-    body[data-theme="dark"] .month-row,
-    body[data-theme="dark"] .legend,
-    body[data-theme="dark"] .tracker-foot {
-      color: #d4dee9;
-    }
-
-    body[data-theme="dark"] .tracker-copy,
-    body[data-theme="dark"] .section-copy,
-    body[data-theme="dark"] .calendar-intro {
-      color: #d4dee9;
-    }
-
-    body[data-theme="dark"] .month-tag {
-      color: #eef6ff;
-    }
-
-    body[data-theme="dark"] .month-tag.active {
-      background: rgba(224, 235, 247, 0.12);
-    }
-
-    body[data-theme="dark"] .combined-cell {
-      border-color: rgba(224, 235, 247, 0.12);
-      background: rgba(169, 181, 195, 0.22);
-    }
-
-    body[data-theme="dark"] .combined-bar.empty {
-      background: rgba(130, 152, 177, 0.28);
-    }
-
-    body[data-theme="dark"] .combined-bar.miss {
-      background: #d85b5b;
-    }
-
-    body[data-theme="dark"] .calendar-focus {
-      background: linear-gradient(135deg, rgba(58, 167, 109, 0.18), rgba(77, 141, 199, 0.18));
-      border-color: rgba(173, 190, 210, 0.18);
-    }
-
-    body[data-theme="dark"] .focus-weekday,
-    body[data-theme="dark"] .focus-date {
-      background: rgba(8, 13, 19, 0.46);
-      border-color: rgba(173, 190, 210, 0.16);
-      color: #eef6ff;
+    button,
+    input {
+      font: inherit;
     }
 
     .wrap {
-      width: min(1080px, calc(100% - 32px));
+      width: min(1180px, calc(100% - 28px));
       margin: 0 auto;
-      padding: 32px 0 48px;
+      padding: 10px 0 18px;
+    }
+
+    .hero,
+    .panel {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
     }
 
     .hero {
-      position: relative;
       overflow: hidden;
-      background: var(--paper);
-      border: 1px solid var(--line);
-      border-radius: 32px;
-      box-shadow: var(--shadow);
-      padding: 32px;
+      padding: 20px;
+      position: relative;
     }
 
     .hero::after {
       content: "";
       position: absolute;
-      inset: auto -80px -100px auto;
-      width: 260px;
-      height: 260px;
-      background: radial-gradient(circle, rgba(209, 154, 41, 0.18), transparent 70%);
+      width: 220px;
+      height: 220px;
+      right: -72px;
+      bottom: -96px;
+      background: radial-gradient(circle, rgba(20, 184, 166, 0.22), transparent 72%);
       pointer-events: none;
     }
 
-    .hero-bar {
+    .hero-top,
+    .toolbar {
       display: flex;
+      align-items: center;
       justify-content: space-between;
       gap: 16px;
-      align-items: center;
+      flex-wrap: wrap;
     }
 
     .eyebrow {
       display: inline-flex;
       padding: 8px 12px;
       border-radius: 999px;
-      background: rgba(31, 27, 22, 0.05);
-      color: var(--muted);
-      font-size: 0.8rem;
       letter-spacing: 0.08em;
       text-transform: uppercase;
+      font-size: 0.76rem;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--muted);
     }
 
-    .theme-toggle {
-      padding: 10px 14px;
-      background: rgba(31, 27, 22, 0.07);
-      color: var(--ink);
-      border: 1px solid var(--line);
-      font-weight: 700;
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
     h1 {
-      margin: 16px 0 12px;
-      font-size: clamp(2.4rem, 6vw, 4.7rem);
-      line-height: 0.95;
+      margin: 10px 0 6px;
+      font-size: clamp(2.1rem, 5vw, 3.8rem);
+      line-height: 0.92;
       letter-spacing: -0.05em;
     }
 
     .lead {
-      max-width: 640px;
+      max-width: 760px;
       margin: 0;
       color: var(--muted);
-      font-size: 1.05rem;
-      line-height: 1.6;
+      line-height: 1.45;
+      font-size: 0.94rem;
     }
 
-    .hero-grid {
+    .hero-stats {
       display: grid;
-      gap: 18px;
-      margin-top: 24px;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
 
-    .mini-stat {
-      padding: 18px;
-      border-radius: 22px;
+    .stat {
       background: var(--panel);
+      border-radius: 18px;
       border: 1px solid var(--line);
+      padding: 14px;
     }
 
-    .mini-stat-pair {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-      align-items: end;
-    }
-
-    .mini-metric {
-      min-width: 0;
-    }
-
-    .mini-metric + .mini-metric {
-      border-left: 1px solid var(--line);
-      padding-left: 14px;
-    }
-
-    .mini-label {
+    .stat-label {
       display: block;
       color: var(--muted);
-      font-size: 0.85rem;
-      margin-bottom: 8px;
+      font-size: 0.76rem;
+      margin-bottom: 6px;
     }
 
-    .mini-value {
-      font-size: clamp(1.9rem, 4vw, 2.8rem);
-      font-weight: 700;
-      line-height: 1;
+    .stat-current {
+      font-size: clamp(1.6rem, 4vw, 2.6rem);
+      font-weight: 800;
+      line-height: 0.95;
+      margin: 4px 0 6px;
+    }
+
+    .stat-note {
+      display: block;
+      color: var(--muted);
+      font-size: 0.74rem;
+      line-height: 1.35;
     }
 
     .layout {
       display: grid;
-      grid-template-columns: 1.3fr 0.9fr;
-      gap: 22px;
-      margin-top: 22px;
+      grid-template-columns: 1.12fr 0.88fr;
+      gap: 14px;
+      margin-top: 14px;
+      align-items: start;
     }
 
     .panel {
-      background: var(--paper);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 24px;
+      padding: 16px;
     }
 
     .section-title {
-      margin: 0 0 8px;
-      font-size: 1.35rem;
+      margin: 0 0 6px;
+      font-size: 1.12rem;
     }
 
     .section-copy {
-      margin: 0 0 18px;
+      margin: 0 0 12px;
       color: var(--muted);
-      line-height: 1.5;
+      line-height: 1.45;
+      font-size: 0.88rem;
     }
 
-    .tracker-list {
+    .hidden {
+      display: none !important;
+    }
+
+    .login-card {
+      width: min(560px, 100%);
+      margin: 12px auto 0;
+      padding: 18px;
+    }
+
+    form {
       display: grid;
       gap: 12px;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .tracker {
-      display: grid;
-      grid-template-rows: auto auto auto;
-      align-content: start;
-      padding: 14px;
-      border-radius: 22px;
+    input[type="password"],
+    input[type="date"] {
+      width: 100%;
       border: 1px solid var(--line);
-      background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(255,255,255,0.18));
+      background: rgba(9, 14, 20, 0.78);
+      border-radius: 14px;
+      padding: 12px 14px;
+      color: var(--ink);
     }
 
-    .tracker-head {
+    .button-row,
+    .month-nav {
       display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: flex-start;
-      min-height: 0;
-      margin-bottom: 14px;
-    }
-
-    .tracker-title {
-      margin: 0;
-      font-size: 1.15rem;
-    }
-
-    .tracker-copy {
-      margin: 6px 0 0;
-      color: var(--muted);
-      font-size: 0.82rem;
-      line-height: 1.35;
-    }
-
-    .badge {
-      min-width: 92px;
-      padding: 10px 12px;
-      border-radius: 18px;
-      text-align: center;
-      color: #fff;
-      font-weight: 700;
-      font-size: 0.95rem;
-    }
-
-    .badge small {
-      display: block;
-      font-size: 0.72rem;
-      opacity: 0.85;
-      margin-top: 2px;
-      font-weight: 600;
-    }
-
-    .sugar { background: var(--sugar); }
-    .carbs { background: var(--carbs); }
-    .dairy { background: var(--dairy); }
-    .fasting { background: var(--fasting); color: #10211d; }
-    .coffee { background: var(--coffee); color: #fff8f0; }
-    .overeating { background: var(--overeating); color: #fff4f4; }
-    .meatfree { background: var(--meatfree); color: #fff4f4; }
-    .exercise { background: var(--exercise); color: #fff4f4; }
-
-    .actions {
-      display: flex;
+      gap: 8px;
       flex-wrap: wrap;
-      gap: 10px;
+      align-items: center;
     }
 
     button {
-      appearance: none;
       border: 0;
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-weight: 700;
       cursor: pointer;
-      border-radius: 16px;
-      font: inherit;
-      transition: transform 140ms ease, opacity 140ms ease, box-shadow 140ms ease;
+      transition: transform 160ms ease, opacity 160ms ease, box-shadow 160ms ease;
     }
 
     button:hover {
       transform: translateY(-1px);
     }
 
-    button:active {
-      transform: translateY(0);
+    button:disabled {
+      opacity: 0.55;
+      cursor: wait;
+      transform: none;
     }
 
-    .decision {
-      flex: 1 1 auto;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 44px;
-      padding: 10px 12px;
+    .button-primary {
+      background: var(--ink);
       color: #fff;
-      font-weight: 700;
-      text-align: center;
-      line-height: 1.15;
-      white-space: normal;
-      box-shadow: inset 0 -3px 0 rgba(0,0,0,0.08);
-      font-size: 0.88rem;
+      box-shadow: 0 16px 34px rgba(31, 26, 20, 0.18);
     }
 
-    .decision.good { background: var(--ok); }
-    .decision.bad { background: var(--bad); }
-    .decision.clear {
-      background: rgba(31, 27, 22, 0.08);
+    .button-secondary {
+      background: rgba(255, 255, 255, 0.05);
       color: var(--ink);
-      box-shadow: none;
-      font-weight: 600;
+      border: 1px solid var(--line);
     }
 
-    .tracker-foot {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      margin-top: 12px;
+    .button-ghost {
+      background: rgba(255, 255, 255, 0.04);
       color: var(--muted);
-      font-size: 0.9rem;
+      border: 1px solid var(--line);
     }
 
-    .heatmap-shell {
-      margin-top: 18px;
-      padding: 18px;
-      border-radius: 24px;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.34));
-      border: 1px solid rgba(63, 50, 33, 0.16);
-      overflow-x: auto;
-    }
-
-    .calendar-intro {
-      margin: 0 0 14px;
+    .status {
+      min-height: 1rem;
       color: var(--muted);
-      font-size: 0.92rem;
-      line-height: 1.5;
+      font-size: 0.85rem;
     }
 
-    .calendar-focus {
-      display: grid;
-      gap: 10px;
-      margin-bottom: 16px;
-      padding: 16px 18px;
-      border-radius: 20px;
-      background: linear-gradient(135deg, rgba(58, 167, 109, 0.12), rgba(77, 141, 199, 0.12));
-      border: 1px solid rgba(58, 167, 109, 0.16);
+    .status.error {
+      color: #ff8f8f;
     }
 
-    .focus-kicker {
-      color: var(--muted);
-      font-size: 0.76rem;
+    .status.success {
+      color: var(--good);
+    }
+
+    .focus-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 9px 12px;
+      background: linear-gradient(135deg, rgba(20, 184, 166, 0.16), rgba(20, 184, 166, 0.08));
+      color: #eaf7ff;
       font-weight: 700;
-      letter-spacing: 0.1em;
+      font-size: 0.84rem;
+    }
+
+    .calendar {
+      display: grid;
+      gap: 3px;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      margin-top: 6px;
+    }
+
+    .weekday,
+    .day-cell {
+      text-align: center;
+    }
+
+    .weekday {
+      color: var(--muted);
+      font-size: 0.58rem;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
     }
 
-    .focus-main {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-    }
-
-    .focus-weekday,
-    .focus-date {
-      display: inline-flex;
-      align-items: center;
-      min-height: 42px;
-      padding: 9px 15px;
-      border-radius: 999px;
-      border: 1px solid rgba(31, 27, 22, 0.08);
-      background: rgba(255, 255, 255, 0.72);
-      font-weight: 800;
-      line-height: 1;
-    }
-
-    .focus-weekday {
-      font-size: 1rem;
-    }
-
-    .focus-date {
-      font-size: 0.95rem;
-      color: var(--muted);
-    }
-
-    .focus-note {
-      color: var(--muted);
-      font-size: 0.9rem;
-      line-height: 1.4;
-    }
-
-    .heatmap-frame {
+    .day-cell {
       display: grid;
-      grid-template-columns: 46px minmax(0, 1fr);
-      gap: 12px;
-      min-width: 0;
-      align-items: start;
-    }
-
-    .weekday-rail {
-      display: grid;
-      grid-template-rows: 32px repeat(7, var(--cell-height)) auto;
-      align-items: center;
-      justify-items: end;
-      gap: var(--cell-gap);
-      color: var(--muted);
-      font-size: 0.8rem;
-      font-weight: 700;
-    }
-
-    .weekday-rail span {
-      line-height: 1;
-      padding-right: 2px;
-    }
-
-    .weekday-rail .weekday-spacer {
-      visibility: hidden;
-    }
-
-    .weekday-rail .weekday-tag {
-      opacity: 0.72;
-    }
-
-    .weekday-rail .weekday-tag.active {
+      gap: 2px;
+      justify-items: center;
+      align-content: start;
+      min-height: 50px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(11, 17, 24, 0.78);
       color: var(--ink);
-      opacity: 1;
-    }
-
-    .calendar-side {
-      display: grid;
-      gap: 12px;
-      min-width: 0;
-    }
-
-    .month-row {
-      display: grid;
-      grid-auto-flow: column;
-      grid-template-columns: repeat(26, var(--cell-size));
-      gap: var(--cell-gap);
-      min-height: 24px;
-      color: var(--muted);
-      font-size: 0.78rem;
-      padding: 0 6px;
-    }
-
-    .month-tag {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 26px;
-      padding: 0 8px;
-      border-radius: 999px;
-      white-space: nowrap;
-      line-height: 1;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-    }
-
-    .month-tag.active {
-      color: var(--ink);
-      background: rgba(31, 27, 22, 0.08);
-    }
-
-    .combined-grid {
-      display: grid;
-      grid-template-columns: repeat(26, var(--cell-size));
-      grid-template-rows: repeat(7, var(--cell-height));
-      gap: var(--cell-gap);
-      padding: 10px 6px;
-      border-radius: 18px;
-      background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.12)),
-        rgba(31, 27, 22, 0.03);
-      border: 1px solid rgba(63, 50, 33, 0.12);
-      width: max-content;
-    }
-
-    .combined-cell {
-      appearance: none;
-      width: var(--cell-size);
-      height: var(--cell-height);
-      border-radius: 6px;
-      border: 1px solid rgba(31, 27, 22, 0.14);
-      background: rgba(173, 170, 166, 0.62);
-      padding: 3px;
-      position: relative;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      padding: 4px 3px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
       cursor: pointer;
     }
 
-    .combined-cell.selected {
-      outline: 2px solid rgba(255, 255, 255, 0.92);
-      outline-offset: 2px;
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.5),
-        0 0 0 3px rgba(240, 187, 93, 0.34);
+    .day-cell[data-level="0"] { background: rgba(11, 17, 24, 0.74); }
+    .day-cell[data-level="1"] { background: linear-gradient(180deg, rgba(18, 30, 41, 0.92), rgba(11, 17, 24, 0.78)); }
+    .day-cell[data-level="2"] { background: linear-gradient(180deg, rgba(21, 39, 33, 0.88), rgba(12, 19, 26, 0.78)); }
+
+    .day-cell.selected {
+      border-color: rgba(20, 184, 166, 0.52);
+      box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.12);
     }
 
-    body[data-theme="dark"] .combined-cell.selected {
-      outline-color: #f2c66d;
+    .day-number {
+      font-size: 0.92rem;
+      font-weight: 700;
+      line-height: 1;
     }
 
-    .combined-cell:focus-visible {
-      outline: 2px solid rgba(58, 167, 109, 0.95);
-      outline-offset: 2px;
+    .day-codes {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 3px;
+      margin-top: 2px;
+      min-height: 24px;
+      align-content: flex-start;
     }
 
-    .combined-stack {
-      display: grid;
-      grid-template-rows: repeat(5, minmax(0, 1fr));
-      gap: 2px;
-      height: 100%;
-    }
-
-    .combined-bar {
-      display: block;
-      min-height: 0;
+    .code-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 26px;
+      padding: 3px 5px;
       border-radius: 999px;
-      background: rgba(31, 27, 22, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.58rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: #f8fcff;
+      background: rgba(131, 149, 171, 0.22);
+      text-transform: uppercase;
     }
 
-    .combined-bar.empty { background: rgba(31, 27, 22, 0.1); }
-    .combined-bar.miss { background: rgba(198, 69, 69, 0.72); }
-    .combined-bar.good.track-sugar { background: var(--sugar); }
-    .combined-bar.good.track-carbs { background: var(--carbs); }
-    .combined-bar.good.track-dairy { background: var(--dairy); }
-    .combined-bar.good.track-overeating { background: var(--overeating); }
-    .combined-bar.good.track-meatfree { background: var(--meatfree); }
-    .combined-bar.good.track-exercise { background: var(--exercise); }
-
-    .combined-marker {
-      position: absolute;
-      top: -3px;
-      right: -3px;
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(8, 13, 19, 0.55);
-      background: transparent;
-      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
+    .code-chip.done {
+      background: var(--chip, rgba(20, 184, 166, 0.8));
+      color: #0d1620;
+      border-color: transparent;
     }
 
-    .combined-marker.good.track-fasting { background: var(--fasting); }
-    .combined-marker.miss.track-fasting { background: var(--bad); }
-    .combined-marker.good.track-coffee { background: var(--coffee); }
-    .combined-marker.miss.track-coffee { background: var(--bad); }
-    .combined-marker.good.track-overeating { background: var(--overeating); }
-    .combined-marker.miss.track-overeating { background: #8d2929; }
-    .combined-marker.good.track-exercise { background: var(--exercise); }
-    .combined-marker.miss.track-exercise { background: var(--bad); }
-    .combined-marker.track-exercise {
-      bottom: -3px;
-      top: auto;
-      right: -3px;
+    .code-chip.miss {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f8fcff;
+      border-color: rgba(255, 255, 255, 0.08);
     }
-    .combined-marker.track-coffee {
-      left: -3px;
-      right: auto;
-    }
+
     .legend {
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 8px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .legend-item {
+      display: inline-flex;
       align-items: center;
+      gap: 6px;
+      opacity: 0.72;
+    }
+
+    .legend-item.primary {
+      opacity: 1;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .legend-chip {
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      display: inline-block;
+      vertical-align: middle;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .member-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .single-board {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(13, 20, 27, 0.88), rgba(17, 25, 34, 0.96));
+      border-radius: 18px;
+      padding: 14px;
+    }
+
+    .single-board-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .single-board-copy {
+      margin: 4px 0 0;
       color: var(--muted);
       font-size: 0.82rem;
     }
 
-    .legend-group {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .legend-swatch {
-      width: 14px;
-      height: 14px;
-      border-radius: 4px;
-      border: 1px solid rgba(31, 27, 22, 0.05);
-    }
-
-    .legend-stack {
-      width: 16px;
-      height: 26px;
-      border-radius: 4px;
-      padding: 2px;
-      display: grid;
-      grid-template-rows: repeat(5, minmax(0, 1fr));
-      gap: 2px;
-      background: rgba(255, 255, 255, 0.18);
-      border: 1px solid rgba(31, 27, 22, 0.05);
-    }
-
-    .today-panel {
-      display: grid;
-      gap: 16px;
-    }
-
-    .date-box {
-      padding: 18px;
-      border-radius: 20px;
-      background: var(--panel);
+    .member-card {
       border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 18px;
+      padding: 14px;
     }
 
-    .date-label {
+    .member-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .member-name {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .member-progress {
       color: var(--muted);
-      font-size: 0.85rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
-    .date-value {
-      margin-top: 8px;
-      font-size: 1.35rem;
+      font-size: 0.84rem;
       font-weight: 700;
     }
 
-    .share-card {
-      padding: 18px;
-      border-radius: 20px;
-      background: linear-gradient(180deg, rgba(31, 27, 22, 0.96), rgba(58, 44, 31, 0.92));
-      color: #fff7ed;
+    .tracker-list {
+      display: grid;
+      gap: 8px;
     }
 
-    .share-card p {
-      margin: 8px 0 14px;
-      color: rgba(255, 247, 237, 0.78);
-      line-height: 1.5;
-    }
-
-    .share-button {
+    .tracker-button {
       width: 100%;
-      padding: 14px 16px;
-      background: linear-gradient(135deg, #f0bb5d, #ea6d5a);
-      color: #24170c;
-      font-weight: 800;
+      padding: 11px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--ink);
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: center;
+      text-align: left;
     }
 
-    .share-preview {
-      white-space: pre-wrap;
-      font-size: 0.95rem;
-      line-height: 1.55;
-      padding: 16px;
-      border-radius: 18px;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid rgba(255,255,255,0.08);
+    .tracker-button.done {
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 14px 28px rgba(27, 156, 115, 0.2);
     }
 
-    .tiny {
-      color: var(--muted);
-      font-size: 0.88rem;
-      line-height: 1.5;
+    .tracker-button.miss {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: var(--line);
     }
 
-    .status {
-      min-height: 1.3em;
-      color: var(--muted);
+    .tracker-button.primary {
+      border-color: rgba(20, 184, 166, 0.28);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .tracker-button.primary.miss {
+      background: linear-gradient(180deg, rgba(20, 184, 166, 0.12), rgba(255, 255, 255, 0.03));
+    }
+
+    .tracker-code {
+      min-width: 42px;
+      padding: 6px 8px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 900;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.08);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .tracker-button.done .tracker-code {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+
+    .tracker-button.miss .tracker-code {
+      color: #f8fcff;
+    }
+
+    .tracker-button.primary .tracker-code {
+      background: rgba(20, 184, 166, 0.18);
+      border-color: rgba(20, 184, 166, 0.22);
+    }
+
+    .tracker-title {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .tracker-label {
       font-size: 0.92rem;
+      font-weight: 700;
     }
 
-    @media (max-width: 980px) {
-      .hero-grid,
+    .tracker-meta {
+      color: var(--muted);
+      font-size: 0.76rem;
+    }
+
+    .tracker-button.done .tracker-meta {
+      color: rgba(255,255,255,0.84);
+    }
+
+    .tracker-streak {
+      color: #d6f7f3;
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .tracker-button.miss .tracker-streak {
+      color: var(--muted);
+    }
+
+    .tracker-state {
+      font-size: 0.76rem;
+      font-weight: 800;
+      color: var(--muted);
+    }
+
+    .tracker-button.done .tracker-state {
+      color: rgba(255,255,255,0.84);
+    }
+
+    .tracker-button.miss .tracker-state {
+      color: var(--muted);
+    }
+
+    @media (max-width: 900px) {
+      .hero-stats,
       .layout {
         grid-template-columns: 1fr;
-      }
-
-      .tracker-head,
-      .tracker-foot {
-        flex-direction: column;
-      }
-
-      .mini-stat-pair {
-        gap: 12px;
-      }
-
-      .heatmap-shell {
-        padding: 16px;
       }
     }
 
     @media (max-width: 640px) {
-      :root {
-        --cell-size: 19px;
-        --cell-gap: 5px;
-      }
-
       .wrap {
-        width: min(100% - 20px, 1080px);
-        padding: 18px 0 28px;
-      }
-
-      .hero,
-      .panel,
-      .share-card {
-        border-radius: 22px;
+        width: min(100% - 18px, 100%);
+        padding: 8px 0 14px;
       }
 
       .hero,
       .panel {
-        padding: 18px;
-      }
-
-      .hero-bar {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-
-      .theme-toggle {
-        width: 100%;
-      }
-
-      h1 {
-        margin-top: 12px;
-        font-size: clamp(2.1rem, 13vw, 3.1rem);
-      }
-
-      .lead,
-      .section-copy,
-      .tracker-copy,
-      .tiny,
-      .share-card p {
-        font-size: 0.95rem;
-      }
-
-      .actions {
-        flex-direction: column;
-      }
-
-      .decision {
-        width: 100%;
-        min-height: 50px;
-      }
-
-      .tracker-list {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-      }
-
-      .tracker-fasting,
-      .tracker-coffee,
-      .tracker-overeating {
-        padding: 12px;
-      }
-
-      .tracker-fasting .tracker-title,
-      .tracker-coffee .tracker-title,
-      .tracker-overeating .tracker-title {
-        font-size: 1rem;
-      }
-
-      .tracker-fasting .tracker-copy,
-      .tracker-coffee .tracker-copy,
-      .tracker-overeating .tracker-copy,
-      .tracker-fasting .tracker-foot,
-      .tracker-coffee .tracker-foot,
-      .tracker-overeating .tracker-foot {
-        font-size: 0.78rem;
-      }
-
-      .tracker-fasting .badge,
-      .tracker-coffee .badge,
-      .tracker-overeating .badge {
-        min-width: 72px;
-        padding: 8px 9px;
-        font-size: 0.82rem;
-      }
-
-      .tracker-fasting .decision,
-      .tracker-coffee .decision,
-      .tracker-overeating .decision {
-        min-height: 42px;
-        padding: 8px 9px;
-        font-size: 0.78rem;
-      }
-
-      .heatmap-shell {
-        margin-inline: 0;
         padding: 14px;
       }
 
-      .heatmap-frame {
-        grid-template-columns: 40px minmax(0, 1fr);
-        gap: 10px;
+      .calendar {
+        gap: 5px;
       }
 
-      .calendar-focus {
-        padding: 14px;
+      .day-cell {
+        min-height: 72px;
+        border-radius: 12px;
+        padding: 6px 4px;
       }
 
-      .focus-main {
-        gap: 8px;
+      .day-number {
+        font-size: 0.88rem;
       }
 
-      .focus-weekday,
-      .focus-date {
-        min-height: 38px;
-        padding: 8px 13px;
+      .day-codes {
+        min-height: 28px;
       }
 
-      .weekday-rail,
-      .month-row,
-      .legend {
-        font-size: 0.8rem;
+      .code-chip {
+        min-width: 24px;
+        padding: 3px 5px;
+        font-size: 0.56rem;
       }
 
-      .legend {
-        gap: 8px;
+      .tracker-button {
+        grid-template-columns: auto 1fr;
       }
 
-      .month-tag {
-        font-weight: 800;
-      }
-    }
-
-    @media (max-width: 420px) {
-      :root {
-        --cell-size: 17px;
-        --cell-gap: 4px;
-      }
-
-      .tracker-list {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-      }
-
-      .tracker {
-        padding: 12px;
-      }
-
-      .tracker-head {
-        flex-direction: column;
-        gap: 10px;
-        min-height: 0;
-      }
-
-      .tracker-copy {
-        min-height: 0;
-      }
-
-      .badge {
-        min-width: 0;
-        width: 100%;
-      }
-
-      .mini-stat-pair {
-        gap: 10px;
-      }
-
-      .mini-metric + .mini-metric {
-        padding-left: 10px;
+      .tracker-state {
+        grid-column: 2;
+        justify-self: start;
       }
     }
   </style>
 </head>
 <body>
-  <main class="wrap">
+  <div class="wrap">
     <section class="hero">
-      <div class="hero-bar">
-        <span class="eyebrow">Simple daily streak tracker</span>
-        <button class="theme-toggle" id="themeToggle" type="button">Dark mode</button>
+      <div class="hero-top">
+        <span class="eyebrow">Shared Family Tracker</span>
+        <div class="hero-actions">
+          <button id="logoutButton" class="button-ghost hidden" type="button">Log Out</button>
+        </div>
       </div>
       <h1>Foodle</h1>
-      <p class="lead">
-        Tap once at the end of each day. Keep separate streaks for sugar, carbs, dairy, not overeating, red meat free, and exercise days.
-        Your data stays in your browser, and the share button turns your streaks into a clean message you can send to friends.
-      </p>
-      <div class="hero-grid">
-        <article class="mini-stat mini-stat-pair">
-          <div class="mini-metric">
-            <span class="mini-label">Longest sugar streak</span>
-            <strong class="mini-value" id="heroSugar">0</strong>
-          </div>
-          <div class="mini-metric">
-            <span class="mini-label">Current sugar streak</span>
-            <strong class="mini-value" id="heroSugarCurrent">0</strong>
-          </div>
-        </article>
-        <article class="mini-stat mini-stat-pair">
-          <div class="mini-metric">
-            <span class="mini-label">Longest carb streak</span>
-            <strong class="mini-value" id="heroCarbs">0</strong>
-          </div>
-          <div class="mini-metric">
-            <span class="mini-label">Current carb streak</span>
-            <strong class="mini-value" id="heroCarbsCurrent">0</strong>
-          </div>
-        </article>
-        <article class="mini-stat mini-stat-pair">
-          <div class="mini-metric">
-            <span class="mini-label">Longest dairy streak</span>
-            <strong class="mini-value" id="heroDairy">0</strong>
-          </div>
-          <div class="mini-metric">
-            <span class="mini-label">Current dairy streak</span>
-            <strong class="mini-value" id="heroDairyCurrent">0</strong>
-          </div>
-        </article>
-        <article class="mini-stat">
-          <span class="mini-label">Fasting days logged</span>
-          <strong class="mini-value" id="heroFasting">0</strong>
-        </article>
-        <article class="mini-stat">
-          <span class="mini-label">Coffee days logged</span>
-          <strong class="mini-value" id="heroCoffee">0</strong>
-        </article>
-        <article class="mini-stat mini-stat-pair">
-          <div class="mini-metric">
-            <span class="mini-label">Longest did not over eat streak</span>
-            <strong class="mini-value" id="heroOvereating">0</strong>
-          </div>
-          <div class="mini-metric">
-            <span class="mini-label">Current did not over eat streak</span>
-            <strong class="mini-value" id="heroOvereatingCurrent">0</strong>
-          </div>
-        </article>
-        <article class="mini-stat mini-stat-pair">
-          <div class="mini-metric">
-            <span class="mini-label">Longest red meat free streak</span>
-            <strong class="mini-value" id="heroMeatfree">0</strong>
-          </div>
-          <div class="mini-metric">
-            <span class="mini-label">Current red meat free streak</span>
-            <strong class="mini-value" id="heroMeatfreeCurrent">0</strong>
-          </div>
-        </article>
-        <article class="mini-stat">
-          <span class="mini-label">Exercise days logged</span>
-          <strong class="mini-value" id="heroExercise">0</strong>
-        </article>
+      <p class="lead">A shared family tracker built around four core habits: sugar-free, exercise, red meat-free, and overeat-free. Each tracker uses a short code, and unfinished items stay blank instead of showing a red strike-through.</p>
+      <div class="hero-stats hidden" id="heroStats">
+        <div class="stat" data-tracker-card="sugar-free">
+          <span class="stat-label">Sugar-free</span>
+          <div class="stat-current" id="sugarFreeCurrent">0</div>
+          <span class="stat-note">Highest streak: <strong id="sugarFreeBest">0</strong></span>
+        </div>
+        <div class="stat" data-tracker-card="did-not-overeat">
+          <span class="stat-label">Overeat-free</span>
+          <div class="stat-current" id="overeatFreeCurrent">0</div>
+          <span class="stat-note">Highest streak: <strong id="overeatFreeBest">0</strong></span>
+        </div>
+        <div class="stat" data-tracker-card="red-meat-free">
+          <span class="stat-label">Red meat-free</span>
+          <div class="stat-current" id="redMeatFreeCurrent">0</div>
+          <span class="stat-note">Highest streak: <strong id="redMeatFreeBest">0</strong></span>
+        </div>
+        <div class="stat" data-tracker-card="exercise">
+          <span class="stat-label">Exercise</span>
+          <div class="stat-current" id="exerciseCurrent">0</div>
+          <span class="stat-note">Highest streak: <strong id="exerciseBest">0</strong></span>
+        </div>
       </div>
     </section>
 
-    <section class="layout">
-      <section class="panel">
-        <h2 class="section-title">Log today</h2>
-        <p class="section-copy">
-          Choose one result for the selected day for each category. That is enough to keep the streak going.
-        </p>
-        <div class="heatmap-shell">
-          <p class="calendar-intro">One shared calendar. Each day cell has five bands for sugar, did not over eat, red meat free, carbs, and dairy, plus dots for fasting, coffee, and exercise.</p>
-          <div id="combinedCalendar"></div>
+    <section class="panel login-card" id="loginPanel">
+      <h2 class="section-title">Family Login</h2>
+      <p class="section-copy">Use the shared family password. After that, everyone on any device sees the same calendar and tracker state.</p>
+      <form id="loginForm">
+        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Shared family password" required>
+        <div class="button-row">
+          <button id="loginButton" class="button-primary" type="submit">Unlock Foodle</button>
         </div>
-        <div class="tracker-list" id="trackerList"></div>
-      </section>
-
-      <aside class="today-panel">
-        <section class="panel date-box">
-          <div class="date-label">Logging day</div>
-          <div class="date-value" id="todayLabel"></div>
-          <p class="tiny">This page defaults to yesterday for end-of-day check-ins, and you can tap any calendar day to edit it instead. If a friend opens it, they get their own private streaks in their own browser.</p>
-        </section>
-
-        <section class="share-card">
-          <strong>Share your streaks</strong>
-          <p>Works with the browser share sheet on mobile and copies the text if sharing is not available.</p>
-          <button class="share-button" id="shareButton" type="button">Share progress</button>
-          <div class="status" id="shareStatus"></div>
-          <div class="share-preview" id="sharePreview"></div>
-        </section>
-      </aside>
+      </form>
+      <p class="status" id="loginStatus"></p>
     </section>
-  </main>
+
+    <section class="layout hidden" id="appShell">
+      <div class="panel">
+        <div class="toolbar">
+          <div>
+            <h2 class="section-title">Calendar</h2>
+            <p class="section-copy">Pick any day in the month, then mark the tracker codes below. Each day cell shows a horizontal code strip so you can read the month at a glance.</p>
+          </div>
+          <div class="focus-pill" id="focusPill">Loading…</div>
+        </div>
+        <div class="month-nav">
+          <button class="button-secondary" id="todayButton" type="button">Today</button>
+          <span class="range-label" id="rangeLabel">Loading…</span>
+        </div>
+        <div class="calendar" id="calendar"></div>
+        <div class="legend" id="calendarLegend"></div>
+      </div>
+
+      <div class="panel">
+        <div class="toolbar">
+          <div>
+            <h2 class="section-title" id="boardTitle">Daily Codes</h2>
+            <p class="section-copy" id="boardCopy">Tap a code to toggle it for the selected day. The board saves instantly.</p>
+          </div>
+        </div>
+        <div class="member-grid" id="memberGrid"></div>
+        <p class="status" id="appStatus"></p>
+      </div>
+    </section>
+  </div>
 
   <script>
-    const STORAGE_KEY = "foodle-v2";
-    const LEGACY_STORAGE_KEYS = ["foodle-v1"];
-    const LEGACY_MIGRATION_KEY = "foodle-v2-migrated";
-    const OVEREATING_MIGRATION_KEY = "foodle-v2-overeating-inverted";
-    const THEME_KEY = "foodle-theme";
-    const DESKTOP_CALENDAR_WEEKS = 26;
-    const MOBILE_CALENDAR_WEEKS = 12;
-    const SMALL_MOBILE_CALENDAR_WEEKS = 10;
-    let selectedDateKey = keyForDate(logDate());
-    const trackers = [
-      {
-        id: "sugar",
-        label: "Sugar-free",
-        accent: "sugar",
-        copy: "No sweets, desserts, sugary drinks, or added sugar today."
-      },
-      {
-        id: "overeating",
-        label: "Did not over eat",
-        accent: "overeating",
-        mode: "streak",
-        copy: "Track clean days where you did not over eat.",
-        actionGoodText: "Did not over eat yesterday",
-        actionBadText: "Over ate yesterday",
-        statusGoodText: "Yesterday: did not over eat",
-        statusBadText: "Yesterday: over ate",
-        statusEmptyText: "Yesterday: not logged yet",
-        lastSuccessEmptyText: "No did not over eat day logged yet"
-      },
-      {
-        id: "meatfree",
-        label: "Red meat-free",
-        accent: "meatfree",
-        mode: "streak",
-        copy: "Track clean days where you did not eat red meat.",
-        actionGoodText: "No red meat yesterday",
-        actionBadText: "Had red meat yesterday",
-        statusGoodText: "Yesterday: no red meat",
-        statusBadText: "Yesterday: had red meat",
-        statusEmptyText: "Yesterday: not logged yet",
-        lastSuccessEmptyText: "No red meat-free day logged yet"
-      },
-      {
-        id: "carbs",
-        label: "Carb-light",
-        accent: "carbs",
-        copy: "No bread, pasta, rice, or other carb-heavy meals today."
-      },
-      {
-        id: "dairy",
-        label: "Dairy-free",
-        accent: "dairy",
-        copy: "No milk, cheese, yogurt, cream, or dairy-based foods today."
-      },
-      {
-        id: "fasting",
-        label: "Fasting",
-        accent: "fasting",
-        mode: "scheduled",
-        copy: "For planned monthly or bi-weekly full-day fasts. Log only on fasting days.",
-        countLabel: "fasting days",
-        countNoun: "fasting day",
-        actionGoodText: "Completed fast yesterday",
-        actionBadText: "Did not fast yesterday",
-        statusGoodText: "Yesterday: fasting completed",
-        statusBadText: "Yesterday: fasting skipped",
-        statusEmptyText: "Yesterday: not logged yet",
-        lastSuccessEmptyText: "No fasting day logged yet"
-      },
-      {
-        id: "coffee",
-        label: "Coffee",
-        accent: "coffee",
-        mode: "count",
-        copy: "Optional brown dot for days when you had coffee.",
-        countLabel: "coffee days",
-        countNoun: "coffee day",
-        actionGoodText: "Had coffee yesterday",
-        actionBadText: "No coffee yesterday",
-        statusGoodText: "Yesterday: coffee logged",
-        statusBadText: "Yesterday: no coffee",
-        statusEmptyText: "Yesterday: not logged yet",
-        lastSuccessEmptyText: "No coffee day logged yet"
-      },
-      {
-        id: "exercise",
-        label: "Exercise",
-        accent: "exercise",
-        mode: "count",
-        copy: "Optional orange dot for days when you exercised.",
-        countLabel: "exercise days",
-        countNoun: "exercise day",
-        actionGoodText: "Exercised yesterday",
-        actionBadText: "Did not exercise yesterday",
-        statusGoodText: "Yesterday: exercised",
-        statusBadText: "Yesterday: no exercise",
-        statusEmptyText: "Yesterday: not logged yet",
-        lastSuccessEmptyText: "No exercise day logged yet"
-      }
-    ];
+    const state = {
+      monthKey: null,
+      selectedDate: null,
+      today: null,
+      payload: null,
+      savingKey: null,
+      windowCenter: null,
+    };
 
-    function formatDate(date) {
-      return date.toLocaleDateString("en-AU", {
-        weekday: "long",
-        day: "numeric",
+    const loginPanel = document.getElementById("loginPanel");
+    const appShell = document.getElementById("appShell");
+    const heroStats = document.getElementById("heroStats");
+    const loginForm = document.getElementById("loginForm");
+    const passwordInput = document.getElementById("passwordInput");
+    const loginButton = document.getElementById("loginButton");
+    const loginStatus = document.getElementById("loginStatus");
+    const logoutButton = document.getElementById("logoutButton");
+    const focusPill = document.getElementById("focusPill");
+    const calendar = document.getElementById("calendar");
+    const calendarLegend = document.getElementById("calendarLegend");
+    const memberGrid = document.getElementById("memberGrid");
+    const boardTitle = document.getElementById("boardTitle");
+    const boardCopy = document.getElementById("boardCopy");
+    const appStatus = document.getElementById("appStatus");
+    const todayButton = document.getElementById("todayButton");
+    const sugarFreeCurrent = document.getElementById("sugarFreeCurrent");
+    const sugarFreeBest = document.getElementById("sugarFreeBest");
+    const overeatFreeCurrent = document.getElementById("overeatFreeCurrent");
+    const overeatFreeBest = document.getElementById("overeatFreeBest");
+    const redMeatFreeCurrent = document.getElementById("redMeatFreeCurrent");
+    const redMeatFreeBest = document.getElementById("redMeatFreeBest");
+    const exerciseCurrent = document.getElementById("exerciseCurrent");
+    const exerciseBest = document.getElementById("exerciseBest");
+    const primaryTrackerIds = new Set(["sugar-free", "did-not-overeat", "red-meat-free", "exercise"]);
+    const streakTrackerIds = primaryTrackerIds;
+
+    function setStatus(target, message, tone = "") {
+      target.textContent = message || "";
+      target.className = `status${tone ? ` ${tone}` : ""}`;
+    }
+
+    function todayString() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function getMonthKey(dateString) {
+      return dateString.slice(0, 7);
+    }
+
+    function monthLabel(monthKey) {
+      const [year, month] = monthKey.split("-").map(Number);
+      return new Date(year, month - 1, 1).toLocaleDateString(undefined, {
         month: "long",
-        year: "numeric"
+        year: "numeric",
       });
     }
 
-    function formatWeekday(date) {
-      return date.toLocaleDateString("en-AU", { weekday: "long" });
-    }
-
-    function formatShortDate(date) {
-      return date.toLocaleDateString("en-AU", {
+    function dateLabel(dateString) {
+      return new Date(`${dateString}T00:00:00`).toLocaleDateString(undefined, {
+        weekday: "long",
+        month: "long",
         day: "numeric",
-        month: "short",
-        year: "numeric"
       });
     }
 
-    function pad2(value) {
-      return String(value).padStart(2, "0");
+
+
+    async function api(path, options = {}) {
+      const response = await fetch(`/foodle/api${path}`, {
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+        ...options,
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || "Request failed");
+      }
+      return data;
     }
 
-    function keyForDate(date) {
-      return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-    }
-
-    function legacyKeyForDate(date) {
-      return date.toISOString().slice(0, 10);
-    }
-
-    function dateFromKey(key) {
-      const [year, month, day] = key.split("-").map(Number);
-      return new Date(year, month - 1, day);
-    }
-
-    function logDate() {
-      const date = new Date();
-      date.setHours(0, 0, 0, 0);
-      date.setDate(date.getDate() - 1);
-      return date;
-    }
-
-    function selectedLogDate() {
-      return dateFromKey(selectedDateKey);
-    }
-
-    function loadData() {
+    async function loadState() {
       try {
-        const current = normalizeData(JSON.parse(localStorage.getItem(STORAGE_KEY)));
-        let merged = current;
-        let shouldPersist = false;
+        setStatus(appStatus, "Loading…");
+        const center = state.windowCenter || todayString();
+        state.windowCenter = center;
+        const centerMonth = getMonthKey(center);
+        const centerDate = new Date(center + "T00:00:00");
+        const startDate = new Date(centerDate);
+        startDate.setDate(startDate.getDate() - 14);
+        const endDate = new Date(centerDate);
+        endDate.setDate(endDate.getDate() + 6);
+        const startMonth = getMonthKey(startDate.toISOString().slice(0, 10));
+        const endMonth = getMonthKey(endDate.toISOString().slice(0, 10));
 
-        for (const legacyKey of LEGACY_STORAGE_KEYS) {
-          const raw = localStorage.getItem(legacyKey);
-          if (!raw) {
-            continue;
-          }
-          const migrated = migrateLegacyData(JSON.parse(raw));
-          const mergedWithLegacy = mergeData(migrated, merged);
-          if (JSON.stringify(mergedWithLegacy) !== JSON.stringify(merged)) {
-            merged = mergedWithLegacy;
-            shouldPersist = true;
-          }
-        }
+        const payload = await api(`/bootstrap?month=${encodeURIComponent(centerMonth)}&date=${encodeURIComponent(state.selectedDate || center)}`);
+        state.payload = payload;
+        state.today = payload.today;
+        state.selectedDate = payload.selected.date;
+        state.monthKey = payload.month.key;
 
-        if (!localStorage.getItem(LEGACY_MIGRATION_KEY)) {
-          localStorage.setItem(LEGACY_MIGRATION_KEY, "1");
-          shouldPersist = true;
-        }
-
-        if (!localStorage.getItem(OVEREATING_MIGRATION_KEY)) {
-          merged = invertOvereatingData(merged);
-          localStorage.setItem(OVEREATING_MIGRATION_KEY, "1");
-          shouldPersist = true;
-        }
-
-        if (shouldPersist) {
-          saveData(merged);
-        }
-
-        return merged;
-      } catch {
-        return { days: {} };
-      }
-    }
-
-    function saveData(data) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
-
-    function normalizeData(data) {
-      return data?.days ? data : { days: {} };
-    }
-
-    function migrateLegacyData(data) {
-      const migrated = { days: {} };
-      for (const [key, value] of Object.entries(data?.days || {})) {
-        migrated.days[key] = { ...(migrated.days[key] || {}), ...value };
-      }
-      return migrated;
-    }
-
-    function mergeData(base, overlay) {
-      const merged = { days: {} };
-      for (const [key, value] of Object.entries(base?.days || {})) {
-        merged.days[key] = { ...value };
-      }
-      for (const [key, value] of Object.entries(overlay?.days || {})) {
-        merged.days[key] = { ...(merged.days[key] || {}), ...value };
-      }
-      return merged;
-    }
-
-    function invertOvereatingData(data) {
-      const migrated = { days: {} };
-      for (const [key, value] of Object.entries(data?.days || {})) {
-        const nextValue = { ...value };
-        if (typeof nextValue.overeating === "boolean") {
-          nextValue.overeating = !nextValue.overeating;
-        }
-        migrated.days[key] = nextValue;
-      }
-      return migrated;
-    }
-
-    function readStatus(data, date, trackerId) {
-      const localKey = keyForDate(date);
-      return data.days[localKey]?.[trackerId];
-    }
-
-    function currentCalendarWeeks() {
-      if (window.matchMedia("(max-width: 420px)").matches) {
-        return SMALL_MOBILE_CALENDAR_WEEKS;
-      }
-      return window.matchMedia("(max-width: 640px)").matches
-        ? MOBILE_CALENDAR_WEEKS
-        : DESKTOP_CALENDAR_WEEKS;
-    }
-
-    function getPreferredTheme() {
-      const savedTheme = localStorage.getItem(THEME_KEY);
-      if (savedTheme === "light" || savedTheme === "dark") {
-        return savedTheme;
-      }
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    }
-
-    function applyTheme(theme) {
-      document.body.dataset.theme = theme;
-      const toggle = document.getElementById("themeToggle");
-      toggle.textContent = theme === "dark" ? "Light mode" : "Dark mode";
-    }
-
-    function streakFor(data, trackerId) {
-      const cursor = logDate();
-      const oldestKey = Object.keys(data.days).sort()[0];
-      const oldestDate = oldestKey ? dateFromKey(oldestKey) : null;
-
-      while (oldestDate && cursor >= oldestDate) {
-        const status = readStatus(data, cursor, trackerId);
-        if (status === undefined) {
-          cursor.setDate(cursor.getDate() - 1);
-          continue;
-        }
-
-        if (status === false) {
-          return 0;
-        }
-
-        break;
-      }
-
-      let streak = 0;
-      while (oldestDate && cursor >= oldestDate) {
-        const status = readStatus(data, cursor, trackerId);
-        if (status !== true) {
-          break;
-        }
-        streak += 1;
-        cursor.setDate(cursor.getDate() - 1);
-      }
-
-      return streak;
-    }
-
-    function bestStreakFor(data, trackerId) {
-      const keys = Object.keys(data.days).sort();
-      if (keys.length === 0) {
-        return 0;
-      }
-
-      let best = 0;
-      let current = 0;
-      const cursor = dateFromKey(keys[0]);
-      cursor.setHours(0, 0, 0, 0);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      while (cursor <= today) {
-        const status = readStatus(data, cursor, trackerId);
-        if (status === true) {
-          current += 1;
-          best = Math.max(best, current);
-        } else {
-          current = 0;
-        }
-        cursor.setDate(cursor.getDate() + 1);
-      }
-      return best;
-    }
-
-    function successCountFor(data, trackerId) {
-      return Object.values(data.days).filter((entry) => entry?.[trackerId] === true).length;
-    }
-
-    function lastSuccessDateFor(data, trackerId, emptyText = "No day logged yet") {
-      const keys = Object.keys(data.days).sort().reverse();
-      for (const key of keys) {
-        if (data.days[key]?.[trackerId] === true) {
-          return formatDate(dateFromKey(key));
-        }
-      }
-      return emptyText;
-    }
-
-    function trackerStatusText(tracker, status) {
-      if (status === true) {
-        return (tracker.statusGoodText || "Selected day: success").replace(/^Yesterday:/, "Selected day:");
-      }
-      if (status === false) {
-        return (tracker.statusBadText || "Selected day: streak broken").replace(/^Yesterday:/, "Selected day:");
-      }
-      return (tracker.statusEmptyText || "Selected day: not logged yet").replace(/^Yesterday:/, "Selected day:");
-    }
-
-    function trackerActionText(text) {
-      return text.replace(/\s+yesterday$/i, "");
-    }
-
-    function trackerCountLabel(tracker) {
-      return tracker.countLabel || "days logged";
-    }
-
-    function trackerCountLine(tracker, count) {
-      const noun = tracker.countNoun || "day";
-      return `${tracker.label}: ${count} ${noun}${count === 1 ? "" : "s"} logged`;
-    }
-
-    function trackerSummaryStatus(tracker, status) {
-      if (status === true) {
-        return "logged";
-      }
-      if (status === false) {
-        return "not logged";
-      }
-      return "not logged";
-    }
-
-    function combinedCalendarFor(data, activeDate) {
-      const weeks = currentCalendarWeeks();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const activeKey = keyForDate(activeDate);
-      const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-      const currentWeekStart = new Date(today);
-      const mondayFirstDayIndex = (today.getDay() + 6) % 7;
-      currentWeekStart.setDate(today.getDate() - mondayFirstDayIndex);
-
-      const start = new Date(currentWeekStart);
-      start.setDate(currentWeekStart.getDate() - Math.floor(weeks / 2) * 7);
-
-      const monthLabels = Array.from({ length: weeks }, () => "");
-      const cells = [];
-      let activeWeekIndex = 0;
-
-      for (let weekIndex = 0; weekIndex < weeks; weekIndex += 1) {
-        for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
-          const date = new Date(start);
-          date.setDate(start.getDate() + weekIndex * 7 + dayIndex);
-          const key = keyForDate(date);
-
-          if (dayIndex === 0) {
-            const labelDate = new Date(date);
-            if (weekIndex === 0 || labelDate.getDate() <= 7) {
-              monthLabels[weekIndex] = labelDate.toLocaleDateString("en-AU", { month: "short" });
+        // Merge any adjacent months needed by the visible 3-week window.
+        const extraMonths = [...new Set([startMonth, endMonth].filter((monthKey) => monthKey !== centerMonth))];
+        for (const monthKey of extraMonths) {
+          try {
+            const extraPayload = await api(`/bootstrap?month=${encodeURIComponent(monthKey)}&date=${monthKey}-01`);
+            if (extraPayload && extraPayload.month && extraPayload.month.days) {
+              const existingDates = new Set(payload.month.days.map(d => d.date));
+              const newDays = extraPayload.month.days.filter(d => !existingDates.has(d.date));
+              state.payload.month.days = newDays.concat(payload.month.days);
             }
-          }
-
-          cells.push({
-            weekIndex,
-            dayIndex,
-            isSelected: key === activeKey,
-            key,
-            title: [
-              formatDate(date),
-              ...trackers.map((tracker) => {
-                const status = readStatus(data, date, tracker.id);
-                if (tracker.mode === "scheduled" || tracker.mode === "count") {
-                  return `${tracker.label}: ${trackerSummaryStatus(tracker, status)}`;
-                }
-                return `${tracker.label}: ${status === true ? "clean" : status === false ? "had some" : "not logged"}`;
-              })
-            ].join(" | "),
-            bands: trackers.filter((tracker) => tracker.id !== "fasting" && tracker.id !== "coffee" && tracker.id !== "exercise").map((tracker) => {
-              const status = readStatus(data, date, tracker.id);
-              return {
-                id: tracker.id,
-                tone: status === true ? "good" : status === false ? "miss" : "empty"
-              };
-            }),
-            fasting: (() => {
-              const status = readStatus(data, date, "fasting");
-              return status === true ? "good" : status === false ? "miss" : "empty";
-            })(),
-            coffee: (() => {
-              const status = readStatus(data, date, "coffee");
-              return status === true ? "good" : status === false ? "miss" : "empty";
-            })(),
-            exercise: (() => {
-              const status = readStatus(data, date, "exercise");
-              return status === true ? "good" : status === false ? "miss" : "empty";
-            })()
-          });
-
-          if (key === activeKey) {
-            activeWeekIndex = weekIndex;
+          } catch (e) {
+            // Ignore month-edge fetch failures and keep the main month usable.
           }
         }
-      }
-      return {
-        activeWeekIndex,
-        activeDate,
-        activeMonthLabel: activeDate.toLocaleDateString("en-AU", { month: "short" }),
-        cells,
-        monthLabels,
-        weekdayLabels,
-        weeks
-      };
-    }
 
-    function shareText(data) {
-      const lines = [
-        "My Foodle update",
-        ""
-      ];
-
-      for (const tracker of trackers) {
-        if (tracker.mode === "scheduled" || tracker.mode === "count") {
-          const count = successCountFor(data, tracker.id);
-          lines.push(trackerCountLine(tracker, count));
-          continue;
-        }
-        const streak = streakFor(data, tracker.id);
-        const best = bestStreakFor(data, tracker.id);
-        lines.push(`${tracker.label}: ${streak} day${streak === 1 ? "" : "s"} current, ${best} best`);
-      }
-
-      lines.push("");
-      lines.push("Logged today in Foodle.");
-      lines.push("");
-      lines.push("https://mavali.top/projects/Foodle/");
-      return lines.join("\n");
-    }
-
-    function setStatus(text) {
-      document.getElementById("shareStatus").textContent = text;
-    }
-
-    function update() {
-      const data = loadData();
-      const targetDate = selectedLogDate();
-
-      document.getElementById("todayLabel").textContent = formatDate(targetDate);
-      document.getElementById("sharePreview").textContent = shareText(data);
-
-      document.getElementById("heroSugar").textContent = bestStreakFor(data, "sugar");
-      document.getElementById("heroCarbs").textContent = bestStreakFor(data, "carbs");
-      document.getElementById("heroDairy").textContent = bestStreakFor(data, "dairy");
-      document.getElementById("heroSugarCurrent").textContent = streakFor(data, "sugar");
-      document.getElementById("heroCarbsCurrent").textContent = streakFor(data, "carbs");
-      document.getElementById("heroDairyCurrent").textContent = streakFor(data, "dairy");
-      document.getElementById("heroFasting").textContent = successCountFor(data, "fasting");
-      document.getElementById("heroCoffee").textContent = successCountFor(data, "coffee");
-      document.getElementById("heroOvereating").textContent = bestStreakFor(data, "overeating");
-      document.getElementById("heroOvereatingCurrent").textContent = streakFor(data, "overeating");
-      document.getElementById("heroMeatfree").textContent = bestStreakFor(data, "meatfree");
-      document.getElementById("heroMeatfreeCurrent").textContent = streakFor(data, "meatfree");
-      document.getElementById("heroExercise").textContent = successCountFor(data, "exercise");
-
-      const combinedCalendar = combinedCalendarFor(data, targetDate);
-      document.getElementById("combinedCalendar").innerHTML = `
-        <div class="calendar-focus">
-          <span class="focus-kicker">Logging day</span>
-          <div class="focus-main">
-            <span class="focus-weekday">${formatWeekday(combinedCalendar.activeDate)}</span>
-            <span class="focus-date">${formatShortDate(combinedCalendar.activeDate)}</span>
-          </div>
-          <span class="focus-note">Tap any day below to choose which date you are marking right now.</span>
-        </div>
-        <div class="heatmap-frame">
-          <div class="weekday-rail">
-            <span class="weekday-spacer">.</span>
-            ${combinedCalendar.weekdayLabels.map((label, index) => `
-              <span class="weekday-tag${index === (combinedCalendar.activeDate.getDay() + 6) % 7 ? " active" : ""}">${label}</span>
-            `).join("")}
-            <span class="weekday-spacer">.</span>
-          </div>
-          <div class="calendar-side">
-            <div class="month-row" style="grid-template-columns: repeat(${combinedCalendar.weeks}, var(--cell-size));">
-              ${combinedCalendar.monthLabels.map((label, index) => `
-                <span class="month-tag${index === combinedCalendar.activeWeekIndex ? " active" : ""}">${label || (index === combinedCalendar.activeWeekIndex ? combinedCalendar.activeMonthLabel : "")}</span>
-              `).join("")}
-            </div>
-                <div class="combined-grid" style="grid-template-columns: repeat(${combinedCalendar.weeks}, var(--cell-size));">
-                  ${combinedCalendar.cells.map((cell) => `
-                    <button
-                      class="combined-cell${cell.isSelected ? " selected" : ""}"
-                      type="button"
-                      data-date-key="${cell.key}"
-                      aria-label="${cell.title}"
-                      style="grid-column:${cell.weekIndex + 1}; grid-row:${cell.dayIndex + 1};"
-                      title="${cell.title}"
-                    >
-                      <span class="combined-stack">
-                        ${cell.bands.map((band) => `
-                          <span class="combined-bar ${band.tone} track-${band.id}"></span>
-                        `).join("")}
-                      </span>
-                      ${cell.fasting === "empty" ? "" : `<span class="combined-marker ${cell.fasting} track-fasting"></span>`}
-                      ${cell.coffee === "empty" ? "" : `<span class="combined-marker ${cell.coffee} track-coffee"></span>`}
-                      ${cell.exercise === "empty" ? "" : `<span class="combined-marker ${cell.exercise} track-exercise"></span>`}
-                    </button>
-                  `).join("")}
-                </div>
-            <div class="legend">
-              <span>Last ${combinedCalendar.weeks} weeks</span>
-              <span class="legend-group">
-                <span class="legend-stack">
-                  <span class="combined-bar good track-sugar"></span>
-                  <span class="combined-bar good track-overeating"></span>
-                  <span class="combined-bar good track-meatfree"></span>
-                  <span class="combined-bar good track-carbs"></span>
-                  <span class="combined-bar good track-dairy"></span>
-                </span> Clean streak stack
-              </span>
-              <span class="legend-group">
-                <span class="combined-marker good track-fasting" style="position: static;"></span> Fasting day
-              </span>
-              <span class="legend-group">
-                <span class="combined-marker good track-coffee" style="position: static;"></span> Coffee day
-              </span>
-              <span class="legend-group">
-                <span class="combined-marker good track-exercise" style="position: static;"></span> Exercise day
-              </span>
-              <span class="legend-group">
-                <span class="legend-swatch" style="background: rgba(198, 69, 69, 0.72);"></span> Had some
-              </span>
-              <span class="legend-group">Top sugar, second did not over eat, third red meat free, fourth carbs, fifth dairy</span>
-            </div>
-          </div>
-        </div>
-      `;
-
-      const list = document.getElementById("trackerList");
-      list.innerHTML = "";
-
-      for (const tracker of trackers) {
-        const status = readStatus(data, targetDate, tracker.id);
-        const isCounter = tracker.mode === "scheduled" || tracker.mode === "count";
-        const primaryValue = isCounter ? successCountFor(data, tracker.id) : streakFor(data, tracker.id);
-        const primaryLabel = isCounter ? trackerCountLabel(tracker) : "current streak";
-        const actionGoodText = trackerActionText(tracker.actionGoodText || "Stayed clean yesterday");
-        const actionBadText = trackerActionText(tracker.actionBadText || "Had some yesterday");
-        const secondaryText = isCounter
-          ? `Last ${tracker.label.toLowerCase()}: ${lastSuccessDateFor(data, tracker.id, tracker.lastSuccessEmptyText)}`
-          : `Best: ${bestStreakFor(data, tracker.id)} day${bestStreakFor(data, tracker.id) === 1 ? "" : "s"}`;
-
-        const card = document.createElement("article");
-        card.className = `tracker tracker-${tracker.id}${tracker.mode === "scheduled" ? " fasting-card" : ""}`;
-        card.innerHTML = `
-          <div class="tracker-head">
-            <div>
-              <h3 class="tracker-title">${tracker.label}</h3>
-            </div>
-            <div class="badge ${tracker.accent}">
-              ${primaryValue}${isCounter ? "" : " days"}
-              <small>${primaryLabel}</small>
-            </div>
-          </div>
-          <div class="actions">
-            <button class="decision good" type="button" data-action="true" data-id="${tracker.id}">${actionGoodText}</button>
-            <button class="decision bad" type="button" data-action="false" data-id="${tracker.id}">${actionBadText}</button>
-            <button class="decision clear" type="button" data-action="clear" data-id="${tracker.id}">Clear</button>
-          </div>
-          <div class="tracker-foot">
-            <span>${trackerStatusText(tracker, status)}</span>
-            <span>${secondaryText}</span>
-          </div>
-          <p class="tracker-copy">${tracker.copy}</p>
-        `;
-        list.appendChild(card);
-      }
-    }
-
-    document.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-action]");
-      if (!button) {
-        const dateButton = event.target.closest("[data-date-key]");
-        if (!dateButton) {
+        render();
+        showApp();
+        setStatus(appStatus, "");
+      } catch (error) {
+        if (/Authentication required|Session expired/i.test(error.message)) {
+          showLogin();
+          setStatus(loginStatus, "Session expired. Enter the shared password again.", "error");
           return;
         }
-        selectedDateKey = dateButton.dataset.dateKey;
-        update();
+        setStatus(appStatus, error.message, "error");
+      }
+    }
+
+    function completionPercent(completed, total) {
+      if (!total) {
+        return 0;
+      }
+      return Math.round((completed / total) * 100);
+    }
+
+    function dayLevel(day) {
+      if (!day.completed) {
+        return "0";
+      }
+      return day.ratio >= 0.65 ? "2" : "1";
+    }
+
+    function renderLegend() {
+      calendarLegend.innerHTML = "";
+      const trackers = (state.payload && state.payload.config && state.payload.config.trackers) || [];
+      trackers.forEach((tracker) => {
+        const item = document.createElement("span");
+        item.className = `legend-item${primaryTrackerIds.has(tracker.id) ? " primary" : ""}`;
+        item.innerHTML = `<span class="legend-chip" style="background: ${tracker.color};"></span><span>${tracker.code} ${tracker.label}</span>`;
+        calendarLegend.appendChild(item);
+      });
+    }
+
+    function renderCalendar() {
+      const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      calendar.innerHTML = "";
+      weekdays.forEach((label) => {
+        const el = document.createElement("div");
+        el.className = "weekday";
+        el.textContent = label;
+        calendar.appendChild(el);
+      });
+
+      // Build a rolling 3-week window: 2 weeks behind + 1 week ahead.
+      const center = state.windowCenter || state.today || todayString();
+      const centerDate = new Date(center + "T00:00:00");
+      const startDate = new Date(centerDate);
+      startDate.setDate(startDate.getDate() - 14);
+      const endDate = new Date(centerDate);
+      endDate.setDate(endDate.getDate() + 6);
+
+      // Update range label
+      const rangeLabel = document.getElementById("rangeLabel");
+      if (rangeLabel) {
+        const opts = { month: "short", day: "numeric" };
+        rangeLabel.textContent = `${startDate.toLocaleDateString(undefined, opts)} – ${endDate.toLocaleDateString(undefined, opts)}`;
+      }
+
+      // Build lookup from month days + fetch data
+      const dayMap = {};
+      if (state.payload && state.payload.month && state.payload.month.days) {
+        state.payload.month.days.forEach((day) => {
+          dayMap[day.date] = day;
+        });
+      }
+
+      // Pad leading empty cells to align with weekday
+      const firstDayOfWeek = (startDate.getDay() + 6) % 7;
+      for (let i = 0; i < firstDayOfWeek; i++) {
+        const spacer = document.createElement("div");
+        calendar.appendChild(spacer);
+      }
+
+      // Render 21 days
+      const cursor = new Date(startDate);
+      for (let i = 0; i < 21; i++) {
+        const dateStr = cursor.toISOString().slice(0, 10);
+        const day = dayMap[dateStr];
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "day-cell";
+
+        if (day) {
+          button.dataset.level = dayLevel(day);
+          const chips = (day.trackers || [])
+            .map((tracker) => `
+              <span class="code-chip${tracker.active ? " done" : " miss"}" style="--chip: ${tracker.color};" title="${tracker.label}">
+                ${tracker.code}
+              </span>
+            `)
+            .join("");
+          button.innerHTML = `
+            <span class="day-number">${Number(dateStr.slice(8, 10))}</span>
+            <span class="day-codes">${chips}</span>
+          `;
+        } else {
+          button.innerHTML = `<span class="day-number">${Number(dateStr.slice(8, 10))}</span>`;
+        }
+
+        if (dateStr === state.selectedDate) {
+          button.classList.add("selected");
+        }
+        if (dateStr === state.today) {
+          button.style.borderColor = "var(--accent)";
+        }
+
+        button.addEventListener("click", () => {
+          state.selectedDate = dateStr;
+          state.monthKey = getMonthKey(dateStr);
+          loadState();
+        });
+        calendar.appendChild(button);
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+
+    function renderBoard() {
+      memberGrid.innerHTML = "";
+      const members = state.payload.selected.members;
+
+      if (members.length === 1) {
+        const member = members[0];
+        const card = document.createElement("section");
+        card.className = "single-board";
+        card.innerHTML = `
+          <div class="single-board-header">
+            <div>
+              <h3 class="member-name">${member.label}</h3>
+              <p class="single-board-copy">One shared tracker board for ${dateLabel(state.payload.selected.date)}.</p>
+            </div>
+            <div class="member-progress">${member.completed}/${member.total}</div>
+          </div>
+          <div class="tracker-list"></div>
+        `;
+        const trackerList = card.querySelector(".tracker-list");
+        member.trackers.forEach((tracker) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `tracker-button${primaryTrackerIds.has(tracker.id) ? " primary" : ""}`;
+          if (tracker.done) {
+            button.classList.add("done");
+            button.style.background = `linear-gradient(135deg, ${tracker.color}, ${tracker.color}dd)`;
+          } else {
+            button.classList.add("miss");
+          }
+          button.disabled = state.savingKey === `${member.id}|${tracker.id}`;
+          const streakMarkup = streakTrackerIds.has(tracker.id)
+            ? `<span class="tracker-streak">Streak ${tracker.streak || 0}</span>`
+            : "";
+          button.innerHTML = `
+            <span class="tracker-code">${tracker.code}</span>
+            <span class="tracker-title">
+              ${streakMarkup}
+              <span class="tracker-label">${tracker.label}</span>
+              <span class="tracker-meta">${tracker.done ? "Done for this day" : "Tap to mark complete"}</span>
+            </span>
+            <span class="tracker-state">${tracker.done ? "Done" : "Open"}</span>
+          `;
+          button.addEventListener("click", () => toggleEntry(member.id, tracker.id, !tracker.done));
+          trackerList.appendChild(button);
+        });
+        memberGrid.appendChild(card);
         return;
       }
 
-      const data = loadData();
-      const targetDate = selectedLogDate();
-      const todayKey = keyForDate(targetDate);
-      data.days[todayKey] = data.days[todayKey] || {};
+      members.forEach((member) => {
+        const card = document.createElement("section");
+        card.className = "member-card";
+        card.innerHTML = `
+          <div class="member-head">
+            <h3 class="member-name">${member.label}</h3>
+            <div class="member-progress">${member.completed}/${member.total}</div>
+          </div>
+          <div class="tracker-list"></div>
+        `;
+        const trackerList = card.querySelector(".tracker-list");
+        member.trackers.forEach((tracker) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `tracker-button${primaryTrackerIds.has(tracker.id) ? " primary" : ""}`;
+          if (tracker.done) {
+            button.classList.add("done");
+            button.style.background = `linear-gradient(135deg, ${tracker.color}, ${tracker.color}dd)`;
+          } else {
+            button.classList.add("miss");
+          }
+          button.disabled = state.savingKey === `${member.id}|${tracker.id}`;
+          const streakMarkup = streakTrackerIds.has(tracker.id)
+            ? `<span class="tracker-streak">Streak ${tracker.streak || 0}</span>`
+            : "";
+          button.innerHTML = `
+            <span class="tracker-code">${tracker.code}</span>
+            <span class="tracker-title">
+              ${streakMarkup}
+              <span class="tracker-label">${tracker.label}</span>
+              <span class="tracker-meta">${tracker.done ? "Done for this day" : "Tap to mark complete"}</span>
+            </span>
+            <span class="tracker-state">${tracker.done ? "Done" : "Open"}</span>
+          `;
+          button.addEventListener("click", () => toggleEntry(member.id, tracker.id, !tracker.done));
+          trackerList.appendChild(button);
+        });
+        memberGrid.appendChild(card);
+      });
+    }
 
-      const trackerId = button.dataset.id;
-      const action = button.dataset.action;
+    function render() {
+      const selected = state.payload.selected;
+      const isSharedBoard = selected.members.length === 1;
+      focusPill.textContent = `${monthLabel(state.payload.month.key)} · ${dateLabel(selected.date)}`;
+      const streakTrackers = state.payload.month.streakTrackers || [];
+      const trackerMap = new Map(streakTrackers.map((tracker) => [tracker.id, tracker]));
+      const setTrackerCard = (trackerId, currentEl, bestEl) => {
+        const tracker = trackerMap.get(trackerId);
+        currentEl.textContent = `${tracker ? tracker.currentStreak : 0}`;
+        bestEl.textContent = `${tracker ? tracker.bestStreak : 0}`;
+      };
+      setTrackerCard("sugar-free", sugarFreeCurrent, sugarFreeBest);
+      setTrackerCard("did-not-overeat", overeatFreeCurrent, overeatFreeBest);
+      setTrackerCard("red-meat-free", redMeatFreeCurrent, redMeatFreeBest);
+      setTrackerCard("exercise", exerciseCurrent, exerciseBest);
+      boardTitle.textContent = isSharedBoard ? "Family Board" : "Daily Board";
+      boardCopy.textContent = isSharedBoard
+        ? "Tap a code to toggle it for the selected day. The shared board saves instantly. Sugar-free, Overeat-free, Red meat-free, and Exercise also show streak counts."
+        : "Tap a code to toggle it for the selected day. Each board saves instantly. Sugar-free, Overeat-free, Red meat-free, and Exercise also show streak counts.";
+      renderLegend();
+      renderCalendar();
+      renderBoard();
+    }
 
-      if (action === "clear") {
-        delete data.days[todayKey][trackerId];
-      } else {
-        data.days[todayKey][trackerId] = action === "true";
-      }
+    function showLogin() {
+      loginPanel.classList.remove("hidden");
+      appShell.classList.add("hidden");
+      heroStats.classList.add("hidden");
+      logoutButton.classList.add("hidden");
+    }
 
-      if (Object.keys(data.days[todayKey]).length === 0) {
-        delete data.days[todayKey];
-      }
+    function showApp() {
+      loginPanel.classList.add("hidden");
+      appShell.classList.remove("hidden");
+      heroStats.classList.remove("hidden");
+      logoutButton.classList.remove("hidden");
+    }
 
-      saveData(data);
-      setStatus("Saved.");
-      update();
-    });
-
-    document.getElementById("shareButton").addEventListener("click", async () => {
-      const text = shareText(loadData());
-
+    async function toggleEntry(memberId, trackerId, done) {
+      state.savingKey = `${memberId}|${trackerId}`;
+      renderBoard();
       try {
-        if (navigator.share) {
-          await navigator.share({
-            title: "My Foodle update",
-            text
-          });
-          setStatus("Shared.");
-          return;
+        setStatus(appStatus, "Saving…");
+        const payload = await api("/entries", {
+          method: "POST",
+          body: JSON.stringify({
+            date: state.selectedDate,
+            memberId,
+            trackerId,
+            done,
+          }),
+        });
+        state.payload = payload;
+        state.selectedDate = payload.selected.date;
+        state.monthKey = payload.month.key;
+        if (!state.windowCenter) {
+          state.windowCenter = state.today || state.selectedDate;
         }
-
-        await navigator.clipboard.writeText(text);
-        setStatus("Copied to clipboard.");
+        render();
+        setStatus(appStatus, "Saved.", "success");
       } catch (error) {
-        setStatus("Share cancelled or unavailable.");
+        setStatus(appStatus, error.message, "error");
+      } finally {
+        state.savingKey = null;
+        renderBoard();
+      }
+    }
+
+    loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      loginButton.disabled = true;
+      setStatus(loginStatus, "Unlocking…");
+      try {
+        await api("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ password: passwordInput.value }),
+        });
+        passwordInput.value = "";
+        state.selectedDate = state.selectedDate || todayString();
+        state.monthKey = getMonthKey(state.selectedDate);
+        setStatus(loginStatus, "");
+        await loadState();
+      } catch (error) {
+        setStatus(loginStatus, error.message, "error");
+      } finally {
+        loginButton.disabled = false;
       }
     });
 
-    document.getElementById("themeToggle").addEventListener("click", () => {
-      const nextTheme = document.body.dataset.theme === "dark" ? "light" : "dark";
-      localStorage.setItem(THEME_KEY, nextTheme);
-      applyTheme(nextTheme);
+    logoutButton.addEventListener("click", async () => {
+      logoutButton.disabled = true;
+      try {
+        await api("/auth/logout", { method: "POST" });
+      } catch (error) {
+        // ignore logout errors and clear local state anyway
+      } finally {
+        logoutButton.disabled = false;
+        showLogin();
+      }
     });
 
-    applyTheme(getPreferredTheme());
-    update();
+    todayButton.addEventListener("click", () => {
+      state.selectedDate = todayString();
+      state.windowCenter = state.selectedDate;
+      loadState();
+    });
+
+    (async function boot() {
+      state.selectedDate = todayString();
+      state.monthKey = getMonthKey(state.selectedDate);
+      try {
+        await loadState();
+      } catch (error) {
+        showLogin();
+      }
+    })();
   </script>
 </body>
 </html>
