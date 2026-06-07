@@ -120,11 +120,18 @@ def clear_scope_session_files(config, scope_key: str) -> int:
             continue
         archive_dir.mkdir(parents=True, exist_ok=True)
         archive_path = archive_dir / f"{file_path.stem}.reset.{timestamp}{file_path.suffix}"
-        try:
-            file_path.rename(archive_path)
-            archived += 1
-        except OSError:
-            pass
+        renamed = False
+        for attempt in range(5):
+            try:
+                file_path.rename(archive_path)
+                archived += 1
+                renamed = True
+                break
+            except OSError:
+                time.sleep(0.2)
+        if not renamed:
+            import logging
+            logging.warning("Failed to archive Pi session file after 5 attempts: %s", file_path)
     return archived
 
 

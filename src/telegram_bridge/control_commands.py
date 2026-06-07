@@ -14,6 +14,7 @@ from telegram_bridge.dream_loop_state import (
     mark_scope_stale_context_handled,
 )
 from telegram_bridge.engine_adapter import PiEngineAdapter
+from telegram_bridge.pi_live_rpc import _SESSION_REGISTRY, _SESSION_REGISTRY_LOCK
 from telegram_bridge.session_manager import request_safe_restart, trigger_restart_async
 from telegram_bridge.state_store import State, clear_thread_id, clear_worker_session
 from telegram_bridge.structured_logging import emit_event
@@ -79,10 +80,24 @@ def handle_reset_command(
         handled_at=_brisbane_now_iso(),
     )
     try:
-        PiEngineAdapter.clear_scope_session_files(config, scope_key)
+        with _SESSION_REGISTRY_LOCK:
+            live_session = _SESSION_REGISTRY.pop(scope_key, None)
+            if live_session is not None:
+                live_session.close()
+                logging.info("Closed live Pi RPC session for scope=%s", scope_key)
+    except Exception:
+        logging.exception("Failed to close live Pi RPC session for scope=%s", scope_key)
+    pi_archived = 0
+    try:
+        pi_archived = PiEngineAdapter.clear_scope_session_files(config, scope_key)
     except Exception:
         logging.exception("Failed to archive Pi session files for scope=%s", scope_key)
     handled_stale_warning = bool(stale_status.get("warning_fingerprint"))
+    pi_msg = ""
+    if pi_archived > 0:
+        pi_msg = f" ({pi_archived} Pi session file(s) archived)"
+    elif pi_archived == 0:
+        pi_msg = " (no Pi session files found to archive)"
     if removed_thread or removed_worker:
         extra = " Outstanding stale-context warning marked handled." if handled_stale_warning else ""
         _send_command_reply(
@@ -90,7 +105,7 @@ def handle_reset_command(
             chat_id,
             message_thread_id,
             message_id,
-            "Context reset. Your next message starts a new conversation." + extra,
+            "Context reset. Your next message starts a new conversation." + pi_msg + extra,
         )
         return
     if handled_stale_warning:
@@ -99,7 +114,7 @@ def handle_reset_command(
             chat_id,
             message_thread_id,
             message_id,
-            "No saved context was found for this chat. Outstanding stale-context warning marked handled.",
+            "No saved context was found for this chat. Outstanding stale-context warning marked handled." + pi_msg,
         )
         return
     _send_command_reply(
@@ -107,7 +122,7 @@ def handle_reset_command(
         chat_id,
         message_thread_id,
         message_id,
-        "No saved context was found for this chat.",
+        "No saved context was found for this chat." + pi_msg,
     )
 
 
