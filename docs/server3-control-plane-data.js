@@ -1,5 +1,5 @@
 window.SERVER3_CONTROL_PLANE_DATA = {
-  "generatedAt": "2026-05-30T19:09:51.938622+10:00",
+  "generatedAt": "2026-06-03T06:53:35.532172+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
@@ -9,10 +9,10 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     "approvalCopy": "explicit human gates from live Server3 state",
     "jobValue": "12 tracked",
     "jobCopy": "timers, approvals, and operator playback in one surface",
-    "hostValue": "load 9.93 / ram 5%",
+    "hostValue": "load 4.82 / ram 8%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "30 May 2026 19:09 AEST",
+      "03 Jun 2026 06:53 AEST",
       "snapshot file server3-control-plane-data.js",
       "0 approval item(s)"
     ],
@@ -86,31 +86,15 @@ window.SERVER3_CONTROL_PLANE_DATA = {
   },
   "activity": [
     {
-      "time": "19:11:56",
+      "time": "06:54:13",
       "title": "Oracle recent service activity",
       "channel": "signal runtime",
       "statusClass": "danger",
       "statusText": "degraded",
-      "copy": "Started signal-oracle-bridge.service - Signal Oracle Transport Bridge."
+      "copy": "2026-06-03 06:54:13,293 WARNING Signal event stream failed: <urlopen error [Errno 111] Connection refused>"
     },
     {
-      "time": "19:11:56",
-      "title": "Diary recent service activity",
-      "channel": "capture runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "bridge.started"
-    },
-    {
-      "time": "19:11:56",
-      "title": "Mavali ETH recent service activity",
-      "channel": "venue operations runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "bridge.started"
-    },
-    {
-      "time": "19:11:56",
+      "time": "06:54:06",
       "title": "Tank recent service activity",
       "channel": "telegram sibling",
       "statusClass": "ok",
@@ -118,7 +102,23 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "copy": "bridge.started"
     },
     {
-      "time": "19:11:56",
+      "time": "06:54:04",
+      "title": "Mavali ETH recent service activity",
+      "channel": "venue operations runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "06:53:58",
+      "title": "Diary recent service activity",
+      "channel": "capture runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "06:53:55",
       "title": "Architect recent service activity",
       "channel": "telegram primary",
       "statusClass": "ok",
@@ -231,26 +231,26 @@ window.SERVER3_CONTROL_PLANE_DATA = {
     {
       "title": "Observer summary",
       "tagClass": "busy",
-      "tagText": "30 May 19:15",
-      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 30 May 19:11."
+      "tagText": "03 Jun 06:55",
+      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 03 Jun 06:50."
     },
     {
       "title": "Routing drift check",
       "tagClass": "busy",
-      "tagText": "31 May 06:15",
-      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 30 May 06:15."
+      "tagText": "04 Jun 06:15",
+      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 03 Jun 06:15."
     },
     {
       "title": "State backup",
       "tagClass": "busy",
-      "tagText": "01 Jun 05:00",
-      "body": "server3-state-backup.timer is active(waiting). Last trigger: 01 May 05:00."
+      "tagText": "01 Jul 05:00",
+      "body": "server3-state-backup.timer is active(waiting). Last trigger: 01 Jun 05:00."
     },
     {
       "title": "Receipt monitor",
       "tagClass": "busy",
       "tagText": "not scheduled",
-      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: not scheduled."
+      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 03 Jun 06:39."
     }
   ],
   "floor": [
@@ -258,24 +258,24 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "title": "Internal disk",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "14% used",
-      "body": "/ | 387 GiB free of 480 GiB",
+      "value": "13% used",
+      "body": "/ | 393 GiB free of 480 GiB",
       "statusLine": "system root filesystem"
     },
     {
       "title": "External disk",
       "stateClass": "warn",
       "stateText": "watch",
-      "value": "60% used",
-      "body": "/srv/external/server3-arr | 632 GiB free of 1833 GiB",
+      "value": "missing",
+      "body": "/srv/external/server3-arr | path unavailable",
       "statusLine": "backup disk: 7% used"
     },
     {
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 9.93 / ram 5%",
-      "body": "primary route nordlynx / 10.5.0.2",
+      "value": "load 4.82 / ram 8%",
+      "body": "primary route eno2 / 192.168.0.148",
       "statusLine": "host: server3"
     },
     {
@@ -283,7 +283,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "stateClass": "busy",
       "stateText": "live",
       "value": "/data/downloads",
-      "body": "14% used | 387 GiB free of 480 GiB",
+      "body": "13% used | 393 GiB free of 480 GiB",
       "statusLine": "canonical media namespace is /data/downloads and /data/media/..."
     },
     {
@@ -292,7 +292,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "stateText": "queued",
       "value": "Observer summary, Routing drift check, State backup",
       "body": "Visible timers stay on the floor so continuity work is never hidden behind another tool.",
-      "statusLine": "next: 30 May 19:15"
+      "statusLine": "next: 03 Jun 06:55"
     }
   ],
   "runtimes": [
@@ -330,7 +330,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-architect-bridge.service",
-          "value": "19:09:43 Started telegram-architect-bridge.service - Telegram Architect Bridge."
+          "value": "20:28:21 Expired 1 idle Pi RPC session(s) after 900s timeout."
         }
       ],
       "watchouts": [
@@ -413,7 +413,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-tank-bridge.service",
-          "value": "19:09:44 Started telegram-tank-bridge.service - Telegram Tank Bridge."
+          "value": "04:52:49 bridge.telegram_api_retry_succeeded | getUpdates"
         }
       ],
       "watchouts": [
@@ -483,7 +483,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-diary-bridge.service",
-          "value": "19:09:43 Started telegram-diary-bridge.service - Telegram Diary Bridge."
+          "value": "06:53:58 bridge.started"
         }
       ],
       "watchouts": [
@@ -557,7 +557,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         },
         {
           "label": "govorun-whatsapp-bridge.service",
-          "value": "19:09:44 Started govorun-whatsapp-bridge.service - Govorun WhatsApp Bridge."
+          "value": "06:53:49 bridge.started"
         }
       ],
       "watchouts": [
@@ -622,23 +622,23 @@ window.SERVER3_CONTROL_PLANE_DATA = {
         },
         {
           "label": "live state",
-          "value": "active / activating"
+          "value": "deactivating / activating"
         }
       ],
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "19:09:42 Started signal-oracle-bridge.service - Signal Oracle Transport Bridge."
+          "value": "06:54:06 2026-06-03 06:54:03,292 WARNING Signal event stream failed: <urlopen error [Errno 111] Connection refused>"
         },
         {
           "label": "oracle-signal-bridge.service",
-          "value": "19:09:43 Starting oracle-signal-bridge.service - Oracle Signal Bridge..."
+          "value": "06:53:33 Starting oracle-signal-bridge.service - Oracle Signal Bridge..."
         }
       ],
       "watchouts": [
         {
           "label": "current issue",
-          "value": "expected active, got activating"
+          "value": "expected active, got deactivating"
         },
         {
           "label": "operator note",
@@ -703,7 +703,7 @@ window.SERVER3_CONTROL_PLANE_DATA = {
       "recentJobs": [
         {
           "label": "telegram-mavali-eth-bridge.service",
-          "value": "19:09:43 Started telegram-mavali-eth-bridge.service - Telegram Mavali ETH Bridge."
+          "value": "06:54:04 bridge.started"
         },
         {
           "label": "mavali-eth-receipt-monitor.timer",
