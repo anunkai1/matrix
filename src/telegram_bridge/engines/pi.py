@@ -83,7 +83,6 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
             build_pi_rpc_args_fn=self._build_pi_rpc_args,
         )
 
-    @staticmethod
     @classmethod
     def clear_scope_session_files(cls, config, scope_key: str) -> int:
         return clear_scope_session_files(config, scope_key)
