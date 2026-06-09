@@ -101,15 +101,25 @@ def build_effort_action_result(
     action: str,
     value: str = "",
     *,
+    model_active_engine_name: Callable,
     reset_codex_effort_for_scope: Callable,
     set_codex_effort_for_scope: Callable,
+    reset_pi_thinking_level_for_scope: Callable,
+    set_pi_thinking_level_for_scope: Callable,
     build_effort_status_text: Callable,
     build_effort_picker_markup: Callable,
 ) -> CallbackActionResult:
+    active_engine = model_active_engine_name(state, config, scope_key)
     if action == "reset":
-        text = reset_codex_effort_for_scope(state, config, scope_key)
+        if active_engine == "pi":
+            text = reset_pi_thinking_level_for_scope(state, config, scope_key)
+        else:
+            text = reset_codex_effort_for_scope(state, config, scope_key)
     elif action == "set":
-        text = set_codex_effort_for_scope(state, config, scope_key, value)
+        if active_engine == "pi":
+            text = set_pi_thinking_level_for_scope(state, config, scope_key, value)
+        else:
+            text = set_codex_effort_for_scope(state, config, scope_key, value)
     else:
         text = build_effort_status_text(state, config, scope_key)
     return CallbackActionResult(

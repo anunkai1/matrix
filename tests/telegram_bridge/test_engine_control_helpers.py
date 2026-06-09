@@ -9,6 +9,9 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from tests.telegram_bridge.helpers import FakeTelegramClient, make_config
+import telegram_bridge.engine_catalog as engine_catalog
+import telegram_bridge.engine_controls as engine_controls
+import telegram_bridge.state_store as bridge_handlers
 
 import telegram_bridge.engine_control_commands as engine_control_commands
 import telegram_bridge.engine_control_actions as engine_control_actions
@@ -272,7 +275,7 @@ class TestEngineControlCommands(unittest.TestCase):
         self.assertIn("Failed to validate Ollama (S4) models", client.messages[0][1])
         self.assertIn("catalog down", client.messages[0][1])
 
-    def test_handle_effort_command_falls_back_to_status_for_non_codex_engine(self):
+    def test_handle_effort_command_falls_back_to_status_for_non_effort_engine(self):
         client = FakeTelegramClient()
         observed = {}
 
@@ -290,7 +293,7 @@ class TestEngineControlCommands(unittest.TestCase):
             None,
             30,
             "/effort high",
-            model_active_engine_name=lambda *_args: "pi",
+            model_active_engine_name=lambda *_args: "venice",
             build_effort_action_result=fake_build_effort_action_result,
             build_effort_list_text=lambda *_args: "list",
             send_control_result_fn=engine_control_commands.send_control_result,
@@ -299,6 +302,34 @@ class TestEngineControlCommands(unittest.TestCase):
         self.assertTrue(handled)
         self.assertEqual(observed, {"action": "status", "value": ""})
         self.assertEqual(client.messages[0][1], "status")
+
+    def test_handle_effort_command_routes_pi_engine_to_set_action(self):
+        client = FakeTelegramClient()
+        observed = {}
+
+        def fake_build_effort_action_result(_state, _config, _scope_key, action, value=""):
+            observed["action"] = action
+            observed["value"] = value
+            return CallbackActionResult(text="set-pi")
+
+        handled = engine_control_commands.handle_effort_command(
+            State(),
+            make_config(),
+            client,
+            "tg:1",
+            1,
+            None,
+            31,
+            "/effort high",
+            model_active_engine_name=lambda *_args: "pi",
+            build_effort_action_result=fake_build_effort_action_result,
+            build_effort_list_text=lambda *_args: "list",
+            send_control_result_fn=engine_control_commands.send_control_result,
+        )
+
+        self.assertTrue(handled)
+        self.assertEqual(observed, {"action": "set", "value": "high"})
+        self.assertEqual(client.messages[0][1], "set-pi")
 
     def test_handle_pi_command_reports_unknown_command(self):
         client = FakeTelegramClient()
@@ -417,6 +448,239 @@ class TestEngineControlActions(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+
+
+class TestPiEffortHelpers(unittest.TestCase):
+    def test_minimax_is_listed_in_pi_provider_choices(self):
+        provider_names = [name for name, _description in engine_catalog.PI_PROVIDER_CHOICES]
+        self.assertIn("minimax", provider_names)
+
+    def test_configured_pi_thinking_level_is_lowercase(self):
+        from types import SimpleNamespace
+
+        config = SimpleNamespace(engines=SimpleNamespace(pi_thinking_level="HIGH"))
+        self.assertEqual(engine_catalog.configured_pi_thinking_level(config), "high")
+
+    def test_resolve_pi_thinking_level_candidate_matches_valid_level(self):
+        available = ["off", "low", "medium", "high"]
+        self.assertEqual(
+            engine_catalog.resolve_pi_thinking_level_candidate(available, "high"),
+            "high",
+        )
+        self.assertIsNone(
+            engine_catalog.resolve_pi_thinking_level_candidate(available, "xhigh")
+        )
+        self.assertIsNone(
+            engine_catalog.resolve_pi_thinking_level_candidate(available, "bogus")
+        )
+
+    def test_engine_control_views_pi_effort_picker_renders_levels(self):
+        from telegram_bridge import engine_control_views
+        from types import SimpleNamespace
+
+        config = SimpleNamespace(
+            engines=SimpleNamespace(pi_provider="minimax", pi_model="MiniMax-M2.7", pi_thinking_level="")
+        )
+        picker = engine_control_views.build_effort_picker_markup(
+            State(),
+            config,
+            "tg:1",
+            model_active_engine_name=lambda *_args: "pi",
+            build_engine_runtime_config=lambda *_: config.engines,
+            configured_codex_model=lambda *_: "",
+            configured_codex_reasoning_effort=lambda *_: "",
+            supported_codex_efforts_for_model=lambda *_: [],
+            configured_pi_provider=lambda *_: "minimax",
+            configured_pi_model=lambda *_: "MiniMax-M2.7",
+            configured_pi_thinking_level=lambda *_: "",
+            supported_pi_thinking_levels_for_model=lambda *_: list(engine_catalog.PI_THINKING_LEVEL_CHOICES),
+        )
+        self.assertIsInstance(picker, dict)
+        labels = [
+            button["text"]
+            for row in picker["inline_keyboard"]
+            for button in row
+        ]
+        self.assertIn("off", labels)
+        self.assertIn("xhigh", labels)
+        self.assertIn("Reset", labels)
+        self.assertTrue(
+            any("cfg|effort|pi" in button["callback_data"] for row in picker["inline_keyboard"] for button in row)
+        )
+
+    def test_engine_control_views_pi_effort_picker_hidden_for_non_reasoning_model(self):
+        from telegram_bridge import engine_control_views
+        from types import SimpleNamespace
+
+        config = SimpleNamespace(
+            engines=SimpleNamespace(pi_provider="ollama", pi_model="qwen3-coder:30b", pi_thinking_level="")
+        )
+        picker = engine_control_views.build_effort_picker_markup(
+            State(),
+            config,
+            "tg:1",
+            model_active_engine_name=lambda *_args: "pi",
+            build_engine_runtime_config=lambda *_: config.engines,
+            configured_codex_model=lambda *_: "",
+            configured_codex_reasoning_effort=lambda *_: "",
+            supported_codex_efforts_for_model=lambda *_: [],
+            configured_pi_provider=lambda *_: "ollama",
+            configured_pi_model=lambda *_: "qwen3-coder:30b",
+            configured_pi_thinking_level=lambda *_: "",
+            supported_pi_thinking_levels_for_model=lambda *_: [],
+        )
+        self.assertIsNone(picker)
+
+    def test_effort_callback_data_uses_engine_name(self):
+        from telegram_bridge import engine_control_views
+
+        self.assertEqual(
+            engine_control_views.effort_callback_data("menu", engine_name="pi"),
+            "cfg|effort|pi|menu",
+        )
+        self.assertEqual(
+            engine_control_views.effort_callback_data("set", "high", engine_name="pi"),
+            "cfg|effort|pi|set|high",
+        )
+        self.assertEqual(
+            engine_control_views.effort_callback_data("reset", engine_name="codex"),
+            "cfg|effort|codex|reset",
+        )
+
+    def test_set_pi_thinking_level_for_scope_persists_override(self):
+        from telegram_bridge import engine_control_mutations
+        from telegram_bridge.state_store import (
+            set_chat_pi_thinking_level,
+            get_chat_pi_thinking_level,
+        )
+        from types import SimpleNamespace
+
+        state = State()
+        config = SimpleNamespace(engines=SimpleNamespace(pi_provider="minimax", pi_model="MiniMax-M2.7", pi_thinking_level=""))
+
+        text = engine_control_mutations.set_pi_thinking_level_for_scope(
+            state,
+            config,
+            "tg:1",
+            "high",
+            build_engine_runtime_config=lambda *_: config.engines,
+            configured_pi_provider=lambda *_: "minimax",
+            configured_pi_model=lambda *_: "MiniMax-M2.7",
+            configured_pi_thinking_level=lambda *_: "high",
+            supported_pi_thinking_levels_for_model=lambda *_: list(engine_catalog.PI_THINKING_LEVEL_CHOICES),
+            resolve_pi_thinking_level_candidate=engine_catalog.resolve_pi_thinking_level_candidate,
+            set_chat_pi_thinking_level=set_chat_pi_thinking_level,
+            build_pi_thinking_source_text=lambda *_: "chat override",
+        )
+
+        self.assertIn("high", text)
+        self.assertEqual(get_chat_pi_thinking_level(state, "tg:1"), "high")
+
+    def test_set_pi_thinking_level_for_scope_rejects_unsupported_level(self):
+        from telegram_bridge import engine_control_mutations
+        from telegram_bridge.state_store import (
+            set_chat_pi_thinking_level,
+            get_chat_pi_thinking_level,
+        )
+        from types import SimpleNamespace
+
+        state = State()
+        config = SimpleNamespace(engines=SimpleNamespace(pi_provider="minimax", pi_model="MiniMax-M2.7", pi_thinking_level=""))
+
+        text = engine_control_mutations.set_pi_thinking_level_for_scope(
+            state,
+            config,
+            "tg:1",
+            "bogus",
+            build_engine_runtime_config=lambda *_: config.engines,
+            configured_pi_provider=lambda *_: "minimax",
+            configured_pi_model=lambda *_: "MiniMax-M2.7",
+            configured_pi_thinking_level=lambda *_: "",
+            supported_pi_thinking_levels_for_model=lambda *_: ["low", "medium", "high"],
+            resolve_pi_thinking_level_candidate=engine_catalog.resolve_pi_thinking_level_candidate,
+            set_chat_pi_thinking_level=set_chat_pi_thinking_level,
+            build_pi_thinking_source_text=lambda *_: "global default",
+        )
+
+        self.assertIn("not supported", text)
+        self.assertIsNone(get_chat_pi_thinking_level(state, "tg:1"))
+
+    def test_reset_pi_thinking_level_for_scope_clears_override(self):
+        from telegram_bridge import engine_control_mutations
+        from telegram_bridge.state_store import (
+            set_chat_pi_thinking_level,
+            clear_chat_pi_thinking_level,
+            get_chat_pi_thinking_level,
+        )
+        from types import SimpleNamespace
+
+        state = State()
+        set_chat_pi_thinking_level(state, "tg:1", "high")
+        config = SimpleNamespace(engines=SimpleNamespace(pi_provider="minimax", pi_model="MiniMax-M2.7", pi_thinking_level=""))
+
+        text = engine_control_mutations.reset_pi_thinking_level_for_scope(
+            state,
+            config,
+            "tg:1",
+            clear_chat_pi_thinking_level=clear_chat_pi_thinking_level,
+            build_engine_runtime_config=lambda *_: config.engines,
+            configured_pi_thinking_level=lambda *_: "",
+            build_pi_thinking_source_text=lambda *_: "global default",
+        )
+
+        self.assertIn("cleared", text)
+        self.assertIsNone(get_chat_pi_thinking_level(state, "tg:1"))
+
+
+class TestPiCommandThinkingArg(unittest.TestCase):
+    def test_build_pi_rpc_args_passes_thinking_flag(self):
+        from telegram_bridge.engines import pi_command
+        from types import SimpleNamespace
+
+        config = SimpleNamespace(
+            pi_bin="pi",
+            pi_provider="minimax",
+            pi_model="MiniMax-M2.7",
+            pi_thinking_level="high",
+            pi_runner="local",
+            pi_local_cwd="/tmp",
+            pi_tools_mode="default",
+            pi_tools_allowlist="",
+            pi_extra_args="",
+        )
+        args = pi_command.build_pi_rpc_args(
+            config,
+            include_no_context_files=False,
+            session_key=None,
+            build_session_args_fn=lambda *_a, **_k: [],
+        )
+        self.assertIn("--thinking", args)
+        self.assertIn("high", args)
+        thinking_index = args.index("--thinking")
+        self.assertEqual(args[thinking_index + 1], "high")
+
+    def test_build_pi_rpc_args_omits_thinking_flag_when_unset(self):
+        from telegram_bridge.engines import pi_command
+        from types import SimpleNamespace
+
+        config = SimpleNamespace(
+            pi_bin="pi",
+            pi_provider="minimax",
+            pi_model="MiniMax-M2.7",
+            pi_thinking_level="",
+            pi_runner="local",
+            pi_local_cwd="/tmp",
+            pi_tools_mode="default",
+            pi_tools_allowlist="",
+            pi_extra_args="",
+        )
+        args = pi_command.build_pi_rpc_args(
+            config,
+            include_no_context_files=False,
+            session_key=None,
+            build_session_args_fn=lambda *_a, **_k: [],
+        )
+        self.assertNotIn("--thinking", args)
 
 
 if __name__ == "__main__":

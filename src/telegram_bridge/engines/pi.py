@@ -16,7 +16,7 @@ from telegram_bridge.engines._base import (
     _completed_process_with_output,
     _run_blocking_with_cancel,
 )
-from telegram_bridge.executor import ExecutorCancelledError
+from telegram_bridge.executor import ExecutorCancelledError, ExecutorProgressEvent
 from telegram_bridge.engines.pi_sessions import (
     _provider_scoped_session_key,
     _safe_session_filename,
@@ -154,6 +154,8 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         process: subprocess.Popen[str],
         cancel_event: Optional[threading.Event],
         timeout: int,
+        *,
+        on_text_delta=None,
     ) -> list[str]:
         return pi_transport.read_rpc_stdout(
             process,
@@ -161,6 +163,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
             timeout,
             time_module=time,
             executor_cancelled_error_cls=ExecutorCancelledError,
+            on_text_delta=on_text_delta,
         )
 
     def _build_remote_command(self, config) -> str:
@@ -177,6 +180,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         *,
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
+        on_text_delta=None,
     ) -> str:
         return pi_transport.run_pi_ssh(
             config,
@@ -192,6 +196,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
             run_pi_text_ssh_fn=self._run_pi_text_ssh,
             subprocess_module=subprocess,
             executor_cancelled_error_cls=ExecutorCancelledError,
+            on_text_delta=on_text_delta,
         )
 
     def _local_ollama_tunnel_healthy(self, port: int) -> bool:
@@ -220,6 +225,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         *,
         image_path: Optional[str] = None,
         image_paths: Optional[list[str]] = None,
+        on_text_delta=None,
     ) -> str:
         return pi_transport.run_pi_local(
             config,
@@ -238,6 +244,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
             run_pi_text_local_fn=self._run_pi_text_local,
             subprocess_module=subprocess,
             executor_cancelled_error_cls=ExecutorCancelledError,
+            on_text_delta=on_text_delta,
         )
 
     def run(
@@ -255,7 +262,21 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
         progress_callback: Optional[ProgressCallback] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> subprocess.CompletedProcess[str]:
-        del thread_id, channel_name, actor_chat_id, actor_user_id, progress_callback
+        del thread_id, channel_name, actor_chat_id, actor_user_id
+        # Wire the progress callback into the Pi RPC text-delta path
+        # so the bridge's stream consumer can render token deltas
+        # progressively. The callback is a thread-safe
+        # ``ExecutorProgressEvent`` sink; we adapt it to a plain
+        # ``on_text_delta`` callable the transport layer expects.
+        def _on_text_delta(delta: str) -> None:
+            if not delta or progress_callback is None:
+                return
+            try:
+                progress_callback(ExecutorProgressEvent("text_delta", delta))
+            except Exception:
+                # The callback must never break the read loop.
+                pass
+
         if not self._model_supports_images(config):
             if image_path or image_paths:
                 model = str(getattr(config, "pi_model", "") or "").strip()
@@ -277,6 +298,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
                     scope_key=session_key,
                     image_paths=image_paths or ([image_path] if image_path else []),
                     cancel_event=cancel_event,
+                    on_text_delta=_on_text_delta,
                 )
             runner = str(getattr(config, "pi_runner", "ssh") or "ssh").strip().lower()
             if runner in {"local", "server3"}:
@@ -287,6 +309,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
                     cancel_event,
                     image_path=image_path,
                     image_paths=image_paths,
+                    on_text_delta=_on_text_delta,
                 )
             elif runner in {"ssh", "server4"}:
                 output = self._run_pi_ssh(
@@ -295,6 +318,7 @@ class PiEngineAdapter(CompletedProcessOutputMixin):
                     cancel_event,
                     image_path=image_path,
                     image_paths=image_paths,
+                    on_text_delta=_on_text_delta,
                 )
             else:
                 raise RuntimeError(f"Unsupported Pi runner: {runner}")

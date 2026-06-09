@@ -10,6 +10,10 @@ from telegram_bridge import web_context
 from telegram_bridge.engines.mavali_eth import MavaliEthEngineAdapter
 from telegram_bridge.handler_models import DocumentPayload, PromptRequest
 from telegram_bridge.state_store import StateRepository
+from telegram_bridge.stream_consumer import (
+    StreamConsumer,
+    StreamConsumerConfig,
+)
 
 
 @dataclass(frozen=True)
@@ -342,8 +346,77 @@ def process_prompt_request(
         progress_reporter_cls=progress_reporter_cls,
         assistant_label_fn=assistant_label_fn,
     )
+    # Stage 1 streaming: set up a per-turn StreamConsumer when (a) the
+    # global StreamingConfig is enabled, (b) the active engine plugin
+    # exposes token-level deltas (codex_app_server today), and (c) the
+    # chat adapter supports editing sent messages. The consumer is
+    # attached to the progress reporter so ``text_delta`` events from
+    # the engine get routed to it. The actual ``run()`` task is started
+    # below after the engine turns over and starts producing deltas.
+    stream_consumer: Optional[StreamConsumer] = None
+    stream_consumer_task: Optional[object] = None
+    streaming_cfg = getattr(config, "streaming", None)
+    engine_plugin = str(getattr(active_engine, "engine_name", "") or "").strip().lower()
+    scope_streaming_flag = state_repo.get_chat_streaming_enabled(scope_key)
+    # Streaming is enabled for this scope when (a) the global
+    # StreamingConfig says so for the active engine plugin, OR (b) the
+    # per-scope /stream override is True AND the active engine is in
+    # the supported list. The engine-plugin predicate is the
+    # authoritative gate — the per-scope flag is a multiplier.
+    is_engine_supported = bool(
+        streaming_cfg
+        and getattr(streaming_cfg, "is_engine_supported", lambda _p: False)(engine_plugin)
+    )
+    scope_overrides_global = bool(
+        streaming_cfg
+        and scope_streaming_flag is True
+        and engine_plugin in {
+            token.strip().lower()
+            for token in getattr(streaming_cfg, "supported_engine_plugins", "codex,pi").split(",")
+            if token.strip()
+        }
+    )
+    should_attempt_streaming = is_engine_supported or scope_overrides_global
+    if (
+        should_attempt_streaming
+        and getattr(client, "supports_message_edits", True)
+    ):
+        consumer_config = StreamConsumerConfig.from_config(config)
+        stream_consumer = StreamConsumer(
+            client=client,
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            config=consumer_config,
+            initial_reply_to_message_id=message_id,
+        )
+        try:
+            setattr(progress, "stream_consumer", stream_consumer)
+        except Exception:
+            logging.debug("Could not attach stream consumer to progress reporter", exc_info=True)
+        emit_event_fn(
+            "bridge.stream_consumer_attached",
+            fields={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "scope_key": scope_key,
+                "engine_plugin": engine_plugin,
+                "scope_streaming_flag": scope_streaming_flag,
+                "edit_interval": consumer_config.edit_interval,
+                "buffer_threshold": consumer_config.buffer_threshold,
+            },
+        )
     try:
         progress.start()
+        if stream_consumer is not None:
+            # Start the consumer's private event loop + run() task. The
+            # consumer exposes a sync facade (start / wait_until_done /
+            # stop_loop) so the sync request worker can drive it
+            # without holding a reference to the asyncio event loop.
+            try:
+                stream_consumer.start()
+                stream_consumer_task = stream_consumer._run_task  # noqa: SLF001
+            except RuntimeError:
+                logging.debug("Stream consumer failed to start", exc_info=True)
         auth_reset_result = refresh_runtime_auth_fingerprint_fn(state)
         if auth_reset_result["applied"]:
             counts = _normalized_reset_counts(auth_reset_result)
@@ -525,6 +598,19 @@ def process_prompt_request(
             success=result is not None,
         )
         if result is None:
+            # Even on cancellation / engine failure, drain the stream
+            # consumer so any partial delivery doesn't leak a stuck
+            # cursor. ``finish()`` is a no-op if the consumer never
+            # produced any visible content.
+            if stream_consumer is not None:
+                try:
+                    stream_consumer.finish()
+                except Exception:
+                    logging.debug("stream_consumer.finish() failed on None result", exc_info=True)
+                try:
+                    stream_consumer.wait_until_done(timeout=2.0)
+                except Exception:
+                    logging.debug("stream_consumer wait_until_done failed", exc_info=True)
             if cancel_event is not None and cancel_event.is_set() and not stateless:
                 goal_loop.maybe_handle_goal_turn_cancelled(
                     state=state,
@@ -536,6 +622,37 @@ def process_prompt_request(
                 )
             return
         steered_follow_up_count = cached_executor_result_steered_follow_up_count(result)
+        # Signal stream completion to the consumer and wait for the
+        # run() task to deliver the final visible reply. We then decide
+        # whether ``finalize_prompt_success`` should also re-send the
+        # output — if the consumer already delivered the full final
+        # text, we skip the legacy send to avoid double-posting.
+        consumer_delivered_final = False
+        if stream_consumer is not None:
+            try:
+                stream_consumer.finish()
+            except Exception:
+                logging.debug("stream_consumer.finish() failed", exc_info=True)
+            try:
+                stream_consumer.wait_until_done(timeout=5.0)
+            except Exception:
+                logging.debug("stream_consumer wait_until_done failed", exc_info=True)
+            consumer_delivered_final = bool(stream_consumer.final_response_sent)
+            emit_event_fn(
+                "bridge.stream_consumer_finalized",
+                fields={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "scope_key": scope_key,
+                    "consumer_delivered_final": consumer_delivered_final,
+                    "consumer_message_id": stream_consumer.message_id,
+                    "edit_attempts": stream_consumer.stats.edit_attempts,
+                    "edit_successes": stream_consumer.stats.edit_successes,
+                    "edit_failures_other": stream_consumer.stats.edit_failures_other,
+                    "flood_strikes": stream_consumer.stats.flood_strikes,
+                    "fallback_final_send": stream_consumer.stats.fallback_final_send,
+                },
+            )
         finalize_started_at = time.monotonic()
         new_thread_id, output = finalize_prompt_success_fn(
             state_repo=state_repo,
@@ -545,6 +662,7 @@ def process_prompt_request(
             chat_id=chat_id,
             message_id=message_id,
             message_thread_id=message_thread_id,
+            skip_delivery=consumer_delivered_final,
             reply_to_message_id=(
                 getattr(delivery_metadata, "current_message_id", None)
                 if delivery_metadata is not None
@@ -594,6 +712,28 @@ def process_prompt_request(
                     "Affective runtime finish_turn(success=False) failed for chat_id=%s",
                     chat_id,
                 )
+        # Detach the stream consumer from the progress reporter so a
+        # later progress event doesn't accidentally re-route to a
+        # half-closed consumer. We keep the consumer object around in
+        # case the finally runs after a streaming-enabled path that
+        # didn't reach the success path; the consumer's run() task is
+        # already finished by the time we get here in the success case.
+        try:
+            if stream_consumer is not None:
+                setattr(progress, "stream_consumer", None)
+        except Exception:
+            pass
+        if stream_consumer is not None and stream_consumer_task is not None:
+            try:
+                if not stream_consumer_task.done():
+                    stream_consumer.finish()
+                    stream_consumer.wait_until_done(timeout=2.0)
+            except Exception:
+                logging.debug("Stream consumer cleanup failed", exc_info=True)
+            try:
+                stream_consumer.stop_loop(timeout=2.0)
+            except Exception:
+                logging.debug("Stream consumer stop_loop failed", exc_info=True)
         finalize_request_progress_fn(
             progress=progress,
             state=state,

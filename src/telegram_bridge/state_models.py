@@ -107,6 +107,14 @@ class State:
     chat_pi_provider_path: str = ""
     chat_pi_models: Dict[ScopeKey, str] = field(default_factory=dict)
     chat_pi_model_path: str = ""
+    chat_pi_thinking_levels: Dict[ScopeKey, str] = field(default_factory=dict)
+    chat_pi_thinking_level_path: str = ""
+    # Per-scope progressive streaming opt-in (set via /stream on|off).
+    # Even when ``Config.streaming.enabled`` is False, the bridge can
+    # still respect this per-scope flag for explicit opt-in during
+    # testing; the global flag is the authoritative kill-switch.
+    chat_streaming_enabled: Dict[ScopeKey, bool] = field(default_factory=dict)
+    chat_streaming_enabled_path: str = ""
     worker_sessions: Dict[ScopeKey, WorkerSession] = field(default_factory=dict)
     worker_sessions_path: str = ""
     in_flight_requests: Dict[ScopeKey, Dict[str, object]] = field(default_factory=dict)

@@ -112,6 +112,7 @@ def make_config(state_dir: str):
         venice_request_timeout_seconds=180,
         pi_provider="ollama",
         pi_model="gemma4:26b",
+        pi_thinking_level="",
         pi_runner="ssh",
         pi_bin="pi",
         pi_ssh_host="server4-beast",

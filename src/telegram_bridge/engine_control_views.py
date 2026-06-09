@@ -64,12 +64,13 @@ def provider_callback_data(action: str, value: str = "") -> str:
     return f"cfg|provider|pi|{action}"
 
 
-def effort_callback_data(action: str, value: str = "") -> str:
+def effort_callback_data(action: str, value: str = "", *, engine_name: str = "codex") -> str:
+    target_engine = (engine_name or "codex").strip().lower() or "codex"
     if action == "reset":
-        return "cfg|effort|codex|reset"
+        return f"cfg|effort|{target_engine}|reset"
     if action == "menu":
-        return "cfg|effort|codex|menu"
-    return f"cfg|effort|codex|set|{value}"
+        return f"cfg|effort|{target_engine}|menu"
+    return f"cfg|effort|{target_engine}|set|{value}"
 
 
 def pi_model_page_for_selection(model_names: List[str], current_model: str, page_size: int) -> int:
@@ -350,21 +351,41 @@ def build_effort_picker_markup(
     configured_codex_model: Callable,
     configured_codex_reasoning_effort: Callable,
     supported_codex_efforts_for_model: Callable,
+    configured_pi_provider: Callable,
+    configured_pi_model: Callable,
+    configured_pi_thinking_level: Callable,
+    supported_pi_thinking_levels_for_model: Callable,
 ) -> Optional[Dict[str, object]]:
     active_engine = model_active_engine_name(state, config, scope_key)
-    if active_engine != "codex":
-        return None
-    display_config = build_engine_runtime_config(state, config, scope_key, "codex")
-    current_model = configured_codex_model(display_config)
-    current_effort = configured_codex_reasoning_effort(display_config) or "(default)"
-    buttons: List[Tuple[str, str]] = []
-    for effort in supported_codex_efforts_for_model(current_model):
-        label = f"{effort} *" if effort == current_effort else effort
-        buttons.append((label, effort_callback_data("set", effort)))
-    buttons.append(("Reset", effort_callback_data("reset")))
-    buttons.append(("Back to Models", "cfg|model|codex|menu"))
-    markup = compact_inline_keyboard(buttons, columns=2)
-    return markup if markup.get("inline_keyboard") else None
+    if active_engine == "codex":
+        display_config = build_engine_runtime_config(state, config, scope_key, "codex")
+        current_model = configured_codex_model(display_config)
+        current_effort = configured_codex_reasoning_effort(display_config) or "(default)"
+        buttons: List[Tuple[str, str]] = []
+        for effort in supported_codex_efforts_for_model(current_model):
+            label = f"{effort} *" if effort == current_effort else effort
+            buttons.append((label, effort_callback_data("set", effort, engine_name="codex")))
+        buttons.append(("Reset", effort_callback_data("reset", engine_name="codex")))
+        buttons.append(("Back to Models", "cfg|model|codex|menu"))
+        markup = compact_inline_keyboard(buttons, columns=2)
+        return markup if markup.get("inline_keyboard") else None
+    if active_engine == "pi":
+        display_config = build_engine_runtime_config(state, config, scope_key, "pi")
+        provider = configured_pi_provider(display_config)
+        model = configured_pi_model(display_config)
+        current_level = configured_pi_thinking_level(display_config) or "(default)"
+        available = supported_pi_thinking_levels_for_model(provider, model)
+        if not available:
+            return None
+        buttons = []
+        for level in available:
+            label = f"{level} *" if level == current_level else level
+            buttons.append((label, effort_callback_data("set", level, engine_name="pi")))
+        buttons.append(("Reset", effort_callback_data("reset", engine_name="pi")))
+        buttons.append(("Back to Models", "cfg|model|pi|menu"))
+        markup = compact_inline_keyboard(buttons, columns=2)
+        return markup if markup.get("inline_keyboard") else None
+    return None
 
 
 def build_model_picker_markup(
@@ -473,6 +494,7 @@ def build_model_picker_markup(
         rows.append(
             [
                 {"text": "Reset", "callback_data": model_callback_data("pi", "reset")},
+                {"text": "Effort", "callback_data": "cfg|effort|pi|menu"},
                 {"text": "Back to Engine", "callback_data": engine_callback_data("pi", "menu")},
             ]
         )
@@ -562,6 +584,7 @@ def build_model_status_text(
             f"Pi model source: {build_pi_model_source_text(state, scope_key)}",
             "Use /model list to see available Pi models for the current provider.",
             "Use /pi provider <name> to switch Pi provider for this chat.",
+            "Use /effort to set a reasoning level for the current Pi model.",
         ]
         return "\n".join(lines)
     if active_engine == "gemma":
@@ -605,26 +628,46 @@ def build_effort_status_text(
     configured_codex_model: Callable,
     configured_codex_reasoning_effort: Callable,
     build_codex_effort_source_text: Callable,
+    configured_pi_provider: Callable,
+    configured_pi_model: Callable,
+    configured_pi_thinking_level: Callable,
+    build_pi_thinking_source_text: Callable,
 ) -> str:
     active_engine = model_active_engine_name(state, config, scope_key)
-    if active_engine != "codex":
-        return (
-            f"Active engine: {active_engine}\n"
-            "Reasoning effort switching is currently supported for `codex`.\n"
-            "Use `/engine codex` first."
+    if active_engine == "codex":
+        display_config = build_engine_runtime_config(state, config, scope_key, "codex")
+        current_model = configured_codex_model(display_config) or "(default)"
+        current_effort = configured_codex_reasoning_effort(display_config) or "(default)"
+        return "\n".join(
+            [
+                "Active engine: codex",
+                f"Codex model: {current_model}",
+                f"Codex effort: {current_effort}",
+                f"Codex effort source: {build_codex_effort_source_text(state, scope_key)}",
+                "Use /effort <low|medium|high|xhigh> or tap the buttons below.",
+                "Use /effort reset to clear the chat override.",
+            ]
         )
-    display_config = build_engine_runtime_config(state, config, scope_key, "codex")
-    current_model = configured_codex_model(display_config) or "(default)"
-    current_effort = configured_codex_reasoning_effort(display_config) or "(default)"
-    return "\n".join(
-        [
-            "Active engine: codex",
-            f"Codex model: {current_model}",
-            f"Codex effort: {current_effort}",
-            f"Codex effort source: {build_codex_effort_source_text(state, scope_key)}",
-            "Use /effort <low|medium|high|xhigh> or tap the buttons below.",
-            "Use /effort reset to clear the chat override.",
-        ]
+    if active_engine == "pi":
+        display_config = build_engine_runtime_config(state, config, scope_key, "pi")
+        provider = configured_pi_provider(display_config)
+        model = configured_pi_model(display_config)
+        current_level = configured_pi_thinking_level(display_config) or "(default)"
+        return "\n".join(
+            [
+                "Active engine: pi",
+                f"Pi provider: {provider}",
+                f"Pi model: {model}",
+                f"Pi reasoning level: {current_level}",
+                f"Pi reasoning level source: {build_pi_thinking_source_text(state, scope_key)}",
+                "Use /effort <off|minimal|low|medium|high|xhigh> or tap the buttons below.",
+                "Use /effort reset to clear the chat override.",
+            ]
+        )
+    return (
+        f"Active engine: {active_engine}\n"
+        "Reasoning effort switching is currently supported for `codex` and `pi`.\n"
+        "Use `/engine codex` or `/engine pi` first."
     )
 
 
@@ -638,27 +681,51 @@ def build_effort_list_text(
     configured_codex_model: Callable,
     configured_codex_reasoning_effort: Callable,
     supported_codex_efforts_for_model: Callable,
+    configured_pi_provider: Callable,
+    configured_pi_model: Callable,
+    configured_pi_thinking_level: Callable,
+    supported_pi_thinking_levels_for_model: Callable,
 ) -> str:
     active_engine = model_active_engine_name(state, config, scope_key)
-    if active_engine != "codex":
-        return (
-            f"Active engine: {active_engine}\n"
-            "Reasoning effort listing is currently supported for `codex`.\n"
-            "Use `/engine codex` first."
-        )
-    display_config = build_engine_runtime_config(state, config, scope_key, "codex")
-    current_model = configured_codex_model(display_config) or "(default)"
-    current_effort = configured_codex_reasoning_effort(display_config) or "(default)"
-    lines = [
-        "Active engine: codex",
-        f"Current Codex model: {current_model}",
-        f"Current Codex effort: {current_effort}",
-        "Available Codex reasoning efforts for this model:",
-    ]
-    for effort in supported_codex_efforts_for_model(current_model):
-        marker = " (current)" if effort == current_effort else ""
-        lines.append(f"- {effort}{marker}")
-    return "\n".join(lines)
+    if active_engine == "codex":
+        display_config = build_engine_runtime_config(state, config, scope_key, "codex")
+        current_model = configured_codex_model(display_config) or "(default)"
+        current_effort = configured_codex_reasoning_effort(display_config) or "(default)"
+        lines = [
+            "Active engine: codex",
+            f"Current Codex model: {current_model}",
+            f"Current Codex effort: {current_effort}",
+            "Available Codex reasoning efforts for this model:",
+        ]
+        for effort in supported_codex_efforts_for_model(current_model):
+            marker = " (current)" if effort == current_effort else ""
+            lines.append(f"- {effort}{marker}")
+        return "\n".join(lines)
+    if active_engine == "pi":
+        display_config = build_engine_runtime_config(state, config, scope_key, "pi")
+        provider = configured_pi_provider(display_config)
+        model = configured_pi_model(display_config)
+        current_level = configured_pi_thinking_level(display_config) or "(default)"
+        available = supported_pi_thinking_levels_for_model(provider, model)
+        lines = [
+            "Active engine: pi",
+            f"Pi provider: {provider}",
+            f"Pi model: {model}",
+            f"Current Pi reasoning level: {current_level}",
+            "Available Pi reasoning levels for this provider/model:",
+        ]
+        if not available:
+            lines.append("- (this model does not advertise reasoning support)")
+            return "\n".join(lines)
+        for level in available:
+            marker = " (current)" if level == current_level else ""
+            lines.append(f"- {level}{marker}")
+        return "\n".join(lines)
+    return (
+        f"Active engine: {active_engine}\n"
+        "Reasoning effort listing is currently supported for `codex` and `pi`.\n"
+        "Use `/engine codex` or `/engine pi` first."
+    )
 
 
 def build_model_list_text(

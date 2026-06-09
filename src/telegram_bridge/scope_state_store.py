@@ -162,6 +162,14 @@ def load_chat_pi_providers(path: str) -> Dict[ScopeKey, str]:
     )
 
 
+def load_chat_pi_thinking_levels(path: str) -> Dict[ScopeKey, str]:
+    return _load_scope_string_map(
+        path,
+        state_label="chat Pi thinking level",
+        normalize_value=lambda value: value.lower(),
+    )
+
+
 def _persist_scope_string_map(path_value: str, values: Dict[ScopeKey, str]) -> None:
     serialized = {
         normalize_scope_key(scope_key): value
@@ -210,6 +218,12 @@ def persist_chat_pi_providers(state: State) -> None:
     with state.lock:
         values = dict(state.chat_pi_providers)
     _persist_scope_string_map(state.chat_pi_provider_path, values)
+
+
+def persist_chat_pi_thinking_levels(state: State) -> None:
+    with state.lock:
+        values = dict(state.chat_pi_thinking_levels)
+    _persist_scope_string_map(state.chat_pi_thinking_level_path, values)
 
 
 def _get_string_override(
@@ -395,6 +409,15 @@ def get_chat_pi_model(state: State, scope_key: ScopeKey) -> Optional[str]:
     return _get_string_override(state, scope_key, state.chat_pi_models)
 
 
+def get_chat_pi_thinking_level(state: State, scope_key: ScopeKey) -> Optional[str]:
+    return _get_string_override(
+        state,
+        scope_key,
+        state.chat_pi_thinking_levels,
+        normalize=lambda value: value.strip().lower(),
+    )
+
+
 def set_chat_pi_model(state: State, scope_key: ScopeKey, model_name: str) -> None:
     _set_string_override(
         state,
@@ -412,3 +435,77 @@ def clear_chat_pi_model(state: State, scope_key: ScopeKey) -> bool:
         state.chat_pi_models,
         persist_chat_pi_models,
     )
+
+
+def set_chat_pi_thinking_level(state: State, scope_key: ScopeKey, level_name: str) -> None:
+    _set_string_override(
+        state,
+        scope_key,
+        state.chat_pi_thinking_levels,
+        level_name,
+        persist_chat_pi_thinking_levels,
+        normalize=lambda value: value.strip().lower(),
+    )
+
+
+def clear_chat_pi_thinking_level(state: State, scope_key: ScopeKey) -> bool:
+    return _clear_string_override(
+        state,
+        scope_key,
+        state.chat_pi_thinking_levels,
+        persist_chat_pi_thinking_levels,
+    )
+
+
+# ── Progressive streaming opt-in (bool per scope) ─────────────────────
+
+def load_chat_streaming_enabled(path: str) -> Dict[ScopeKey, bool]:
+    """Reload per-scope streaming opt-in flags from disk.
+
+    Bypasses the ``_load_scope_string_map`` truthy-filter because we
+    need to preserve explicit ``"0"`` / ``False`` entries (a scope that
+    has been explicitly opted out is meaningful). The normal map loader
+    drops empty / falsy strings.
+    """
+    raw = load_json_object(path, state_label="chat streaming enabled")
+    parsed: Dict[ScopeKey, bool] = {}
+    for key, value in raw.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+        scope_key = normalize_scope_storage_key(key)
+        if scope_key is None:
+            continue
+        parsed[scope_key] = value.strip().lower() in {"1", "true", "yes", "on"}
+    return parsed
+
+
+def persist_chat_streaming_enabled(state: State) -> None:
+    with state.lock:
+        values = {scope: "1" if enabled else "0" for scope, enabled in state.chat_streaming_enabled.items()}
+    _persist_scope_string_map(state.chat_streaming_enabled_path, values)
+
+
+def get_chat_streaming_enabled(state: State, scope_key: ScopeKey) -> Optional[bool]:
+    scope_key = normalize_scope_key(scope_key)
+    with state.lock:
+        raw = state.chat_streaming_enabled.get(scope_key)
+    if raw is None:
+        return None
+    return bool(raw)
+
+
+def set_chat_streaming_enabled(state: State, scope_key: ScopeKey, enabled: bool) -> None:
+    scope_key = normalize_scope_key(scope_key)
+    with state.lock:
+        state.chat_streaming_enabled[scope_key] = bool(enabled)
+    persist_chat_streaming_enabled(state)
+
+
+def clear_chat_streaming_enabled(state: State, scope_key: ScopeKey) -> bool:
+    scope_key = normalize_scope_key(scope_key)
+    with state.lock:
+        if scope_key not in state.chat_streaming_enabled:
+            return False
+        del state.chat_streaming_enabled[scope_key]
+    persist_chat_streaming_enabled(state)
+    return True

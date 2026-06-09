@@ -326,7 +326,7 @@ def handle_effort_command(
         result = CallbackActionResult(text=build_effort_list_text(state, config, scope_key))
     elif tail == "reset":
         result = build_effort_action_result(state, config, scope_key, "reset")
-    elif active_engine != "codex":
+    elif active_engine not in {"codex", "pi"}:
         result = build_effort_action_result(state, config, scope_key, "status")
     else:
         result = build_effort_action_result(state, config, scope_key, "set", raw_tail)

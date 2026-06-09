@@ -459,6 +459,7 @@ def finalize_prompt_success(
     message_thread_id: Optional[int] = None,
     reply_to_message_id: Optional[int] = None,
     runtime_hooks: Optional[PromptRuntimeHooks] = None,
+    skip_delivery: bool = False,
 ) -> tuple[Optional[str], str]:
     runtime_hooks = runtime_hooks or build_prompt_runtime_hooks()
     if scope_key is None:
@@ -475,6 +476,23 @@ def finalize_prompt_success(
     if not runtime_hooks.output_contains_control_directive_fn(output):
         output = runtime_hooks.trim_output_fn(output, config.max_output_chars)
     progress.mark_success()
+    if skip_delivery:
+        # The stream consumer already delivered the final visible
+        # reply. Surface a no-op delivery so downstream code (goal
+        # loop, attachment summary, affective runtime) still sees the
+        # delivered text and can mark the turn as successful. The
+        # returned ``delivered_output`` is the post-trim text the
+        # consumer already rendered.
+        runtime_hooks.emit_event_fn(
+            "bridge.finalize_prompt_success_skip_delivery",
+            fields={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "scope_key": scope_key,
+                "output_chars": len(output),
+            },
+        )
+        return new_thread_id, output
     delivered_output = runtime_hooks.deliver_output_and_emit_success_fn(
         client=client,
         chat_id=chat_id,

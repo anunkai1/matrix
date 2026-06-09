@@ -13,6 +13,7 @@ from telegram_bridge.engine_catalog import (
     configured_gemma_model,
     configured_pi_model,
     configured_pi_provider,
+    configured_pi_thinking_level,
     normalize_engine_name,
     pi_provider_uses_ollama_tunnel,
     selectable_engine_plugins,
@@ -25,6 +26,7 @@ from telegram_bridge.state_store import (
     get_chat_gemma_model,
     get_chat_pi_model,
     get_chat_pi_provider,
+    get_chat_pi_thinking_level,
 )
 
 GEMMA_HEALTH_TIMEOUT_SECONDS = 6
@@ -63,12 +65,15 @@ def build_engine_runtime_config(state, config, scope_key: str, engine_name: str)
         return config
     override_provider = get_chat_pi_provider(state, scope_key)
     override_model = get_chat_pi_model(state, scope_key)
-    if not override_provider and not override_model:
+    override_thinking_level = get_chat_pi_thinking_level(state, scope_key)
+    if not override_provider and not override_model and not override_thinking_level:
         return config
     if override_provider:
         runtime_config.pi_provider = override_provider
     if override_model:
         runtime_config.pi_model = override_model
+    if override_thinking_level:
+        runtime_config.pi_thinking_level = override_thinking_level
     return runtime_config
 
 
@@ -98,6 +103,12 @@ def build_pi_provider_source_text(state: State, scope_key: str) -> str:
 
 def build_pi_model_source_text(state: State, scope_key: str) -> str:
     if get_chat_pi_model(state, scope_key):
+        return "chat override"
+    return "global default"
+
+
+def build_pi_thinking_source_text(state: State, scope_key: str) -> str:
+    if get_chat_pi_thinking_level(state, scope_key):
         return "chat override"
     return "global default"
 

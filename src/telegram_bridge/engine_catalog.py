@@ -23,8 +23,20 @@ PI_PROVIDER_CHOICES = (
     ("ollama", "local Ollama or SSH-tunneled Ollama"),
     ("venice", "Venice API models"),
     ("deepseek", "DeepSeek API models"),
+    ("minimax", "MiniMax API models (Anthropic-compatible)"),
 )
 PI_MODEL_PICKER_PAGE_SIZE = 16
+# Pi's `--thinking` flag accepts these levels. We mirror them for the bridge
+# effort picker when the active engine is `pi` and the model supports reasoning.
+PI_THINKING_LEVEL_CHOICES = (
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+)
+DEFAULT_PI_THINKING_LEVELS = ("low", "medium", "high", "xhigh")
 
 
 def _engines_config(config):
@@ -79,6 +91,80 @@ def normalize_pi_provider_name(provider_name: str) -> str:
 def configured_pi_model(config) -> str:
     engines = _engines_config(config)
     return str(getattr(engines, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip() or "qwen3-coder:30b"
+
+
+def configured_pi_thinking_level(config) -> str:
+    engines = _engines_config(config)
+    return str(getattr(engines, "pi_thinking_level", "") or "").strip().lower()
+
+
+def _pi_thinking_level_is_valid(level_name: str) -> bool:
+    return level_name in PI_THINKING_LEVEL_CHOICES
+
+
+def supported_pi_thinking_levels_for_model(provider: str, model_name: str) -> List[str]:
+    """Return the thinking levels the current Pi model+provider actually exposes.
+
+    Falls back to the default six-level set when the model advertises
+    `reasoning: true` and no explicit `thinkingLevelMap`. Returns an empty list
+    when the model clearly does not support reasoning.
+    """
+
+    normalized_provider = normalize_pi_provider_name(provider)
+    normalized_model = str(model_name or "").strip()
+    if not normalized_model:
+        return list(DEFAULT_PI_THINKING_LEVELS)
+
+    models_path = Path.home() / ".pi" / "agent" / "models.json"
+    if not models_path.is_file():
+        return list(DEFAULT_PI_THINKING_LEVELS)
+    try:
+        data = json.loads(models_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return list(DEFAULT_PI_THINKING_LEVELS)
+    providers = data.get("providers") if isinstance(data, dict) else None
+    if not isinstance(providers, dict):
+        return list(DEFAULT_PI_THINKING_LEVELS)
+    provider_cfg = providers.get(normalized_provider)
+    if not isinstance(provider_cfg, dict):
+        return list(DEFAULT_PI_THINKING_LEVELS)
+    models = provider_cfg.get("models")
+    if not isinstance(models, list):
+        return list(DEFAULT_PI_THINKING_LEVELS)
+    for entry in models:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("id", "") or "").strip() != normalized_model:
+            continue
+        if not bool(entry.get("reasoning", False)):
+            return []
+        raw_map = entry.get("thinkingLevelMap")
+        if not isinstance(raw_map, dict) or not raw_map:
+            return list(PI_THINKING_LEVEL_CHOICES)
+        resolved: List[str] = []
+        for level in PI_THINKING_LEVEL_CHOICES:
+            if level not in raw_map:
+                resolved.append(level)
+                continue
+            value = raw_map[level]
+            if value is None:
+                continue
+            resolved.append(level)
+        return resolved or list(DEFAULT_PI_THINKING_LEVELS)
+    return list(DEFAULT_PI_THINKING_LEVELS)
+
+
+def resolve_pi_thinking_level_candidate(
+    available_levels: List[str],
+    requested_level: str,
+) -> Optional[str]:
+    normalized = str(requested_level or "").strip().lower()
+    if not normalized or not _pi_thinking_level_is_valid(normalized):
+        return None
+    for level in available_levels or ():
+        if level == normalized:
+            return level
+    return None
 
 
 def configured_gemma_model(config) -> str:

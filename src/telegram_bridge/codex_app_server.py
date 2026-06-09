@@ -726,10 +726,19 @@ class CodexAppServerSession:
             delta = params.get("delta")
             if not isinstance(delta, str):
                 return
+            callback = self._progress_callback()
             with self._state_lock:
                 pending_turn = self._pending_turn
                 if pending_turn is not None:
                     pending_turn.last_agent_message += delta
+            # Surface the delta through the progress callback so the
+            # bridge's StreamConsumer can render it progressively. The
+            # callback is a no-op for any consumer that does not
+            # implement text_delta handling (the existing ProgressReporter
+            # treats unknown kinds as silent), so this change is safe to
+            # roll out alongside stage 1 streaming opt-in.
+            if callback is not None and delta:
+                callback(ExecutorProgressEvent("text_delta", delta))
             return
         if method == "error":
             logging.warning("Codex app-server protocol error scope=%s params=%r", self.scope_key, params)

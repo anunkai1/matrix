@@ -1,6 +1,7 @@
+import json
 import os
 import shlex
-from typing import Optional
+from typing import Callable, Optional
 
 
 def _pi_request_timeout(config) -> int:
@@ -116,7 +117,18 @@ def read_rpc_stdout(
     *,
     time_module,
     executor_cancelled_error_cls,
+    on_text_delta: Optional[Callable[[str], None]] = None,
 ) -> list[str]:
+    """Drain the Pi RPC stdout stream line-by-line.
+
+    When ``on_text_delta`` is provided, fires it with each
+    ``message_update`` / ``text_delta`` event's ``delta`` field as
+    soon as the line is read. The callback is invoked from the same
+    thread that reads stdout (typically a worker thread spawned by
+    the bridge request worker), so it must be thread-safe and
+    non-blocking — the standard use is to push into a thread-safe
+    queue (the bridge's ``StreamConsumer.on_delta`` is exactly that).
+    """
     lines: list[str] = []
     start = time_module.monotonic()
     while time_module.monotonic() - start < timeout:
@@ -130,9 +142,45 @@ def read_rpc_stdout(
             time_module.sleep(0.05)
             continue
         lines.append(line)
+        if on_text_delta is not None:
+            try:
+                _maybe_emit_text_delta(line, on_text_delta)
+            except Exception:
+                # The callback must never break the read loop — if it
+                # raised, the streaming preview would freeze for the
+                # user. Errors are swallowed.
+                pass
         if '"type":"agent_end"' in line or '"type": "agent_end"' in line:
             break
     return lines
+
+
+def _maybe_emit_text_delta(line: str, on_text_delta: Callable[[str], None]) -> None:
+    """Parse one Pi RPC stdout line and emit its ``text_delta`` if any.
+
+    The Pi RPC protocol uses a JSON line stream. Token deltas arrive
+    as::
+
+        {"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hello"}}
+
+    This helper does a tiny string scan first (avoids the JSON parse
+    cost on every non-delta line) and only decodes lines that look
+    like a ``message_update`` carrying a ``text_delta`` event.
+    """
+    if '"message_update"' not in line or '"text_delta"' not in line:
+        return
+    try:
+        event = json.loads(line)
+    except (ValueError, TypeError):
+        return
+    if not isinstance(event, dict) or event.get("type") != "message_update":
+        return
+    sub = event.get("assistantMessageEvent")
+    if not isinstance(sub, dict) or sub.get("type") != "text_delta":
+        return
+    delta = sub.get("delta")
+    if isinstance(delta, str) and delta:
+        on_text_delta(delta)
 
 
 def build_remote_command(
@@ -224,6 +272,7 @@ def run_pi_ssh(
     run_pi_text_ssh_fn,
     subprocess_module,
     executor_cancelled_error_cls,
+    on_text_delta=None,
 ) -> str:
     timeout = _pi_request_timeout(config)
     prompt_json = build_rpc_prompt_json(
@@ -247,7 +296,12 @@ def run_pi_ssh(
     try:
         process.stdin.write(prompt_json + "\n")
         process.stdin.flush()
-        stdout_lines = read_rpc_stdout_fn(process, cancel_event, timeout + 10)
+        stdout_lines = read_rpc_stdout_fn(
+            process,
+            cancel_event,
+            timeout + 10,
+            on_text_delta=on_text_delta,
+        )
         process.stdin.close()
         process.stdin = None
         _, stderr = process.communicate(timeout=5)
@@ -288,6 +342,7 @@ def run_pi_local(
     run_pi_text_local_fn,
     subprocess_module,
     executor_cancelled_error_cls,
+    on_text_delta=None,
 ) -> str:
     timeout = _pi_request_timeout(config)
     if pi_provider_uses_ollama_tunnel_fn(config):
@@ -316,7 +371,12 @@ def run_pi_local(
     try:
         process.stdin.write(prompt_json + "\n")
         process.stdin.flush()
-        stdout_lines = read_rpc_stdout_fn(process, cancel_event, timeout + 10)
+        stdout_lines = read_rpc_stdout_fn(
+            process,
+            cancel_event,
+            timeout + 10,
+            on_text_delta=on_text_delta,
+        )
         process.stdin.close()
         process.stdin = None
         _, stderr = process.communicate(timeout=5)

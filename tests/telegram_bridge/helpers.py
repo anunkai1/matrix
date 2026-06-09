@@ -254,6 +254,7 @@ def make_config(**overrides):
         "venice_request_timeout_seconds": 180,
         "pi_provider": "ollama",
         "pi_model": "qwen3-coder:30b",
+        "pi_thinking_level": "",
         "pi_runner": "ssh",
         "pi_bin": "pi",
         "pi_ssh_host": "server4-beast",

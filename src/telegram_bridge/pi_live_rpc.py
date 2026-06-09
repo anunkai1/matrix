@@ -9,7 +9,7 @@ import time
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from telegram_bridge.executor import (
     ExecutorCancelledError,
@@ -240,6 +240,7 @@ def run_live_pi_turn(
     scope_key: Optional[str],
     image_paths: Optional[List[str]],
     cancel_event: Optional[threading.Event],
+    on_text_delta: Optional[Callable[[str], None]] = None,
 ) -> subprocess.CompletedProcess[str]:
     normalized_scope_key = str(scope_key or "").strip()
     if not normalized_scope_key:
@@ -260,6 +261,7 @@ def run_live_pi_turn(
         prompt=str(prompt or "").strip(),
         image_paths=list(image_paths or []),
         cancel_event=cancel_event,
+        on_text_delta=on_text_delta,
     )
 
 
@@ -294,6 +296,7 @@ class PiLiveRpcSession:
         prompt: str,
         image_paths: List[str],
         cancel_event: Optional[threading.Event],
+        on_text_delta: Optional[Callable[[str], None]] = None,
     ) -> subprocess.CompletedProcess[str]:
         self._mark_used()
         pending_turn = _PendingTurn()
@@ -318,6 +321,7 @@ class PiLiveRpcSession:
                         current_prompt,
                         current_images,
                         cancel_event=cancel_event,
+                        on_text_delta=on_text_delta,
                     )
                 except ExecutorCancelledError:
                     self._stop_process()
@@ -446,6 +450,7 @@ class PiLiveRpcSession:
         image_paths: List[str],
         *,
         cancel_event: Optional[threading.Event],
+        on_text_delta: Optional[Callable[[str], None]] = None,
     ) -> str:
         self._ensure_process()
         process = self.process
@@ -465,6 +470,7 @@ class PiLiveRpcSession:
                 int(_engine_value(self.config, "pi_request_timeout_seconds", 180)),
                 time_module=time,
                 executor_cancelled_error_cls=ExecutorCancelledError,
+                on_text_delta=on_text_delta,
             )
         if cancel_event is not None and cancel_event.is_set():
             raise ExecutorCancelledError("Pi request canceled by user.")

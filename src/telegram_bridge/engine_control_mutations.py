@@ -308,6 +308,65 @@ def reset_codex_effort_for_scope(
     )
 
 
+def set_pi_thinking_level_for_scope(
+    state,
+    config,
+    scope_key: str,
+    level_name: str,
+    *,
+    build_engine_runtime_config: Callable,
+    configured_pi_provider: Callable,
+    configured_pi_model: Callable,
+    configured_pi_thinking_level: Callable,
+    supported_pi_thinking_levels_for_model: Callable,
+    resolve_pi_thinking_level_candidate: Callable,
+    set_chat_pi_thinking_level: Callable,
+    build_pi_thinking_source_text: Callable,
+) -> str:
+    display_config = build_engine_runtime_config(state, config, scope_key, "pi")
+    provider = configured_pi_provider(display_config)
+    model = configured_pi_model(display_config)
+    available = supported_pi_thinking_levels_for_model(provider, model)
+    resolved = resolve_pi_thinking_level_candidate(available, level_name)
+    if resolved is None:
+        if not available:
+            return (
+                f"Reasoning effort is not supported for Pi provider `{provider}` "
+                f"model `{model}`."
+            )
+        return (
+            f"Reasoning effort not supported for Pi provider `{provider}` model `{model}`: "
+            f"`{level_name}`\nUse /effort list to see the allowed effort names."
+        )
+    set_chat_pi_thinking_level(state, scope_key, resolved)
+    updated_config = build_engine_runtime_config(state, config, scope_key, "pi")
+    return (
+        f"Pi reasoning level for this chat is now "
+        f"{configured_pi_thinking_level(updated_config) or '(default)'} "
+        f"({build_pi_thinking_source_text(state, scope_key)})."
+    )
+
+
+def reset_pi_thinking_level_for_scope(
+    state,
+    config,
+    scope_key: str,
+    *,
+    clear_chat_pi_thinking_level: Callable,
+    build_engine_runtime_config: Callable,
+    configured_pi_thinking_level: Callable,
+    build_pi_thinking_source_text: Callable,
+) -> str:
+    removed = clear_chat_pi_thinking_level(state, scope_key)
+    updated_config = build_engine_runtime_config(state, config, scope_key, "pi")
+    source = "chat override cleared" if removed else "no chat override was set"
+    return (
+        f"{source}. Pi reasoning level is now "
+        f"{configured_pi_thinking_level(updated_config) or '(default)'} "
+        f"({build_pi_thinking_source_text(state, scope_key)})."
+    )
+
+
 def resolve_engine_for_scope(
     state,
     config,

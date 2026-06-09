@@ -17,6 +17,10 @@ def _configured_model(config) -> str:
     return str(getattr(config, "pi_model", "qwen3-coder:30b") or "qwen3-coder:30b").strip()
 
 
+def _configured_thinking_level(config) -> str:
+    return str(getattr(config, "pi_thinking_level", "") or "").strip().lower()
+
+
 def _model_requires_no_tools(config) -> bool:
     return (
         _normalized_provider(config).strip().lower() == "ollama"
@@ -48,6 +52,9 @@ def build_pi_rpc_args(
         "--mode",
         "rpc",
     ]
+    thinking_level = _configured_thinking_level(config)
+    if thinking_level:
+        args.extend(["--thinking", thinking_level])
     args.extend(build_session_args_fn(config, session_key))
     if include_no_context_files:
         args.append("--no-context-files")

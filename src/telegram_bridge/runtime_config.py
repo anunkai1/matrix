@@ -103,6 +103,7 @@ class EngineConfig:
     venice_request_timeout_seconds: int
     pi_provider: str
     pi_model: str
+    pi_thinking_level: str
     pi_runner: str
     pi_bin: str
     pi_ssh_host: str
@@ -202,6 +203,54 @@ class GoalsConfig:
     goal_judge_max_output_chars: int = 4096
 
 
+@dataclass
+class StreamingConfig:
+    """Progressive token streaming configuration.
+
+    The bridge progressively edits a single Telegram message with
+    assistant tokens instead of buffering the whole response and
+    sending it once. Stage 1 (codex app-server) and stage 2 (Pi RPC)
+    are both edit-based via Telegram ``editMessageText``; native
+    draft streaming is intentionally out of scope until the operator
+    opts in to stage 3.
+
+    Defaults are safe: ``enabled=False`` so the bridge behaves exactly
+    as it does today until a scope explicitly opts in via ``/stream on``
+    or the global ``TELEGRAM_STREAMING_ENABLED`` env var is flipped.
+    """
+
+    enabled: bool = True
+    edit_interval: float = 0.8
+    buffer_threshold: int = 24
+    cursor: str = " ▉"
+    max_message_length: int = 4096
+    min_first_message_chars: int = 4
+    # Comma-separated list of engine plugins that the streaming
+    # transport understands. Default covers both stages 1 and 2.
+    supported_engine_plugins: str = "codex,pi"
+
+    def is_engine_supported(self, engine_plugin: str) -> bool:
+        """True if streaming is wired up for the given engine plugin.
+
+        The consumer itself is engine-agnostic — it just edits a single
+        Telegram message based on whatever fires the
+        ``ExecutorProgressEvent("text_delta", delta)`` event. Whether a
+        given engine actually surfaces those events is what this
+        predicate answers. The default ``supported_engine_plugins``
+        list is ``"codex,pi"`` because both paths now emit deltas.
+        """
+        if not self.enabled:
+            return False
+        if not engine_plugin:
+            return False
+        supported = {
+            token.strip().lower()
+            for token in self.supported_engine_plugins.split(",")
+            if token.strip()
+        }
+        return engine_plugin in supported
+
+
 class Config:
     """Grouped bridge runtime configuration with flat-attribute compatibility."""
 
@@ -216,6 +265,7 @@ class Config:
         "affective": AffectiveConfig,
         "messages": MessageConfig,
         "goals": GoalsConfig,
+        "streaming": StreamingConfig,
     }
     _FIELD_TO_GROUP = {
         field.name: group_name
@@ -598,10 +648,16 @@ def load_engine_config_values(*, assistant_name: str) -> Dict[str, object]:
     # back on through service config differences between chatbots.
     codex_sandbox_mode = default_codex_sandbox_mode
     return {
-        "engine_plugin": parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "codex"),
+        # Pi is now the default engine. The user no longer uses Codex
+        # much; the Anthropic-compatible ``minimax`` Pi provider is the
+        # default so new requests route through the MiniMax API instead
+        # of Codex. Operators that need the old default can set
+        # ``TELEGRAM_ENGINE_PLUGIN=codex`` in
+        # ``/etc/default/telegram-architect-bridge``.
+        "engine_plugin": parse_plugin_name_env("TELEGRAM_ENGINE_PLUGIN", "pi"),
         "selectable_engine_plugins": parse_plugin_list_env(
             "TELEGRAM_SELECTABLE_ENGINE_PLUGINS",
-            ["codex", "gemma", "pi"],
+            ["pi", "codex", "gemma"],
         ),
         "codex_sandbox_mode": codex_sandbox_mode,
         "telegram_context_injection_policy": (
@@ -643,8 +699,9 @@ def load_engine_config_values(*, assistant_name: str) -> Dict[str, object]:
             180,
             minimum=1,
         ),
-        "pi_provider": parse_plugin_name_env("PI_PROVIDER", "ollama"),
-        "pi_model": os.getenv("PI_MODEL", "qwen3-coder:30b").strip() or "qwen3-coder:30b",
+        "pi_provider": parse_plugin_name_env("PI_PROVIDER", "minimax"),
+        "pi_model": os.getenv("PI_MODEL", "minimax-m3").strip() or "minimax-m3",
+        "pi_thinking_level": os.getenv("PI_THINKING_LEVEL", "").strip().lower(),
         "pi_runner": parse_plugin_name_env("PI_RUNNER", "ssh"),
         "pi_bin": os.getenv("PI_BIN", "pi").strip() or "pi",
         "pi_ssh_host": os.getenv("PI_SSH_HOST", "server4-beast").strip() or "server4-beast",
@@ -864,6 +921,45 @@ def load_goals_config_values() -> Dict[str, object]:
         ),
     }
 
+
+def load_streaming_config_values() -> Dict[str, object]:
+    """Load progressive-token-streaming knobs from the environment.
+
+    ``TELEGRAM_STREAMING_ENABLED`` is the global kill-switch. The bridge
+    defaults to disabled so existing behavior is preserved when this
+    module is loaded into a runtime that has not opted in. Per-scope
+    opt-in via ``/stream on`` is the operator-facing toggle.
+    """
+    return {
+        "enabled": parse_bool_env("TELEGRAM_STREAMING_ENABLED", True),
+        "edit_interval": parse_float_env(
+            "TELEGRAM_STREAMING_EDIT_INTERVAL",
+            0.8,
+            minimum=0.1,
+            maximum=10.0,
+        ),
+        "buffer_threshold": parse_int_env(
+            "TELEGRAM_STREAMING_BUFFER_THRESHOLD",
+            24,
+            minimum=1,
+        ),
+        "cursor": os.getenv("TELEGRAM_STREAMING_CURSOR", " ▉"),
+        "max_message_length": parse_int_env(
+            "TELEGRAM_STREAMING_MAX_MESSAGE_LENGTH",
+            4096,
+            minimum=500,
+        ),
+        "min_first_message_chars": parse_int_env(
+            "TELEGRAM_STREAMING_MIN_FIRST_MESSAGE_CHARS",
+            4,
+            minimum=1,
+        ),
+        "supported_engine_plugins": os.getenv(
+            "TELEGRAM_STREAMING_SUPPORTED_ENGINE_PLUGINS",
+            "codex,pi",
+        ).strip().lower() or "codex,pi",
+    }
+
 def load_config() -> Config:
     channel_plugin = parse_plugin_name_env("TELEGRAM_CHANNEL_PLUGIN", "telegram")
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -931,4 +1027,5 @@ def load_config() -> Config:
             busy_message=busy_message,
         ),
         goals=load_goals_config_values(),
+        streaming=load_streaming_config_values(),
     )

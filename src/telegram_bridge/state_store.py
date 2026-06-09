@@ -30,18 +30,24 @@ from telegram_bridge.scope_state_store import (
     clear_chat_gemma_model,
     clear_chat_pi_model,
     clear_chat_pi_provider,
+    clear_chat_pi_thinking_level,
+    clear_chat_streaming_enabled,
     get_chat_codex_effort,
     get_chat_codex_model,
     get_chat_engine,
     get_chat_gemma_model,
     get_chat_pi_model,
     get_chat_pi_provider,
+    get_chat_pi_thinking_level,
+    get_chat_streaming_enabled,
     load_chat_codex_efforts,
     load_chat_codex_models,
     load_chat_engines,
     load_chat_gemma_models,
     load_chat_pi_models,
     load_chat_pi_providers,
+    load_chat_pi_thinking_levels,
+    load_chat_streaming_enabled,
     load_chat_threads,
     load_json_object,
     normalize_path_value,
@@ -52,12 +58,16 @@ from telegram_bridge.scope_state_store import (
     persist_chat_gemma_models,
     persist_chat_pi_models,
     persist_chat_pi_providers,
+    persist_chat_pi_thinking_levels,
+    persist_chat_streaming_enabled,
     set_chat_codex_effort,
     set_chat_codex_model,
     set_chat_engine,
     set_chat_gemma_model,
     set_chat_pi_model,
     set_chat_pi_provider,
+    set_chat_pi_thinking_level,
+    set_chat_streaming_enabled,
 )
 from telegram_bridge.request_runtime_state_store import (
     load_in_flight_requests,
@@ -91,6 +101,8 @@ __all__ = [
     "clear_chat_gemma_model",
     "clear_chat_pi_model",
     "clear_chat_pi_provider",
+    "clear_chat_pi_thinking_level",
+    "clear_chat_streaming_enabled",
     "clear_in_flight_request",
     "clear_thread_id",
     "clear_worker_session",
@@ -102,6 +114,8 @@ __all__ = [
     "get_chat_gemma_model",
     "get_chat_pi_model",
     "get_chat_pi_provider",
+    "get_chat_pi_thinking_level",
+    "get_chat_streaming_enabled",
     "get_thread_id",
     "load_canonical_sessions",
     "load_canonical_sessions_sqlite",
@@ -111,6 +125,8 @@ __all__ = [
     "load_chat_gemma_models",
     "load_chat_pi_models",
     "load_chat_pi_providers",
+    "load_chat_pi_thinking_levels",
+    "load_chat_streaming_enabled",
     "load_chat_threads",
     "load_in_flight_requests",
     "load_or_import_canonical_sessions_sqlite",
@@ -134,6 +150,8 @@ __all__ = [
     "persist_chat_gemma_models",
     "persist_chat_pi_models",
     "persist_chat_pi_providers",
+    "persist_chat_pi_thinking_levels",
+    "persist_chat_streaming_enabled",
     "persist_chat_threads",
     "persist_in_flight_requests",
     "persist_worker_sessions",
@@ -145,6 +163,8 @@ __all__ = [
     "set_chat_gemma_model",
     "set_chat_pi_model",
     "set_chat_pi_provider",
+    "set_chat_pi_thinking_level",
+    "set_chat_streaming_enabled",
     "set_thread_id",
     "sync_all_canonical_sessions",
     "sync_canonical_session",
@@ -322,6 +342,24 @@ class StateRepository:
 
     def clear_chat_pi_model(self, scope_key: ScopeKey) -> bool:
         return clear_chat_pi_model(self.state, scope_key)
+
+    def get_chat_pi_thinking_level(self, scope_key: ScopeKey) -> Optional[str]:
+        return get_chat_pi_thinking_level(self.state, scope_key)
+
+    def set_chat_pi_thinking_level(self, scope_key: ScopeKey, level_name: str) -> None:
+        set_chat_pi_thinking_level(self.state, scope_key, level_name)
+
+    def clear_chat_pi_thinking_level(self, scope_key: ScopeKey) -> bool:
+        return clear_chat_pi_thinking_level(self.state, scope_key)
+
+    def get_chat_streaming_enabled(self, scope_key: ScopeKey) -> Optional[bool]:
+        return get_chat_streaming_enabled(self.state, scope_key)
+
+    def set_chat_streaming_enabled(self, scope_key: ScopeKey, enabled: bool) -> None:
+        set_chat_streaming_enabled(self.state, scope_key, enabled)
+
+    def clear_chat_streaming_enabled(self, scope_key: ScopeKey) -> bool:
+        return clear_chat_streaming_enabled(self.state, scope_key)
 
     def mark_in_flight_request(self, scope_key: ScopeKey, message_id: Optional[int]) -> None:
         mark_in_flight_request(self.state, scope_key, message_id)

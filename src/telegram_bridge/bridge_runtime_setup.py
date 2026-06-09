@@ -275,6 +275,8 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
     loaded_codex_efforts = loaded_state.get("codex_efforts", {})
     loaded_pi_models = loaded_state.get("pi_models", {})
     loaded_pi_providers = loaded_state.get("pi_providers", {})
+    loaded_pi_thinking_levels = loaded_state.get("pi_thinking_levels", {})
+    loaded_streaming_enabled = loaded_state.get("streaming_enabled", {})
     loaded_worker_sessions = loaded_state.get("worker_sessions", {})
     loaded_in_flight = loaded_state.get("in_flight", {})
     loaded_canonical_sessions, canonical_bootstrap_source = load_canonical_session_bootstrap(
@@ -383,6 +385,10 @@ def build_runtime_bootstrap(config: Config) -> RuntimeBootstrap:
         chat_pi_provider_path=state_paths.get("chat_pi_providers", ""),
         chat_pi_models=loaded_pi_models,
         chat_pi_model_path=state_paths.get("chat_pi_models", ""),
+        chat_pi_thinking_levels=loaded_pi_thinking_levels,
+        chat_pi_thinking_level_path=state_paths.get("chat_pi_thinking_levels", ""),
+        chat_streaming_enabled=loaded_streaming_enabled,
+        chat_streaming_enabled_path=state_paths.get("chat_streaming_enabled", ""),
         chat_goals=loaded_state.get("goals", {}),
         chat_goal_path=state_paths.get("chat_goals", ""),
         worker_sessions=loaded_worker_sessions if not session.canonical_sessions_enabled else {},

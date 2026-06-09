@@ -9,7 +9,9 @@ from telegram_bridge import control_commands
 from telegram_bridge.diary_processing import build_diary_queue_status, build_diary_today_status
 from telegram_bridge.diary_store import diary_mode_enabled
 from telegram_bridge import engine_controls
+from telegram_bridge import engine_control_status
 from telegram_bridge import goal_loop
+from telegram_bridge import stream_control
 from telegram_bridge.handler_common import build_help_text, build_status_text, extract_callback_query_context
 from telegram_bridge.handler_models import CallbackActionContext, CallbackActionResult, KnownCommandContext
 from telegram_bridge import remember_commands
@@ -127,6 +129,28 @@ def _handle_pi_known_command(ctx: KnownCommandContext) -> bool:
         raw_text=ctx.raw_text,
     )
 
+def _handle_stream_known_command(ctx: KnownCommandContext) -> bool:
+    # ``model_active_engine_name`` is a 3-arg function (state, config,
+    # scope_key) but the stream control command expects a 2-arg
+    # active_engine_plugin_fn(state, scope_key). Wrap with the command
+    # context's config so the closure is bound correctly per call.
+    config = ctx.config
+    return stream_control.handle_stream_command(
+        state=ctx.state,
+        config=config,
+        client=ctx.client,
+        scope_key=ctx.scope_key,
+        chat_id=ctx.chat_id,
+        message_thread_id=ctx.message_thread_id,
+        message_id=ctx.message_id,
+        raw_text=ctx.raw_text,
+        active_engine_plugin_fn=(
+            lambda state, scope_key: engine_control_status.model_active_engine_name(
+                state, config, scope_key
+            )
+        ),
+    )
+
 def _handle_reset_known_command(ctx: KnownCommandContext) -> bool:
     control_commands.handle_reset_command(
         ctx.state,
@@ -220,6 +244,7 @@ KNOWN_COMMAND_HANDLERS: Dict[str, KnownCommandFn] = {
     "/model": _handle_model_known_command,
     "/effort": _handle_effort_known_command,
     "/pi": _handle_pi_known_command,
+    "/stream": _handle_stream_known_command,
     "/reset": _handle_reset_known_command,
     "/truth_status": _handle_truth_status_known_command,
     "/goal": _handle_goal_known_command,

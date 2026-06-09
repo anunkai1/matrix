@@ -16,14 +16,17 @@ from telegram_bridge.engine_catalog import (
     configured_gemma_model,
     configured_pi_model,
     configured_pi_provider,
+    configured_pi_thinking_level,
     display_engine_name,
     normalize_engine_name,
     normalize_pi_provider_name,
     pi_provider_uses_ollama_tunnel,
     resolve_codex_effort_candidate as _resolve_codex_effort_candidate,
     resolve_codex_model_candidate as _resolve_codex_model_candidate,
+    resolve_pi_thinking_level_candidate as _resolve_pi_thinking_level_candidate,
     selectable_engine_plugins,
     supported_codex_efforts_for_model as _supported_codex_efforts_for_model,
+    supported_pi_thinking_levels_for_model as _supported_pi_thinking_levels_for_model,
     load_codex_model_catalog as _load_codex_model_catalog,
     load_codex_model_choices as _load_codex_model_choices,
 )
@@ -39,6 +42,7 @@ from telegram_bridge.engine_control_status import (
     build_pi_provider_source_text as _build_pi_provider_source_text,
     build_pi_providers_text,
     build_pi_status_text,
+    build_pi_thinking_source_text as _build_pi_thinking_source_text,
     check_gemma_health,
     check_pi_health,
     check_venice_health,
@@ -62,6 +66,7 @@ from telegram_bridge.state_store import (
     clear_chat_gemma_model,
     clear_chat_pi_model,
     clear_chat_pi_provider,
+    clear_chat_pi_thinking_level,
     get_chat_codex_effort,
     get_chat_codex_model,
     get_chat_engine,
@@ -74,6 +79,7 @@ from telegram_bridge.state_store import (
     set_chat_gemma_model,
     set_chat_pi_model,
     set_chat_pi_provider,
+    set_chat_pi_thinking_level,
 )
 def _engine_callback_data(engine_name: str, action: str) -> str:
     return engine_control_views.engine_callback_data(engine_name, action)
@@ -225,8 +231,11 @@ def _build_effort_action_result(
         scope_key,
         action,
         value,
+        model_active_engine_name=_model_active_engine_name,
         reset_codex_effort_for_scope=_reset_codex_effort_for_scope,
         set_codex_effort_for_scope=_set_codex_effort_for_scope,
+        reset_pi_thinking_level_for_scope=_reset_pi_thinking_level_for_scope,
+        set_pi_thinking_level_for_scope=_set_pi_thinking_level_for_scope,
         build_effort_status_text=build_effort_status_text,
         build_effort_picker_markup=_build_effort_picker_markup,
     )
@@ -354,6 +363,10 @@ def _build_effort_picker_markup(state: State, config, scope_key: str) -> Optiona
             configured_codex_model=configured_codex_model,
             configured_codex_reasoning_effort=configured_codex_reasoning_effort,
             supported_codex_efforts_for_model=_supported_codex_efforts_for_model,
+            configured_pi_provider=configured_pi_provider,
+            configured_pi_model=configured_pi_model,
+            configured_pi_thinking_level=configured_pi_thinking_level,
+            supported_pi_thinking_levels_for_model=_supported_pi_thinking_levels_for_model,
         ),
     )
 
@@ -385,6 +398,10 @@ def build_effort_status_text(state: State, config, scope_key: str) -> str:
         configured_codex_model=configured_codex_model,
         configured_codex_reasoning_effort=configured_codex_reasoning_effort,
         build_codex_effort_source_text=_build_codex_effort_source_text,
+        configured_pi_provider=configured_pi_provider,
+        configured_pi_model=configured_pi_model,
+        configured_pi_thinking_level=configured_pi_thinking_level,
+        build_pi_thinking_source_text=_build_pi_thinking_source_text,
     )
 
 def build_effort_list_text(state: State, config, scope_key: str) -> str:
@@ -397,6 +414,10 @@ def build_effort_list_text(state: State, config, scope_key: str) -> str:
         configured_codex_model=configured_codex_model,
         configured_codex_reasoning_effort=configured_codex_reasoning_effort,
         supported_codex_efforts_for_model=_supported_codex_efforts_for_model,
+        configured_pi_provider=configured_pi_provider,
+        configured_pi_model=configured_pi_model,
+        configured_pi_thinking_level=configured_pi_thinking_level,
+        supported_pi_thinking_levels_for_model=_supported_pi_thinking_levels_for_model,
     )
 
 def _set_codex_model_for_scope(state: State, config, scope_key: str, model_name: str) -> str:
@@ -516,6 +537,35 @@ def _reset_codex_effort_for_scope(state: State, config, scope_key: str) -> str:
         build_engine_runtime_config=build_engine_runtime_config,
         configured_codex_reasoning_effort=configured_codex_reasoning_effort,
         build_codex_effort_source_text=_build_codex_effort_source_text,
+    )
+
+
+def _set_pi_thinking_level_for_scope(state: State, config, scope_key: str, level_name: str) -> str:
+    return engine_control_mutations.set_pi_thinking_level_for_scope(
+        state,
+        config,
+        scope_key,
+        level_name,
+        build_engine_runtime_config=build_engine_runtime_config,
+        configured_pi_provider=configured_pi_provider,
+        configured_pi_model=configured_pi_model,
+        configured_pi_thinking_level=configured_pi_thinking_level,
+        supported_pi_thinking_levels_for_model=_supported_pi_thinking_levels_for_model,
+        resolve_pi_thinking_level_candidate=_resolve_pi_thinking_level_candidate,
+        set_chat_pi_thinking_level=set_chat_pi_thinking_level,
+        build_pi_thinking_source_text=_build_pi_thinking_source_text,
+    )
+
+
+def _reset_pi_thinking_level_for_scope(state: State, config, scope_key: str) -> str:
+    return engine_control_mutations.reset_pi_thinking_level_for_scope(
+        state,
+        config,
+        scope_key,
+        clear_chat_pi_thinking_level=clear_chat_pi_thinking_level,
+        build_engine_runtime_config=build_engine_runtime_config,
+        configured_pi_thinking_level=configured_pi_thinking_level,
+        build_pi_thinking_source_text=_build_pi_thinking_source_text,
     )
 
 def _parse_page_index(raw_value: str) -> Optional[int]:

@@ -78,6 +78,18 @@ class ProgressReporter:
         self.edit_successes = 0
         self.edit_failures_400 = 0
         self.edit_failures_other = 0
+        # Optional progressive stream consumer. When set, ``text_delta``
+        # events are routed to it instead of accumulating into the
+        # progress message. The consumer is owned by the request worker
+        # (prompt_execution) and torn down in the same scope.
+        self.stream_consumer: Optional[object] = None
+        # When True, the request worker has already taken over delivery
+        # via the stream consumer — the progress reporter should not
+        # fight the consumer for the chat. The heartbeat loop is
+        # still allowed to send typing indicators / refresh the
+        # progress message because they live below the consumer's
+        # message bubble and are rate-limited independently.
+        self.streaming_active: bool = False
 
     def start(self) -> None:
         text = self._render_progress_text()
@@ -133,6 +145,18 @@ class ProgressReporter:
         return not self._is_compact_progress
 
     def handle_executor_event(self, event: ExecutorProgressEvent) -> None:
+        # ``text_delta`` is the streaming-token signal. Route it to the
+        # stream consumer when one is attached; otherwise it is a no-op
+        # (the final agent_message event still drives the normal
+        # final-send path through deliver_output_and_emit_success).
+        if event.kind == "text_delta":
+            consumer = self.stream_consumer
+            if consumer is not None and event.detail:
+                try:
+                    consumer.on_delta(event.detail)
+                except Exception:
+                    logging.debug("Stream consumer on_delta failed", exc_info=True)
+            return
         if event.kind == "turn_started":
             self.set_phase(f"{self.assistant_name} started reasoning.", immediate=False)
             return
@@ -145,7 +169,15 @@ class ProgressReporter:
             self.set_phase(detail, immediate=False)
             return
         if event.kind == "agent_message":
-            self.set_phase(f"{self.assistant_name} is preparing the reply.", immediate=False)
+            # When the consumer is going to deliver the final reply we
+            # mark streaming_active so the heartbeat loop stops editing
+            # the progress message (the consumer owns the visible
+            # bubble). The final agent_message event from the
+            # codex_app_server carries the complete final text and is
+            # used as a definitive final-state signal for log/event
+            # capture below.
+            if self.stream_consumer is not None:
+                self.streaming_active = True
             return
         if event.kind == "command_started":
             with self._lock:
@@ -225,6 +257,14 @@ class ProgressReporter:
         if message_id is None:
             return
         if not getattr(self.client, "supports_message_edits", True):
+            return
+        # When the stream consumer is actively editing the assistant
+        # reply, skip progress-message edits to avoid visually
+        # competing with the streaming bubble. The progress message
+        # stays on screen as a static indicator and the heartbeat
+        # continues to send typing actions so the chat indicator stays
+        # alive.
+        if self.streaming_active:
             return
 
         with self._lock:
