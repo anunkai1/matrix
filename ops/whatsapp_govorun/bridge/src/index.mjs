@@ -11,7 +11,7 @@ import makeWASocket, {
   useMultiFileAuthState
 } from '@whiskeysockets/baileys';
 
-import { runCodex } from './codex.mjs';
+import { runAgent } from './agent.mjs';
 import {
   createConfig,
   createQueuedCredsSaver,
@@ -1309,7 +1309,7 @@ async function handleIncoming(sock, msg) {
     ].join(' ');
 
     const finalPrompt = `${preface}\n\nUser message:\n${prompt}`;
-    const result = await runCodex(config, logger, finalPrompt);
+    const result = await runAgent(config, logger, finalPrompt);
     const replyCount = nextReplyCountForChat(chatJid);
     const outboundText = maybeAppendGovorunMilestone(result.reply, replyCount);
 
@@ -1334,6 +1334,11 @@ async function start() {
   }
 
   startApiServer();
+  // Surface the active agent runtime in the startup log so operators can
+  // tell at a glance whether codex or pi is wired in. piProvider/piModel
+  // are populated from the env (see createConfig); they're included only
+  // for clarity, the dispatcher in agent.mjs is the actual source of truth.
+  const isPi = (config.agentRuntime || 'codex') === 'pi';
   logger.info(
     {
       trigger: config.trigger,
@@ -1342,11 +1347,21 @@ async function start() {
       groupTriggerRequired: config.groupTriggerRequired,
       allowedChatIdsCount: config.allowedChatIds.length,
       pluginMode: config.pluginMode,
-      model: config.codexModel,
-      reasoningEffort: config.codexReasoningEffort,
-      fullAccess: config.codexFullAccess
+      agentRuntime: config.agentRuntime || 'codex',
+      ...(isPi
+        ? {
+            piProvider: config.piProvider,
+            piModel: config.piModel,
+            piThinking: config.piThinking,
+            piTimeoutMs: config.piTimeoutMs
+          }
+        : {
+            codexModel: config.codexModel,
+            codexReasoningEffort: config.codexReasoningEffort,
+            codexFullAccess: config.codexFullAccess
+          })
     },
-    'starting whatsapp codex bridge'
+    isPi ? 'starting whatsapp pi bridge' : 'starting whatsapp codex bridge'
   );
 
   let waVersion;

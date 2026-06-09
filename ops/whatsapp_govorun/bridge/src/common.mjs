@@ -226,6 +226,18 @@ export function createConfig() {
     codexFullAccess: parseBool(process.env.CODEX_FULL_ACCESS, true),
     codexBinary: process.env.CODEX_BIN || 'codex',
     codexTimeoutMs: parseInteger(process.env.CODEX_TIMEOUT_MS, 240000, 1000),
+    // Switchable agent runtime: "codex" (default, current behavior) or "pi".
+    // When "pi", the same prompt is routed to `pi --provider PI_PROVIDER
+    // --model PI_MODEL --thinking PI_THINKING --print`. The codex binary
+    // and its config stay loaded; flipping WA_AGENT_RUNTIME (plus a
+    // restart) is the only thing required to switch runtimes.
+    agentRuntime: String(process.env.WA_AGENT_RUNTIME || 'codex').trim().toLowerCase(),
+    piWorkdir: process.env.PI_WORKDIR || '/home/govorun/whatsapp-govorun/app',
+    piProvider: String(process.env.PI_PROVIDER || 'minimax').trim().toLowerCase(),
+    piModel: String(process.env.PI_MODEL || 'MiniMax-M3').trim(),
+    piThinking: String(process.env.PI_THINKING || 'high').trim().toLowerCase(),
+    piBinary: process.env.PI_BIN || 'pi',
+    piTimeoutMs: parseInteger(process.env.PI_TIMEOUT_MS, 60 * 60 * 1000, 1000),
     responseMaxChars: parseInteger(process.env.WA_RESPONSE_MAX_CHARS, 3500, 200),
     pluginMode: parseBool(process.env.WA_PLUGIN_MODE, false),
     bridgeApiHost: process.env.WA_API_HOST || '127.0.0.1',
