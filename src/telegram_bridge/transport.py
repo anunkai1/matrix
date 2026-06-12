@@ -164,6 +164,23 @@ class TelegramClient:
 
         raise RuntimeError("unreachable retry state")
 
+    # Telegram returns a 400 with this description when an editMessageText
+    # is sent whose new content is byte-identical to the current content (or
+    # whose reply_markup is unchanged). The visible state is already what the
+    # caller wanted -- it is a successful no-op, not an error. We translate
+    # it into a synthetic ok=True response so the retry/observability path
+    # treats it as success and emits no failure event. See commit history
+    # for the 2026-06-10 incident where this fired once per turn.
+    _NO_OP_DESCRIPTION_SUBSTRINGS = (
+        "message is not modified",
+    )
+
+    @classmethod
+    def _is_not_modified_error(cls, error_code, description):
+        if error_code != 400 or not description:
+            return False
+        return any(sub in description for sub in cls._NO_OP_DESCRIPTION_SUBSTRINGS)
+
     def _request(self, method: str, payload: Dict[str, object]) -> Dict[str, object]:
         def request_once() -> str:
             endpoint = f"{self.config.api_base}/bot{self.config.token}/{method}"
@@ -182,6 +199,12 @@ class TelegramClient:
                     response_body,
                     fallback=f"HTTP {exc.code}",
                 )
+                if self._is_not_modified_error(exc.code, description):
+                    # Telegram considers this an error, but the desired
+                    # state is already in place. Skip the retry/error
+                    # path entirely and let _request return a synthetic
+                    # success.
+                    return ""
                 raise TelegramApiError(
                     method,
                     description,
@@ -190,12 +213,22 @@ class TelegramClient:
                 ) from exc
 
         body = self._execute_with_retry(method, request_once)
+        if not body:
+            # Synthetic no-op response for "message is not modified" 400s.
+            # Callers get a real success dict with a True result so any
+            # code that reads response["result"] / ["ok"] behaves normally.
+            return {"ok": True, "result": True}
         decoded = json.loads(body)
         if not decoded.get("ok"):
             description = str(decoded.get("description", "unknown Telegram error"))
             error_code = decoded.get("error_code")
             parsed_code = int(error_code) if isinstance(error_code, int) else None
             retry_after = self._extract_retry_after(decoded)
+            if self._is_not_modified_error(parsed_code, description):
+                # Same no-op case as above, but reached on the JSON
+                # body path (Telegram sometimes returns ok=False with
+                # the same description rather than an HTTP 400).
+                return {"ok": True, "result": True}
             raise TelegramApiError(
                 method,
                 description,

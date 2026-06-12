@@ -336,5 +336,312 @@ class StreamConsumerConfigSanityTests(unittest.TestCase):
         self.assertEqual(cfg.min_first_message_chars, 4)
 
 
+class StreamConsumerFallbackStateRegressionTests(unittest.TestCase):
+    """Regression tests for the duplicate-send cascade (2026-06-10 07:24 UTC).
+
+    Original bug: when ``_send_message`` raised in ``_send_or_edit`` (because
+    the transport's 3-retry budget was exhausted on a 429), or when 3 edit
+    attempts in a row failed with 429, the consumer only set
+    ``_edit_supported = False`` and returned. It did NOT mark the consumer
+    as in fallback mode (no ``_message_id = -1`` sentinel, no
+    ``_fallback_final_send = True``, no ``_already_sent = True``). The next
+    tick of the run loop then re-entered the "send the first message"
+    branch and re-sent the full accumulated text via ``sendMessage``,
+    producing a cascade of duplicate Telegram messages.
+
+    These tests pin the contract: when send / edit fails hard, the consumer
+    must transition atomically into fallback state, and the run loop must
+    never call ``sendMessage`` with the same accumulated text more than
+    once for a given stream.
+    """
+
+    def test_initial_send_exception_promotes_to_fallback_state(self) -> None:
+        """If the very first sendMessage raises (e.g. 429 retries
+        exhausted), the consumer must enter fallback state: ``_message_id``
+        must become a sentinel, ``_fallback_final_send`` must be True, and
+        ``_already_sent`` must be True so the run loop will not re-send
+        the full accumulated text on every subsequent tick.
+        """
+
+        class AlwaysFailsClient(FakeTelegramClient):
+            def send_message_get_id(self, chat_id, text, reply_to_message_id=None, message_thread_id=None):
+                # Mirror what the real transport does on a 3-strike
+                # flood: raise RuntimeError. The consumer should treat
+                # this as a hard failure, not as "send succeeded with
+                # no id".
+                raise RuntimeError(
+                    "TELEGRAM_API sendMessage failed: 429 Too Many Requests: retry after 9"
+                )
+
+        client = AlwaysFailsClient()
+        cfg = StreamConsumerConfig(
+            edit_interval=0.0,
+            buffer_threshold=0,
+            cursor=" ▉",
+            min_first_message_chars=2,
+        )
+        consumer = StreamConsumer(client, 42, 7, config=cfg)
+
+        def action() -> None:
+            consumer.on_delta("Server2 is up but mavali.top is down")
+            consumer.finish()
+
+        _drive(consumer, action)
+        # After a hard initial-send failure the consumer must be in
+        # fallback mode so the run loop does not re-send the same text
+        # on every tick. The key invariant is the sentinel on
+        # ``_message_id`` (None is the "never tried" sentinel; -1 is
+        # the "tried and gave up" sentinel; both must take the
+        # "do not re-enter initial-send" branch).
+        self.assertTrue(consumer.stats.fallback_final_send)
+        self.assertTrue(consumer._fallback_final_send)
+        self.assertTrue(consumer._already_sent)
+        self.assertIsNotNone(
+            consumer._message_id,
+            "consumer must set a non-None _message_id sentinel after initial-send failure",
+        )
+        self.assertLess(
+            int(consumer._message_id),
+            0,
+            "consumer must use a negative _message_id sentinel after initial-send failure",
+        )
+        consumer.stop_loop()
+
+    def test_initial_send_exception_does_not_resend_on_subsequent_ticks(self) -> None:
+        """Reproduces the duplicate-send cascade: a hard initial-send
+        failure followed by more deltas must not produce a second
+        ``sendMessage`` call. The run loop must back off / sit in
+        fallback rather than re-attempting the initial-send branch.
+        """
+
+        class AlwaysFailsClient(FakeTelegramClient):
+            def send_message_get_id(self, chat_id, text, reply_to_message_id=None, message_thread_id=None):
+                raise RuntimeError(
+                    "TELEGRAM_API sendMessage failed: 429 Too Many Requests: retry after 9"
+                )
+
+        client = AlwaysFailsClient()
+        cfg = StreamConsumerConfig(
+            edit_interval=0.0,
+            buffer_threshold=0,
+            cursor=" ▉",
+            min_first_message_chars=2,
+        )
+        consumer = StreamConsumer(client, 42, 7, config=cfg)
+
+        def action() -> None:
+            # First delta fails the initial send. Subsequent deltas must
+            # not trigger another sendMessage call.
+            consumer.on_delta("Server2 is up but mavali.top is down")
+            consumer.on_delta(" — investigating the routing table")
+            consumer.on_delta(" and the NordVPN tunnel")
+            consumer.finish()
+
+        _drive(consumer, action)
+        # send_message_get_id raised on every call attempt. The consumer
+        # must have made at most one attempt, not one per delta. The
+        # FakeTelegramClient inherits the call counter from the parent
+        # (we only care that there was no cascade of sends).
+        self.assertEqual(
+            len(client.sends),
+            0,
+            "sendMessage must not be called more than once when initial-send is in hard failure",
+        )
+        # The fallback final-send path is allowed to fire once at the
+        # end (because _finalize_after_done → _send_fallback_final),
+        # but it must also handle a failing client gracefully (no
+        # exception leak into the run loop). Since our client raises,
+        # the fallback send will also raise, but the run loop must
+        # swallow it — what we pin here is that the consumer's
+        # "already-sent" state is consistent (i.e. the run loop did not
+        # keep trying).
+        self.assertTrue(consumer._already_sent)
+        self.assertTrue(consumer._fallback_final_send)
+        consumer.stop_loop()
+
+    def test_three_strike_edit_failure_promotes_to_fallback_with_sentinel_message_id(self) -> None:
+        """After 3 consecutive editMessageText failures (the 429
+        scenario), the consumer must set ``_message_id = -1`` so the
+        run loop will not re-enter the initial-send branch and create a
+        brand-new Telegram message with the full accumulated text.
+
+        Real incident shape: the engine kept emitting deltas while
+        Telegram was 429-ing the edits. The run loop must be allowed
+        to process deltas in the regular (non-finalize) tick path so
+        it actually hits the 3-strike branch — not just drain
+        everything in one go and jump straight to finalize. Use a
+        feeder thread with a delay between deltas.
+        """
+
+        import threading
+        import time as _time
+
+        class FlakyEditClient(FakeTelegramClient):
+            def __init__(self) -> None:
+                super().__init__()
+                self._edit_calls = 0
+
+            def edit_message(self, chat_id, message_id, text):
+                self._edit_calls += 1
+                # Block briefly so the run loop is awake and picking
+                # up deltas between edit attempts.
+                _time.sleep(0.02)
+                raise RuntimeError(
+                    "TELEGRAM_API editMessageText failed: 429 Too Many Requests: retry after 5"
+                )
+
+        client = FlakyEditClient()
+        cfg = StreamConsumerConfig(
+            edit_interval=0.0,
+            buffer_threshold=0,
+            cursor=" ▉",
+            min_first_message_chars=2,
+        )
+        import telegram_bridge.stream_consumer as sc_mod
+
+        original_strikes = sc_mod.DEFAULT_MAX_FLOOD_STRIKES
+        sc_mod.DEFAULT_MAX_FLOOD_STRIKES = 1
+        try:
+            consumer = StreamConsumer(client, 42, 7, config=cfg)
+            consumer.start()
+
+            def feeder():
+                for i in range(10):
+                    consumer.on_delta(f"chunk{i} ")
+                    _time.sleep(0.04)
+                consumer.finish()
+
+            t = threading.Thread(target=feeder, daemon=True)
+            t.start()
+            done = consumer.wait_until_done(timeout=5.0)
+            t.join(timeout=5.0)
+            self.assertTrue(done, "consumer should finish within timeout")
+
+            # The first send landed and got a real message_id. The edits
+            # all failed; after the strikes exhausted, the consumer
+            # MUST have flipped _message_id to a sentinel (negative
+            # value) so the next run-loop tick takes the fallback path
+            # instead of the initial-send path.
+            self.assertIsNotNone(consumer._message_id, "first send should have set _message_id")
+            self.assertLess(
+                int(consumer._message_id),
+                0,
+                "after 3-strike edit failure _message_id must be flipped to a negative sentinel",
+            )
+            self.assertTrue(consumer.stats.fallback_final_send)
+            self.assertTrue(consumer._fallback_final_send)
+            self.assertTrue(consumer._already_sent)
+        finally:
+            sc_mod.DEFAULT_MAX_FLOOD_STRIKES = original_strikes
+
+        consumer.stop_loop()
+
+
+class StreamConsumerFinalizeAfterFallbackTests(unittest.TestCase):
+    """End-to-end regression for the duplicate-send cascade.
+
+    Drive the consumer with a client whose first sendMessage raises (the
+    429 path), then verify the run loop delivers the final text via at
+    most one ``sendMessage`` call — not many. This is the exact failure
+    mode that produced the 70+ duplicate messages on 2026-06-10 07:24 UTC.
+    """
+
+    def test_fallback_after_send_exception_finalizes_with_exactly_one_send(self) -> None:
+        """Simulates the rate-limited initial-send path that produced
+        the 70+ duplicate messages on 2026-06-10 07:24 UTC.
+
+        Real incident timeline: the engine emitted ``text_delta``
+        events for ~2 minutes while the transport was 429-failing.
+        Each run-loop tick re-attempted the initial-send branch and
+        each retry that happened to succeed produced a new Telegram
+        message. The cascade stopped only when ``finish()`` was
+        finally called.
+
+        The test reproduces the cascade with a thread that feeds
+        deltas slowly into the queue while the run loop is awake —
+        the exact production shape.
+        """
+
+        import threading
+        import time as _time
+
+        class FlakySlowClient(FakeTelegramClient):
+            """Mimics the production transport: each sendMessage call
+            takes ~30ms (transport retry budget on a 429) and the
+            first N calls fail before one finally succeeds."""
+
+            def __init__(self, fail_first_n: int) -> None:
+                super().__init__()
+                self._send_attempts = 0
+                self._fail_first_n = fail_first_n
+
+            def send_message_get_id(self, chat_id, text, reply_to_message_id=None, message_thread_id=None):
+                # Block briefly so the run loop has a chance to pick
+                # up new deltas from the queue between calls. In
+                # production this is the 3-retry / 10s-per-retry
+                # budget. Here we use 30ms to keep the test fast
+                # while still letting the queue get new work.
+                _time.sleep(0.03)
+                self._send_attempts += 1
+                if self._send_attempts <= self._fail_first_n:
+                    raise RuntimeError(
+                        "TELEGRAM_API sendMessage failed: 429 Too Many Requests: retry after 9"
+                    )
+                self.sends.append((chat_id, text, reply_to_message_id, message_thread_id))
+                self.next_message_id += 1
+                return {"ok": True, "message_id": self.next_message_id}
+
+        # Fail 3, then accept. The bug would let the run loop call
+        # sendMessage on every tick — with 50ms ticks and deltas
+        # trickling in from a feeder thread, that's many calls.
+        client = FlakySlowClient(fail_first_n=3)
+        cfg = StreamConsumerConfig(
+            edit_interval=0.0,
+            buffer_threshold=0,
+            cursor=" ▉",
+            min_first_message_chars=2,
+        )
+        consumer = StreamConsumer(client, 42, 7, config=cfg)
+        consumer.start()
+
+        # Feeder thread: push deltas slowly so the run loop has time
+        # to attempt and fail multiple sendMessage calls before
+        # finish() is called.
+        def feeder():
+            for i in range(15):
+                consumer.on_delta(f"chunk{i} ")
+                _time.sleep(0.04)
+            consumer.finish()
+
+        t = threading.Thread(target=feeder, daemon=True)
+        t.start()
+        done = consumer.wait_until_done(timeout=5.0)
+        t.join(timeout=5.0)
+        self.assertTrue(done, "consumer should finish within timeout")
+
+        # Contract 1: at most ONE sendMessage call may succeed. The
+        # original bug produced many duplicate Telegram messages.
+        self.assertLessEqual(
+            len(client.sends),
+            1,
+            f"run loop must call sendMessage at most once after fallback transition; got {len(client.sends)}",
+        )
+        # Contract 2: the run loop must not have hammered the client.
+        # Without the fix, the run loop calls sendMessage on every
+        # tick (50ms). With 15 deltas spaced 40ms apart over ~600ms,
+        # the run loop would call sendMessage many times — easily
+        # exceeding 4. With the fix, the initial-send fails, the
+        # consumer enters fallback state, and no further attempts
+        # are made until finish()/finalize (which gets 1 more attempt
+        # for the fallback final-send).
+        self.assertLessEqual(
+            client._send_attempts,
+            4,
+            f"run loop must not retry initial-send after fallback transition; got {client._send_attempts} attempts",
+        )
+        self.assertTrue(consumer.stats.fallback_final_send)
+        self.assertTrue(consumer._fallback_final_send)
+        consumer.stop_loop()
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-03T06:53:35.532172+10:00",
+  "generatedAt": "2026-06-11T06:53:14.884572+10:00",
   "timezone": "Australia/Brisbane",
   "defaultRuntime": "architect",
   "summary": {
@@ -9,10 +9,10 @@
     "approvalCopy": "explicit human gates from live Server3 state",
     "jobValue": "12 tracked",
     "jobCopy": "timers, approvals, and operator playback in one surface",
-    "hostValue": "load 4.82 / ram 8%",
+    "hostValue": "load 2.34 / ram 12%",
     "hostCopy": "browser, timers, storage, and network summarized from the host",
     "currentPicture": [
-      "03 Jun 2026 06:53 AEST",
+      "11 Jun 2026 06:53 AEST",
       "snapshot file server3-control-plane-data.js",
       "0 approval item(s)"
     ],
@@ -86,39 +86,15 @@
   },
   "activity": [
     {
-      "time": "06:54:13",
+      "time": "06:53:14",
       "title": "Oracle recent service activity",
       "channel": "signal runtime",
       "statusClass": "danger",
       "statusText": "degraded",
-      "copy": "2026-06-03 06:54:13,293 WARNING Signal event stream failed: <urlopen error [Errno 111] Connection refused>"
+      "copy": "2026-06-11 06:53:14,195 WARNING Signal event stream failed: Signal SSE stream ended"
     },
     {
-      "time": "06:54:06",
-      "title": "Tank recent service activity",
-      "channel": "telegram sibling",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "bridge.started"
-    },
-    {
-      "time": "06:54:04",
-      "title": "Mavali ETH recent service activity",
-      "channel": "venue operations runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "bridge.started"
-    },
-    {
-      "time": "06:53:58",
-      "title": "Diary recent service activity",
-      "channel": "capture runtime",
-      "statusClass": "ok",
-      "statusText": "healthy",
-      "copy": "bridge.started"
-    },
-    {
-      "time": "06:53:55",
+      "time": "06:53:07",
       "title": "Architect recent service activity",
       "channel": "telegram primary",
       "statusClass": "ok",
@@ -126,7 +102,31 @@
       "copy": "bridge.started"
     },
     {
-      "time": "19:09:44",
+      "time": "06:53:07",
+      "title": "Tank recent service activity",
+      "channel": "telegram sibling",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "06:53:07",
+      "title": "Diary recent service activity",
+      "channel": "capture runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.started"
+    },
+    {
+      "time": "23:11:24",
+      "title": "Mavali ETH recent service activity",
+      "channel": "venue operations runtime",
+      "statusClass": "ok",
+      "statusText": "healthy",
+      "copy": "bridge.request_processing_finished"
+    },
+    {
+      "time": "16:49:33",
       "title": "Govorun recent service activity",
       "channel": "whatsapp runtime",
       "statusClass": "ok",
@@ -231,14 +231,14 @@
     {
       "title": "Observer summary",
       "tagClass": "busy",
-      "tagText": "03 Jun 06:55",
-      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 03 Jun 06:50."
+      "tagText": "11 Jun 06:55",
+      "body": "server3-runtime-observer.timer is active(waiting). Last trigger: 11 Jun 06:50."
     },
     {
       "title": "Routing drift check",
       "tagClass": "busy",
-      "tagText": "04 Jun 06:15",
-      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 03 Jun 06:15."
+      "tagText": "12 Jun 06:15",
+      "body": "server3-chat-routing-contract-check.timer is active(waiting). Last trigger: 11 Jun 06:15."
     },
     {
       "title": "State backup",
@@ -250,7 +250,7 @@
       "title": "Receipt monitor",
       "tagClass": "busy",
       "tagText": "not scheduled",
-      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 03 Jun 06:39."
+      "body": "mavali-eth-receipt-monitor.timer is active(waiting). Last trigger: 11 Jun 06:47."
     }
   ],
   "floor": [
@@ -258,8 +258,8 @@
       "title": "Internal disk",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "13% used",
-      "body": "/ | 393 GiB free of 480 GiB",
+      "value": "14% used",
+      "body": "/ | 390 GiB free of 480 GiB",
       "statusLine": "system root filesystem"
     },
     {
@@ -274,7 +274,7 @@
       "title": "Host health",
       "stateClass": "ok",
       "stateText": "nominal",
-      "value": "load 4.82 / ram 8%",
+      "value": "load 2.34 / ram 12%",
       "body": "primary route eno2 / 192.168.0.148",
       "statusLine": "host: server3"
     },
@@ -283,7 +283,7 @@
       "stateClass": "busy",
       "stateText": "live",
       "value": "/data/downloads",
-      "body": "13% used | 393 GiB free of 480 GiB",
+      "body": "14% used | 390 GiB free of 480 GiB",
       "statusLine": "canonical media namespace is /data/downloads and /data/media/..."
     },
     {
@@ -292,7 +292,7 @@
       "stateText": "queued",
       "value": "Observer summary, Routing drift check, State backup",
       "body": "Visible timers stay on the floor so continuity work is never hidden behind another tool.",
-      "statusLine": "next: 03 Jun 06:55"
+      "statusLine": "next: 11 Jun 06:55"
     }
   ],
   "runtimes": [
@@ -330,7 +330,7 @@
       "recentJobs": [
         {
           "label": "telegram-architect-bridge.service",
-          "value": "20:28:21 Expired 1 idle Pi RPC session(s) after 900s timeout."
+          "value": "06:53:07 bridge.started"
         }
       ],
       "watchouts": [
@@ -413,7 +413,7 @@
       "recentJobs": [
         {
           "label": "telegram-tank-bridge.service",
-          "value": "04:52:49 bridge.telegram_api_retry_succeeded | getUpdates"
+          "value": "06:53:07 bridge.started"
         }
       ],
       "watchouts": [
@@ -483,7 +483,7 @@
       "recentJobs": [
         {
           "label": "telegram-diary-bridge.service",
-          "value": "06:53:58 bridge.started"
+          "value": "06:53:07 bridge.started"
         }
       ],
       "watchouts": [
@@ -553,11 +553,11 @@
       "recentJobs": [
         {
           "label": "whatsapp-govorun-bridge.service",
-          "value": "19:09:44 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
+          "value": "16:49:33 Started whatsapp-govorun-bridge.service - WhatsApp Govorun Bridge (Codex)."
         },
         {
           "label": "govorun-whatsapp-bridge.service",
-          "value": "06:53:49 bridge.started"
+          "value": "06:53:14 Started govorun-whatsapp-bridge.service - Govorun WhatsApp Bridge."
         }
       ],
       "watchouts": [
@@ -628,11 +628,11 @@
       "recentJobs": [
         {
           "label": "signal-oracle-bridge.service",
-          "value": "06:54:06 2026-06-03 06:54:03,292 WARNING Signal event stream failed: <urlopen error [Errno 111] Connection refused>"
+          "value": "06:53:14 2026-06-11 06:53:14,195 WARNING Signal event stream failed: Signal SSE stream ended"
         },
         {
           "label": "oracle-signal-bridge.service",
-          "value": "06:53:33 Starting oracle-signal-bridge.service - Oracle Signal Bridge..."
+          "value": "06:53:14 Starting oracle-signal-bridge.service - Oracle Signal Bridge..."
         }
       ],
       "watchouts": [
@@ -703,7 +703,7 @@
       "recentJobs": [
         {
           "label": "telegram-mavali-eth-bridge.service",
-          "value": "06:54:04 bridge.started"
+          "value": "23:11:24 bridge.request_processing_finished"
         },
         {
           "label": "mavali-eth-receipt-monitor.timer",

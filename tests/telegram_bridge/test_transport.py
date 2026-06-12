@@ -350,6 +350,83 @@ class TestTransport(unittest.TestCase):
 
         self.assertEqual(mocked.call_count, 1)
 
+    def test_transport_treats_message_not_modified_400_as_successful_noop(self):
+        # Regression for the 2026-06-10 incident where the bridge logged
+        # a bridge.telegram_api_failed ERROR once per turn even though
+        # the edit was a successful no-op (Telegram returns a 400 with
+        # "message is not modified" when the new content is byte-identical
+        # to the current content). The desired fix: treat that specific
+        # 400 description as a successful response, emit no failure
+        # event, and do not retry.
+        config = make_config()
+        config.retry_sleep_seconds = 0.0
+        setattr(config, "api_max_attempts", 3)
+        client = bridge.TelegramClient(config)
+
+        body = json.dumps(
+            {
+                "ok": False,
+                "error_code": 400,
+                "description": "Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message",
+            }
+        ).encode("utf-8")
+        not_modified = bridge_transport.HTTPError(
+            url="https://api.telegram.org",
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=io.BytesIO(body),
+        )
+        with (
+            mock.patch.object(bridge_transport, "urlopen", side_effect=[not_modified]) as mocked,
+            mock.patch.object(bridge_transport, "emit_event") as emit_mock,
+        ):
+            # The call must NOT raise -- the 400 is a successful no-op.
+            result = client.edit_message(chat_id=1, message_id=42, text="hello")
+
+        # edit_message itself returns None; the success of the no-op
+        # path is observable as the absence of an error event and the
+        # absence of any retry attempt.
+        self.assertIsNone(result)
+        self.assertEqual(mocked.call_count, 1)
+        event_names = [call.args[0] for call in emit_mock.call_args_list]
+        self.assertNotIn("bridge.telegram_api_failed", event_names)
+        self.assertNotIn("bridge.telegram_api_retry_scheduled", event_names)
+
+    def test_transport_treats_short_message_not_modified_400_as_successful_noop(self):
+        # Telegram sometimes returns the short description ("message is
+        # not modified") without the boilerplate. Same code path must
+        # absorb it.
+        config = make_config()
+        config.retry_sleep_seconds = 0.0
+        setattr(config, "api_max_attempts", 3)
+        client = bridge.TelegramClient(config)
+
+        body = json.dumps(
+            {
+                "ok": False,
+                "error_code": 400,
+                "description": "message is not modified",
+            }
+        ).encode("utf-8")
+        not_modified = bridge_transport.HTTPError(
+            url="https://api.telegram.org",
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=io.BytesIO(body),
+        )
+        with (
+            mock.patch.object(bridge_transport, "urlopen", side_effect=[not_modified]) as mocked,
+            mock.patch.object(bridge_transport, "emit_event") as emit_mock,
+        ):
+            result = client.edit_message(chat_id=1, message_id=42, text="hello")
+
+        self.assertIsNone(result)
+        self.assertEqual(mocked.call_count, 1)
+        event_names = [call.args[0] for call in emit_mock.call_args_list]
+        self.assertNotIn("bridge.telegram_api_failed", event_names)
+
     def test_transport_emits_retry_events_for_transient_error(self):
         config = make_config()
         config.retry_sleep_seconds = 0.0

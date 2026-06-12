@@ -437,25 +437,37 @@ class StreamConsumer:
                 ) or len(self._accumulated) >= self.cfg.buffer_threshold
 
             if should_edit and self._accumulated:
-                # Overflow: accumulated text exceeds the platform
-                # limit. Split into chunks, send first as a new
-                # message, queue the rest as a continuation.
-                if (
-                    len_fn(self._accumulated) > safe_limit
-                    and self._message_id is None
-                ):
-                    await self._send_overflow_chunks(safe_limit, len_fn)
-                    self._last_edit_time = time.monotonic()
-                    if got_done:
-                        return
-                    if got_segment_break:
-                        self._reset_segment_state()
-                    continue
-                if await self._send_or_edit(
-                    self._accumulated,
-                    finalize=got_done or got_segment_break,
-                ):
-                    self._last_edit_time = time.monotonic()
+                # If we've entered fallback state (no editable id,
+                # either the initial send failed or 3 edit strikes
+                # exhausted), do NOT call _send_or_edit from the
+                # regular drain path. Otherwise the run loop will
+                # re-send the accumulated text on every tick and
+                # create a cascade of duplicate Telegram messages —
+                # the 2026-06-10 07:24 UTC incident. The fallback
+                # final-send is delivered by ``_finalize_after_done``
+                # when ``finish()`` is called.
+                if self._fallback_final_send or (self._message_id is not None and self._message_id < 0):
+                    pass
+                else:
+                    # Overflow: accumulated text exceeds the platform
+                    # limit. Split into chunks, send first as a new
+                    # message, queue the rest as a continuation.
+                    if (
+                        len_fn(self._accumulated) > safe_limit
+                        and self._message_id is None
+                    ):
+                        await self._send_overflow_chunks(safe_limit, len_fn)
+                        self._last_edit_time = time.monotonic()
+                        if got_done:
+                            return
+                        if got_segment_break:
+                            self._reset_segment_state()
+                        continue
+                    if await self._send_or_edit(
+                        self._accumulated,
+                        finalize=got_done or got_segment_break,
+                    ):
+                        self._last_edit_time = time.monotonic()
 
             # Commentary fires before the done/segment break so the
             # user sees the interim complete text in the right order:
@@ -548,6 +560,16 @@ class StreamConsumer:
                 self._fallback_final_send = True
                 self._edit_supported = False
                 self._already_sent = True
+                # Flip _message_id to a negative sentinel so the next
+                # run-loop tick takes the fallback path (sees
+                # ``self._message_id in (None, -1)``) instead of the
+                # initial-send path. Without this, the run loop would
+                # re-enter the initial-send branch on every tick and
+                # create a new Telegram message with the full
+                # accumulated text — the duplicate-send cascade
+                # observed on 2026-06-10 07:24 UTC.
+                if self._message_id is not None and self._message_id > 0:
+                    self._message_id = -1
                 self.stats.fallback_final_send = True
                 # Best-effort: strip the cursor from the last visible
                 # message so the user doesn't see a stuck ▉.
@@ -559,11 +581,32 @@ class StreamConsumer:
         try:
             result = self._send_message(text)
         except Exception as exc:
+            # Hard failure (e.g. transport's 3-retry budget exhausted
+            # on a 429). Transition atomically into fallback state so
+            # the run loop does not re-enter this branch on every
+            # tick and create a cascade of duplicate Telegram
+            # messages. Mirrors the successful-but-no-id branch below
+            # — both paths must end in the same fallback sentinel.
             logger.error("Stream consumer: initial send failed: %s", exc)
+            self._message_id = -1
+            self._fallback_prefix = text
+            self._fallback_final_send = True
+            self._already_sent = True
             self._edit_supported = False
+            self.stats.fallback_final_send = True
             return False
         if not result:
+            # Transport accepted the call but returned a falsy
+            # response (e.g. an unknown adapter shape). Transition
+            # into fallback state for the same reason as the
+            # exception handler above: the run loop must not re-enter
+            # this branch on every tick.
+            self._message_id = -1
+            self._fallback_prefix = text
+            self._fallback_final_send = True
+            self._already_sent = True
             self._edit_supported = False
+            self.stats.fallback_final_send = True
             return False
         # Some adapters return the message_id; some don't. We track
         # both cases — without a message_id we still consider delivery
